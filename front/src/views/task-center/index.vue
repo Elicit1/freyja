@@ -82,16 +82,24 @@
         </el-scrollbar>
       </div>
     </div>
+
+    <!-- AI 任务详情抽屉 -->
+    <el-drawer
+      v-model="inspectorVisible"
+      :title="inspectorTask?.title || 'AI 任务'"
+      size="min(720px, 92vw)"
+      append-to-body
+      @closed="closeInspector"
+    >
+      <div v-if="inspectorTask" class="flex h-full flex-col gap-4">
+        <div class="text-xs text-[var(--text-muted)]">任务 {{ inspectorTask.taskId }} · {{ statusLabel(inspectorTask.status) }}</div>
+        <div class="text-sm font-medium">实时记录</div>
+        <pre class="min-h-32 max-h-[38vh] overflow-auto rounded-lg bg-[var(--surface-muted)] p-3 text-xs whitespace-pre-wrap break-all">{{ eventLog || '等待事件...' }}</pre>
+        <div class="text-sm font-medium">结果</div>
+        <pre class="min-h-32 flex-1 overflow-auto rounded-lg bg-[var(--surface-muted)] p-3 text-xs whitespace-pre-wrap break-all">{{ resultText || inspectorTask.errorMessage || '任务尚未完成' }}</pre>
+      </div>
+    </el-drawer>
   </div>
-  <el-drawer v-model="inspectorVisible" :title="inspectorTask?.title || 'AI 任务'" size="min(720px, 92vw)" @closed="closeInspector">
-    <div v-if="inspectorTask" class="flex h-full flex-col gap-4">
-      <div class="text-xs text-[var(--text-muted)]">任务 {{ inspectorTask.taskId }} · {{ statusLabel(inspectorTask.status) }}</div>
-      <div class="text-sm font-medium">实时记录</div>
-      <pre class="min-h-32 max-h-[38vh] overflow-auto rounded-lg bg-[var(--surface-muted)] p-3 text-xs whitespace-pre-wrap break-all">{{ eventLog || '等待事件...' }}</pre>
-      <div class="text-sm font-medium">结果</div>
-      <pre class="min-h-32 flex-1 overflow-auto rounded-lg bg-[var(--surface-muted)] p-3 text-xs whitespace-pre-wrap break-all">{{ resultText || inspectorTask.errorMessage || '任务尚未完成' }}</pre>
-    </div>
-  </el-drawer>
 </template>
 
 <script setup lang="ts">
