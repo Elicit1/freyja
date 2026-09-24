@@ -1,0 +1,61 @@
+HELP.md
+target/
+.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+### Python & Archives ###
+__pycache__/
+*.py[cod]
+*$py.class
+*.zip
+comfy_gateway/static/outputs/
+comfy_gateway/nodes/*local*.yaml
+comfy_gateway/nodes/*local*.yml
+comfy_gateway/*local*.yaml
+comfy_gateway/*local*.yml
+comfy_gateway/.env
+
+### Application Logs & Env ###
+logs/
+*.log
+.env
+.env.local
+docker-compose.override.yml
+docker-compose.override.yaml
+*application-local*.yaml
+*application-local*.yml
+*application-local*.properties
+
+### Frontend ###
+front/node_modules/
+front/dist/
+

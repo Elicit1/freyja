@@ -1,0 +1,113 @@
+node_id: "default"
+name: "RTX 4080 主机节点"
+enabled: true
+http_url: "http://127.0.0.1:8188"
+ws_url: "ws://127.0.0.1:8188/ws"
+timeout_seconds: 1800
+
+models:
+  - model_name: "flux-2-klein-9b"
+    description: "FLUX.2 Klein 9B (UNETLoader fp8_e4m3fn + Qwen3 8B CLIP + Flux2 VAE)"
+    template_file: "comfyUIApi/flux2_klein_9b_t2i_r3.json"
+    handler: "flux2_reference_chain"
+    default_steps: 4
+    default_cfg: 1.0
+    mappings:
+      prompt: ["4", "inputs", "text"]
+      negative_prompt: ["5", "inputs", "text"]
+      width: ["6", "inputs", "width"]
+      height: ["6", "inputs", "height"]
+      seed: ["7", "inputs", "seed"]
+      steps: ["7", "inputs", "steps"]
+      cfg: ["7", "inputs", "cfg"]
+      unet_name: ["10", "inputs", "unet_name"]
+      clip_name: ["2", "inputs", "clip_name"]
+      vae_name: ["3", "inputs", "vae_name"]
+    handler_config:
+      vae_node_id: "3"
+      sampler_node_id: "7"
+      sampler_cond_param: "positive"
+      base_conditioning_source: ["4", 0]
+      reference_node_type: "ReferenceLatent"
+
+  - model_name: "minimax-h3-fl2va"
+    description: "MiniMax H3 16GB HiFi (First/Last Frame to Video+Audio, FL2VA-Fast)"
+    template_file: "comfyUIApi/minimax_h3_fl2va_fast.json"
+    handler: "minimax_h3_fl2va"
+    default_steps: 20
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    mappings:
+      prompt: ["136", "inputs", "prompt"]
+      width: ["136", "inputs", "width"]
+      height: ["136", "inputs", "height"]
+      length: ["136", "inputs", "length"]
+      seed: ["129", "inputs", "noise_seed"]
+      steps: ["124", "inputs", "steps"]
+      unet_name: ["127", "inputs", "unet_name"]
+      clip_name: ["128", "inputs", "clip_name"]
+      video_vae_name: ["119", "inputs", "vae_name"]
+      audio_vae_name: ["120", "inputs", "vae_name"]
+
+  - model_name: "minimax-h3-ref2va"
+    description: "MiniMax H3 16GB HiFi (Reference Images to Video+Audio, Ref2VA-Fast)"
+    template_file: "comfyUIApi/minimax_h3_ref2va_fast.json"
+    handler: "minimax_h3_ref2va"
+    default_steps: 20
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    mappings:
+      prompt: ["136", "inputs", "prompt"]
+      width: ["136", "inputs", "width"]
+      height: ["136", "inputs", "height"]
+      length: ["136", "inputs", "length"]
+      seed: ["129", "inputs", "noise_seed"]
+      steps: ["124", "inputs", "steps"]
+      unet_name: ["127", "inputs", "unet_name"]
+      clip_name: ["128", "inputs", "clip_name"]
+      video_vae_name: ["119", "inputs", "vae_name"]
+      audio_vae_name: ["120", "inputs", "vae_name"]
+
+  - model_name: "rife49-video-48fps"
+    description: "RIFE 4.9 视频补帧，24 FPS 标准化后输出 48 FPS"
+    template_file: "comfyUIApi/h3_rife49_48fps_api.json"
+    handler: "standard"
+    timeout_seconds: 3600
+    mappings:
+      video: ["4", "inputs", "video"]
+      force_rate: ["4", "inputs", "force_rate"]
+      frame_load_cap: ["4", "inputs", "frame_load_cap"]
+      skip_first_frames: ["4", "inputs", "skip_first_frames"]
+      select_every_nth: ["4", "inputs", "select_every_nth"]
+
+      multiplier: ["2", "inputs", "multiplier"]
+      clear_cache_after_n_frames: ["2", "inputs", "clear_cache_after_n_frames"]
+      fast_mode: ["2", "inputs", "fast_mode"]
+      scale_factor: ["2", "inputs", "scale_factor"]
+      dtype: ["2", "inputs", "dtype"]
+      batch_size: ["2", "inputs", "batch_size"]
+
+      frame_rate: ["5", "inputs", "frame_rate"]
+      crf: ["5", "inputs", "crf"]
+      filename_prefix: ["5", "inputs", "filename_prefix"]
+      pix_fmt: ["5", "inputs", "pix_fmt"]
+
+  - model_name: "realesrgan-x2-video"
+    description: "RealESRGAN x2 视频超分"
+    template_file: "comfyUIApi/realesrgan_x2_video_api.json"
+    handler: "standard"
+    timeout_seconds: 3600
+    mappings:
+      video: ["1", "inputs", "video"]
+      force_rate: ["1", "inputs", "force_rate"]
+      frame_load_cap: ["1", "inputs", "frame_load_cap"]
+      skip_first_frames: ["1", "inputs", "skip_first_frames"]
+      select_every_nth: ["1", "inputs", "select_every_nth"]
+
+      upscale_model: ["2", "inputs", "model_name"]
+
+      frame_rate: ["4", "inputs", "frame_rate"]
+      crf: ["4", "inputs", "crf"]
+      filename_prefix: ["4", "inputs", "filename_prefix"]
+      pix_fmt: ["4", "inputs", "pix_fmt"]
+

@@ -1,0 +1,10 @@
+.git
+.idea
+.opencode
+logs/
+target/
+front/node_modules/
+front/dist/
+comfy_gateway/__pycache__/
+*.iml
+*.log

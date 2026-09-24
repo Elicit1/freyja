@@ -1,0 +1,146 @@
+/* 曜石片场 (Obsidian Studio) - 默认皮肤 */
+:root,
+html[data-theme="obsidian"] {
+  /* 基础工作区语义色 */
+  --app-bg: #f3f4f7;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-muted: #f7f8fa;
+  --surface-hover: #f0f1f5;
+
+  --text-primary: #171923;
+  --text-secondary: #697083;
+  --text-muted: #9aa1b1;
+
+  --border-default: rgba(24, 28, 40, 0.08);
+  --border-strong: rgba(24, 28, 40, 0.14);
+
+  --brand: #6d5dfb;
+  --brand-hover: #5b4ae8;
+  --brand-soft: rgba(109, 93, 251, 0.1);
+  --brand-rgb: 109, 93, 251;
+
+  --accent: #23b7d9;
+  --success: #22a06b;
+  --warning: #e59a2f;
+  --danger: #e53e3e;
+
+  /* 曜石侧边栏专属深色 */
+  --sidebar-bg: #11131a;
+  --sidebar-header-bg: #0c0d12;
+  --sidebar-text: #8e95a5;
+  --sidebar-text-muted: #565d6d;
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+  --sidebar-active-bg: rgba(109, 93, 251, 0.16);
+  --sidebar-active-text: #ffffff;
+  --sidebar-active-bar: #6d5dfb;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+
+  /* 顶栏 */
+  --header-bg: rgba(255, 255, 255, 0.85);
+  --header-border: rgba(24, 28, 40, 0.06);
+}
+
+/* 雾白工作室 (Studio White) */
+html[data-theme="studio"] {
+  /* 基础工作区语义色 */
+  --app-bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-muted: #f8f9fb;
+  --surface-hover: #eff2f6;
+
+  --text-primary: #202432;
+  --text-secondary: #747c8f;
+  --text-muted: #9aa1b1;
+
+  --border-default: #e7eaf0;
+  --border-strong: #d2d7e2;
+
+  --brand: #4461f2;
+  --brand-hover: #334ecc;
+  --brand-soft: rgba(68, 97, 242, 0.1);
+  --brand-rgb: 68, 97, 242;
+
+  --accent: #0284c7;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+
+  /* 雾白侧边栏专属明亮色 */
+  --sidebar-bg: #f8f9fc;
+  --sidebar-header-bg: #f0f2f7;
+  --sidebar-text: #4d5568;
+  --sidebar-text-muted: #8c95a6;
+  --sidebar-hover-bg: rgba(0, 0, 0, 0.04);
+  --sidebar-active-bg: rgba(68, 97, 242, 0.1);
+  --sidebar-active-text: #4461f2;
+  --sidebar-active-bar: #4461f2;
+  --sidebar-border: #e7eaf0;
+
+  /* 顶栏 */
+  --header-bg: rgba(255, 255, 255, 0.9);
+  --header-border: #e7eaf0;
+}
+
+/* ========================================================================= */
+/* 暗色模式全局语义令牌 (Dark Mode)                                          */
+/* ========================================================================= */
+[data-color-mode='dark'],
+.dark {
+  --app-bg: #0d1017;
+  --surface: #141821;
+  --surface-raised: #1a1f2b;
+  --surface-muted: #11151d;
+  --surface-hover: #202633;
+
+  --text-primary: #f2f4f8;
+  --text-secondary: #a6adbb;
+  --text-muted: #747d8e;
+
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.18);
+  --shadow-floating: 0 20px 48px rgba(0, 0, 0, 0.38);
+
+  /* Element Plus 暗色变量映射 */
+  --el-bg-color: #141821;
+  --el-bg-color-page: #0d1017;
+  --el-bg-color-overlay: #1a1f2b;
+  --el-text-color-primary: #f2f4f8;
+  --el-text-color-regular: #a6adbb;
+  --el-text-color-secondary: #747d8e;
+  --el-border-color: rgba(255, 255, 255, 0.08);
+  --el-border-color-light: rgba(255, 255, 255, 0.06);
+  --el-border-color-lighter: rgba(255, 255, 255, 0.04);
+  --el-fill-color: rgba(255, 255, 255, 0.05);
+  --el-fill-color-light: rgba(255, 255, 255, 0.03);
+  --el-fill-color-blank: #141821;
+  --el-mask-color: rgba(0, 0, 0, 0.65);
+}
+
+/* 曜石片场暗色适配 */
+[data-theme="obsidian"][data-color-mode="dark"],
+[data-theme="obsidian"].dark {
+  --sidebar-bg: #0d0f15;
+  --sidebar-header-bg: #090a0e;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --header-bg: rgba(20, 24, 33, 0.85);
+  --header-border: rgba(255, 255, 255, 0.08);
+}
+
+/* 雾白工作室暗色适配 */
+[data-theme="studio"][data-color-mode="dark"],
+[data-theme="studio"].dark {
+  --sidebar-bg: #10131b;
+  --sidebar-header-bg: #0c0e15;
+  --sidebar-text: #9aa1b1;
+  --sidebar-text-muted: #5e6677;
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+  --sidebar-active-bg: rgba(68, 97, 242, 0.16);
+  --sidebar-active-text: #ffffff;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --header-bg: rgba(20, 24, 33, 0.85);
+  --header-border: rgba(255, 255, 255, 0.08);
+}

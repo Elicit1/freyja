@@ -1,0 +1,9 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+  timeout_seconds: 300
+  output_dir: "static/outputs"
+  base_url: "http://127.0.0.1:8000"
+
+# 算力节点配置目录：网关启动时将自动扫描并加载此目录下的所有 *.yaml / *.yml 配置文件
+nodes_dir: "nodes"

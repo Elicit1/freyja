@@ -1,0 +1,191 @@
+{
+  "2": {
+    "inputs": {
+      "clip_name": "qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "3": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "4": {
+    "inputs": {
+      "text": "flat color 一个雷姆（来自Re:Zero）的特写镜头，基于 image_1.png。她的标志性蓝色短发遮住了右眼，头上戴着带有白色花朵和紫色蝴蝶结的发冠。她温柔地笑着，脸颊上带着淡淡的红晕，充满深情地直接注视着观众。她穿着黑白女仆装。她站在蓝天白云下一片令人惊叹的、广阔的、充满活力野花（粉色、蓝色、黄色）的花海平原上。远景是山丘上的一座宏伟的异世界城堡。柔和、温暖的光线照亮了场景，微风轻轻吹动她的头发和花朵。",
+      "clip": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIPTextEncode (正面提示词)"
+    }
+  },
+  "5": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIPTextEncode (负面提示词)"
+    }
+  },
+  "6": {
+    "inputs": {
+      "width": 1280,
+      "height": 720,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "EmptyLatentImage (画布比例 16:9)"
+    }
+  },
+  "7": {
+    "inputs": {
+      "seed": 853187909551562,
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "10",
+        0
+      ],
+      "positive": [
+        "19",
+        0
+      ],
+      "negative": [
+        "5",
+        0
+      ],
+      "latent_image": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "3",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "FLUX2_Klein",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "10": {
+    "inputs": {
+      "unet_name": "flux-2-klein-9b.safetensors",
+      "weight_dtype": "fp8_e4m3fn"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "11": {
+    "inputs": {
+      "image": "ref2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadImage (Ref 1 - 主体/角色)"
+    }
+  },
+  "13": {
+    "inputs": {
+      "conditioning": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent 1 (Ctrl+B 可旁路)"
+    }
+  },
+  "14": {
+    "inputs": {
+      "image": "ref2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadImage (Ref 2 - 服饰/道具)"
+    }
+  },
+  "16": {
+    "inputs": {
+      "conditioning": [
+        "13",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent 2 (Ctrl+B 可旁路)"
+    }
+  },
+  "17": {
+    "inputs": {
+      "image": "ref3.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "LoadImage (Ref 3 - 场景/画风)"
+    }
+  },
+  "19": {
+    "inputs": {
+      "conditioning": [
+        "16",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent 3 (Ctrl+B 可旁路)"
+    }
+  }
+}

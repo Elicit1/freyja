@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration scan="true" scanPeriod="60 seconds">
+
+    <!-- 从 Spring 环境读取配置变量，提供安全默认值 -->
+    <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="freyja"/>
+    <springProperty scope="context" name="LOG_PATH" source="logging.file.path" defaultValue="./logs"/>
+    <springProperty scope="context" name="LOG_LEVEL" source="logging.level.com.astra.freyja" defaultValue="INFO"/>
+
+    <!-- 日志格式定义 -->
+    <!-- 控制台彩色格式 -->
+    <property name="CONSOLE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) %magenta([%15.15thread]) %cyan(%-40.40logger{39}) : %msg%n"/>
+    <!-- 本地文件纯文本格式 (不含 ANSI 颜色转义字符) -->
+    <property name="FILE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"/>
+
+    <!-- ================= 1. 控制台 Appender ================= -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ================= 2. 全量/常规信息本地滚动文件 Appender ================= -->
+    <appender name="FILE_INFO" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}-info.log</file>
+        <!-- 基础过滤: 仅记录 INFO 及以上级别 (避免高频 trace/debug 刷爆本地磁盘，业务 debug 单独按需通过 logger 开关) -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>INFO</level>
+        </filter>
+        <!-- 滚动策略: 按天切分 + 单文件 50MB 自动分片 + gzip 压缩归档 -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/archived/${APP_NAME}-info-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>10GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ================= 3. 独立错误本地滚动文件 Appender ================= -->
+    <appender name="FILE_ERROR" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${LOG_PATH}/${APP_NAME}-error.log</file>
+        <!-- 严格过滤: 仅捕获 ERROR 级别日志 -->
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>ERROR</level>
+        </filter>
+        <!-- 滚动策略: 按天切分 + 单文件 50MB 自动分片 + gzip 压缩归档 -->
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <fileNamePattern>${LOG_PATH}/archived/${APP_NAME}-error-%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>5GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- ================= 4. 异步落盘包装器 (提升吞吐，避免高并发 I/O 阻塞工作线程) ================= -->
+    <appender name="ASYNC_FILE_INFO" class="ch.qos.logback.classic.AsyncAppender">
+        <!-- 队列满时不丢弃日志 -->
+        <discardingThreshold>0</discardingThreshold>
+        <!-- 环形缓冲区大小 -->
+        <queueSize>512</queueSize>
+        <!-- 关闭提取调用栈以保障高性能 -->
+        <includeCallerData>false</includeCallerData>
+        <appender-ref ref="FILE_INFO"/>
+    </appender>
+
+    <appender name="ASYNC_FILE_ERROR" class="ch.qos.logback.classic.AsyncAppender">
+        <discardingThreshold>0</discardingThreshold>
+        <queueSize>256</queueSize>
+        <!-- 错误日志保留完整调用栈行号信息便于排查异常 -->
+        <includeCallerData>true</includeCallerData>
+        <appender-ref ref="FILE_ERROR"/>
+    </appender>
+
+    <!-- ================= 5. 特定包日志级别与噪音过滤 ================= -->
+    <!-- 业务根包：支持 application.yaml 动态指定 -->
+    <logger name="com.astra.freyja" level="${LOG_LEVEL}" additivity="true"/>
+    <!-- MyBatis-Plus DAO 层 SQL 输出 -->
+    <logger name="com.astra.freyja.dao" level="DEBUG" additivity="true"/>
+
+    <!-- 第三方组件降噪 -->
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="org.apache.http" level="INFO"/>
+    <logger name="org.apache.hc" level="INFO"/>
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+    <logger name="io.minio" level="INFO"/>
+    <logger name="io.netty" level="INFO"/>
+
+    <!-- ================= 6. Root Logger ================= -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE_INFO"/>
+        <appender-ref ref="ASYNC_FILE_ERROR"/>
+    </root>
+
+</configuration>

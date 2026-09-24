@@ -1,0 +1,88 @@
+spring:
+  application:
+    name: freyja
+  mvc:
+    async:
+      request-timeout: 600000
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://127.0.0.1:3306/freyja?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD:root}
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 10
+      connection-timeout: 30000
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:127.0.0.1}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:123456}
+      database: ${SPRING_DATA_REDIS_DATABASE:0}
+      timeout: 5s
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    db-config:
+      id-type: assign_id
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+server:
+  port: ${SERVER_PORT:8080}
+
+freyja:
+  crypto:
+    key: ${FREYJA_CRYPTO_KEY:freyja-local-dev-key-please-change-me-0123456789}
+  media-tools:
+    ffmpeg-path: ${FREYJA_MEDIA_TOOLS_FFMPEG_PATH:ffmpeg}
+    ffprobe-path: ${FREYJA_MEDIA_TOOLS_FFPROBE_PATH:ffprobe}
+    timeout: 30s
+  render:
+    executor:
+      core-pool-size: 4
+      max-pool-size: 16
+      queue-capacity: 100
+      thread-name-prefix: render-async-
+
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://127.0.0.1:9000}
+  external-endpoint: ${MINIO_EXTERNAL_ENDPOINT:http://127.0.0.1:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin123}
+  bucket-name: ${MINIO_BUCKET_NAME:video-assets}
+
+logging:
+  file:
+    path: ./logs
+  level:
+    com.astra.freyja: debug
+    com.astra.freyja.dao: debug
+
+story:
+  decomposition:
+    minSegmentCharacters: 1200
+    targetSegmentCharacters: 2000
+    maxSegmentCharacters: 3500
+
+ai:
+  planner:
+    concurrency: 1
+  shotWorker:
+    maxConcurrency: 3
+    timeoutSeconds: 180
+    maxRetries: 2
+
+shot:
+  duration:
+    shortThreshold: 4
+    fragmentationWarningRatio: 0.30
+

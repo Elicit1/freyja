@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FREYJA AI DIGITAL STUDIO</title>
+    <script>
+      (function () {
+        try {
+          const stored = localStorage.getItem('freyja:appearance:v1');
+          let themeId = 'obsidian';
+          let colorMode = 'light';
+          let density = 'comfortable';
+          let reduceMotion = false;
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed.themeId) themeId = parsed.themeId;
+            if (parsed.colorMode) colorMode = parsed.colorMode;
+            if (parsed.density) density = parsed.density;
+            if (parsed.reduceMotion) reduceMotion = Boolean(parsed.reduceMotion);
+          }
+          let effectiveMode = colorMode;
+          if (colorMode === 'system') {
+            effectiveMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.setAttribute('data-theme', themeId);
+          document.documentElement.setAttribute('data-color-mode', effectiveMode);
+          document.documentElement.setAttribute('data-density', density);
+          if (reduceMotion) {
+            document.documentElement.setAttribute('data-reduce-motion', 'true');
+          }
+          if (effectiveMode === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'obsidian');
+          document.documentElement.setAttribute('data-color-mode', 'light');
+        }
+      })();
+    </script>
+  </head>
+  <body class="bg-[var(--app-bg)] text-[var(--text-primary)] antialiased">
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

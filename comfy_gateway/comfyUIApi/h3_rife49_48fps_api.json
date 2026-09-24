@@ -1,0 +1,95 @@
+{
+  "2": {
+    "inputs": {
+      "ckpt_name": "rife49.pth",
+      "clear_cache_after_n_frames": 100,
+      "multiplier": 2,
+      "fast_mode": false,
+      "ensemble": 1,
+      "scale_factor": 1,
+      "dtype": "float16",
+      "torch_compile": false,
+      "batch_size": 32,
+      "frames": [
+        "4",
+        0
+      ]
+    },
+    "class_type": "RIFE VFI",
+    "_meta": {
+      "title": "RIFE 49 补帧 (4080优化)"
+    }
+  },
+  "4": {
+    "inputs": {
+      "video": "Ref2VA-Fast_00022_.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video"
+    }
+  },
+  "5": {
+    "inputs": {
+      "frame_rate": 48,
+      "loop_count": 0,
+      "filename_prefix": "video_rife/rife_48fps",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 19,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true,
+      "images": [
+        "7",
+        0
+      ],
+      "audio": [
+        "4",
+        2
+      ]
+    },
+    "class_type": "VHS_VideoCombine",
+    "_meta": {
+      "title": "Video Combine (输出MP4)"
+    }
+  },
+  "6": {
+    "inputs": {
+      "batch_index": -1,
+      "length": 1,
+      "image": [
+        "2",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "03 只取完整视频的最后一帧"
+    }
+  },
+  "7": {
+    "inputs": {
+      "image1": [
+        "2",
+        0
+      ],
+      "image2": [
+        "6",
+        0
+      ]
+    },
+    "class_type": "ImageBatch",
+    "_meta": {
+      "title": "04 全片补帧完成后仅追加一帧"
+    }
+  }
+}

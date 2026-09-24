@@ -1,0 +1,28 @@
+# ==============================================================================
+# 本地私有开发环境配置模板 (application-local.yaml.example)
+#
+# 使用方法：
+# 1. 复制本文件重命名为 src/main/resources/application-local.yaml (已被 .gitignore 全局忽略，安全防提交)
+# 2. 在 application-local.yaml 中填写你个人的局域网 IP、专属数据库密码及 Windows 本地绝对路径
+# 3. IDEA 运行配置中填入 Active Profiles: local (或 VM Options: -Dspring.profiles.active=local)
+# ==============================================================================
+
+# spring:
+#   datasource:
+#     url: jdbc:mysql://172.23.125.51:3306/freyja?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+#     username: root
+#     password: root
+#   data:
+#     redis:
+#       host: 172.23.125.51
+#       port: 6379
+#       password: 123456
+
+# freyja:
+#   media-tools:
+#     ffmpeg-path: F:\program_file\ffmpeg\bin\ffmpeg.exe
+#     ffprobe-path: F:\program_file\ffmpeg\bin\ffprobe.exe
+
+# minio:
+#   endpoint: http://172.23.125.51:9000
+#   external-endpoint: http://172.23.125.51:9000
