@@ -90,4 +90,23 @@ router.beforeEach((to, _from, next) => {
   next()
 })
 
+router.onError((error, to) => {
+  const errMsg = (error?.message || '').toLowerCase()
+  const isChunkLoadFailed =
+    errMsg.includes('failed to fetch dynamically imported module') ||
+    errMsg.includes('loading chunk') ||
+    errMsg.includes('loading css chunk')
+
+  if (isChunkLoadFailed) {
+    const targetUrl = to?.fullPath || window.location.pathname + window.location.search
+    const reloadKey = 'freyja_chunk_reload_' + targetUrl
+    const lastReload = sessionStorage.getItem(reloadKey)
+    const now = Date.now()
+    if (!lastReload || now - Number(lastReload) > 10000) {
+      sessionStorage.setItem(reloadKey, String(now))
+      window.location.href = targetUrl
+    }
+  }
+})
+
 export default router

@@ -253,15 +253,45 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
     }
   }
 
+  function handlePageShow(event: PageTransitionEvent) {
+    if (event.persisted && initialized.value) {
+      // 页面从 BFCache 中唤醒恢复，主动重建 WebSocket 连接并同步最新任务
+      initWebSocket()
+      void refreshActive()
+    }
+  }
+
+  function handlePageHide(event: PageTransitionEvent) {
+    if (event.persisted) {
+      // 页面即将进入 BFCache，主动关闭 WebSocket 连接避免被浏览器强制中断报错
+      stopHeartbeat()
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+        reconnectTimer = null
+      }
+      if (socket) {
+        socket.close()
+        socket = null
+      }
+      connected.value = false
+    }
+  }
+
   function start() {
     if (initialized.value || typeof window === 'undefined') return
     initialized.value = true
     initWebSocket()
     void refreshHistory()
+    window.addEventListener('pageshow', handlePageShow)
+    window.addEventListener('pagehide', handlePageHide)
   }
 
   function stop() {
     initialized.value = false
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('pageshow', handlePageShow)
+      window.removeEventListener('pagehide', handlePageHide)
+    }
     stopHeartbeat()
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
