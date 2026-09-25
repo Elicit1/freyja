@@ -16,7 +16,7 @@
       <el-main class="!p-6 overflow-y-auto bg-[var(--app-bg)] flex-1">
         <router-view v-slot="{ Component, route }">
           <transition name="fade-transform" mode="out-in">
-            <component :is="Component" :key="route.fullPath" />
+            <component :is="Component" :key="route.name === 'Drama' ? route.path : route.fullPath" />
           </transition>
         </router-view>
       </el-main>

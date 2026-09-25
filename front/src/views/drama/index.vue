@@ -483,11 +483,16 @@ onMounted(() => {
   void resumeRouteContext()
 })
 
-// 任务中心从当前页面跳转到同一路由时，组件不会重新挂载，需要监听恢复参数。
+// 剧作页在查询参数变化时保持挂载；监听完整地址以处理同页打开另一任务或项目。
 watch(
-  () => `${route.query.resumeShotId || ''}:${route.query.resumeAction || ''}:${route.query.taskId || ''}`,
-  (value, previous) => {
-    if (value && value !== previous) void resumeRouteContext()
+  () => route.fullPath,
+  () => {
+    if (routeQueryValue(route.query.resumeAction)
+      || routeQueryValue(route.query.resumeShotId)
+      || routeQueryValue(route.query.dramaId)
+      || routeQueryValue(route.query.id)) {
+      void resumeRouteContext()
+    }
   }
 )
 

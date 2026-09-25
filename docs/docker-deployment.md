@@ -116,6 +116,17 @@ docker compose up -d --build
 python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header
 ```
 
+### 3. AI 提供商与调度网关 Base URL 配置注意事项 (⚠️ 必读)
+
+> [!WARNING]
+> **在 Docker 容器化环境中，Web 后台配置的 AI 提供商 Base URL 切勿直接填写 `127.0.0.1` 或 `localhost`！**
+>
+> - **隔离根因**：Docker 容器拥有独立隔离的网络命名空间，`127.0.0.1` 永远指向发起请求的当前容器自身。后端容器（`freyja-backend`）向自己的 8000 端口发起请求必报 `Connection Refused`。
+> - **推荐配置**：
+>   - **Docker 容器间通信（首选推荐）**：`http://comfy-gateway:8000/v1`
+>   - **全场景兼容网关模式（同时支持本地 IDEA 与 Docker 容器）**：`http://host.docker.internal:8000/v1`
+> - **内置防呆**：服务端已内置智能自适应重定向，若在容器内检测到回环地址将自动转译至 `comfy-gateway:8000`。
+
 ---
 
 ## 四、 常用运维管理命令

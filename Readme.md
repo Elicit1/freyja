@@ -206,6 +206,29 @@ docker compose up -d --build
 - **FastAPI 调度网关**：`http://localhost:8000/docs`
 - **MinIO 资产管理**：`http://localhost:9001`（账号：`minioadmin` / 密码：`minioadmin123`）
 
+### 4. 核心网络与 AI 提供商 Base URL 配置注意事项 (⚠️ 必读)
+
+> [!WARNING]
+> **在 Docker 部署环境下，AI 提供商的 Base URL 切勿直接填写 `127.0.0.1` 或 `localhost`！**
+>
+> 1. **容器网络隔离原理**：
+>    在 Docker 容器化环境中，每个容器拥有完全独立的网络命名空间（Network Namespace）。`127.0.0.1` 永远指向发起请求的容器本身。若在系统【系统管理 -> AI 提供商配置】中将 FastApi 网关的 Base URL 填为 `http://127.0.0.1:8000/v1`，后端容器（`freyja-backend`）会在其自身容器内部寻找 8000 端口，从而导致 `Connection Refused`（连接拒绝）或网络请求超时。
+>
+> 2. **推荐的 Base URL 配置方式**：
+>    - **Docker 容器间直连（官方最佳实践，默认推荐）**：
+>      ```text
+>      http://comfy-gateway:8000/v1
+>      ```
+>      在同一 Docker Compose 网络中，Docker 内置 DNS 服务会自动解析服务名 `comfy-gateway`，通信性能最高且不受宿主机端口变动影响。
+>    - **全场景兼容网关模式（同时支持本地 IDEA 与 Docker 容器）**：
+>      ```text
+>      http://host.docker.internal:8000/v1
+>      ```
+>      借助 Docker 为容器访问宿主机设立的网关映射，无论后端运行在 Docker 容器还是本地 IDEA 均能成功通信。
+>
+> 3. **系统内置智能防呆容错机制**：
+>    后端 `AiImageApiService` 服务现已内置环境自适应感知逻辑：若检测到系统当前运行于 Docker 容器中且检测到用户误配了 `127.0.0.1:8000` 或 `localhost:8000`，系统将自动智能重定向至 `http://comfy-gateway:8000` 进行通信，防止任务意外中断。但生产环境仍建议在控制台规范录入。
+
 > 详细配置与运维说明请参阅 [Docker 容器化部署指南](docs/docker-deployment.md)。
 
 ---

@@ -265,8 +265,24 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         throw new BizException(400, "当前供应商未配置启用的文生图/图生图模型");
     }
 
-    private String buildEndpointUrl(String baseUrl) {
+    private String normalizeBaseUrl(String baseUrl) {
+        if (StringUtils.isBlank(baseUrl)) {
+            return baseUrl;
+        }
         String clean = baseUrl.trim();
+        // 若后端运行在 Docker 容器网络中，127.0.0.1:8000 指向自身会导致通信失败，智能校正为同一网络下的 comfy-gateway 服务名
+        if ((clean.contains("127.0.0.1:8000") || clean.contains("localhost:8000"))
+                && new java.io.File("/.dockerenv").exists()) {
+            String updated = clean.replace("127.0.0.1:8000", "comfy-gateway:8000")
+                    .replace("localhost:8000", "comfy-gateway:8000");
+            log.info("[AiImageApi] 检测到运行于 Docker 容器网络，已将回环网关地址智能重定向: {} -> {}", clean, updated);
+            return updated;
+        }
+        return clean;
+    }
+
+    private String buildEndpointUrl(String baseUrl) {
+        String clean = normalizeBaseUrl(baseUrl);
         if (clean.endsWith("/")) {
             clean = clean.substring(0, clean.length() - 1);
         }
@@ -826,7 +842,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                         .build();
             }
 
-            String clean = baseUrl.trim();
+            String clean = normalizeBaseUrl(baseUrl);
             if (clean.endsWith("/")) {
                 clean = clean.substring(0, clean.length() - 1);
             }
