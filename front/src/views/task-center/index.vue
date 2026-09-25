@@ -89,7 +89,7 @@
       :title="inspectorTask?.title || 'AI 任务'"
       size="min(720px, 92vw)"
       append-to-body
-      @closed="closeInspector"
+      @closed="handleInspectorClosed"
     >
       <div v-if="inspectorTask" class="flex h-full flex-col gap-4">
         <div class="text-xs text-[var(--text-muted)]">任务 {{ inspectorTask.taskId }} · {{ statusLabel(inspectorTask.status) }}</div>
@@ -103,8 +103,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ArrowRight, Finished, Operation, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
@@ -114,6 +114,7 @@ import { useTaskCenterStore } from '@/store/taskCenter'
 import type { TaskCenterItem } from '@/api/task-center'
 
 const router = useRouter()
+const route = useRoute()
 const store = useTaskCenterStore()
 const activeTab = ref<'active' | 'history'>('active')
 const items = computed(() => activeTab.value === 'active' ? store.activeTasks : store.recentTasks)
@@ -124,6 +125,7 @@ const inspectorTask = ref<TaskCenterItem | null>(null)
 const eventLog = ref('')
 const resultText = ref('')
 let unsubscribeAi: (() => void) | null = null
+let lastOpenedTaskId: string | null = null
 
 function prettyResult(value: string) {
   try { return JSON.stringify(JSON.parse(value), null, 2) }
@@ -133,6 +135,19 @@ function prettyResult(value: string) {
 function closeInspector() {
   unsubscribeAi?.()
   unsubscribeAi = null
+}
+
+function clearRequestedTaskQuery(taskId: string) {
+  if (route.query.taskSource !== 'AI_TASK' || route.query.taskId !== taskId) return
+  const query = { ...route.query }
+  delete query.taskSource
+  delete query.taskId
+  void router.replace({ query })
+}
+
+function handleInspectorClosed() {
+  closeInspector()
+  if (inspectorTask.value) clearRequestedTaskQuery(inspectorTask.value.taskId)
 }
 
 onUnmounted(closeInspector)
@@ -165,9 +180,40 @@ async function inspectAiTask(task: TaskCenterItem) {
   }
 }
 
+async function openRequestedAiTask() {
+  const taskId = route.query.taskId
+  if (route.query.taskSource !== 'AI_TASK' || typeof taskId !== 'string') {
+    lastOpenedTaskId = null
+    return
+  }
+  if (lastOpenedTaskId === taskId) return
+  lastOpenedTaskId = taskId
+  try {
+    const task = await taskCenterApi.getTask('AI_TASK', taskId)
+    if (route.query.taskSource !== 'AI_TASK' || route.query.taskId !== taskId) return
+    if (task) {
+      activeTab.value = isActive(task.status) ? 'active' : 'history'
+      store.markRead(task.taskId, task.sourceType)
+      await inspectAiTask(task)
+    } else {
+      ElMessage.warning('任务不存在或已过期')
+      clearRequestedTaskQuery(taskId)
+    }
+  } catch (error) {
+    console.warn('打开 AI 任务失败', error)
+    ElMessage.error('打开 AI 任务失败')
+    clearRequestedTaskQuery(taskId)
+  }
+}
+
 onMounted(() => {
   store.start()
   void refresh()
+  void openRequestedAiTask()
+})
+
+watch(() => [route.query.taskSource, route.query.taskId], () => {
+  void openRequestedAiTask()
 })
 
 async function refresh() {

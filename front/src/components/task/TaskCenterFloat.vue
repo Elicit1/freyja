@@ -182,6 +182,11 @@ async function openTask(task: TaskCenterItem) {
     return
   }
 
+  if (task.sourceType === 'AI_TASK') {
+    await router.push({ path: '/render/tasks', query: { taskSource: task.sourceType, taskId: task.taskId } })
+    return
+  }
+
   await router.push('/render/tasks')
 }
 
