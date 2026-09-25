@@ -89,7 +89,14 @@ docker compose up -d --build
 ## 三、 外部 ComfyUI 算力端配置说明 (Windows / Linux)
 
 ### 1. 硬件配置要求与模型准备
-- **硬件配置建议**：GPU 显存建议 **$\ge 16\text{ GB}$**，宿主机物理内存建议 **$64\text{ GB}$**；
+
+| 配置项 | 最低要求 (Minimum) | 推荐配置 (Recommended) | 说明 |
+| :--- | :--- | :--- | :--- |
+| **GPU 独立显卡** | **16 GB 显存**（如 RTX 4080 16G / RTX 3090 24G 等） | **16 GB 以上显存**（如 RTX 4090 24G 或专业级工作站显卡） | FLUX.2 Klein 与 MiniMax H3 视频 DiT 大权重加载与推理的硬性基准 |
+| **宿主机内存 (RAM)** | **32 GB** | **64 GB 及以上** | 视频模型大权重加载与多阶段合流在 32G 下容易触碰虚拟内存交换上限，推荐 64G 获得最佳流水线流畅度 |
+| **磁盘存储** | 预留 **100 GB** 以上（SSD 固态硬盘） | 预留 **200 GB** 以上（NVMe M.2 高速固态） | 存放基础模型权重、缓存与高清视频渲染资产 |
+| **操作系统** | Windows 10/11 64位 或 Linux (Ubuntu 20.04/22.04 LTS) | Windows 11 / Linux (Ubuntu 22.04+ LTS) | 支持 NVIDIA 专有驱动、CUDA 环境与 Docker 编排 |
+
 - **视频生成模型**：系统配套采用 ModelScope 发布的 **[MiniMax H3 混合高精度量化 (16G显存优化版)](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi)**；
 - **推理加速包**：建议配合下载 ModelScope 文件列表中的 **[ComfyUI-sol-attn-main.zip](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/files)**（解压到 `ComfyUI/custom_nodes/ComfyUI-sol-attn`），专用于降低注意力计算显存开销与加速生视频；
 - **工作流固定机制**：系统提示词组装与镜头注入与预置的 5 套工作流严格绑定，**不支持自动或随意接入第三方工作流**，开箱只使用系统内置工作流（新工作流接入逻辑与 AI 编写指引详见 [comfyUI_workflow/README.md](../comfyUI_workflow/README.md)）。
