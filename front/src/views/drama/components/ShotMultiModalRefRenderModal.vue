@@ -411,8 +411,8 @@ import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { dramaApi, shotApi } from '@/api/drama'
 import { assetApi } from '@/api/res-asset'
-import { sceneApi } from '@/api/res-scene'
 import { aiProviderApi } from '@/api/ai-provider'
+import { createPreviousVideoTailSceneReference } from '@/utils/previous-video-tail-scene'
 import AssetMultiSelectDialog, { type AssetSelectItem } from './AssetMultiSelectDialog.vue'
 import type { DramaShot, ShotRefImage, ShotRefAudio } from '@/types/drama'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
@@ -600,39 +600,22 @@ async function handleCreateSceneFromPreviousVideo() {
   creatingTailScene.value = true
   let sceneCreated = false
   try {
-    const tail = await shotApi.extractPreviousVideoTail(currentShotId.value)
-    if (refImages.value.some(image => image.imageUrl === tail.tailFrameUrl)) {
+    const { image, reused } = await createPreviousVideoTailSceneReference(
+      currentShotId.value, dramaId.value, refImages.value
+    )
+    if (!image) {
       ElMessage.info('上一镜视频尾帧已在参考图列表中')
       return
     }
-
-    const sourceName = tail.sourceShotName || `S${tail.sourceShotNo}`
-    const name = `${sourceName} 视频尾帧场景`
-    const sceneId = await sceneApi.create({
-      dramaId: dramaId.value,
-      name,
-      coverUrl: tail.tailFrameUrl,
-      referenceImageUrl: tail.tailFrameUrl,
-      scenePrompt: '',
-      remark: `来源：分镜 ${String(tail.sourceShotId)} 的视频尾帧`
-    })
     sceneCreated = true
-    const newImage: ShotRefImage = {
-      id: `SCENE_${String(sceneId)}`,
-      sourceType: 'SCENE',
-      sourceId: String(sceneId),
-      name,
-      imageUrl: tail.tailFrameUrl,
-      usageRole: 'SCENE'
-    }
-    const updatedImages = [...refImages.value, newImage]
+    const updatedImages = [...refImages.value, image]
     refImages.value = updatedImages
     await shotApi.update({
       id: currentShotId.value,
       generationMode: 'REFERENCE_MODE',
       refImages: updatedImages
     })
-    ElMessage.success(tail.reused ? '已使用缓存尾帧创建场景并加入参考图' : '已提取上一镜尾帧，创建场景并加入参考图')
+    ElMessage.success(reused ? '已使用缓存尾帧创建场景并加入参考图' : '已提取上一镜尾帧，创建场景并加入参考图')
     emit('success', currentShotId.value)
   } catch (error: any) {
     ElMessage.error(sceneCreated
