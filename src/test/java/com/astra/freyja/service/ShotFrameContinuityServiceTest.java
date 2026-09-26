@@ -215,6 +215,30 @@ class ShotFrameContinuityServiceTest {
     }
 
     @Test
+    @DisplayName("参考图提取复用上一镜尾帧，但不改写当前镜头首帧")
+    void testExtractTailForSceneReferenceDoesNotApplyFirstFrame() {
+        String videoUrl = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/takes/video_1.mp4";
+        String cachedTail = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/frames/video_tail_1.jpg";
+        DramaShot previous = buildShot(101L, 10L, 1, 1, videoUrl);
+        previous.setLastFrameUrl(cachedTail);
+        previous.setLastFrameSourceVideoUrl(videoUrl);
+        DramaShot current = buildShot(102L, 10L, 2, 2, null);
+        current.setPreviewImageUrl("original-first-frame.jpg");
+
+        when(shotMapper.selectById(102L)).thenReturn(current);
+        when(shotMapper.selectById(101L)).thenReturn(previous);
+        when(shotMapper.selectList(any())).thenReturn(List.of(previous, current));
+
+        PreviousVideoTailVO result = continuityService.extractPreviousVideoTail(102L, new PreviousVideoTailRequest());
+
+        assertEquals(cachedTail, result.getTailFrameUrl());
+        assertFalse(result.getApplied());
+        assertEquals("original-first-frame.jpg", current.getPreviewImageUrl());
+        verify(shotMapper, never()).updateById(current);
+        verify(videoFrameExtractService, never()).extractLastFrame(any(), any(), any());
+    }
+
+    @Test
     @DisplayName("8. 缓存版本与视频 URL 不匹配时失效重新提取")
     void testVersionMismatchReExtract() throws Exception {
         String oldVideoUrl = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/takes/video_old.mp4";

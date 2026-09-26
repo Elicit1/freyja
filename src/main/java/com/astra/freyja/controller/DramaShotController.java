@@ -143,6 +143,13 @@ public class DramaShotController {
         return R.ok(continuityService.inheritPreviousVideoTail(currentShotId, request));
     }
 
+    @PostMapping("/{currentShotId}/extract-previous-video-tail")
+    public R<PreviousVideoTailVO> extractPreviousVideoTail(
+            @PathVariable Long currentShotId,
+            @RequestBody(required = false) PreviousVideoTailRequest request) {
+        return R.ok(continuityService.extractPreviousVideoTail(currentShotId, request));
+    }
+
     @PutMapping("/{id}/set-end-frame")
     public R<Void> setEndFrame(@PathVariable Long id,
                                @RequestBody Map<String, String> body) {

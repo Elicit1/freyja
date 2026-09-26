@@ -47,6 +47,16 @@ public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityServic
 
     @Override
     public PreviousVideoTailVO inheritPreviousVideoTail(Long currentShotId, PreviousVideoTailRequest request) {
+        return resolvePreviousVideoTail(currentShotId, request, true);
+    }
+
+    @Override
+    public PreviousVideoTailVO extractPreviousVideoTail(Long currentShotId, PreviousVideoTailRequest request) {
+        return resolvePreviousVideoTail(currentShotId, request, false);
+    }
+
+    private PreviousVideoTailVO resolvePreviousVideoTail(Long currentShotId, PreviousVideoTailRequest request,
+                                                        boolean applyToFirstFrame) {
         if (currentShotId == null) {
             throw new BizException(400, "当前分镜 ID 不能为空");
         }
@@ -222,15 +232,17 @@ public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityServic
             throw new BizException(409, "镜头顺序已变化，请刷新后重试");
         }
 
-        // 7. 回写当前分镜首帧及来源追踪字段
-        latestCurrent.setPreviewImageUrl(tailFrameUrl);
-        latestCurrent.setFirstFrameSourceType("PREVIOUS_VIDEO_TAIL");
-        latestCurrent.setFirstFrameSourceShotId(sourceShotId);
-        latestCurrent.setFirstFrameSourceVideoUrl(prevShot.getVideoUrl());
-        latestCurrent.setFirstFrameSourceVideoTakeId(prevShot.getCurrentVideoTakeId());
-        shotMapper.updateById(latestCurrent);
-        log.info("[ShotFrameContinuity] 当前镜头首帧引用成功: currentShotId={}, previewImageUrl={}, sourceShotId={}",
-                currentShotId, tailFrameUrl, sourceShotId);
+        // 7. 首尾帧模式才回写首帧；参考图模式仅返回归档后的尾帧 URL。
+        if (applyToFirstFrame) {
+            latestCurrent.setPreviewImageUrl(tailFrameUrl);
+            latestCurrent.setFirstFrameSourceType("PREVIOUS_VIDEO_TAIL");
+            latestCurrent.setFirstFrameSourceShotId(sourceShotId);
+            latestCurrent.setFirstFrameSourceVideoUrl(prevShot.getVideoUrl());
+            latestCurrent.setFirstFrameSourceVideoTakeId(prevShot.getCurrentVideoTakeId());
+            shotMapper.updateById(latestCurrent);
+            log.info("[ShotFrameContinuity] 当前镜头首帧引用成功: currentShotId={}, previewImageUrl={}, sourceShotId={}",
+                    currentShotId, tailFrameUrl, sourceShotId);
+        }
 
         // 8. 组装返回结果
         return PreviousVideoTailVO.builder()
@@ -241,7 +253,7 @@ public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityServic
                 .sourceVideoUrl(prevShot.getVideoUrl())
                 .tailFrameUrl(tailFrameUrl)
                 .reused(reused)
-                .applied(true)
+                .applied(applyToFirstFrame)
                 .build();
     }
 

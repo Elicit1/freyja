@@ -203,6 +203,8 @@
 }
 ```
 
+**Ref2VA 场景参考图**：`POST /drama/shot/{currentShotId}/extract-previous-video-tail` 使用相同请求与前驱镜头校验、缓存机制，返回相同结构且 `applied: false`。它只提取并归档尾帧，不修改当前镜头首帧。前端随后用 `tailFrameUrl` 创建归属当前短剧的场景资产（`coverUrl`、`referenceImageUrl`），并将该场景加入当前分镜的 `refImages`，用途设为 `SCENE`。此入口仅在参考图模式工坊提供；首尾帧模式继续使用上述首帧引用接口。
+
 ### 4.14 分页查询分镜视频抽卡候选历史 (Shot Video Takes)
 - **URL**: `GET /drama/shot/{shotId}/video-takes`
 - **Query**: `current` (int, 默认1), `size` (int, 默认12, 最大50), `status` (string, 默认 AVAILABLE)

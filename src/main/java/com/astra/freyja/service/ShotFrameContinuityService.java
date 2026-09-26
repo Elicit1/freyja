@@ -16,4 +16,7 @@ public interface ShotFrameContinuityService {
      * @return 提取与引用结果
      */
     PreviousVideoTailVO inheritPreviousVideoTail(Long currentShotId, PreviousVideoTailRequest request);
+
+    /** 仅提取上一镜尾帧供参考图使用，不修改当前镜头首帧。 */
+    PreviousVideoTailVO extractPreviousVideoTail(Long currentShotId, PreviousVideoTailRequest request);
 }

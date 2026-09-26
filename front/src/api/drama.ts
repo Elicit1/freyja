@@ -347,6 +347,17 @@ export const shotApi = {
     })
   },
 
+  extractPreviousVideoTail(
+    currentShotId: string | number,
+    data?: { forceExtract?: boolean; tailOffsetMs?: number }
+  ) {
+    return request<PreviousVideoTailResult>({
+      url: `/drama/shot/${currentShotId}/extract-previous-video-tail`,
+      method: 'post',
+      data
+    })
+  },
+
   setEndFrame(id: number | string, endFrameImageUrl: string) {
     return request<void>({
       url: `/drama/shot/${id}/set-end-frame`,
