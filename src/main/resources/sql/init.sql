@@ -378,7 +378,7 @@ CREATE TABLE `res_scene` (
     `name`                VARCHAR(100)    NOT NULL COMMENT '场景名称 (如: 顶层总裁办公室 / 暴雨夜市街道)',
     `description`         TEXT            DEFAULT NULL COMMENT '场景中文背景与视觉细节描述 (原著视觉源)',
     `cover_url`           VARCHAR(512)    DEFAULT NULL COMMENT '场景封面/参考图URL',
-    `scene_type`          VARCHAR(32)     NOT NULL DEFAULT 'INDOOR' COMMENT '空间类型 INDOOR(室内)/OUTDOOR(室外)/STUDIO(影棚)/VIRTUAL(虚构)',
+    `scene_type`          VARCHAR(32)     DEFAULT NULL COMMENT '空间类型 INDOOR(室内)/OUTDOOR(室外)/STUDIO(影棚)/VIRTUAL(虚构)，未指定时为空',
     `time_of_day`         VARCHAR(32)     NOT NULL DEFAULT 'DAY' COMMENT '时间时段 DAY(日间)/NIGHT(夜间)/SUNSET(黄昏)/DAWN(拂晓)',
     `weather_atmosphere`  VARCHAR(64)     DEFAULT NULL COMMENT '天气氛围 (如 SUNNY/RAINY/FOGGY/CYBERPUNK/NEON/MOODY)',
     `scene_prompt`        TEXT            NOT NULL COMMENT '场景生图Prompt (英文, 包含空间、陈设与光影色温一体化描述)',

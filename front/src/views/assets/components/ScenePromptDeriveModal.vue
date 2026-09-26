@@ -50,7 +50,7 @@
         <div class="grid grid-cols-1 md:grid-cols-3 gap-2 text-xs">
           <div class="bg-white p-2 rounded border border-slate-100">
             <span class="text-slate-400 block mb-0.5">场景名称与类型</span>
-            <span class="font-medium text-slate-800">{{ currentContext.name || '未命名场景' }} ({{ currentContext.sceneType || 'INDOOR' }})</span>
+            <span class="font-medium text-slate-800">{{ currentContext.name || '未命名场景' }} ({{ currentContext.sceneType || '未指定空间类型' }})</span>
           </div>
           <div class="bg-white p-2 rounded border border-slate-100">
             <span class="text-slate-400 block mb-0.5">时段与天气氛围</span>

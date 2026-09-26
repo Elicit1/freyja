@@ -70,7 +70,10 @@ docker compose up -d --build
 > **首次启动说明**：
 > 1. Docker 会自动编译构建前端与后端镜像（后端内置 JDK 26 与 FFmpeg 工具链）；
 > 2. MySQL 容器初次启动时，会自动挂载并执行 `docker/mysql/init/01_init.sql`，完成数据库、全量业务表结构、影视数据字典及内置系统配置的初始化；
+
 > 3. 后端启动时会自动在 MinIO 中检查并初始化公开只读存储桶 `video-assets`。
+
+已有数据库更新场景空间类型为空值支持时，执行一次 `sh docker/mysql/migrations/apply-20260926-res-scene-optional-scene-type.sh`。初始化 SQL 仅在全新 MySQL 数据卷上运行；此迁移保留已有场景的空间类型。
 
 ### 4. 访问系统
 服务启动完成后，即可在浏览器打开：
