@@ -13,6 +13,7 @@ import com.astra.freyja.service.prompt.impl.PromptBuilderImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.ai.chat.messages.AssistantMessage;
@@ -334,19 +335,34 @@ class ScriptDecomposeServiceTest {
                 .characterNames(List.of("张三"))
                 .prompt("test prompt")
                 .build();
+        DecomposedShotVO shot2 = DecomposedShotVO.builder()
+                .shotNo(2)
+                .duration(5.0)
+                .actionDescription("张三坐下")
+                .build();
+        DecomposedShotVO shot3 = DecomposedShotVO.builder()
+                .shotNo(3)
+                .duration(5.0)
+                .actionDescription("会议开始")
+                .build();
 
         DecomposedShotGroupVO g1 = DecomposedShotGroupVO.builder()
                 .groupNo(1)
                 .name("会议室开场")
                 .purpose("交代环境")
-                .shots(List.of(shot1))
+                .shots(List.of(shot1, shot2))
+                .build();
+        DecomposedShotGroupVO g2 = DecomposedShotGroupVO.builder()
+                .groupNo(2)
+                .name("会议开始")
+                .shots(List.of(shot3))
                 .build();
 
         DecomposedEpisodeSceneVO epSc = DecomposedEpisodeSceneVO.builder()
                 .sceneNo(1)
                 .sceneName("会议室")
-                .shotGroups(List.of(g1))
-                .shots(List.of(shot1))
+                .shotGroups(List.of(g1, g2))
+                .shots(List.of(shot1, shot2, shot3))
                 .build();
 
         DecomposedEpisodeVO ep1 = DecomposedEpisodeVO.builder()
@@ -371,9 +387,10 @@ class ScriptDecomposeServiceTest {
             sc.setId(3001L);
             return 1;
         });
+        java.util.concurrent.atomic.AtomicLong nextGroupId = new java.util.concurrent.atomic.AtomicLong(4001L);
         when(shotGroupMapper.insert(any(DramaShotGroup.class))).thenAnswer(inv -> {
             DramaShotGroup g = inv.getArgument(0);
-            g.setId(4001L);
+            g.setId(nextGroupId.getAndIncrement());
             return 1;
         });
 
@@ -384,11 +401,18 @@ class ScriptDecomposeServiceTest {
         verify(characterMapper, times(1)).insert(any(ResCharacter.class));
         verify(episodeMapper, times(1)).insert(any(DramaEpisode.class));
         verify(dramaSceneMapper, times(1)).insert(any(DramaScene.class));
-        verify(shotGroupMapper, times(1)).insert(any(DramaShotGroup.class));
-        verify(shotMapper, times(1)).insert(argThat((DramaShot shot) ->
-                shot != null && shot.getShotType() == null && shot.getCameraMovement() == null
-                        && Boolean.FALSE.equals(shot.getShotTypeLocked())
-                        && Boolean.FALSE.equals(shot.getCameraMovementLocked())));
+        verify(shotGroupMapper, times(2)).insert(any(DramaShotGroup.class));
+        ArgumentCaptor<DramaShot> shotCaptor = ArgumentCaptor.forClass(DramaShot.class);
+        verify(shotMapper, times(3)).insert(shotCaptor.capture());
+        List<DramaShot> savedShots = shotCaptor.getAllValues();
+        assertEquals(List.of("REFERENCE_MODE", "FIRST_LAST_FRAME", "REFERENCE_MODE"),
+                savedShots.stream().map(DramaShot::getGenerationMode).toList());
+        assertEquals(List.of(4001L, 4001L, 4002L),
+                savedShots.stream().map(DramaShot::getShotGroupId).toList());
+        assertTrue(savedShots.stream().allMatch(shot -> shot.getShotType() == null
+                && shot.getCameraMovement() == null
+                && Boolean.FALSE.equals(shot.getShotTypeLocked())
+                && Boolean.FALSE.equals(shot.getCameraMovementLocked())));
     }
 
     @Test
@@ -407,18 +431,23 @@ class ScriptDecomposeServiceTest {
                 .actionDescription("主角眼神冷冽，握紧拳头")
                 .characterNames(List.of("张三"))
                 .build();
+        DecomposedShotVO newShot2 = DecomposedShotVO.builder()
+                .shotNo(2)
+                .duration(5.0)
+                .actionDescription("冲突继续")
+                .build();
 
         DecomposedShotGroupVO newGroup = DecomposedShotGroupVO.builder()
                 .groupNo(1)
                 .name("后续冲突")
-                .shots(List.of(newShot1))
+                .shots(List.of(newShot1, newShot2))
                 .build();
 
         DecomposedEpisodeSceneVO newScene = DecomposedEpisodeSceneVO.builder()
                 .sceneNo(1)
                 .sceneName("会议室外部走廊")
                 .shotGroups(List.of(newGroup))
-                .shots(List.of(newShot1))
+                .shots(List.of(newShot1, newShot2))
                 .build();
 
         DecomposedEpisodeVO ep1 = DecomposedEpisodeVO.builder()
@@ -452,9 +481,16 @@ class ScriptDecomposeServiceTest {
         verify(shotGroupMapper, times(1)).insert(argThat((DramaShotGroup g) -> g != null && g.getGroupNo() == 3));
 
         // 验证新增镜头编号顺延为 S01-11 (base 10 + 1)
-        verify(shotMapper, times(1)).insert(argThat((DramaShot s) -> s != null && s.getShotNo() == 11
-                && "S01-11".equals(s.getShotName()) && s.getCameraMovement() == null
-                && "CLOSE_UP".equals(s.getShotType()) && Boolean.TRUE.equals(s.getShotTypeLocked())));
+        ArgumentCaptor<DramaShot> shotCaptor = ArgumentCaptor.forClass(DramaShot.class);
+        verify(shotMapper, times(2)).insert(shotCaptor.capture());
+        List<DramaShot> savedShots = shotCaptor.getAllValues();
+        assertEquals(List.of("REFERENCE_MODE", "FIRST_LAST_FRAME"),
+                savedShots.stream().map(DramaShot::getGenerationMode).toList());
+        assertEquals(List.of(11, 12), savedShots.stream().map(DramaShot::getShotNo).toList());
+        assertEquals("S01-11", savedShots.getFirst().getShotName());
+        assertNull(savedShots.getFirst().getCameraMovement());
+        assertEquals("CLOSE_UP", savedShots.getFirst().getShotType());
+        assertEquals(Boolean.TRUE, savedShots.getFirst().getShotTypeLocked());
     }
 
     @Test

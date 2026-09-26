@@ -983,7 +983,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                                         shot.setNegativePrompt(shotVO.getNegativePrompt());
                                         shot.setVideoPrompt(shotVO.getVideoPrompt());
                                         shot.setStylePreset(commitDTO.getStylePreset());
-                                        shot.setGenerationMode("REFERENCE_MODE");
+                                        shot.setGenerationMode(shotIdx == 0 ? "REFERENCE_MODE" : "FIRST_LAST_FRAME");
                                         shot.setRenderStatus("INIT");
                                         shot.setSortOrder(currentShotNo);
 
@@ -1169,7 +1169,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                                             shot.setNegativePrompt(shotVO.getNegativePrompt());
                                             shot.setVideoPrompt(shotVO.getVideoPrompt());
                                             shot.setStylePreset(commitDTO.getStylePreset());
-                                            shot.setGenerationMode("REFERENCE_MODE");
+                                            shot.setGenerationMode(shotIdx == 0 ? "REFERENCE_MODE" : "FIRST_LAST_FRAME");
                                             shot.setRenderStatus("INIT");
                                             shot.setSortOrder(shotIdx + 1);
 
