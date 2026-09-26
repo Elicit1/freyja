@@ -516,16 +516,24 @@
           >
             <div class="space-y-2 text-xs">
               <div class="text-[11px] text-emerald-700 bg-emerald-50 p-2 rounded border border-emerald-100">
-                {{ generationMode === 'REFERENCE_MODE' ? '专供多模态视频生成模型（结合参考图与音频）驱动动态画面演变与机位运动。' : '专供图生视频模型 (可灵 Kling / Runway Gen-3 / Hailuo / Sora) 执行动态运镜与主体动作。' }}
+                {{ generationMode === 'REFERENCE_MODE' ? '专供多模态视频生成模型（结合参考图与音频）驱动动态画面演变与机位运动。' : '专供 MiniMax H3 FL2VA：首尾帧对齐声明与三个固定段落必须完整。' }}
               </div>
               <div>
                 <label class="font-semibold text-slate-700 block mb-1">
-                  {{ generationMode === 'REFERENCE_MODE' ? '视频提示词 (Prompt)' : '运镜动力提示词 (Prompt / Motion)' }}
+                  {{ generationMode === 'REFERENCE_MODE' ? '视频提示词 (Prompt)' : 'H3 视频提示词 (Video Prompt)' }}
                 </label>
                 <el-input
+                  v-if="generationMode === 'REFERENCE_MODE'"
                   v-model="previewResult.prompt"
                   type="textarea"
                   :rows="4"
+                  class="font-mono text-xs"
+                />
+                <el-input
+                  v-else
+                  v-model="previewResult.videoPrompt"
+                  type="textarea"
+                  :rows="8"
                   class="font-mono text-xs"
                 />
               </div>
@@ -533,7 +541,7 @@
           </el-tab-pane>
 
           <!-- 槽位 4: 🚫 负向 Prompt -->
-          <el-tab-pane label="🚫 负向 Prompt" name="negative">
+          <el-tab-pane v-if="generationMode === 'REFERENCE_MODE'" label="🚫 负向 Prompt" name="negative">
             <div class="space-y-2 text-xs">
               <div class="text-[11px] text-slate-500">
                 画面质量防护词，剔除变形肢体、模糊失真、杂质文字等不良特征。
@@ -773,7 +781,7 @@ import type { ResCharacterOption, ResSceneOption, ResPropOption } from '@/types/
 
 const emit = defineEmits<{
   (e: 'apply', result: {
-    prompt: string
+    prompt?: string
     firstFramePrompt?: string
     endFramePrompt?: string
     videoPrompt?: string
@@ -1445,7 +1453,8 @@ async function handleParseManualResponse() {
 
 function handleViewJsonExample() {
   const referencePrompt = "subject_definitions:\n<Subject 1> is the ...\n\nsummary:\n...\n\nretention_analysis:\n...\n\ndetailed_description:\n...\n\noverall_soundscape:\n...\n\nnon_diegetic_music:\n..."
-  const firstLastPrompt = "How the reference pictures align with the target video — Picture 1 aligns with 0.00s ... integrated_multimodal_description: ... overall_soundscape: ... non_diegetic_music: ..."
+  const duration = Number(currentShotContext.value?.duration ?? 5).toFixed(2)
+  const firstLastPrompt = `How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark of the target video; Picture 2 aligns with the ${duration}-second mark of the target video.\nintegrated_multimodal_description: The camera follows the subject continuously from the first frame to the final pose.\noverall_soundscape: Ambient room tone.\nnon_diegetic_music: N/A`
   const example = generationMode.value === 'REFERENCE_MODE'
     ? {
         prompt: referencePrompt,
@@ -1455,9 +1464,7 @@ function handleViewJsonExample() {
     : {
         firstFramePrompt: "Cinematic medium close-up of ... in 35mm film style ...",
         endFramePrompt: "Ending moment frozen frame of ... with dramatic lighting ...",
-        prompt: firstLastPrompt,
-        videoPrompt: firstLastPrompt,
-        negativePrompt: "low quality, blurry, distorted face"
+        videoPrompt: firstLastPrompt
       }
 
   ElMessageBox.alert(
@@ -1573,11 +1580,14 @@ async function handleStartStream(runInBackground = false) {
 function doApply() {
   if (!previewResult.value) return
   emit('apply', {
-    prompt: previewResult.value.prompt || previewResult.value.videoPrompt || '',
-    firstFramePrompt: previewResult.value.firstFramePrompt || '',
-    endFramePrompt: previewResult.value.endFramePrompt || '',
-    videoPrompt: previewResult.value.videoPrompt || previewResult.value.prompt || '',
-    negativePrompt: previewResult.value.negativePrompt || '',
+    ...(generationMode.value === 'REFERENCE_MODE'
+      ? { prompt: previewResult.value.prompt || previewResult.value.videoPrompt || '',
+          videoPrompt: previewResult.value.videoPrompt || previewResult.value.prompt || '',
+          firstFramePrompt: '', endFramePrompt: '',
+          negativePrompt: previewResult.value.negativePrompt || '' }
+      : { firstFramePrompt: previewResult.value.firstFramePrompt || '',
+          endFramePrompt: previewResult.value.endFramePrompt || '',
+          videoPrompt: previewResult.value.videoPrompt || '' }),
     directorPlan: previewResult.value.directorPlan,
     directorPlanJson: previewResult.value.directorPlan ? JSON.stringify(previewResult.value.directorPlan) : undefined,
     characterRefs: draft.value.characterRefs.map(item => ({ ...item })),

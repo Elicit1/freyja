@@ -488,7 +488,7 @@ async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
   // 默认如果已有视频则进入 Step 2，否则进入 Step 1
   activeStep.value = (shot.previewImageUrl && shot.videoUrl) ? 1 : 0
 
-  step1Form.prompt = shot.prompt || ''
+  step1Form.prompt = shot.firstFramePrompt || shot.prompt || ''
   step1Form.negativePrompt = shot.negativePrompt || ''
   step2Form.videoPrompt = shot.videoPrompt || shot.prompt || ''
 

@@ -1156,6 +1156,8 @@ cinematography 不得替代 h3-prompt-writing 的官方格式要求，也不得�
 【本系统应用层约束】
 1.【输出契约】
 只输出用户任务中 OUTPUT_FORMAT 要求的 JSON 字段，不得输出额外字段、解释、前言、结语或 Markdown。
+本模式只生成 firstFramePrompt、endFramePrompt、videoPrompt 三个提示词字段；不得新增 prompt、negativePrompt、overallSoundscape、nonDiegeticMusic 等顶层 JSON 字段。负向生图词由其他流程独立维护。
+videoPrompt 必须以首尾帧 Picture 1 和 Picture 2 的时间对齐声明开头，随后依次写出 integrated_multimodal_description:、overall_soundscape:、non_diegetic_music: 三个非空段落。声音和配乐属于 videoPrompt 正文，不是独立回填字段；禁用 BGM 时 non_diegetic_music 必须严格为 N/A。
 严格遵守 OUTPUT_FORMAT 中的字段名称、类型及空值约定，不得自行新增导演规划字段或改变既有 JSON 结构。
 【纯英文输出硬性要求】最终 JSON 的所有非空字符串值必须使用英文，包括所有提示词、声音字段、对白及引用的文字描述；不得夹杂中文或其他非英文自然语言。JSON 字段名、官方标签、媒体引用标记、资产 ID 和规定的枚举值保持原样。
 输入中的非英文剧情、角色名、场景名、道具名和对白应准确译为英文；专有名称可使用一致的拉丁字母转写，不得改变事实、身份、数量、说话人或对白原意。即使输入或 Skill 示例使用中文，最终输出也必须遵守此规则。
@@ -1164,7 +1166,7 @@ cinematography 不得替代 h3-prompt-writing 的官方格式要求，也不得�
 firstFramePrompt 只描述当前镜头开始时的静态画面，endFramePrompt 只描述当前镜头结束时的静态画面。
 必须明确对应时刻的人物位置、身体姿态、表情、视线、道具状态、场景及构图，不得写入运镜过程、动作变化或跨越时间的事件。
 首尾帧是同一段连续视频的起点和终点，人物外观、服装、道具数量及场景必须连续。只有当前分镜明确发生了状态变化，首尾帧之间才能出现相应差异。
-prompt 与 videoPrompt 描述同一段从首帧到尾帧的完整视听过程，必须与 firstFramePrompt、endFramePrompt 的画面状态一致，不得出现首尾帧无法衔接的动作或摄影机位置变化。
+videoPrompt 描述同一段从首帧到尾帧的完整视听过程，必须与 firstFramePrompt、endFramePrompt 的画面状态一致，不得出现首尾帧无法衔接的动作或摄影机位置变化。
 【首尾帧与导演方案一致性】
 视觉导演规划必须与 FIRST_LAST_FRAME 模式的首尾帧约束兼容。
 firstFramePrompt 应体现当前镜头的起始构图、摄影机观察角度、主体位置及可见的场景关系。
@@ -1237,7 +1239,7 @@ STATIC 可以是合理的导演选择，但不能仅因 Worker 未指定摄影�
 如果任务包含 DIRECTOR_PLAN，必须忠实执行其中已确定的 Camera Beats、机位、景别、时间顺序和动作关系；不得擅自改景别、重排运镜、增加计划外机位，或为了展示正脸改变角色身体朝向。
 在 DIRECTOR_PLAN 已明确确定摄影方案时，应在其允许的范围内优化画面重点、动作自然性和视觉表达，不得重新设计已经锁定的摄影方案。
 必须区分身体朝向、头部朝向和视线方向，不得把“身体朝前、低头看手机”改写为“面向摄影机、看向镜头”。
-DIRECTOR_PLAN 中由你自主规划的摄影方案同样需要在最终提示词中保持一致。不得在规划阶段选择跟拍或横摇，却在最终 prompt 或 videoPrompt 中重新写成固定镜头。
+DIRECTOR_PLAN 中由你自主规划的摄影方案同样需要在最终提示词中保持一致。不得在规划阶段选择跟拍或横摇，却在最终 videoPrompt 中重新写成固定镜头。
 如果当前任务明确标记某摄影参数为未指定、AUTO 或 null，应由导演规划自主决定，不得将其解释为创作者已锁定的 STATIC。
 如果输入中的明确用户要求与 DIRECTOR_PLAN 存在冲突，不得自行声称二者一致，也不得擅自覆盖用户要求；应遵守当前任务的既定冲突处理及输出契约，不得编造一个不存在的用户选择。
 5.【剧情及人物动作保真】
@@ -1266,15 +1268,14 @@ propRefs 或 PROP_CONTEXT 中的一项资产引用不必然等于一个道具实
 可以在不改变参考资产身份、外观和实际空间关系的前提下，根据当前剧情选择不同的观察角度及构图。
 不得为了实现特写、视觉焦点转移或镜头运动而编造参考图中不存在的建筑布局、人物外观细节或资产能力。
 8.【声音与对白】
-overallSoundscape 与 nonDiegeticMusic 必须作为独立 JSON 字段返回，并与最终提示词中的对应声音内容一致；没有明确事实时按照 OUTPUT_FORMAT 的约定使用空值、空数组或 N/A，不得凭空补设定。
+现场声音和非现场配乐分别写入 videoPrompt 的 overall_soundscape: 与 non_diegetic_music: 段落，不得作为独立 JSON 字段返回；没有明确声音事实时填写 N/A，不得凭空补设定。
 台词必须保留当前分镜的原意、信息、顺序和说话人；非英文台词须忠实译为英文，不得增删、润色或编造台词。
 不得擅自增加角色对白、旁白或背景音乐。声音描述应与当前分镜中实际发生的动作、环境及声音事实相对应。
 摄影机运动、特写或视觉焦点转移不得成为新增声音事件的依据。
 不得因为画面切换到某个道具或环境细节，就擅自增加当前剧情中没有发生的碰撞声、开门声、脚步声或其他音效。
 9.【语言与最终输出】
-最终 JSON 的所有非空字符串值均使用英文，包括 firstFramePrompt、endFramePrompt、prompt、videoPrompt、negativePrompt、overallSoundscape、nonDiegeticMusic 及台词；不得输出中文。
-firstFramePrompt、endFramePrompt、prompt、videoPrompt 中的人物、场景、道具、动作和摄影方案必须相互一致。
-negativePrompt 应遵守当前 OUTPUT_FORMAT 和已加载的官方 Skill 要求，不得通过负面约束否定当前剧情必须发生的动作、人物状态或摄影机运动。
+最终 JSON 的三个提示词字段 firstFramePrompt、endFramePrompt、videoPrompt 均使用英文；不得输出中文。
+firstFramePrompt、endFramePrompt、videoPrompt 中的人物、场景、道具、动作和摄影方案必须相互一致。
 最终只输出当前请求要求的合法 JSON；不得输出工具调用过程、Skill 正文、规则说明或 Markdown 围栏。
 【生成前最终自检】
 在输出最终 JSON 前，必须在内部完成以下检查，不得额外输出检查过程。
@@ -1313,6 +1314,7 @@ ${USER_INSTRUCTION}
 
 【输出】
 按已加载的 h3-prompt-writing 官方规则生成 FIRST_LAST_FRAME 结果，并严格遵守下面的 JSON Schema。
+只返回 firstFramePrompt、endFramePrompt、videoPrompt 三个字段；videoPrompt 内须包含首尾帧时间对齐声明及官方三个固定段落。
 只返回一个合法 JSON 对象，不要输出 Markdown、解释或任何额外文字。
 ${OUTPUT_FORMAT}',
 'TEXT', 1, 1, 0, NOW(), 0, NOW(), 0, 'MiniMax H3 FL2VA 用户提示词模板'),

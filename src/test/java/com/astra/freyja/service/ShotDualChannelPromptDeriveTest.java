@@ -20,6 +20,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -125,8 +126,7 @@ class ShotDualChannelPromptDeriveTest {
         assertTrue(pkg.getCombinedPrompt().contains("天命龙帝"));
         // SysConfig 是 H3 模板唯一来源；测试配置覆写后应原样保留。
         assertTrue(pkg.getSystemPrompt().contains("System H3 Rules"));
-        assertTrue(pkg.getSystemPrompt().contains("必须先调用一次 load_skill 工具"));
-        assertTrue(pkg.getSystemPrompt().contains("h3-prompt-writing 是 MiniMax H3 官方 Prompt 的唯一来源"));
+        assertTrue(pkg.getOutputFormat().contains("videoPrompt"));
         assertFalse(pkg.getSystemPrompt().contains("H3_SKILL_USAGE_PROTOCOL"));
         assertNotNull(pkg.getReferenceManifest());
         assertEquals(1, pkg.getReferenceManifest().getPictures().size());
@@ -156,6 +156,9 @@ class ShotDualChannelPromptDeriveTest {
                 "sha256:test-skills",
                 List.of("cinematography@v7", "sound-design@v3")
         ));
+        when(skillPromptContextService.appendToSystemPrompt(anyString(), any(SkillPromptContext.class)))
+                .thenAnswer(inv -> inv.getArgument(0, String.class) + "\n"
+                        + inv.getArgument(1, SkillPromptContext.class).prompt());
 
         ShotPromptDeriveDTO firstLastDto = ShotPromptDeriveDTO.builder()
                 .generationMode("FIRST_LAST_FRAME")
@@ -242,12 +245,10 @@ class ShotDualChannelPromptDeriveTest {
         String rawResponse = """
                 `json
                 {
-                  "prompt": "How the reference pictures align with the target video — Picture 1 aligns with 0.00s. integrated_multimodal_description: Camera pushes in. overall_soundscape: Wind blowing. non_diegetic_music: N/A.",
+                  "videoPrompt": "How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark of the target video; Picture 2 aligns with the 5.00-second mark of the target video.\\nintegrated_multimodal_description: Camera pushes in.\\noverall_soundscape: Wind blowing.\\nnon_diegetic_music: N/A",
                   "firstFramePrompt": "Cinematic shot of hero standing on cliff",
                   "endFramePrompt": "Hero turning around looking at distance",
-                  "negativePrompt": "low quality, blurry",
-                  "focusTarget": "主角",
-                  "compositionNote": "三分法则构图"
+                  "negativePrompt": "low quality, blurry"
                 }
                 `
                 """;
@@ -265,7 +266,9 @@ class ShotDualChannelPromptDeriveTest {
         assertNotNull(valResult.getResult());
         assertEquals("Cinematic shot of hero standing on cliff", valResult.getResult().getFirstFramePrompt());
         assertEquals("Hero turning around looking at distance", valResult.getResult().getEndFramePrompt());
-        assertEquals(valResult.getResult().getPrompt(), valResult.getResult().getVideoPrompt());
+        assertNull(valResult.getResult().getPrompt());
+        assertNull(valResult.getResult().getNegativePrompt());
+        assertTrue(valResult.getResult().getVideoPrompt().contains("integrated_multimodal_description:"));
         // 指纹不匹配时会给出黄色警告
         assertEquals(Boolean.FALSE, valResult.getFingerprintMatched());
         assertTrue(valResult.getWarnings().stream().anyMatch(w -> w.contains("上下文指纹不一致")));

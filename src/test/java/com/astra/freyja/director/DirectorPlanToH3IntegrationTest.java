@@ -166,7 +166,7 @@ class DirectorPlanToH3IntegrationTest {
         assertEquals("FIRST_LAST_FRAME", pkg.getGenerationMode());
 
         // 验证系统提示词包含忠实翻译原则
-        assertTrue(pkg.getSystemPrompt().contains("必须忠实翻译其中的 Camera Beats"));
+        assertTrue(pkg.getSystemPrompt().contains("videoPrompt 必须是完整的 MiniMax H3 FL2VA 正文"));
 
         // 验证用户任务包含格式化后的 DirectorPlan 时间轴及 Beats 约束
         String userPrompt = pkg.getUserPrompt();
@@ -224,7 +224,7 @@ class DirectorPlanToH3IntegrationTest {
         assertTrue(pkg.getUserPrompt().contains("运镜】: 未指定，由 Prompt AI 自主决定"));
         assertFalse(pkg.getUserPrompt().contains("创作者明确锁定运镜: STATIC"));
         assertTrue(pkg.getUserPrompt().contains("镜头轻微横摇"));
-        assertTrue(pkg.getSystemPrompt().contains("未指定运镜不等于 STATIC"));
+        assertTrue(pkg.getSystemPrompt().contains("缺少约束不等于 STATIC"));
     }
 
     @Test

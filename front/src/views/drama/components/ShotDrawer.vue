@@ -517,24 +517,32 @@
             </div>
           </div>
 
-          <!-- 提示词 (原运镜提示词，统一重命名为 提示词) -->
+          <!-- 首尾帧模式只编辑视频 Prompt；参考图模式保留旧主提示词。 -->
           <div class="mb-4 bg-indigo-50/40 p-3 rounded-lg border border-indigo-100">
             <div class="flex items-center justify-between mb-1.5">
               <span class="text-xs font-bold text-indigo-900 flex items-center gap-1">
-                <span>🎬</span> 提示词 (Prompt)
+                <span>🎬</span> {{ form.generationMode === 'REFERENCE_MODE' ? '提示词 (Prompt)' : 'H3 视频提示词 (Video Prompt)' }}
               </span>
               <div class="flex items-center gap-2">
                 <span class="text-[10px] text-gray-400">注入机位视角、主体动作动力与视觉氛围</span>
-                <el-button size="small" link type="primary" @click="copyToClipboard(form.prompt, '提示词已复制')">
+                <el-button size="small" link type="primary" @click="copyToClipboard(form.generationMode === 'REFERENCE_MODE' ? form.prompt : form.videoPrompt, '提示词已复制')">
                   📋 复制
                 </el-button>
               </div>
             </div>
             <el-input
+              v-if="form.generationMode === 'REFERENCE_MODE'"
               v-model="form.prompt"
               type="textarea"
               :rows="3"
               placeholder="正向画面与运镜动力提示词..."
+            />
+            <el-input
+              v-else
+              v-model="form.videoPrompt"
+              type="textarea"
+              :rows="6"
+              placeholder="MiniMax H3 FL2VA 对齐声明与三个固定段落..."
             />
           </div>
 
@@ -587,7 +595,7 @@
           </div>
 
           <!-- 负向提示词 -->
-          <el-form-item label="最终负向提示词 (Negative Prompt)" prop="negativePrompt" class="!mb-0">
+          <el-form-item v-if="form.generationMode === 'REFERENCE_MODE'" label="最终负向提示词 (Negative Prompt)" prop="negativePrompt" class="!mb-0">
             <el-input
               v-model="form.negativePrompt"
               type="textarea"
@@ -1075,7 +1083,7 @@ const emit = defineEmits<{
 
 type ShotAssetType = 'character' | 'scene' | 'prop'
 type DerivedPromptResult = {
-  prompt: string
+  prompt?: string
   firstFramePrompt?: string
   endFramePrompt?: string
   videoPrompt?: string

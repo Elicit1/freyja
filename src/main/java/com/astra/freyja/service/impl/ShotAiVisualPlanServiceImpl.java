@@ -16,6 +16,7 @@ import com.astra.freyja.dto.drama.ShotAiVisualPlanRequestDTO;
 import com.astra.freyja.dto.drama.ShotAiVisualPlanVO;
 import com.astra.freyja.dto.drama.ShotPromptDeriveDTO;
 import com.astra.freyja.dto.drama.ShotPromptDeriveVO;
+import com.astra.freyja.dto.drama.H3Fl2VaPromptOutput;
 import com.astra.freyja.dto.drama.ShotPromptPackageVO;
 import com.astra.freyja.dto.drama.ShotPromptParseRequestDTO;
 import com.astra.freyja.dto.drama.ShotPromptValidationResult;
@@ -85,6 +86,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -113,6 +115,18 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             3. 没有明确摄影约束时，必须自主选择合适的景别、机位、构图与运镜。缺少约束不等于 STATIC；STATIC 只能是你实际作出的导演选择。
             """;
 
+    private static final String H3_FL2VA_OUTPUT_CONTRACT = """
+            【FIRST_LAST_FRAME 输出契约】
+            最终 JSON 只填写 firstFramePrompt、endFramePrompt、videoPrompt 三个提示词字段，不生成 prompt、negativePrompt 或独立声音字段。
+            如前文的可编辑系统参数仍要求 prompt/videoPrompt 双写、负向词或独立声音字段，以本契约和 OUTPUT_FORMAT 为准。
+            videoPrompt 必须是完整的 MiniMax H3 FL2VA 正文，严格按下列顺序书写；三个段落都必须有内容：
+            How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark of the target video; Picture 2 aligns with the ${DURATION}-second mark of the target video.
+            integrated_multimodal_description: [Describe the continuous visual, action, camera, and dialogue progression from Picture 1 to Picture 2 in English]
+            overall_soundscape: [Describe only established ambience, foley, and dialogue in English; use N/A when none]
+            non_diegetic_music: [Describe music in English only when BGM is enabled; otherwise use exactly N/A]
+            上述段落名称和对齐声明属于 videoPrompt 字符串内部，不是 JSON 顶层字段。首帧与尾帧生图词不得使用 H3 视频段落格式。
+            """;
+
     private static final String DEFAULT_MINIMAX_H3_FL2VA_SYSTEM_PROMPT =
         String.join("\n",
             "你是本系统的 MiniMax H3 FL2VA 分镜提示词编排器，同时承担当前分镜的视觉导演职责。",
@@ -132,6 +146,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "【本系统应用层约束】",
             "1.【输出契约】",
             "只输出用户任务中 OUTPUT_FORMAT 要求的 JSON 字段，不得输出额外字段、解释、前言、结语或 Markdown。",
+            "本模式只生成 firstFramePrompt、endFramePrompt、videoPrompt 三个提示词字段；不得新增 prompt、negativePrompt、overallSoundscape、nonDiegeticMusic 等顶层 JSON 字段。负向生图词由其他流程独立维护。",
+            "videoPrompt 必须以首尾帧 Picture 1 和 Picture 2 的时间对齐声明开头，随后依次写出 integrated_multimodal_description:、overall_soundscape:、non_diegetic_music: 三个非空段落。声音和配乐属于 videoPrompt 正文，不是独立回填字段；禁用 BGM 时 non_diegetic_music 必须严格为 N/A。",
             "严格遵守 OUTPUT_FORMAT 中的字段名称、类型及空值约定，不得自行新增导演规划字段或改变既有 JSON 结构。",
             "【纯英文输出硬性要求】最终 JSON 的所有非空字符串值必须使用英文，包括所有提示词、声音字段、对白及引用的文字描述；不得夹杂中文或其他非英文自然语言。JSON 字段名、官方标签、媒体引用标记、资产 ID 和规定的枚举值保持原样。",
             "输入中的非英文剧情、角色名、场景名、道具名和对白应准确译为英文；专有名称可使用一致的拉丁字母转写，不得改变事实、身份、数量、说话人或对白原意。即使输入或 Skill 示例使用中文，最终输出也必须遵守此规则。",
@@ -140,7 +156,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "firstFramePrompt 只描述当前镜头开始时的静态画面，endFramePrompt 只描述当前镜头结束时的静态画面。",
             "必须明确对应时刻的人物位置、身体姿态、表情、视线、道具状态、场景及构图，不得写入运镜过程、动作变化或跨越时间的事件。",
             "首尾帧是同一段连续视频的起点和终点，人物外观、服装、道具数量及场景必须连续。只有当前分镜明确发生了状态变化，首尾帧之间才能出现相应差异。",
-            "prompt 与 videoPrompt 描述同一段从首帧到尾帧的完整视听过程，必须与 firstFramePrompt、endFramePrompt 的画面状态一致，不得出现首尾帧无法衔接的动作或摄影机位置变化。",
+            "videoPrompt 描述同一段从首帧到尾帧的完整视听过程，必须与 firstFramePrompt、endFramePrompt 的画面状态一致，不得出现首尾帧无法衔接的动作或摄影机位置变化。",
             "【首尾帧与导演方案一致性】",
             "视觉导演规划必须与 FIRST_LAST_FRAME 模式的首尾帧约束兼容。",
             "firstFramePrompt 应体现当前镜头的起始构图、摄影机观察角度、主体位置及可见的场景关系。",
@@ -213,7 +229,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "如果任务包含 DIRECTOR_PLAN，必须忠实执行其中已确定的 Camera Beats、机位、景别、时间顺序和动作关系；不得擅自改景别、重排运镜、增加计划外机位，或为了展示正脸改变角色身体朝向。",
             "在 DIRECTOR_PLAN 已明确确定摄影方案时，应在其允许的范围内优化画面重点、动作自然性和视觉表达，不得重新设计已经锁定的摄影方案。",
             "必须区分身体朝向、头部朝向和视线方向，不得把“身体朝前、低头看手机”改写为“面向摄影机、看向镜头”。",
-            "DIRECTOR_PLAN 中由你自主规划的摄影方案同样需要在最终提示词中保持一致。不得在规划阶段选择跟拍或横摇，却在最终 prompt 或 videoPrompt 中重新写成固定镜头。",
+            "DIRECTOR_PLAN 中由你自主规划的摄影方案同样需要在最终提示词中保持一致。不得在规划阶段选择跟拍或横摇，却在最终 videoPrompt 中重新写成固定镜头。",
             "如果当前任务明确标记某摄影参数为未指定、AUTO 或 null，应由导演规划自主决定，不得将其解释为创作者已锁定的 STATIC。",
             "如果输入中的明确用户要求与 DIRECTOR_PLAN 存在冲突，不得自行声称二者一致，也不得擅自覆盖用户要求；应遵守当前任务的既定冲突处理及输出契约，不得编造一个不存在的用户选择。",
             "5.【剧情及人物动作保真】",
@@ -242,15 +258,14 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "可以在不改变参考资产身份、外观和实际空间关系的前提下，根据当前剧情选择不同的观察角度及构图。",
             "不得为了实现特写、视觉焦点转移或镜头运动而编造参考图中不存在的建筑布局、人物外观细节或资产能力。",
             "8.【声音与对白】",
-            "overallSoundscape 与 nonDiegeticMusic 必须作为独立 JSON 字段返回，并与最终提示词中的对应声音内容一致；没有明确事实时按照 OUTPUT_FORMAT 的约定使用空值、空数组或 N/A，不得凭空补设定。",
+            "现场声音和非现场配乐分别写入 videoPrompt 的 overall_soundscape: 与 non_diegetic_music: 段落，不得作为独立 JSON 字段返回；没有明确声音事实时填写 N/A，不得凭空补设定。",
             "台词必须保留当前分镜的原意、信息、顺序和说话人；非英文台词须忠实译为英文，不得增删、润色或编造台词。",
             "不得擅自增加角色对白、旁白或背景音乐。声音描述应与当前分镜中实际发生的动作、环境及声音事实相对应。",
             "摄影机运动、特写或视觉焦点转移不得成为新增声音事件的依据。",
             "不得因为画面切换到某个道具或环境细节，就擅自增加当前剧情中没有发生的碰撞声、开门声、脚步声或其他音效。",
             "9.【语言与最终输出】",
-            "最终 JSON 的所有非空字符串值均使用英文，包括 firstFramePrompt、endFramePrompt、prompt、videoPrompt、negativePrompt、overallSoundscape、nonDiegeticMusic 及台词；不得输出中文。",
-            "firstFramePrompt、endFramePrompt、prompt、videoPrompt 中的人物、场景、道具、动作和摄影方案必须相互一致。",
-            "negativePrompt 应遵守当前 OUTPUT_FORMAT 和已加载的官方 Skill 要求，不得通过负面约束否定当前剧情必须发生的动作、人物状态或摄影机运动。",
+            "最终 JSON 的三个提示词字段 firstFramePrompt、endFramePrompt、videoPrompt 均使用英文；不得输出中文。",
+            "firstFramePrompt、endFramePrompt、videoPrompt 中的人物、场景、道具、动作和摄影方案必须相互一致。",
             "最终只输出当前请求要求的合法 JSON；不得输出工具调用过程、Skill 正文、规则说明或 Markdown 围栏。",
             "【生成前最终自检】",
             "在输出最终 JSON 前，必须在内部完成以下检查，不得额外输出检查过程。",
@@ -289,6 +304,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
             【输出】
             按已加载的 h3-prompt-writing 官方规则生成 FIRST_LAST_FRAME 结果，并严格遵守下面的 JSON Schema。
+            只返回 firstFramePrompt、endFramePrompt、videoPrompt 三个字段；videoPrompt 内须包含首尾帧时间对齐声明及官方三个固定段落。
             只返回一个合法 JSON 对象，不要输出 Markdown、解释或任何额外文字。
             ${OUTPUT_FORMAT}
             """;
@@ -1023,6 +1039,18 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             Boolean fingerprintMatched,
             Boolean includeBgm
     ) {
+        return validateAndNormalize(vo, genMode, manifest, dialogue, fingerprintMatched, includeBgm, null);
+    }
+
+    public ShotPromptValidationResult validateAndNormalize(
+            ShotPromptDeriveVO vo,
+            String genMode,
+            ReferenceManifest manifest,
+            String dialogue,
+            Boolean fingerprintMatched,
+            Boolean includeBgm,
+            Double duration
+    ) {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
 
@@ -1036,15 +1064,11 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                     .build();
         }
 
-        // 1. 自动归一化：prompt 与 videoPrompt 双向对齐兜底
-        if (StringUtils.isBlank(vo.getPrompt()) && StringUtils.isNotBlank(vo.getVideoPrompt())) {
-            vo.setPrompt(vo.getVideoPrompt());
-        } else if (StringUtils.isBlank(vo.getVideoPrompt()) && StringUtils.isNotBlank(vo.getPrompt())) {
-            vo.setVideoPrompt(vo.getPrompt());
-        }
-
         // 2. 模式特定校验与归一化
         if ("REFERENCE_MODE".equalsIgnoreCase(genMode)) {
+            if (StringUtils.isBlank(vo.getPrompt())) {
+                vo.setPrompt(vo.getVideoPrompt());
+            }
             if (StringUtils.isBlank(vo.getPrompt())) {
                 errors.add("参考图模式未生成有效的视频动态提示词 (prompt/videoPrompt)");
             }
@@ -1104,26 +1128,38 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             }
         } else {
             // FIRST_LAST_FRAME 模式
+            if (StringUtils.isBlank(vo.getVideoPrompt())) {
+                vo.setVideoPrompt(vo.getPrompt()); // 兼容旧版外部 AI JSON
+            }
             if (StringUtils.isBlank(vo.getFirstFramePrompt())) {
                 errors.add("首尾帧模式未能生成有效的首帧生图提示词 (firstFramePrompt)");
             }
             if (StringUtils.isBlank(vo.getEndFramePrompt())) {
                 errors.add("首尾帧模式未能生成有效的尾帧生图提示词 (endFramePrompt)");
             }
-            if (StringUtils.isBlank(vo.getPrompt())) {
-                errors.add("首尾帧模式未能生成有效的视频运镜提示词 (prompt/videoPrompt)");
+            if (StringUtils.isBlank(vo.getVideoPrompt())) {
+                errors.add("首尾帧模式未能生成有效的 H3 视频提示词 (videoPrompt)");
+            } else {
+                validateH3Fl2VaPrompt(vo.getVideoPrompt(), Boolean.TRUE.equals(includeBgm), duration, errors);
             }
-
-            String p = vo.getPrompt() != null ? vo.getPrompt() : "";
-            if (!p.contains("How the reference pictures align with the target video") && !p.contains("integrated_multimodal_description:")) {
-                warnings.add("提示词缺少 MiniMax H3 FL2VA 对齐声明或 integrated_multimodal_description 段落");
+            for (String framePrompt : List.of(StringUtils.defaultString(vo.getFirstFramePrompt()),
+                    StringUtils.defaultString(vo.getEndFramePrompt()))) {
+                if (Pattern.compile("\\p{IsHan}").matcher(framePrompt).find()) {
+                    errors.add("首尾帧生图提示词必须使用英文，不得混入中文");
+                    break;
+                }
             }
+            // 本模式只有三个 AI 回填字段。负向词与旧版主提示词由其他流程独立维护。
+            vo.setPrompt(null);
+            vo.setNegativePrompt(null);
+            vo.setOverallSoundscape(null);
+            vo.setNonDiegeticMusic(null);
         }
 
         // 2.5 BGM 业务约束：结构化字段是唯一权威来源，禁止从自由文本中猜测或修补配乐。
         boolean bgmEnabled = Boolean.TRUE.equals(includeBgm);
         String structuredMusic = StringUtils.trimToNull(vo.getNonDiegeticMusic());
-        if (!bgmEnabled) {
+        if (!bgmEnabled && "REFERENCE_MODE".equalsIgnoreCase(genMode)) {
             if (structuredMusic != null && !isNoMusicValue(structuredMusic)) {
                 warnings.add("分镜已禁用背景配乐 (BGM)，已忽略 AI 返回的结构化配乐设计");
             }
@@ -1133,11 +1169,13 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             vo.setNonDiegeticMusic(structuredMusic);
         }
 
-        // H3 Ref2VA 要求两个字段完全一致；统一赋值也避免分别清洗导致内容漂移。
-        if (StringUtils.isNotBlank(vo.getPrompt())) {
-            vo.setVideoPrompt(vo.getPrompt());
-        } else if (StringUtils.isNotBlank(vo.getVideoPrompt())) {
-            vo.setPrompt(vo.getVideoPrompt());
+        // 旧参考图模式仍同步两个别名；首尾帧只保留 videoPrompt。
+        if ("REFERENCE_MODE".equalsIgnoreCase(genMode)) {
+            if (StringUtils.isNotBlank(vo.getPrompt())) {
+                vo.setVideoPrompt(vo.getPrompt());
+            } else if (StringUtils.isNotBlank(vo.getVideoPrompt())) {
+                vo.setPrompt(vo.getVideoPrompt());
+            }
         }
 
         // 3. 上下文指纹比对警告
@@ -1225,8 +1263,9 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         ReferenceManifest manifest = buildReferenceManifest(dto);
         String genMode = StringUtils.defaultIfBlank(dto.getGenerationMode(), "FIRST_LAST_FRAME");
 
-        BeanOutputConverter<ShotPromptDeriveVO> converter = new BeanOutputConverter<>(ShotPromptDeriveVO.class);
-        String outputFormat = converter.getFormat();
+        String outputFormat = "REFERENCE_MODE".equalsIgnoreCase(genMode)
+                ? new BeanOutputConverter<>(ShotPromptDeriveVO.class).getFormat()
+                : new BeanOutputConverter<>(H3Fl2VaPromptOutput.class).getFormat();
 
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("DRAMA_CONTEXT", buildDramaContext(drama, dto));
@@ -1258,6 +1297,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         SkillPromptContext skillContext = loadSkillContext("shot-h3-" + genMode, String.valueOf(dto.getShotId()), dto.getSelectedSkillNames());
         systemPrompt = appendSkillContext(systemPrompt, skillContext);
         systemPrompt = appendCameraDutyBoundary(systemPrompt);
+        systemPrompt = appendFl2VaOutputContract(systemPrompt, genMode, dto.getDuration());
 
         String userPrompt = resolveTemplate(userTemplate, vars);
         validatePromptSecurity(systemPrompt, userPrompt);
@@ -1332,6 +1372,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         SkillPromptContext skillContext = loadSkillContext("shot-h3-" + genMode, String.valueOf(request.getShotId()), request.getSelectedSkillNames());
         currentSystemPrompt = appendSkillContext(currentSystemPrompt, skillContext);
         currentSystemPrompt = appendCameraDutyBoundary(currentSystemPrompt);
+        currentSystemPrompt = appendFl2VaOutputContract(currentSystemPrompt, genMode, contextDto.getDuration());
         String currentUserTemplate = "REFERENCE_MODE".equalsIgnoreCase(genMode)
                 ? sysConfigService.getConfigValue("ai.prompt.minimax_h3_ref2va_user", DEFAULT_MINIMAX_H3_REF2VA_USER_TEMPLATE)
                 : sysConfigService.getConfigValue("ai.prompt.minimax_h3_fl2va_user", DEFAULT_MINIMAX_H3_FL2VA_USER_TEMPLATE);
@@ -1347,7 +1388,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         ShotPromptDeriveVO parsedVo = cleanAndParseJson(request.getRawResponse());
 
         // 3. 执行统一校验与归一化
-        return validateAndNormalize(parsedVo, genMode, manifest, contextDto.getDialogue(), fingerprintMatched, request.getIncludeBgm());
+        return validateAndNormalize(parsedVo, genMode, manifest, contextDto.getDialogue(), fingerprintMatched,
+                request.getIncludeBgm(), contextDto.getDuration());
     }
 
     @Override
@@ -1465,7 +1507,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                         packageVO.getReferenceManifest(),
                         dto.getDialogue(),
                         true,
-                        dto.getIncludeBgm()
+                        dto.getIncludeBgm(),
+                        dto.getDuration()
                 );
 
                 if (validationResult.hasErrors()) {
@@ -1953,11 +1996,70 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
      * 校验 MiniMax H3 FL2VA 首尾帧输出结构。
      */
     public void validateH3Fl2VaOutput(ShotPromptDeriveVO vo, ShotPromptDeriveDTO dto) {
-        String p = vo.getPrompt();
-        if (StringUtils.isBlank(p)) return;
+        List<String> errors = new ArrayList<>();
+        validateH3Fl2VaPrompt(vo != null ? StringUtils.firstNonBlank(vo.getVideoPrompt(), vo.getPrompt()) : null,
+                dto != null && Boolean.TRUE.equals(dto.getIncludeBgm()), dto != null ? dto.getDuration() : null, errors);
+        if (!errors.isEmpty()) {
+            throw new BizException(String.join("; ", errors));
+        }
+    }
 
-        if (!p.contains("How the reference pictures align with the target video") && !p.contains("integrated_multimodal_description:")) {
-            log.warn("[H3 FL2VA Validation] 提示词缺少 MiniMax H3 FL2VA 对齐声明或 integrated_multimodal_description 段落");
+    private String appendFl2VaOutputContract(String systemPrompt, String genMode, Double duration) {
+        if ("REFERENCE_MODE".equalsIgnoreCase(genMode)) {
+            return systemPrompt;
+        }
+        String finalSecond = String.format(Locale.ROOT, "%.2f", duration != null ? duration : 5.0);
+        return systemPrompt + "\n\n" + H3_FL2VA_OUTPUT_CONTRACT.replace("${DURATION}", finalSecond);
+    }
+
+    private void validateH3Fl2VaPrompt(String prompt, boolean includeBgm, Double duration, List<String> errors) {
+        if (StringUtils.isBlank(prompt)) {
+            errors.add("MiniMax H3 FL2VA 视频提示词不能为空");
+            return;
+        }
+
+        String text = prompt.strip();
+        Matcher sections = Pattern.compile("(?m)^(integrated_multimodal_description|overall_soundscape|non_diegetic_music):[ \\t]*")
+                .matcher(text);
+        List<String> names = new ArrayList<>();
+        List<Integer> starts = new ArrayList<>();
+        List<Integer> ends = new ArrayList<>();
+        while (sections.find()) {
+            names.add(sections.group(1));
+            starts.add(sections.start());
+            ends.add(sections.end());
+        }
+
+        String[] expected = {"integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"};
+        if (names.size() != expected.length) {
+            errors.add("MiniMax H3 FL2VA 视频提示词必须恰好包含 integrated_multimodal_description、overall_soundscape、non_diegetic_music 三个段落");
+        } else {
+            for (int i = 0; i < expected.length; i++) {
+                if (!expected[i].equals(names.get(i))) {
+                    errors.add("MiniMax H3 FL2VA 三个段落的顺序不正确");
+                    break;
+                }
+                String content = text.substring(ends.get(i), i + 1 < names.size() ? starts.get(i + 1) : text.length()).trim();
+                if (content.isEmpty()) {
+                    errors.add(expected[i] + " 段落不能为空；无声音或音乐时请填写 N/A");
+                }
+                if (i == 2 && !includeBgm && !"N/A".equalsIgnoreCase(content)) {
+                    errors.add("本镜头已禁用 BGM，non_diegetic_music 必须为 N/A");
+                }
+            }
+        }
+
+        String alignment = starts.isEmpty() ? text : text.substring(0, starts.get(0)).trim();
+        if (!alignment.startsWith("How the reference pictures align with the target video")
+                || !alignment.contains("Picture 1") || !alignment.contains("Picture 2")
+                || !alignment.contains("0.00")) {
+            errors.add("MiniMax H3 FL2VA 视频提示词缺少首尾帧 Picture 1/Picture 2 时间对齐声明");
+        }
+        if (duration != null && !alignment.contains(String.format(Locale.ROOT, "%.2f-second mark", duration))) {
+            errors.add("MiniMax H3 FL2VA 尾帧时间必须与当前镜头时长一致");
+        }
+        if (Pattern.compile("\\p{IsHan}").matcher(text).find()) {
+            errors.add("MiniMax H3 FL2VA 视频提示词必须使用英文，不得混入中文");
         }
     }
 }

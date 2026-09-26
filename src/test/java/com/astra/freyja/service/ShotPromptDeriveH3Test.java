@@ -383,11 +383,80 @@ class ShotPromptDeriveH3Test {
         ShotPromptPackageVO pkg = service.buildPromptPackage(dto);
 
         assertNotNull(pkg);
-        assertTrue(pkg.getSystemPrompt().contains("Camera Motion: Motion Type + Amplitude + Speed"));
+        assertTrue(pkg.getSystemPrompt().contains("FIRST_LAST_FRAME 输出契约"));
         assertTrue(pkg.getSystemPrompt().contains("integrated_multimodal_description"));
+        assertTrue(pkg.getOutputFormat().contains("\"firstFramePrompt\""));
+        assertTrue(pkg.getOutputFormat().contains("\"endFramePrompt\""));
+        assertTrue(pkg.getOutputFormat().contains("\"videoPrompt\""));
+        assertFalse(pkg.getOutputFormat().contains("\"negativePrompt\""));
+        assertFalse(pkg.getOutputFormat().contains("\"prompt\""));
         assertTrue(pkg.getUserPrompt().contains("【音频与BGM约束 (严禁BGM)】"));
         assertTrue(pkg.getUserPrompt().contains("non_diegetic_music 严格设置为 \"N/A\""));
         assertFalse(pkg.getUserPrompt().contains("【背景配乐 (BGM)】: 开启"));
+    }
+
+    @Test
+    @DisplayName("首尾帧普通镜头描述不能再以 H3 格式通过校验")
+    void testFl2VaRejectsPlainMotionPrompt() {
+        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+                .firstFramePrompt("The subject stands at the doorway.")
+                .endFramePrompt("The subject stands inside the room.")
+                .videoPrompt("The camera follows the subject through the doorway.")
+                .build();
+
+        ShotPromptValidationResult result = service.validateAndNormalize(
+                vo, "FIRST_LAST_FRAME", null, null, true, false);
+
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream().anyMatch(error -> error.contains("MiniMax H3 FL2VA")));
+    }
+
+    @Test
+    @DisplayName("首尾帧完整 H3 正文通过校验且只保留三个 AI 提示词字段")
+    void testFl2VaAcceptsThreeFieldsAndDropsLegacyOutputs() {
+        String h3Prompt = """
+                How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark of the target video; Picture 2 aligns with the 5.00-second mark of the target video.
+                integrated_multimodal_description: The subject walks through the doorway and reaches the final pose.
+                overall_soundscape: Footsteps on the floor.
+                non_diegetic_music: N/A
+                """;
+        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+                .firstFramePrompt("The subject stands at the doorway.")
+                .endFramePrompt("The subject stands inside the room.")
+                .videoPrompt(h3Prompt)
+                .prompt("stale duplicate")
+                .negativePrompt("blurry")
+                .build();
+
+        ShotPromptValidationResult result = service.validateAndNormalize(
+                vo, "FIRST_LAST_FRAME", null, null, true, false);
+
+        assertFalse(result.hasErrors());
+        assertEquals(h3Prompt, result.getResult().getVideoPrompt());
+        assertNull(result.getResult().getPrompt());
+        assertNull(result.getResult().getNegativePrompt());
+    }
+
+    @Test
+    @DisplayName("首尾帧视频提示词尾帧对齐时间必须匹配镜头时长")
+    void testFl2VaRejectsWrongLastFrameTime() {
+        String h3Prompt = """
+                How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark of the target video; Picture 2 aligns with the 5.00-second mark of the target video.
+                integrated_multimodal_description: The subject reaches the final pose.
+                overall_soundscape: N/A
+                non_diegetic_music: N/A
+                """;
+        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+                .firstFramePrompt("The subject stands at the doorway.")
+                .endFramePrompt("The subject stands inside the room.")
+                .videoPrompt(h3Prompt)
+                .build();
+
+        ShotPromptValidationResult result = service.validateAndNormalize(
+                vo, "FIRST_LAST_FRAME", null, null, true, false, 4.0);
+
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream().anyMatch(error -> error.contains("尾帧时间")));
     }
 
     @Test
@@ -407,9 +476,9 @@ class ShotPromptDeriveH3Test {
     }
 
     @Test
-    @DisplayName("validateAndNormalize 以结构化字段执行 BGM 归一化")
+    @DisplayName("validateAndNormalize 拒绝禁用 BGM 时视频正文仍含配乐")
     void testValidateAndNormalize_NormalizeStructuredBgm() {
-        // 1. FL2VA 模式下，BGM 禁用时仅归一化结构化字段，不修改自由文本
+        // FL2VA 的三字段契约要求配乐约束直接写在视频正文中。
         String fl2vaPromptWithMusic = """
                 How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 1) aligns with the 5.00-second mark of the target video.
                 integrated_multimodal_description: [Shot 1] Cinematic shot.
@@ -430,8 +499,9 @@ class ShotPromptDeriveH3Test {
         );
 
         assertNotNull(resFl2va.getResult());
-        assertTrue(resFl2va.getResult().getPrompt().contains("Intense dramatic orchestral"));
-        assertEquals("N/A", resFl2va.getResult().getNonDiegeticMusic());
+        assertTrue(resFl2va.hasErrors());
+        assertTrue(resFl2va.getErrors().stream().anyMatch(error -> error.contains("non_diegetic_music")));
+        assertNull(resFl2va.getResult().getPrompt());
 
         // 2. Ref2VA 模式下清洗多行段落配乐
         String ref2vaPromptWithMusic = """
