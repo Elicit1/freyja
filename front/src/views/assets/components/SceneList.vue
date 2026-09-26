@@ -62,7 +62,7 @@
     <!-- 操作与视图切换栏 -->
     <div class="flex items-center justify-between flex-wrap gap-2">
       <div class="flex items-center gap-2">
-        <el-button type="primary" :icon="Plus" @click="handleCreate">新建场景</el-button>
+        <el-button type="primary" :icon="Plus" @click="handleCreate()">新建场景</el-button>
         <span class="text-xs text-[var(--text-muted)]">共 {{ total }} 个场景资产</span>
       </div>
 
@@ -385,8 +385,8 @@ function handleReset() {
   fetchData()
 }
 
-function handleCreate(dramaId?: string | number) {
-  sceneDrawerRef.value?.open(undefined, dramaId)
+function handleCreate(dramaId?: string | number, referenceImageUrl?: string) {
+  sceneDrawerRef.value?.open(undefined, dramaId, referenceImageUrl)
 }
 
 function handleDrawerSuccess(assetId?: string | number) {

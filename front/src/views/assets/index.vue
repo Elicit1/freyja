@@ -123,7 +123,9 @@ onMounted(async () => {
   await nextTick()
   const dramaId = queryValue(route.query.dramaId)
   if (returnAssetType.value === 'character') characterListRef.value?.handleCreate(dramaId)
-  if (returnAssetType.value === 'scene') sceneListRef.value?.handleCreate(dramaId)
+  if (returnAssetType.value === 'scene') {
+    sceneListRef.value?.handleCreate(dramaId, queryValue(route.query.referenceImageUrl))
+  }
   if (returnAssetType.value === 'prop') propListRef.value?.handleCreate(dramaId)
 })
 

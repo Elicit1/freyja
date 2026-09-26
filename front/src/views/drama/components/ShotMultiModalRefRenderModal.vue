@@ -140,16 +140,6 @@
           <div class="flex items-center gap-2">
             <el-button
               size="small"
-              type="success"
-              plain
-              :loading="creatingTailScene"
-              :disabled="!currentShotId || refImages.length >= maxRefImages"
-              @click="handleCreateSceneFromPreviousVideo"
-            >
-              🎞️ 上一镜视频尾帧创建场景
-            </el-button>
-            <el-button
-              size="small"
               type="primary"
               plain
               :disabled="refImages.length >= maxRefImages"
@@ -412,7 +402,6 @@ import { ElMessage } from 'element-plus'
 import { dramaApi, shotApi } from '@/api/drama'
 import { assetApi } from '@/api/res-asset'
 import { aiProviderApi } from '@/api/ai-provider'
-import { createPreviousVideoTailSceneReference } from '@/utils/previous-video-tail-scene'
 import AssetMultiSelectDialog, { type AssetSelectItem } from './AssetMultiSelectDialog.vue'
 import type { DramaShot, ShotRefImage, ShotRefAudio } from '@/types/drama'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
@@ -440,7 +429,6 @@ const refImages = ref<ShotRefImage[]>([])
 const refAudios = ref<ShotRefAudio[]>([])
 
 const uploadingImage = ref(false)
-const creatingTailScene = ref(false)
 const uploadingAudio = ref(false)
 const savingConfig = ref(false)
 const renderingVideo = ref(false)
@@ -587,43 +575,6 @@ async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
 // 移除参考图
 function handleRemoveImage(idx: number) {
   refImages.value.splice(idx, 1)
-}
-
-// Ref2VA 以场景参考图引用上一镜视频尾帧，不覆盖当前分镜的首帧。
-async function handleCreateSceneFromPreviousVideo() {
-  if (!currentShotId.value || creatingTailScene.value) return
-  if (refImages.value.length >= maxRefImages.value) {
-    ElMessage.warning(`参考图已达上限（${maxRefImages.value} 张）`)
-    return
-  }
-
-  creatingTailScene.value = true
-  let sceneCreated = false
-  try {
-    const { image, reused } = await createPreviousVideoTailSceneReference(
-      currentShotId.value, dramaId.value, refImages.value
-    )
-    if (!image) {
-      ElMessage.info('上一镜视频尾帧已在参考图列表中')
-      return
-    }
-    sceneCreated = true
-    const updatedImages = [...refImages.value, image]
-    refImages.value = updatedImages
-    await shotApi.update({
-      id: currentShotId.value,
-      generationMode: 'REFERENCE_MODE',
-      refImages: updatedImages
-    })
-    ElMessage.success(reused ? '已使用缓存尾帧创建场景并加入参考图' : '已提取上一镜尾帧，创建场景并加入参考图')
-    emit('success', currentShotId.value)
-  } catch (error: any) {
-    ElMessage.error(sceneCreated
-      ? '场景已创建，但保存分镜参考图失败；请点击“仅保存配置”重试'
-      : (error?.message || '使用上一镜视频尾帧创建场景失败'))
-  } finally {
-    creatingTailScene.value = false
-  }
 }
 
 // 打开多选资产库弹窗

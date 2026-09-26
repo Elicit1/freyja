@@ -441,9 +441,21 @@
             <h4 class="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
               <el-icon class="text-emerald-600"><Picture /></el-icon> 镜头环境场景
             </h4>
-            <el-button type="success" link size="small" @click="handleSaveAndCreateAsset('scene')">
-              + 新建场景
-            </el-button>
+            <div class="flex items-center gap-2">
+              <el-button
+                v-if="form.generationMode === 'REFERENCE_MODE'"
+                type="success"
+                link
+                size="small"
+                :loading="creatingTailScene"
+                @click="handleSaveAndCreateAsset('scene', true)"
+              >
+                + 用上一镜视频尾帧新建场景
+              </el-button>
+              <el-button type="success" link size="small" @click="handleSaveAndCreateAsset('scene')">
+                + 新建场景
+              </el-button>
+            </div>
           </div>
           <el-form-item label="环境场景资产">
             <el-select
@@ -619,16 +631,6 @@
             <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
               <span class="font-bold text-gray-700">参考图片列表 ({{ refImages.length }} / 9):</span>
               <div class="flex flex-wrap items-center justify-end gap-2">
-                <el-button
-                  size="small"
-                  type="success"
-                  plain
-                  :loading="creatingTailScene"
-                  :disabled="refImages.length >= 9"
-                  @click="handleCreateSceneFromPreviousVideo"
-                >
-                  🎞️ 上一镜尾帧创建场景参考图
-                </el-button>
                 <el-dropdown trigger="click" :disabled="refImages.length >= 9" @command="handleSelectAssetCommand">
                   <el-button size="small" type="primary" plain :disabled="refImages.length >= 9">
                     + 从资产库选取
@@ -1076,7 +1078,6 @@ import { characterApi } from '@/api/res-character'
 import { sceneApi } from '@/api/res-scene'
 import { resPropApi, type ResPropItem } from '@/api/res-prop'
 import { assetApi } from '@/api/res-asset'
-import { createPreviousVideoTailSceneReference } from '@/utils/previous-video-tail-scene'
 import type { DramaShot, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, DirectorPlan } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption } from '@/types/resource'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
@@ -1395,45 +1396,6 @@ async function handleUploadEndFrame(file: File) {
 }
 
 // 资产选取器 (用于 REFERENCE_MODE)
-async function handleCreateSceneFromPreviousVideo() {
-  if (!form.id) {
-    ElMessage.warning('请先保存当前分镜，再使用上一镜视频尾帧')
-    return
-  }
-  if (creatingTailScene.value) return
-  if (refImages.value.length >= 9) {
-    ElMessage.warning('参考图最多支持 9 张')
-    return
-  }
-
-  creatingTailScene.value = true
-  let sceneCreated = false
-  try {
-    const { image, reused } = await createPreviousVideoTailSceneReference(
-      form.id, form.dramaId, refImages.value
-    )
-    if (!image) {
-      ElMessage.info('上一镜视频尾帧已在参考图列表中')
-      return
-    }
-    sceneCreated = true
-    refImages.value = [...refImages.value, image]
-    await shotApi.update({
-      id: form.id,
-      generationMode: 'REFERENCE_MODE',
-      refImages: refImages.value
-    })
-    ElMessage.success(reused ? '已使用缓存尾帧创建场景参考图' : '已提取上一镜尾帧并创建场景参考图')
-    emit('success', form.id)
-  } catch (error: any) {
-    ElMessage.error(sceneCreated
-      ? '场景已创建，但保存分镜参考图失败；请点击“保存配置”重试'
-      : (error?.message || '使用上一镜视频尾帧创建场景失败'))
-  } finally {
-    creatingTailScene.value = false
-  }
-}
-
 const drawerAssetPickerVisible = ref(false)
 const drawerAssetPickerTitle = ref('')
 const drawerAssetPickerList = ref<Array<{ name: string; imageUrl: string; sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP'; sourceId: string | number; characterId?: string | number; lookId?: string | number; referenceRole?: string; tag?: string }>>([])
@@ -1980,16 +1942,31 @@ function openVideoProcessing(name: 'VideoUpscale' | 'FrameInterpolation') {
   router.push({ name, query: { shotId: String(form.id) } })
 }
 
-async function handleSaveAndCreateAsset(assetType: ShotAssetType) {
-  if (saving.value) return
+async function handleSaveAndCreateAsset(assetType: ShotAssetType, usePreviousVideoTail = false) {
+  if (saving.value || creatingTailScene.value) return
   const saved = await handleSave(false)
   if (!saved || !form.id) return
+
+  let referenceImageUrl: string | undefined
+  if (assetType === 'scene' && usePreviousVideoTail && form.generationMode === 'REFERENCE_MODE') {
+    creatingTailScene.value = true
+    try {
+      const tail = await shotApi.extractPreviousVideoTail(form.id)
+      referenceImageUrl = tail.tailFrameUrl
+    } catch (e: any) {
+      ElMessage.error(e.message || '提取上一镜视频尾帧失败')
+      return
+    } finally {
+      creatingTailScene.value = false
+    }
+  }
 
   const query: Record<string, string> = {
     returnTo: 'shot',
     shotId: String(form.id),
     assetType
   }
+  if (referenceImageUrl) query.referenceImageUrl = referenceImageUrl
   const contextIds: Array<[string, string | number | undefined]> = [
     ['dramaId', form.dramaId],
     ['episodeId', form.episodeId],

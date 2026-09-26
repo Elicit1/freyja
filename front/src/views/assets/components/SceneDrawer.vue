@@ -209,34 +209,37 @@
           </el-form-item>
 
           <el-form-item label="空间参考/ControlNet">
-            <div class="flex items-center gap-3">
-              <div v-if="formData.referenceImageUrl" class="relative group cursor-pointer">
-                <el-image
-                  :src="formData.referenceImageUrl"
-                  :preview-src-list="[formData.referenceImageUrl]"
-                  preview-teleported
-                  fit="cover"
-                  class="w-24 h-16 rounded border border-gray-200 block"
-                />
-                <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center text-white text-xs pointer-events-none">
-                  🔍 预览
+            <div class="flex flex-col gap-3 w-full">
+              <div class="flex items-center gap-3">
+                <div v-if="formData.referenceImageUrl" class="relative group cursor-pointer">
+                  <el-image
+                    :src="formData.referenceImageUrl"
+                    :preview-src-list="[formData.referenceImageUrl]"
+                    preview-teleported
+                    fit="cover"
+                    class="w-24 h-16 rounded border border-gray-200 block"
+                  />
+                  <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded flex items-center justify-center text-white text-xs pointer-events-none">
+                    🔍 预览
+                  </div>
+                </div>
+                <div v-else class="w-24 h-16 rounded border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs">
+                  未上传参考图
+                </div>
+                <div>
+                  <el-upload
+                    action="#"
+                    :show-file-list="false"
+                    :http-request="handleReferenceImageUpload"
+                    accept="image/*"
+                  >
+                    <el-button size="small" :loading="uploadingKey === 'referenceImageUrl'">上传空间参考图</el-button>
+                  </el-upload>
+                  <AssetImageGenerator target-type="SCENE" :target-id="formData.id" image-slot="SCENE_REFERENCE" :prompt="formData.scenePrompt" :negative-prompt="formData.negativePrompt" :reference-image-url="formData.referenceImageUrl" @applied="formData.referenceImageUrl = $event" />
+                  <div class="text-xs text-gray-400 mt-1">用于 IP-Adapter 风格注入或 ControlNet 构图约束</div>
                 </div>
               </div>
-              <div v-else class="w-24 h-16 rounded border border-dashed border-gray-300 flex items-center justify-center text-gray-400 text-xs">
-                未上传参考图
-              </div>
-              <div>
-                <el-upload
-                  action="#"
-                  :show-file-list="false"
-                  :http-request="handleReferenceImageUpload"
-                  accept="image/*"
-                >
-                  <el-button size="small" :loading="uploadingKey === 'referenceImageUrl'">上传空间参考图</el-button>
-                </el-upload>
-                <AssetImageGenerator target-type="SCENE" :target-id="formData.id" image-slot="SCENE_REFERENCE" :prompt="formData.scenePrompt" :negative-prompt="formData.negativePrompt" :reference-image-url="formData.referenceImageUrl" @applied="formData.referenceImageUrl = $event" />
-                <div class="text-xs text-gray-400 mt-1">用于 IP-Adapter 风格注入或 ControlNet 构图约束</div>
-              </div>
+              <el-input v-model="formData.referenceImageUrl" clearable placeholder="场景参考图 URL" />
             </div>
           </el-form-item>
         </el-tab-pane>
@@ -404,9 +407,9 @@ function closePromptPanel(key: string) {
   promptPanels.value = promptPanels.value.filter(item => item.key !== key)
 }
 
-function open(scene?: ResScene, presetDramaId?: string | number) {
+function open(scene?: ResScene, presetDramaId?: string | number, referenceImageUrl?: string) {
   formVersion++
-  activeTab.value = 'basic'
+  activeTab.value = referenceImageUrl ? 'model' : 'basic'
   activeCollapseNames.value = []
   loadDramaOptions()
   if (scene) {
@@ -435,7 +438,7 @@ function open(scene?: ResScene, presetDramaId?: string | number) {
       negativePrompt: '',
       loraName: '',
       loraWeight: 1.0,
-      referenceImageUrl: '',
+      referenceImageUrl: referenceImageUrl || '',
       sortOrder: 0,
       status: 1,
       remark: ''
