@@ -92,6 +92,7 @@ public class CharacterRegistryServiceImpl implements CharacterRegistryService {
                     .canonicalName(c.getCanonicalName())
                     .displayName(c.getDisplayName() != null ? c.getDisplayName() : c.getName())
                     .gender(c.getGender())
+                    .ageGroup(c.getAgeGroup())
                     .roleType(c.getRoleType())
                     .identityStatus(c.getIdentityStatus() != null ? c.getIdentityStatus() : IdentityStatus.UNKNOWN.name())
                     .appearanceDesc(c.getAppearanceDesc())
@@ -107,7 +108,10 @@ public class CharacterRegistryServiceImpl implements CharacterRegistryService {
 
     @Override
     public String formatRegistryForPrompt(Long dramaId) {
-        List<CharacterRegistryItemVO> list = buildRegistryContext(dramaId);
+        return formatRegistryItemsForPrompt(buildRegistryContext(dramaId));
+    }
+
+    static String formatRegistryItemsForPrompt(List<CharacterRegistryItemVO> list) {
         if (list.isEmpty()) {
             return "【无已有角色，本次拆解提取的人物为初次登场】";
         }
@@ -115,23 +119,19 @@ public class CharacterRegistryServiceImpl implements CharacterRegistryService {
         StringBuilder sb = new StringBuilder();
         sb.append("【已有角色注册表 (Character Registry) - 共 ").append(list.size()).append(" 位已有角色实体】:\n");
         for (CharacterRegistryItemVO item : list) {
-            sb.append(String.format("- [characterId: %d] 正式规范名: %s, 初次展示称谓: %s, 身份状态: %s, 性别: %s, 角色定位: %s\n",
+            sb.append(String.format("- [characterId: %d] 正式规范名: %s, 初次展示称谓: %s, 身份状态: %s, 性别: %s, 年龄段: %s, 角色定位: %s\n",
                     item.getId(),
                     StringUtils.defaultIfBlank(item.getCanonicalName(), "无(PARTIAL)"),
                     StringUtils.defaultIfBlank(item.getDisplayName(), "未命名"),
                     item.getIdentityStatus(),
                     StringUtils.defaultIfBlank(item.getGender(), "未知"),
+                    StringUtils.defaultIfBlank(item.getAgeGroup(), "未知"),
                     StringUtils.defaultIfBlank(item.getRoleType(), "配角")
             ));
             if (item.getAliases() != null && !item.getAliases().isEmpty()) {
                 sb.append("  * 历史称谓与别名: ").append(String.join(", ", item.getAliases())).append("\n");
             }
-            if (StringUtils.isNotBlank(item.getAppearanceDesc())) {
-                sb.append("  * 中文外貌设定: ").append(item.getAppearanceDesc()).append("\n");
-            }
-            if (StringUtils.isNotBlank(item.getAppearancePrompt())) {
-                sb.append("  * 外貌生图特征: ").append(item.getAppearancePrompt()).append("\n");
-            }
+            // 外貌自由文本可能混有造型和衣着，角色消歧只传结构化身份信息。
         }
         sb.append("【资料说明】: 以上是当前短剧已登记角色及其 ID、名称、别名和资料。");
         return sb.toString();

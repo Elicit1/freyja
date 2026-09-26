@@ -396,20 +396,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         globalContext.setPropRegistryPromptText(propRegistrySb.toString());
 
         // 动态注水格式化角色注册表上下文给所有并行 Worker AI
-        StringBuilder workerRegistrySb = new StringBuilder();
-        if (StringUtils.isNotBlank(registryContext) && !registryContext.contains("无已有角色")) {
-            workerRegistrySb.append(registryContext).append("\n");
-        }
-        workerRegistrySb.append("【本章节登场人物清单 (请在分镜的 characterIds 字段中严格填写对应人物姓名)】:\n");
-        for (DecomposedCharacterVO c : characters) {
-            String name = StringUtils.firstNonBlank(c.getCanonicalName(), c.getName());
-            workerRegistrySb.append(String.format("- %s (%s, %s): %s\n",
-                    name,
-                    StringUtils.defaultIfBlank(c.getRoleType(), "角色"),
-                    StringUtils.defaultIfBlank(c.getGender(), "未知性别"),
-                    StringUtils.defaultIfBlank(c.getAppearanceDesc(), StringUtils.defaultIfBlank(c.getAppearancePrompt(), "主要角色"))));
-        }
-        globalContext.setCharacterRegistryPromptText(workerRegistrySb.toString());
+        globalContext.setCharacterRegistryPromptText(buildWorkerCharacterRegistry(registryContext, characters));
 
         // 3. WorkerPool 并行调度 (Worker AI × N 并行，Semaphore 限制并发)
         stepLogger.accept(String.format("\n[3/5] ⚡ WorkerPool 启动多分段并行分镜生成 (%d 个 Segment 并行调度)...",
@@ -1214,6 +1201,25 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         log.info("[ScriptDecomposeCommit] 剧本拆解数据入库完成: dramaId={}, commitMode={}, 角色映射数={}, 场景映射数={}",
                 dramaId, commitMode, characterNameToId.size(), sceneNameToId.size());
         return dramaId;
+    }
+
+    static String buildWorkerCharacterRegistry(String existingRegistry, List<DecomposedCharacterVO> characters) {
+        StringBuilder prompt = new StringBuilder();
+        if (StringUtils.isNotBlank(existingRegistry) && !existingRegistry.contains("无已有角色")) {
+            prompt.append(existingRegistry).append("\n");
+        }
+        prompt.append("【本章节登场人物清单 (请在分镜的 characterIds 字段中严格填写对应人物姓名)】:\n");
+        if (characters != null) {
+            for (DecomposedCharacterVO character : characters) {
+                if (character == null) continue;
+                String name = StringUtils.firstNonBlank(character.getCanonicalName(), character.getName());
+                prompt.append(String.format("- %s (%s, %s)\n",
+                        name,
+                        StringUtils.defaultIfBlank(character.getRoleType(), "角色"),
+                        StringUtils.defaultIfBlank(character.getGender(), "未知性别")));
+            }
+        }
+        return prompt.toString();
     }
 
     private Set<Long> validPlannerCharacterIds(Long dramaId) {

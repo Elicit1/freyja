@@ -41,13 +41,13 @@ public class DecomposedCharacterVO {
     @JsonPropertyDescription("性格与人设特点描述 (内在心智、处事原则与对白口吻)")
     private String personality;
 
-    @JsonPropertyDescription("角色外貌视觉特征中文描述 (原著外貌真实源 SSOT，必须融合具象化的五官骨相、发型发色、身材体态以及标志性常服衣着装束，严禁写即时空间动作。例如: 24岁青年，面容清秀但下颌坚毅，眼神沉着敏锐，留黑色微乱碎发，身形精瘦挺拔；身着微旧深灰工装衬衫与深色耐磨长裤)")
+    @JsonPropertyDescription("角色稳定外貌特征中文描述，仅包含五官骨相、发型发色、身材体态，不包含衣着造型或即时空间动作")
     private String appearanceDesc;
 
     @JsonPropertyDescription("已废弃/免生成：剧本拆解阶段强制为 null 无需输出英文，以最大化节省 Token。英文生图提示词统一在资产库定妆阶段生成")
     private String appearancePrompt;
 
-    @JsonPropertyDescription("角色默认服饰装扮生图英文Prompt (纯默认服装款式与材质，不包含面容，例如: wearing washed dark grey utility shirt, durable dark trousers, worn leather boots)")
+    @JsonPropertyDescription("剧本拆解阶段不生成衣着设定，必须为 null；服饰造型由资产库单独维护")
     private String outfitPrompt;
 
     @JsonPropertyDescription("角色专属触发词/LoRA识别词，例如: lin_wanqing")

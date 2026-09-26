@@ -474,7 +474,6 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                 Long assetId = character.getMatchedCharacterId() != null ? character.getMatchedCharacterId() : character.getExistingCharacterId();
                 if (assetId != null) facts.append(" | 已匹配人物资产ID: ").append(assetId);
                 if (StringUtils.isNotBlank(character.getRoleType())) facts.append(" | 角色定位: ").append(character.getRoleType());
-                if (StringUtils.isNotBlank(character.getAppearanceDesc())) facts.append(" | 外貌资料: ").append(character.getAppearanceDesc().trim());
                 if (StringUtils.isNotBlank(character.getPersonality())) facts.append(" | 人设资料: ").append(character.getPersonality().trim());
                 facts.append("\n");
             }

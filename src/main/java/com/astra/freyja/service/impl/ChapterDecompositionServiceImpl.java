@@ -65,7 +65,7 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
              * 【时空物理环境与氛围感】：清晰界定场景的物理空间特性与视听基调（如：逼仄压抑的狭小密室、冷冽开阔的江边夜风、窗明几净的现代化办公厅）；
              * 【戏剧冲突与情绪张力曲线】：明确本段情绪从平静、试探到对峙爆发或沉寂的心理演进过程；
              * 【人物关系动态与微动作感知】：指出角色间的心理距离、权力对峙或情感羁绊，启发下游导演捕捉最贴切的情境动作；
-             * 【人物困境视听烘托指导】：若涉及角色落难受挫，指导下游通过恶劣天气/空旷空间与坚毅神情烘托凄美破碎感，严禁将服装设计为破烂不堪。
+             * 【人物困境视听烘托指导】：若涉及角色落难受挫，指导下游通过恶劣天气、空旷空间与人物神情呈现情绪，不设计服饰造型。
         3. 【优先切分节点】：
            - 地点空间发生明显变化 (如从公司到家、从室内到街道)；
            - 时间时段发生明显跳跃 (如白天到夜晚、次日清晨)；
@@ -99,18 +99,18 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
            - 禁止提取无台词或一次性背景板路人与泛指群体（如“路人”、“食客们”、“保镖们”、“前台小姐”、“外卖员”、“围观群众”，此类仅在分镜画面描述中作为背景呈现，严禁提取为独立角色资产）；
            - 禁止提取修辞、比喻与心像意象（如“他宛如一尊战神”、“心中的小恶魔”，严禁提取“战神”、“小恶魔”）；
            - 禁止提取旁白、画外音或机械音（如“画外音”、“电视播音员”、“系统提示音”）。
-        4. 【人设、外貌与标志性衣着内外分离具象化提炼 (极重要)】：
+        4. 【人设与稳定外貌提炼 (极重要)】：
            - 区分即时空间动作与固有视觉：严禁把“坐在最远处的椅子上”、“站在门口”、“手里拿刀”等空间动作与临时状态写进外貌；即时动作属于单个分镜，严禁污染角色固有资产！
-           - 原著留白时的概念美术具象化补全 (自适应艺术载体)：若原著仅给出“年轻人”、“黑衣人”、“老者”或动作描写，外貌文字极简，AI 绝不能输出毫无辨识度的空洞废话！必须结合其年龄段、内在性格（如“善于观察、心理素质较强”）与身处情境，赋予其具备视觉辨识度的【五官面容 + 发型体态 + 标志性常服衣着】：
+           - 原著留白时的概念美术具象化补全 (自适应艺术载体)：若原著仅给出“年轻人”、“老者”或动作描写，外貌文字极简，须结合年龄段、内在性格与身处情境，提炼具备辨识度的【五官面容 + 发型体态】，不补写衣着造型：
               * 艺术媒介与风格忠实度 (核心铁律)：
                 - 当全剧艺术载体为【2D 动漫 (2D Anime)】或创作者在视觉基调指南中指定了动画/动漫/漫画风格时：
-                  中文外貌 (appearanceDesc) 必须严格采用【2D 动漫概念美术设计 (2D Anime Character Design)】！突出利落清爽的动漫线条轮廓、动漫发型体态、特色眼神与服饰版型，并融入创作者指定的调色与光影，严禁使用真人写实皮肤毛孔等真人词汇；
-                - 当全剧艺术载体为【电影写实 (Cinematic Realism)】时：采用电影概念美术视角刻画写实五官骨相与常服质感；
+                  中文外貌 (appearanceDesc) 必须严格采用【2D 动漫概念美术设计 (2D Anime Character Design)】！突出利落清爽的动漫线条轮廓、动漫发型体态与特色眼神，并融入创作者指定的调色与光影，严禁使用真人写实皮肤毛孔等真人词汇；
+                - 当全剧艺术载体为【电影写实 (Cinematic Realism)】时：采用电影概念美术视角刻画写实五官骨相与体态；
                 - 当全剧艺术载体为【3D 动画 (3D Animation)】时：采用次世代 3D 角色建模与精细材质视角；
-              * 标志性常服衣着 (必须包含)：原著有明确写出则精准提炼，原著未细写则根据身份与情境合理设计一套契合人设的标志性常服装束；
+              * 人物衣着、服装款式与造型设定均由后续资产库维护，本阶段不得生成或传递；
             - 【极速省 Token 铁律】：
-              * appearanceDesc (中文原著视觉 SSOT)：包含上述面容骨相/动漫特征、发型体态与标志性常服衣着的完整中文描述；
-              * 剧本拆解阶段严禁生成任何英文外貌/服装提示词（appearancePrompt 与 outfitPrompt 强制设为 null 或留空）！无需在拆解阶段生成英文生图词，以最大化节省大模型 Output Token；英文提示词后续由创作者在资产库定妆阶段按需一键生成。
+              * appearanceDesc：仅包含面容骨相、发型与体态等稳定外貌，不包含衣着；
+              * appearancePrompt 与 outfitPrompt 强制设为 null，不生成英文外貌或服饰提示词。
         【场景空间陈设与核心道具资产提取准则 (Scene & Prop Extraction Rules - 动静分离铁律)】：
         1. 【场景空间与不可动固定陈设资产提取 (scenes)】：
            - 每个场景必须具备明确全局编号 id (如 SC001, SC002...) 与具体的中文名称 sceneName (如 "斑驳圆桌密闭暗室")；
@@ -170,7 +170,9 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
         if (skillInvocation == null) {
             throw new BizException(400, "Planner character-disambiguation Skill 未成功加载");
         }
-        systemPrompt = skillInvocation.systemPrompt();
+        systemPrompt = skillInvocation.systemPrompt() + "\n\n【人物衣着输入边界】已有角色注册表只提供身份信息，不包含衣着或混合外貌资料。"
+                + "本阶段只提取稳定身份和非服饰外貌；appearanceDesc 不写衣着造型，outfitPrompt 必须为 null。"
+                + "不得自行设计默认服装，Worker 的角色资料也不得包含衣着设定。";
         // 读取软参考字数配置
         int minChars = getIntConfig("story.decomposition.minSegmentCharacters", 1200);
         int targetChars = getIntConfig("story.decomposition.targetSegmentCharacters", 2000);
@@ -209,7 +211,7 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
                 .append("- 画面艺术载体：").append(mediumName).append("\n");
         if (StringUtils.isNotBlank(effectiveStyleTone)) {
             userPromptSb.append("- 剧本全局视觉基调指南：").append(effectiveStyleTone).append("\n")
-                    .append("★ 核心执行指令：在提炼 characters 角色外貌 (appearanceDesc) 以及 scenes 场景 (scenePrompt) 时，必须一体化严格遵从上述画面艺术载体与视觉基调指南！若为 2D 动漫，角色外貌必须采用 2D 动漫概念美术设计（动漫利落线条、发型体态、特色眼神与常服），严禁输出好莱坞真人实拍皮肤毛孔词！characters 无需生成英文 appearancePrompt (强制为 null 以节省 Token)！\n\n");
+                    .append("★ 核心执行指令：在提炼 characters 稳定外貌 (appearanceDesc) 以及 scenes 场景 (scenePrompt) 时，必须遵从上述艺术载体与视觉基调指南！角色外貌只写五官、发型、体态等非服饰特征；不得生成或传递衣着设定。appearancePrompt 与 outfitPrompt 均为 null。\n\n");
         } else {
             userPromptSb.append("（注：请严格遵从【").append(mediumName).append("】的艺术规律一体化提取角色外貌与场景资产）\n\n");
         }
