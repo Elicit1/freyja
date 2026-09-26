@@ -733,7 +733,8 @@
           <el-button
             v-if="previewResult"
             type="success"
-            :disabled="isStreaming || restoringTask || restoredTaskRunning"
+            :loading="isApplying"
+            :disabled="isStreaming || restoringTask || restoredTaskRunning || isApplying"
             @click="handleConfirmApply"
           >
             ✓ 确认采纳并回填
@@ -781,6 +782,7 @@ import type { ResCharacterOption, ResSceneOption, ResPropOption } from '@/types/
 
 const emit = defineEmits<{
   (e: 'apply', result: {
+    generationMode: 'FIRST_LAST_FRAME' | 'REFERENCE_MODE'
     prompt?: string
     firstFramePrompt?: string
     endFramePrompt?: string
@@ -793,7 +795,7 @@ const emit = defineEmits<{
     refAudios: ShotRefAudio[]
     directorPlan?: DirectorPlan
     directorPlanJson?: string
-  }): void
+  }, done: (success: boolean) => void): void
   (e: 'task-attached', taskId: string): void
   (e: 'task-starting'): void
   (e: 'task-finished', taskId?: string): void
@@ -803,6 +805,7 @@ const emit = defineEmits<{
 
 const visible = ref(false)
 const isStreaming = ref(false)
+const isApplying = ref(false)
 const backgroundMode = ref(false)
 const backgroundStatus = ref<'running' | 'completed' | 'failed'>('running')
 const backgroundError = ref('')
@@ -1577,9 +1580,11 @@ async function handleStartStream(runInBackground = false) {
   }
 }
 
-function doApply() {
-  if (!previewResult.value) return
-  emit('apply', {
+async function doApply() {
+  if (!previewResult.value || isApplying.value) return
+  isApplying.value = true
+  const result = {
+    generationMode: generationMode.value,
     ...(generationMode.value === 'REFERENCE_MODE'
       ? { prompt: previewResult.value.prompt || previewResult.value.videoPrompt || '',
           videoPrompt: previewResult.value.videoPrompt || previewResult.value.prompt || '',
@@ -1595,11 +1600,17 @@ function doApply() {
     resSceneId: draft.value.resSceneId,
     refImages: draft.value.refImages.map(item => ({ ...item })),
     refAudios: draft.value.refAudios.map(item => ({ ...item }))
-  })
-  ElMessage.success('已采纳提示词及资产编排，原子回填至分镜！')
-  backgroundMode.value = false
-  visible.value = false
-  emitPanelClose()
+  }
+  try {
+    const saved = await new Promise<boolean>(resolve => emit('apply', result, resolve))
+    if (!saved) return
+    ElMessage.success('提示词及素材编排已回填并保存到分镜')
+    backgroundMode.value = false
+    visible.value = false
+    emitPanelClose()
+  } finally {
+    isApplying.value = false
+  }
 }
 
 function handleConfirmApply() {

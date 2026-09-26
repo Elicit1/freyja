@@ -924,7 +924,7 @@
     v-for="panel in promptPanelSessions"
     :key="panel.key"
     :ref="instance => setPromptPanelRef(panel.key, instance)"
-    @apply="result => handleApplyDerivedPromptsForPanel(panel.shotId, result)"
+    @apply="(result, done) => handlePromptPanelApply(panel.shotId, result, done)"
     @task-attached="taskId => handlePromptPanelTaskAttached(panel.key, taskId)"
     @task-starting="handlePromptPanelTaskStarting(panel.key)"
     @task-finished="handlePromptPanelTaskFinished(panel.key)"
@@ -1083,6 +1083,7 @@ const emit = defineEmits<{
 
 type ShotAssetType = 'character' | 'scene' | 'prop'
 type DerivedPromptResult = {
+  generationMode: 'FIRST_LAST_FRAME' | 'REFERENCE_MODE'
   prompt?: string
   firstFramePrompt?: string
   endFramePrompt?: string
@@ -2113,11 +2114,12 @@ async function openPromptTask(taskId: string) {
 }
 
 function handleApplyDerivedPrompts(res: DerivedPromptResult) {
-  if (res.prompt) form.prompt = res.prompt
+  form.generationMode = res.generationMode
+  if (res.prompt !== undefined) form.prompt = res.prompt
   if (res.firstFramePrompt !== undefined) form.firstFramePrompt = res.firstFramePrompt
   if (res.endFramePrompt !== undefined) form.endFramePrompt = res.endFramePrompt
-  if (res.videoPrompt) form.videoPrompt = res.videoPrompt
-  if (res.negativePrompt) form.negativePrompt = res.negativePrompt
+  if (res.videoPrompt !== undefined) form.videoPrompt = res.videoPrompt
+  if (res.negativePrompt !== undefined) form.negativePrompt = res.negativePrompt
 
   if (res.characterRefs) {
     characterRefs.value = res.characterRefs.map(item => ({ ...item }))
@@ -2137,19 +2139,23 @@ function handleApplyDerivedPrompts(res: DerivedPromptResult) {
   form.directorPlanJson = res.directorPlanJson || (res.directorPlan ? JSON.stringify(res.directorPlan) : undefined)
 }
 
-async function handleApplyDerivedPromptsForPanel(shotId: string, res: DerivedPromptResult) {
-  if (String(form.id ?? '') === shotId) {
-    handleApplyDerivedPrompts(res)
-    return
-  }
+function handlePromptPanelApply(shotId: string, res: DerivedPromptResult, done: (success: boolean) => void) {
+  void handleApplyDerivedPromptsForPanel(shotId, res).then(done).catch((error: any) => {
+    ElMessage.error(error?.message || '保存 AI 分析结果失败')
+    done(false)
+  })
+}
+
+async function handleApplyDerivedPromptsForPanel(shotId: string, res: DerivedPromptResult): Promise<boolean> {
   if (!shotId) {
     ElMessage.warning('该分镜尚未保存，请重新打开原分镜后采纳提示词')
-    return
+    return false
   }
 
   const payload: Partial<DramaShot> = {
     id: shotId,
-    prompt: res.prompt || undefined,
+    generationMode: res.generationMode,
+    prompt: res.prompt,
     firstFramePrompt: res.firstFramePrompt,
     endFramePrompt: res.endFramePrompt,
     videoPrompt: res.videoPrompt,
@@ -2163,10 +2169,14 @@ async function handleApplyDerivedPromptsForPanel(shotId: string, res: DerivedPro
   }
   try {
     await shotApi.update(payload)
-    ElMessage.success('提示词及素材编排已回填并保存到对应分镜')
+    if (String(form.id ?? '') === shotId) {
+      handleApplyDerivedPrompts(res)
+    }
     emit('success', shotId)
+    return true
   } catch (error: any) {
     ElMessage.error(error?.message || '保存对应分镜的 AI 分析结果失败')
+    return false
   }
 }
 
