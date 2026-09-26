@@ -330,9 +330,21 @@
       destroy-on-close
     >
       <div class="space-y-3 p-1">
-        <div class="text-xs text-slate-500 flex items-center justify-between">
+        <div class="text-xs text-slate-500 flex items-center justify-between gap-2">
           <span>从当前已选人物、场景、道具中挑选参考图（严格一一对应）：</span>
-          <span class="text-[11px] text-slate-400">共 {{ candidateImages.length }} 张候选</span>
+          <div class="flex items-center gap-2 shrink-0">
+            <span class="text-[11px] text-slate-400">共 {{ candidateImages.length }} 张候选</span>
+            <el-button
+              v-if="pickerTargetSlotIndex === null"
+              size="small"
+              type="primary"
+              plain
+              :disabled="disabled || refImages.length >= maxImages || !candidateImages.some(c => !c.isOccupied)"
+              @click="handleAddAllImages"
+            >
+              一键全选添加
+            </el-button>
+          </div>
         </div>
 
         <div v-if="candidateImages.length === 0" class="text-center py-10 text-xs text-slate-400">
@@ -380,8 +392,18 @@
       destroy-on-close
     >
       <div class="space-y-3 p-1">
-        <div class="text-xs text-slate-500">
-          仅可选择当前已选人物的专属母音样本：
+        <div class="text-xs text-slate-500 flex items-center justify-between gap-2">
+          <span>仅可选择当前已选人物的专属母音样本：</span>
+          <el-button
+            v-if="pickerTargetAudioSlotIndex === null"
+            size="small"
+            type="primary"
+            plain
+            :disabled="disabled || refAudios.length >= maxAudios || !candidateAudios.some(a => !a.isOccupied)"
+            @click="handleAddAllAudios"
+          >
+            一键全选添加
+          </el-button>
         </div>
 
         <div v-if="candidateAudios.length === 0" class="text-center py-8 text-xs text-slate-400">
@@ -444,6 +466,8 @@ import type { CandidateImageItem, CandidateAudioItem } from '../composables/useS
 import {
   MAX_REF_IMAGES,
   MAX_REF_AUDIOS,
+  MIN_AUDIO_DURATION,
+  MAX_AUDIO_DURATION,
   MAX_TOTAL_AUDIO_DURATION
 } from '../composables/useShotReferenceAssets'
 
@@ -507,14 +531,8 @@ function openImagePicker(slotIndex: number | null = null) {
   imagePickerDialogVisible.value = true
 }
 
-function handleSelectCandidateImage(cand: CandidateImageItem) {
-  if (cand.isOccupied) {
-    ElMessage.warning('该图片素材已在其他槽位中使用，不可重复占用')
-    return
-  }
-
-  const next = [...props.refImages]
-  const newImg: ShotRefImage = {
+function createRefImage(cand: CandidateImageItem): ShotRefImage {
+  return {
     id: `img_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     name: cand.name,
     imageUrl: cand.imageUrl,
@@ -525,6 +543,17 @@ function handleSelectCandidateImage(cand: CandidateImageItem) {
     referenceRole: cand.referenceRole,
     usageRole: cand.usageRole
   }
+}
+
+function handleSelectCandidateImage(cand: CandidateImageItem) {
+  if (props.disabled) return
+  if (cand.isOccupied) {
+    ElMessage.warning('该图片素材已在其他槽位中使用，不可重复占用')
+    return
+  }
+
+  const next = [...props.refImages]
+  const newImg = createRefImage(cand)
 
   if (pickerTargetSlotIndex.value !== null && pickerTargetSlotIndex.value < next.length) {
     next[pickerTargetSlotIndex.value] = newImg
@@ -535,6 +564,18 @@ function handleSelectCandidateImage(cand: CandidateImageItem) {
   emit('update:refImages', next)
   emit('change')
   imagePickerDialogVisible.value = false
+}
+
+function handleAddAllImages() {
+  if (props.disabled || pickerTargetSlotIndex.value !== null) return
+  const available = props.candidateImages.filter(cand => !cand.isOccupied)
+  const selected = available.slice(0, Math.max(0, maxImages - props.refImages.length))
+  if (selected.length === 0) return
+
+  emit('update:refImages', [...props.refImages, ...selected.map(createRefImage)])
+  emit('change')
+  imagePickerDialogVisible.value = false
+  ElMessage.success(`已添加 ${selected.length} 张参考图${selected.length < available.length ? '，其余候选已达槽位上限' : ''}`)
 }
 
 function handleRemoveImage(index: number) {
@@ -564,14 +605,8 @@ function openAudioPicker(slotIndex: number | null = null) {
   audioPickerDialogVisible.value = true
 }
 
-function handleSelectCandidateAudio(cand: CandidateAudioItem) {
-  if (cand.isOccupied) {
-    ElMessage.warning('该音频已在其他槽位中使用')
-    return
-  }
-
-  const next = [...props.refAudios]
-  const newAud: ShotRefAudio = {
+function createRefAudio(cand: CandidateAudioItem): ShotRefAudio {
+  return {
     id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
     name: cand.name,
     audioUrl: cand.audioUrl,
@@ -583,15 +618,30 @@ function handleSelectCandidateAudio(cand: CandidateAudioItem) {
     usageMode: cand.usageMode || 'VOICE_TIMBRE',
     language: cand.language || 'zh'
   }
+}
 
-  // 探测音频时长
-  const probe = new Audio(cand.audioUrl)
+function probeAudioDuration(audio: ShotRefAudio) {
+  const probe = new Audio(audio.audioUrl)
   probe.addEventListener('loadedmetadata', () => {
-    if (probe.duration && probe.duration > 0) {
-      newAud.duration = Math.round(probe.duration * 10) / 10
-      emit('update:refAudios', [...next])
-    }
-  })
+    if (!Number.isFinite(probe.duration) || probe.duration <= 0) return
+    const index = props.refAudios.findIndex(item => item.id === audio.id)
+    if (index < 0) return
+    const next = props.refAudios.map(item => ({ ...item }))
+    next[index].duration = Math.round(probe.duration * 10) / 10
+    emit('update:refAudios', next)
+    emit('change')
+  }, { once: true })
+}
+
+function handleSelectCandidateAudio(cand: CandidateAudioItem) {
+  if (props.disabled) return
+  if (cand.isOccupied) {
+    ElMessage.warning('该音频已在其他槽位中使用')
+    return
+  }
+
+  const next = [...props.refAudios]
+  const newAud = createRefAudio(cand)
 
   if (pickerTargetAudioSlotIndex.value !== null && pickerTargetAudioSlotIndex.value < next.length) {
     next[pickerTargetAudioSlotIndex.value] = newAud
@@ -601,7 +651,33 @@ function handleSelectCandidateAudio(cand: CandidateAudioItem) {
 
   emit('update:refAudios', next)
   emit('change')
+  probeAudioDuration(newAud)
   audioPickerDialogVisible.value = false
+}
+
+function handleAddAllAudios() {
+  if (props.disabled || pickerTargetAudioSlotIndex.value !== null) return
+  const available = props.candidateAudios.filter(cand => !cand.isOccupied)
+  const selected: ShotRefAudio[] = []
+  let duration = totalAudioDuration.value
+  for (const cand of available) {
+    if (props.refAudios.length + selected.length >= maxAudios) break
+    const candidateDuration = Number(cand.duration) || 3.5
+    if (candidateDuration < MIN_AUDIO_DURATION || candidateDuration > MAX_AUDIO_DURATION
+      || duration + candidateDuration > maxTotalAudioDuration) continue
+    selected.push(createRefAudio(cand))
+    duration += candidateDuration
+  }
+  if (selected.length === 0) {
+    ElMessage.warning('剩余音频槽位或时长不足，无法批量添加')
+    return
+  }
+
+  emit('update:refAudios', [...props.refAudios, ...selected])
+  emit('change')
+  selected.forEach(probeAudioDuration)
+  audioPickerDialogVisible.value = false
+  ElMessage.success(`已添加 ${selected.length} 段参考音频${selected.length < available.length ? '，其余候选受槽位或时长限制未添加' : ''}`)
 }
 
 function handleRemoveAudio(index: number) {

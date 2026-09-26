@@ -65,7 +65,7 @@
             </span>
 
             <!-- 操作菜单 -->
-            <div class="hidden group-hover:flex items-center gap-1" @click.stop>
+            <div class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity duration-150" @click.stop>
               <el-tooltip content="为此集新增场次" placement="top">
                 <el-button type="primary" link size="small" class="!p-0.5" @click="$emit('add-scene', ep.id)">
                   <el-icon :size="13"><Plus /></el-icon>
@@ -116,7 +116,7 @@
                 {{ sc.shotGroups?.length ? `${sc.shotGroups.length}组·` : '' }}{{ sc.shots?.length || 0 }}镜
               </span>
 
-              <div class="hidden group-hover:flex items-center" @click.stop>
+              <div class="absolute right-2 top-1/2 -translate-y-1/2 flex items-center opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-focus-within:opacity-100 group-focus-within:pointer-events-auto transition-opacity duration-150" @click.stop>
                 <el-dropdown trigger="click" size="small" @command="(cmd: string) => handleScCommand(cmd, sc.id)">
                   <el-button link size="small" class="!p-0.5" :class="isSceneActive(sc.id) ? 'text-white' : 'text-[var(--text-muted)]'">
                     <el-icon :size="12"><MoreFilled /></el-icon>
