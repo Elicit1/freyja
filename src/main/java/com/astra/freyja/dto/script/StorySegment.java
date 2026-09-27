@@ -57,6 +57,19 @@ public class StorySegment implements Serializable {
     @JsonPropertyDescription("剧情事件核心内容概要")
     private String summary;
 
+    /** Planner 从全章提取的上一状态约束；不得依赖前一段 Normalizer 输出。 */
+    @JsonPropertyDescription("当前分段开始前必须继承的关键人物位置、动作和道具持有状态；简短事实，无则为空")
+    private String previousStateHint;
+
+    @JsonPropertyDescription("当前分段核心事件的简短事实摘要，不添加原文以外的剧情")
+    private String currentEventHint;
+
+    @JsonPropertyDescription("下一分段即将发生的关键事件，仅供保持衔接，不得提前完成")
+    private String nextEventHint;
+
+    /** Normalizer 的执行描述；为空时 Worker 使用 rawText。随预览草稿持久化。 */
+    private String normalizedContent;
+
     /** 出场角色中文姓名列表 (必须填写中文人名，如 [\"苏清雪\", \"苏明宇\"]，严禁输出 char_001 等编号) */
     @JsonPropertyDescription("出场角色中文姓名列表 (必须直接填写具体中文人名，如 [\"苏清雪\", \"苏明宇\"]，严禁输出 char_001 等英文编号)")
     @Builder.Default

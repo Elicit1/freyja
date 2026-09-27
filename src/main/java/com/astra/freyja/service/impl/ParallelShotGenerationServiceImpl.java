@@ -9,6 +9,7 @@ import com.astra.freyja.service.AiModelFactory;
 import com.astra.freyja.service.AiTaskService;
 import com.astra.freyja.service.ParallelShotGenerationService;
 import com.astra.freyja.service.SysConfigService;
+import com.astra.freyja.service.StoryNormalizerService;
 import com.astra.freyja.skill.service.ScriptSkillRuntime;
 import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +47,8 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
     private final ObjectMapper objectMapper;
     @Autowired(required = false)
     private ScriptSkillRuntime scriptSkillRuntime;
+    @Autowired
+    private StoryNormalizerService storyNormalizerService;
 
     private static final String DEFAULT_WORKER_SYSTEM_PROMPT = """
         你是剧情分镜编剧，负责将当前 Segment 原文整理为完整的剧情分镜。
@@ -60,6 +63,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
         7. propIds 表示道具资产引用，不代表具体实例数量。人物持有的道具数量、归属、持有方式及状态变化必须符合原文和前序镜头事实。
         8. 按照当前 JSON Schema 输出完整分镜，不得自行增加、删除或修改字段。camera 字段遵循 Schema 定义的未指定状态，不填写 STATIC 或其他具体摄影参数。
         9. 当系统提供适用的剧情分镜或连续性 Skill 时，按照现有 Skill 加载协议执行，并遵循已加载的专业规则。详细的分镜方法、动作编排和连续性处理由 Skill 提供。
+        10. originalContent 是最高剧情事实来源，normalizedContent 是已标准化的主要拆解输入。不要重新扩写小说或推断其中已经明确的空间关系；两者明确冲突时以 originalContent 为准。
 
         只输出符合当前 JSON Schema 的最终 JSON，不附加解释或 Markdown。
         """;
@@ -103,8 +107,26 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
             String nextContext = (i < segments.size() - 1) ? buildLightweightNextContext(segments.get(i + 1)) : null;
 
             CompletableFuture<SegmentShotResult> future = CompletableFuture.supplyAsync(() -> {
+                boolean acquired = false;
                 try {
                     semaphore.acquire();
+                    acquired = true;
+                    if (storyNormalizerService != null) {
+                        sendNormalizerStatus(channelChunkConsumer, currentSeg, "RUNNING");
+                        try {
+                            storyNormalizerService.normalize(currentSeg, globalContext, request, token -> {
+                                if (channelChunkConsumer != null) {
+                                    channelChunkConsumer.accept("NORMALIZER_" + currentSeg.getId(), token);
+                                }
+                            });
+                        } catch (Exception e) {
+                            currentSeg.setNormalizedContent(null);
+                            log.warn("[StoryNormalizer] taskId={} segment={} unexpected failure, fallback=originalContent",
+                                    globalContext == null ? null : globalContext.getTaskId(), currentSeg.getId(), e);
+                        }
+                        sendNormalizerStatus(channelChunkConsumer, currentSeg,
+                                StringUtils.isBlank(currentSeg.getNormalizedContent()) ? "FALLBACK" : "SUCCESS");
+                    }
                     return processSingleSegmentWithRetry(
                             currentSeg, globalContext, prevContext, nextContext,
                             request, timeoutSeconds, maxRetries, channelChunkConsumer, stepLogger, segmentProgressCallback
@@ -113,7 +135,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                     Thread.currentThread().interrupt();
                     throw new BizException("Worker 线程中断: " + e.getMessage());
                 } finally {
-                    semaphore.release();
+                    if (acquired) semaphore.release();
                 }
             }, executor);
 
@@ -138,6 +160,13 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
         return results;
     }
 
+    private void sendNormalizerStatus(BiConsumer<String, String> channelChunkConsumer,
+                                      StorySegment segment, String status) {
+        if (channelChunkConsumer == null) return;
+        channelChunkConsumer.accept("NORMALIZER_STATUS", objectMapper.writeValueAsString(
+                java.util.Map.of("channel", segment.getId(), "status", status)));
+    }
+
     @Override
     public SegmentShotResult retrySingleSegment(StorySegment segment,
                                                 GlobalStoryContext globalContext,
@@ -157,6 +186,15 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                                                 String customInstructions,
                                                 Consumer<String> stepLogger) {
         int timeoutSeconds = getIntConfig("ai.shotWorker.timeoutSeconds", 180);
+        if (storyNormalizerService != null && StringUtils.isBlank(segment.getNormalizedContent())) {
+            try {
+                storyNormalizerService.normalize(segment, globalContext, request);
+            } catch (Exception e) {
+                segment.setNormalizedContent(null);
+                log.warn("[StoryNormalizer] taskId={} segment={} retry failure, fallback=originalContent",
+                        globalContext == null ? null : globalContext.getTaskId(), segment.getId(), e);
+            }
+        }
         return processSingleSegmentWithRetry(
                 segment, globalContext, previousContext, nextContext,
                 request, customInstructions, timeoutSeconds, 1, null, stepLogger, null
@@ -344,13 +382,17 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                         : segment.getImportantPropIds() != null && !segment.getImportantPropIds().isEmpty()
                                 ? String.join(", ", segment.getImportantPropIds()) : "未提供").append("\n")
                 .append("剪辑节奏偏好: ").append(pacingDesc).append("\n")
-                .append("Segment 原文: \n")
+                .append("originalContent（最高事实来源）: \n")
                 .append(StringUtils.defaultString(segment.getRawText())).append("\n\n")
+                .append("normalizedContent（主要拆解执行输入；为空则使用 originalContent）: \n")
+                .append(StringUtils.defaultIfBlank(segment.getNormalizedContent(), segment.getRawText())).append("\n\n")
                 .append("【当前 JSON Schema】：\n")
                 .append(converter.getFormat());
 
         String baseSystemPrompt = sysConfigService.getConfigValue("ai.prompt.shot_worker_system", DEFAULT_WORKER_SYSTEM_PROMPT);
-        String systemPrompt = baseSystemPrompt + "\n\n### 本次 Worker 任务输入（动态事实）\n" + taskInput;
+        String systemPrompt = baseSystemPrompt
+                + "\n\n【输入事实优先级】originalContent 为最高剧情事实来源；优先按 normalizedContent 拆镜，明确冲突时以 originalContent 为准。已标准化的空间关系无需重新推断或扩写。"
+                + "\n\n### 本次 Worker 任务输入（动态事实）\n" + taskInput;
         ScriptSkillRuntime.Invocation skillInvocation = scriptSkillRuntime == null ? null
                 : scriptSkillRuntime.begin(request,
                 request.getSkillPolicy() == null ? null : request.getSkillPolicy().getWorker(),

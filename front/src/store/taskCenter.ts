@@ -7,7 +7,7 @@ const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RE
 export interface PromptEvent {
   taskId: string
   seq: number
-  type: 'task_created' | 'stage' | 'chunk' | 'result' | 'error' | 'done' | 'segments_init' | 'assets_discovered' | 'channel_chunk' | 'worker_status' | 'skill_event' | 'channel_reset'
+  type: 'task_created' | 'stage' | 'chunk' | 'result' | 'error' | 'done' | 'segments_init' | 'assets_discovered' | 'channel_chunk' | 'worker_status' | 'normalizer_status' | 'skill_event' | 'channel_reset'
   data: string
 }
 

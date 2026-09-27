@@ -7,6 +7,7 @@ public enum AiTaskType {
     CHAPTER_DECOMPOSE("整章剧情并行分镜拆解"),
     SCRIPT_CHUNK("剧本切分"),
     PLOT_EXTRACTION("情节大纲提取"),
+    STORY_NORMALIZE("剧情事件标准化"),
     ENTITY_RESOLUTION("角色场景实体消歧"),
     SHOT_GROUP_EXTRACTION("连续镜头组提取"),
     SHOT_DECOMPOSE("分镜拆解"),

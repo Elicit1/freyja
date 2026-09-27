@@ -30,6 +30,7 @@ export const scriptApi = {
       onAssetsDiscovered?: (assets: { characters: any[], scenes: any[], props: any[] }) => void
       onChannelChunk?: (channel: string, chunk: string) => void
       onWorkerStatus?: (channel: string, status: string, shotsCount?: number, duration?: number) => void
+      onNormalizerStatus?: (channel: string, status: 'RUNNING' | 'SUCCESS' | 'FALLBACK') => void
       onSkillEvent?: (event: import('@/types/script').ScriptSkillEvent) => void
       onChannelReset?: (channel: string) => void
       onResult: (result: ScriptDecomposeResult) => void
@@ -52,6 +53,9 @@ export const scriptApi = {
           } else if (event.type === 'worker_status') {
             const payload = JSON.parse(event.data)
             options.onWorkerStatus?.(payload.channel, payload.status, payload.shotsCount, payload.duration)
+          } else if (event.type === 'normalizer_status') {
+            const payload = JSON.parse(event.data)
+            options.onNormalizerStatus?.(payload.channel, payload.status)
           } else if (event.type === 'skill_event') {
             options.onSkillEvent?.(JSON.parse(event.data) as import('@/types/script').ScriptSkillEvent)
           } else if (event.type === 'channel_reset') {

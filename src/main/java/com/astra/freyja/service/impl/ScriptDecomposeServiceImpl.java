@@ -159,6 +159,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 BiConsumer<String, String> channelChunkConsumer = (channel, content) -> {
                     if ("SKILL_EVENT".equals(channel)) sseBridge.sendSkillEvent(content);
                     else if ("CHANNEL_RESET".equals(channel)) sseBridge.sendChannelReset(content);
+                    else if ("NORMALIZER_STATUS".equals(channel)) sseBridge.sendNormalizerStatus(content);
                     else sseBridge.sendChannelChunk(channel, content);
                 };
 
@@ -213,6 +214,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             BiConsumer<String, String> channel = (name, content) -> {
                 if ("SKILL_EVENT".equals(name)) bridge.sendSkillEvent(content);
                 else if ("CHANNEL_RESET".equals(name)) bridge.sendChannelReset(content);
+                else if ("NORMALIZER_STATUS".equals(name)) bridge.sendNormalizerStatus(content);
                 else bridge.sendChannelChunk(name, content);
             };
             Consumer<String> logger = msg -> {
@@ -248,7 +250,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         int rawLen = request.getRawText() != null ? request.getRawText().length() : 0;
 
         stepLogger.accept(String.format("========================================================================\n" +
-                "[1/5] 📖 全局上下文加载与 Planner AI 章节大纲事件分段 (文本总长: %d 字)...", rawLen));
+                "[1/6] 📖 全局上下文加载与 Planner AI 章节大纲事件分段 (文本总长: %d 字)...", rawLen));
 
         // 0. 创建整章拆解父级持久化任务 (CHAPTER_DECOMPOSE)
         AiTask parentTask = existingTask;
@@ -349,7 +351,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         }
 
         // 2. 场景·角色·道具资产深度提炼与强ID建档 (0 次额外 AI 调用)
-        stepLogger.accept("\n[2/5] 🏛️ 场景·角色·道具资产深度提炼与强ID建档 (0 次额外 AI 调用)...");
+        stepLogger.accept("\n[2/6] 🏛️ 场景·角色·道具资产深度提炼与强ID建档 (0 次额外 AI 调用)...");
         List<DecomposedCharacterVO> characters = plannerResult.getCharacters() == null
                 ? new ArrayList<>() : plannerResult.getCharacters();
         validatePlannerCharacterReferences(characters, validPlannerCharacterIds(request.getDramaId()));
@@ -398,8 +400,8 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         // 动态注水格式化角色注册表上下文给所有并行 Worker AI
         globalContext.setCharacterRegistryPromptText(buildWorkerCharacterRegistry(registryContext, characters));
 
-        // 3. WorkerPool 并行调度 (Worker AI × N 并行，Semaphore 限制并发)
-        stepLogger.accept(String.format("\n[3/5] ⚡ WorkerPool 启动多分段并行分镜生成 (%d 个 Segment 并行调度)...",
+        // 3. 每个 Segment 独立经过 Story Normalizer → Worker；沿用 WorkerPool 并发限制。
+        stepLogger.accept(String.format("\n[3/6] 🧭 Story Normalizer 与 WorkerPool 分段流水线启动 (%d 个 Segment 并行调度)...",
                 plannerResult.getSegments().size()));
 
         Consumer<SegmentShotResult> progressCallback = segProgress -> {
@@ -425,13 +427,13 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         );
 
         // 4. Java Merge Engine: 按 segment.sequence 排序、合并 Scene 与 ShotGroup、全局重编 Shot ID
-        stepLogger.accept("\n[4/5] 🧩 Java Merge Engine 确定性合并与连续性体检 (ShotDurationRule) (0 次额外 AI 调用)...");
+        stepLogger.accept("\n[5/6] 🧩 Java Merge Engine 确定性合并与连续性体检 (ShotDurationRule) (0 次额外 AI 调用)...");
         ScriptDecomposeResultVO mergedResult = shotMergeService.mergeSegmentResults(
                 segmentResults, plannerResult, globalContext, stepLogger
         );
 
         // 5. 规则体检与 PromptBuilder 本地生成
-        stepLogger.accept("\n[5/5] 🎨 PromptBuilder 影视级视听纯英文提示词装配完成 (场景打光 + 关键道具 + 主焦点角色)...");
+        stepLogger.accept("\n[6/6] 🎨 PromptBuilder 影视级视听纯英文提示词装配完成 (场景打光 + 关键道具 + 主焦点角色)...");
         Set<String> registeredNames = new HashSet<>();
         for (DecomposedCharacterVO c : characters) {
             if (StringUtils.isNotBlank(c.getName())) registeredNames.add(c.getName().trim());
@@ -1604,6 +1606,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         // 如果用户提供了修改/脱敏后的小说文本覆盖
         if (StringUtils.isNotBlank(retryDTO.getRawTextOverride())) {
             targetSegment.setRawText(retryDTO.getRawTextOverride().trim());
+            targetSegment.setNormalizedContent(null);
         }
 
         // 构造请求上下文
@@ -1614,6 +1617,17 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             } catch (Exception ignored) {}
         }
         if (request == null) throw new BizException("Redis 中的原文草稿已过期，无法重试 Worker");
+        if (StringUtils.isBlank(targetSegment.getRawText()) && StringUtils.isNotBlank(request.getRawText())
+                && targetSegment.getStartOffset() != null && targetSegment.getEndOffset() != null) {
+            int start = targetSegment.getStartOffset();
+            int end = targetSegment.getEndOffset();
+            if (start >= 0 && end > start && end <= request.getRawText().length()) {
+                targetSegment.setRawText(request.getRawText().substring(start, end));
+            }
+        }
+        if (StringUtils.isBlank(targetSegment.getRawText())) {
+            throw new BizException("无法从原文草稿恢复分段文本，请提供该分段原文后重试");
+        }
         if (retryDTO.getProviderIdOverride() != null && retryDTO.getProviderIdOverride() > 0) {
             request.setProviderId(retryDTO.getProviderIdOverride());
         }

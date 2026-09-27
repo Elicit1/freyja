@@ -89,6 +89,8 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
            - 剧情分段 (segments) 中的出场角色 characterIds 必须直接填写具体的人物中文姓名（如 ["苏清雪", "苏明宇"]），严禁输出 char_001 等抽象编号！
            - 剧情分段 (segments) 中的环境地点 locationIds 必须直接填写具体的中文场景名称（如 ["顶层总裁办公室", "地下车库"]），严禁输出 loc_001 等抽象编号！
 
+        7. 【分段连续性提示】：全章一次性为每个 Segment 输出简短 previousStateHint、currentEventHint、nextEventHint。前者只记该段起点必须继承的人物位置、动作、道具持有及空间关系；中者概括当前核心事实；后者只提示下一段关键事件，不提前完成。基于全章原文生成，不依赖下游处理结果；无可靠事实填 null。normalizedContent 必须留空，由后续 Story Normalizer 填写。
+
         【角色资产提取准则与严格过滤红线 (Character Filtering & Entity Rules)】：
         1. 【角色准入硬性门槛（必须同时满足以下条件，才允许提取为 Character 资产）】：
            - 物理在场 (Physical Presence)：必须在当前场景的物理时空中“实际登场并参与动作/对白”；
@@ -157,6 +159,7 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
         BeanOutputConverter<PlannerDecomposeResultVO> converter = new BeanOutputConverter<>(PlannerDecomposeResultVO.class);
 
         String systemPrompt = sysConfigService.getConfigValue("ai.prompt.planner_system", DEFAULT_PLANNER_SYSTEM_PROMPT);
+        systemPrompt += "\n\n【分段连续性上下文输出】基于全章原文一次性为每个 Segment 生成简短 previousStateHint、currentEventHint、nextEventHint。previousStateHint 只记录该段起点必须继承的人物位置、动作、道具持有和空间关系；currentEventHint 只概括本段核心事实；nextEventHint 仅提示下一段即将发生的事件，不提前完成。无可靠事实填 null。不得生成 normalizedContent，该字段交给 Story Normalizer。";
         if (scriptSkillRuntime == null || request.getSkillPolicy() == null
                 || request.getSkillPolicy().getPlanner() == null
                 || request.getSkillPolicy().getPlanner().getRequiredSkillNames() == null

@@ -461,19 +461,19 @@
                 </div>
                 <span class="text-slate-300">→</span>
 
-                <!-- 步骤 3: 分镜并行生成 -->
+                <!-- 步骤 3: 剧情标准化 -->
                 <div
                   class="flex items-center gap-1.5 font-medium transition-all"
-                  :class="currentThinkingPhase === 3 ? 'text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200' : currentThinkingPhase > 3 ? 'text-emerald-600 font-semibold' : 'text-slate-400'"
+                  :class="currentThinkingPhase === 3 || normalizerPhasePending ? 'text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200' : currentThinkingPhase > 3 ? 'text-emerald-600 font-semibold' : 'text-slate-400'"
                 >
-                  <span v-if="currentThinkingPhase === 3" class="animate-spin text-xs">⏳</span>
+                  <span v-if="currentThinkingPhase === 3 || normalizerPhasePending" class="animate-spin text-xs">⏳</span>
                   <span v-else-if="currentThinkingPhase > 3" class="text-xs font-bold text-emerald-600">✓</span>
                   <span v-else class="text-xs text-slate-400">3.</span>
-                  <span>⚡ 分镜并行生成</span>
+                  <span>🧭 剧情标准化</span>
                 </div>
                 <span class="text-slate-300">→</span>
 
-                <!-- 步骤 4: 确定性合并与体检 -->
+                <!-- 步骤 4: 分镜并行生成 -->
                 <div
                   class="flex items-center gap-1.5 font-medium transition-all"
                   :class="currentThinkingPhase === 4 ? 'text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200' : currentThinkingPhase > 4 ? 'text-emerald-600 font-semibold' : 'text-slate-400'"
@@ -481,11 +481,11 @@
                   <span v-if="currentThinkingPhase === 4" class="animate-spin text-xs">⏳</span>
                   <span v-else-if="currentThinkingPhase > 4" class="text-xs font-bold text-emerald-600">✓</span>
                   <span v-else class="text-xs text-slate-400">4.</span>
-                  <span>🛡️ 确定性合并与体检</span>
+                  <span>⚡ 分镜并行生成</span>
                 </div>
                 <span class="text-slate-300">→</span>
 
-                <!-- 步骤 5: 视听 Prompt 装配 -->
+                <!-- 步骤 5: 确定性合并与体检 -->
                 <div
                   class="flex items-center gap-1.5 font-medium transition-all"
                   :class="currentThinkingPhase === 5 ? 'text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200' : currentThinkingPhase > 5 ? 'text-emerald-600 font-semibold' : 'text-slate-400'"
@@ -493,6 +493,18 @@
                   <span v-if="currentThinkingPhase === 5" class="animate-spin text-xs">⏳</span>
                   <span v-else-if="currentThinkingPhase > 5" class="text-xs font-bold text-emerald-600">✓</span>
                   <span v-else class="text-xs text-slate-400">5.</span>
+                  <span>🛡️ 确定性合并与体检</span>
+                </div>
+                <span class="text-slate-300">→</span>
+
+                <!-- 步骤 6: 视听 Prompt 装配 -->
+                <div
+                  class="flex items-center gap-1.5 font-medium transition-all"
+                  :class="currentThinkingPhase === 6 ? 'text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200' : currentThinkingPhase > 6 ? 'text-emerald-600 font-semibold' : 'text-slate-400'"
+                >
+                  <span v-if="currentThinkingPhase === 6" class="animate-spin text-xs">⏳</span>
+                  <span v-else-if="currentThinkingPhase > 6" class="text-xs font-bold text-emerald-600">✓</span>
+                  <span v-else class="text-xs text-slate-400">6.</span>
                   <span>🎨 视听 Prompt 装配</span>
                 </div>
               </div>
@@ -517,7 +529,7 @@
                     v-else
                     class="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-700 font-mono font-normal"
                   >
-                    ✓ 资产库已锁定，已注入 Worker 并行执行
+                    ✓ 资产库已锁定，已注入标准化与 Worker 并行执行
                   </span>
                 </div>
               </div>
@@ -563,6 +575,9 @@
                 <span v-else class="text-slate-400">•</span>
                 <span class="font-bold">{{ seg.id }}</span>
                 <span v-if="seg.title" class="text-slate-600 max-w-[80px] truncate">({{ seg.title }})</span>
+                <span class="font-sans" :class="seg.normalizerStatus === 'FALLBACK' ? 'text-amber-700' : 'text-indigo-600'">
+                  {{ seg.normalizerStatus === 'RUNNING' ? '标准化中' : seg.normalizerStatus === 'SUCCESS' ? '已标准化' : seg.normalizerStatus === 'FALLBACK' ? '原文回退' : '待标准化' }}
+                </span>
                 <span v-if="seg.shotsCount" class="text-pink-600 font-semibold">{{ seg.shotsCount }}镜</span>
                 <el-button
                   v-if="seg.status === 'FAILED' && result?.taskId"
@@ -635,7 +650,7 @@
             <div class="pt-2.5 border-t border-slate-200 text-[11px] text-slate-500 flex items-center justify-between font-sans">
               <span class="flex items-center gap-1.5">
                 <span class="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span>💡 提示：点击上方分段 Tab 可自由切换各 Worker 独立视口，查看独立分镜生成打字流</span>
+                <span>💡 提示：每个分段都有标准化与 Worker 独立视口，可查看各自的流式输出</span>
               </span>
               <div class="flex items-center gap-3">
                 <label class="flex items-center gap-1 cursor-pointer select-none text-slate-600 hover:text-slate-900 font-medium">
@@ -1591,6 +1606,12 @@
                           {{ seg.summary || '暂无剧情摘要' }}
                         </p>
 
+                        <div class="mb-3 rounded-lg border border-indigo-100 bg-indigo-50/60 p-2.5 text-xs">
+                          <div class="font-semibold text-indigo-800 mb-1">🧭 标准化事件描述</div>
+                          <p v-if="seg.normalizedContent" class="text-slate-700 whitespace-pre-wrap leading-relaxed">{{ seg.normalizedContent }}</p>
+                          <p v-else class="text-amber-700">本段未生成标准化内容，Worker 使用原文。</p>
+                        </div>
+
                         <div class="flex flex-wrap gap-2 text-xs mb-2">
                           <div v-if="seg.characterIds?.length" class="flex items-center gap-1">
                             <span class="text-slate-400">👤 角色:</span>
@@ -2075,20 +2096,24 @@ interface LiveSegmentItem {
   sequence: number
   title?: string
   status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED'
+  normalizerStatus?: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FALLBACK'
   shotsCount?: number
   errorMessage?: string | null
 }
 
 const liveSegmentsList = ref<LiveSegmentItem[]>([])
+const normalizerPhasePending = computed(() => isStreaming.value && liveSegmentsList.value.length > 0
+  && liveSegmentsList.value.some(s => !s.normalizerStatus || s.normalizerStatus === 'PENDING' || s.normalizerStatus === 'RUNNING'))
 
 const currentThinkingPhase = computed(() => {
   const text = streamOutputText.value
+  if (result.value) return 7
   if (!text) return 1
-  if (result.value) return 6
-  if (text.includes('[5/5]') || text.includes('PromptBuilder') || text.includes('视听纯英文提示词装配完成')) return 5
-  if (text.includes('[4/5]') || text.includes('[4/4]') || text.includes('ShotMerge Engine') || text.includes('防碎片') || text.includes('确定性合并')) return 4
-  if (text.includes('[3/5]') || text.includes('[3/4]') || text.includes('WorkerPool') || text.includes('Worker SEG') || text.includes('分段并行')) return 3
-  if (discoveredAssets.value != null || text.includes('[2/5]') || text.includes('[2/4]') || text.includes('场景·角色·道具') || text.includes('实体角色') || text.includes('消歧') || text.includes('资产提炼')) return 2
+  if (text.includes('[6/6]') || text.includes('PromptBuilder') || text.includes('视听纯英文提示词装配完成')) return 6
+  if (text.includes('[5/6]') || text.includes('ShotMerge Engine') || text.includes('防碎片') || text.includes('确定性合并')) return 5
+  if (liveSegmentsList.value.some(s => s.status === 'RUNNING' || s.status === 'SUCCESS' || s.status === 'FAILED') || text.includes('Worker SEG')) return 4
+  if (liveSegmentsList.value.some(s => s.normalizerStatus && s.normalizerStatus !== 'PENDING') || text.includes('[3/6]') || text.includes('Story Normalizer')) return 3
+  if (discoveredAssets.value != null || text.includes('[2/6]') || text.includes('场景·角色·道具') || text.includes('资产提炼')) return 2
   return 1
 })
 
@@ -2104,6 +2129,7 @@ const liveSegments = computed<LiveSegmentItem[]>(() => {
         sequence: s.sequence || 1,
         title: s.title || s.id,
         status: (segRes?.status || (result.value?.status === 'PARTIAL_SUCCESS' ? 'SUCCESS' : 'SUCCESS')) as any,
+        normalizerStatus: s.normalizedContent ? 'SUCCESS' : 'FALLBACK',
         errorMessage: segRes?.errorMessage,
         shotsCount: undefined
       }
@@ -2136,6 +2162,15 @@ const channelList = computed(() => {
   const seenIds = new Set<string>()
   for (const seg of liveSegments.value) {
     seenIds.add(seg.id)
+    const normalizerId = `NORMALIZER_${seg.id}`
+    const normalizerChannel = channelsMap.value[normalizerId]
+    list.push({
+      id: normalizerId,
+      name: `🧭 ${seg.id} 标准化`,
+      title: seg.title,
+      text: normalizerChannel?.text || '',
+      status: seg.normalizerStatus === 'FALLBACK' ? 'FAILED' : seg.normalizerStatus || 'PENDING'
+    })
     const existing = channelsMap.value[seg.id]
     list.push({
       id: seg.id,
@@ -2168,7 +2203,8 @@ const currentActiveTabText = computed(() => {
   if (activeChannelTab.value === 'ALL') {
     return streamOutputText.value || '（正在连接大模型流式端点...）'
   }
-  return channelsMap.value[activeChannelTab.value]?.text || '（该分段正在等待 Worker 线程启动或暂无独立输出...）'
+  return channelsMap.value[activeChannelTab.value]?.text
+    || (activeChannelTab.value.startsWith('NORMALIZER_') ? '（该分段正在等待标准化模型输出...）' : '（该分段正在等待 Worker 线程启动或暂无独立输出...）')
 })
 
 const committing = ref(false)
@@ -3016,7 +3052,8 @@ async function handleStartDecompose(existingTaskId?: string) {
           id: String(seg.id).toUpperCase(),
           sequence: seg.sequence || 1,
           title: seg.title || seg.id,
-          status: 'PENDING'
+          status: 'PENDING',
+          normalizerStatus: 'PENDING'
         }))
         segments.forEach((seg: any) => {
           const id = String(seg.id).toUpperCase()
@@ -3024,6 +3061,13 @@ async function handleStartDecompose(existingTaskId?: string) {
           channelsMap.value[id] = {
             id,
             name: `🎬 ${id} (${title})`,
+            title,
+            text: '',
+            status: 'PENDING'
+          }
+          channelsMap.value[`NORMALIZER_${id}`] = {
+            id: `NORMALIZER_${id}`,
+            name: `🧭 ${id} 标准化`,
             title,
             text: '',
             status: 'PENDING'
@@ -3054,7 +3098,7 @@ async function handleStartDecompose(existingTaskId?: string) {
           if (!channelsMap.value[targetChannel]) {
             channelsMap.value[targetChannel] = {
               id: targetChannel,
-              name: `🎬 ${targetChannel}`,
+              name: targetChannel.startsWith('NORMALIZER_') ? `🧭 ${targetChannel.slice(11)} 标准化` : `🎬 ${targetChannel}`,
               text: '',
               status: 'RUNNING'
             }
@@ -3073,6 +3117,17 @@ async function handleStartDecompose(existingTaskId?: string) {
               streamConsoleRef.value.scrollTop = streamConsoleRef.value.scrollHeight
             }
           })
+        }
+      },
+      onNormalizerStatus(channel, status) {
+        if (!channel) return
+        const id = `NORMALIZER_${channel}`
+        const liveSeg = liveSegmentsList.value.find(s => s.id === channel)
+        if (liveSeg) liveSeg.normalizerStatus = status
+        if (!channelsMap.value[id]) channelsMap.value[id] = { id, name: `🧭 ${channel} 标准化`, text: '', status: 'PENDING' }
+        channelsMap.value[id].status = status === 'FALLBACK' ? 'FAILED' : status
+        if (status === 'FALLBACK') {
+          channelsMap.value[id].text += '\n⚠️ 标准化失败，Worker 将使用原文继续拆解。\n'
         }
       },
       onWorkerStatus(channel, status, shotsCount) {

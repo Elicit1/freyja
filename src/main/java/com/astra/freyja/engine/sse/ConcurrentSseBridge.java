@@ -168,6 +168,20 @@ public class ConcurrentSseBridge {
         }
     }
 
+    /** 发送单段 Story Normalizer 的运行结果，不包含小说正文。 */
+    public void sendNormalizerStatus(String jsonPayload) {
+        if (completed.get() || StringUtils.isBlank(jsonPayload)) return;
+        synchronized (lock) {
+            if (completed.get()) return;
+            try {
+                send("normalizer_status", jsonPayload);
+            } catch (Exception e) {
+                log.debug("[ConcurrentSseBridge] 发送 normalizer_status 失败: {}", e.getMessage());
+                completed.set(true);
+            }
+        }
+    }
+
     /**
      * 发送结构化 JSON 结果并标明完成
      */

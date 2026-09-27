@@ -7,16 +7,16 @@
 
 ## 1. 架构定位：整章并行分段解析 (Parallel Segmented Decomposition Architecture)
 
-为解决超长小说章节解析时模型上下文退化、漏情节、镜头时长碎片化 (1~3s) 等问题，本系统采用 **Planner AI (1次宏观分段) + Worker AI × N (并行分镜生成) + Java 确定性合并与规则体检** 的高效工业级架构：
+为解决超长小说章节解析时模型上下文退化、漏情节、镜头时长碎片化 (1~3s) 等问题，本系统采用 **Planner AI (1次宏观分段) + Story Normalizer × N + Worker AI × N + Java 确定性合并与规则体检**：
 
 ```text
 一章小说全文 (3000~8000+ 字)
     ↓
-1. Planner AI (全局仅 1 次 AI 调用): 仅负责剧情事件分段划分 List<StorySegment> (软参考 1200~3500 字，完整性优先)
+1. Planner AI (全局仅 1 次 AI 调用): 负责剧情事件分段、角色/道具/场景提取，并为所有 Segment 一次生成简短的 previousStateHint、currentEventHint、nextEventHint
     ↓
 2. Java 本地边界自愈与引用校验 (0 次额外 AI 调用): Planner 在同一次请求中完成角色身份判断；Java 校验返回的角色 ID 属于当前项目并处理现有资产引用
     ↓
-3. Worker AI × N (并行调度): Semaphore(maxConcurrency=3) 并发控制，每个 Worker 接收全局精简上下文 + 局部剧情，聚焦生成 5~8s 影视镜头剧本 (scriptContent) 与视听结构，Worker 不再生成首帧图 Prompt
+3. Story Normalizer × N → Worker AI × N: 沿用虚拟线程池与 Semaphore(maxConcurrency=3)；每段先独立标准化连续事件，再拆 ShotGroup/Shot。不同段并行，无前后段 Normalizer 结果依赖。Normalizer 失败时该段 Worker 使用原文；Worker 保留原文为最高事实来源
     ↓
 4. Java 确定性合并 (ShotMergeService, 0 次 AI 调用): 严格按 segment.sequence 排序，重排 Scene/ShotGroup/Shot 全局连续编号，透传剧本字段
     ↓
@@ -26,6 +26,10 @@
     ↓
 7. 级联入库与生图/调度 (Drama Episode Scene ShotGroup Shot 4层大纲持久化，含 script_content 存储)
 ```
+
+`StorySegment.normalizedContent` 与 Planner 连续性提示保存在现有任务预览/Redis 草稿 JSON 中，原文仍保存在父任务请求，单段重试时按 offset 恢复；没有新增业务表或数据库字段。旧草稿中 `normalizedContent` 为空时使用原文。Normalizer 使用独立系统提示词配置键 `ai.prompt.story_normalizer_system`，未配置时使用代码默认值。它只显式化原事件成立所需的空间、动作和道具状态，不创作新剧情，也不设计镜头或摄影。Worker Skill 加载及后续 Cinematography/Prompt AI 仍按原流程运行。
+
+标准化模型的原始流式片元作为 `channel_chunk`（通道 `NORMALIZER_SEG001` 等）写入现有 Redis AI 事件日志，并通过任务中心同一条 WebSocket 推送；`normalizer_status` 事件携带分段 `channel` 和 `RUNNING` / `SUCCESS` / `FALLBACK` 状态。前端为每段提供标准化与 Worker 独立视口，并在结果卡片展示 `normalizedContent`。系统配置初始化 SQL 已包含标准化提示词；已有数据库执行 `sh docker/mysql/migrations/apply-20260927-story-normalizer-prompt.sh`，不会覆盖现有同键配置。
 
 ---
 

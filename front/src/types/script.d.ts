@@ -102,6 +102,10 @@ export interface StorySegment {
   endOffset: number
   title: string
   summary?: string
+  previousStateHint?: string | null
+  currentEventHint?: string | null
+  nextEventHint?: string | null
+  normalizedContent?: string | null
   sceneId?: string
   characterIds?: string[]
   locationIds?: string[]
