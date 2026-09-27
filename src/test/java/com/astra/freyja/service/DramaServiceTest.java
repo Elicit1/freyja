@@ -125,6 +125,7 @@ class DramaServiceTest {
         shot1.setShotNo(1);
         shot1.setDuration(new BigDecimal("3.50"));
         shot1.setRenderStatus("SUCCESS");
+        shot1.setVideoUrl("https://example.test/shot-1.mp4");
 
         DramaShot shot2 = new DramaShot();
         shot2.setId(1001L);
@@ -137,8 +138,8 @@ class DramaServiceTest {
 
         when(dramaMapper.selectById(1L)).thenReturn(drama);
         when(episodeMapper.selectList(any())).thenReturn(List.of(episode));
-        when(sceneMapper.selectList(any())).thenReturn(List.of(scene));
-        when(shotMapper.selectList(any())).thenReturn(List.of(shot1, shot2));
+        when(sceneMapper.selectActiveByDramaId(1L)).thenReturn(List.of(scene));
+        when(shotMapper.selectActiveByDramaId(1L)).thenReturn(List.of(shot1, shot2));
 
         DramaTreeVO tree = dramaService.getDramaTree(1L);
         assertNotNull(tree);
@@ -167,6 +168,7 @@ class DramaServiceTest {
         DramaShot shot1 = new DramaShot();
         shot1.setDuration(new BigDecimal("3.00"));
         shot1.setRenderStatus("SUCCESS");
+        shot1.setVideoUrl("https://example.test/shot-1.mp4");
 
         DramaShot shot2 = new DramaShot();
         shot2.setDuration(new BigDecimal("4.00"));
@@ -174,8 +176,8 @@ class DramaServiceTest {
 
         when(dramaMapper.selectById(1L)).thenReturn(drama);
         when(episodeMapper.selectCount(any())).thenReturn(5L);
-        when(sceneMapper.selectCount(any())).thenReturn(10L);
-        when(shotMapper.selectList(any())).thenReturn(List.of(shot1, shot2));
+        when(sceneMapper.countActiveByDramaId(1L)).thenReturn(10L);
+        when(shotMapper.selectActiveByDramaId(1L)).thenReturn(List.of(shot1, shot2));
 
         DramaStatsVO stats = dramaService.getStats(1L);
         assertNotNull(stats);
@@ -185,6 +187,45 @@ class DramaServiceTest {
         assertEquals(1, stats.getRenderedShots());
         assertEquals(1, stats.getRenderingShots());
         assertEquals(new BigDecimal("7.00"), stats.getTotalEstimatedDuration());
+    }
+
+    @Test
+    void firstFrameAloneDoesNotCompleteProductionAndExistingVideoSurvivesFailedRerender() {
+        Drama drama = new Drama();
+        drama.setId(1L);
+        DramaShot firstFrameOnly = new DramaShot();
+        firstFrameOnly.setRenderStatus("SUCCESS"); // 历史数据曾把首帧成功误写为视频成功
+        firstFrameOnly.setPreviewImageUrl("https://example.test/frame.png");
+        DramaShot existingVideo = new DramaShot();
+        existingVideo.setRenderStatus("FAILED"); // 新一轮抽卡失败，已有视频依然可用
+        existingVideo.setVideoUrl("https://example.test/shot.mp4");
+
+        when(dramaMapper.selectById(1L)).thenReturn(drama);
+        when(episodeMapper.selectCount(any())).thenReturn(1L);
+        when(sceneMapper.countActiveByDramaId(1L)).thenReturn(1L);
+        when(shotMapper.selectActiveByDramaId(1L)).thenReturn(List.of(firstFrameOnly, existingVideo));
+
+        DramaStatsVO stats = dramaService.getStats(1L);
+        assertEquals(2, stats.getTotalShots());
+        assertEquals(1, stats.getRenderedShots());
+        assertEquals(1, stats.getInitShots());
+        assertEquals(50, stats.getProgressPercentage());
+    }
+
+    @Test
+    void galleryCountsOnlyShotsWithActiveParents() {
+        Drama drama = new Drama();
+        drama.setId(1L);
+        when(dramaMapper.selectById(1L)).thenReturn(drama);
+        when(episodeMapper.selectCount(any())).thenReturn(1L);
+        when(sceneMapper.countActiveByDramaId(1L)).thenReturn(1L);
+        when(shotMapper.countActiveByDramaId(1L)).thenReturn(2L);
+        when(shotMapper.countRenderedActiveByDramaId(1L)).thenReturn(1L);
+
+        DramaVO detail = dramaService.getById(1L);
+        assertEquals(2, detail.getShotCount());
+        assertEquals(1, detail.getRenderedShotCount());
+        assertEquals(50, detail.getProgressPercentage());
     }
 
     @Test

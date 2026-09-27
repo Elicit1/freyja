@@ -232,30 +232,12 @@ public class DramaShotGroupServiceImpl implements DramaShotGroupService {
             return;
         }
 
-        // 处理该镜头组下的所有分镜
+        // 删除镜头组时一并删除其分镜；不能把它们转移到其他组后继续计入制作进度。
         List<DramaShot> childShots = shotMapper.selectList(
                 new LambdaQueryWrapper<DramaShot>().eq(DramaShot::getShotGroupId, id)
         );
-
-        if (!childShots.isEmpty()) {
-            // 查找同场次下的其他镜头组
-            List<DramaShotGroup> otherGroups = shotGroupMapper.selectList(
-                    new LambdaQueryWrapper<DramaShotGroup>()
-                            .eq(DramaShotGroup::getSceneId, existing.getSceneId())
-                            .ne(DramaShotGroup::getId, id)
-                            .orderByAsc(DramaShotGroup::getGroupNo)
-            );
-            if (!otherGroups.isEmpty()) {
-                // 移入其他镜头组
-                DramaShotGroup targetGroup = otherGroups.get(0);
-                for (DramaShot s : childShots) {
-                    s.setShotGroupId(targetGroup.getId());
-                    shotMapper.updateById(s);
-                }
-            } else {
-                // 若没有其他镜头组，删除所属分镜
-                shotMapper.delete(new LambdaQueryWrapper<DramaShot>().eq(DramaShot::getShotGroupId, id));
-            }
+        for (DramaShot shot : childShots) {
+            shotService.delete(shot.getId());
         }
 
         shotGroupMapper.deleteById(id);

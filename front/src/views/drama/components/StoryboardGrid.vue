@@ -457,7 +457,7 @@ function handleGroupCommand(cmd: string, group: DramaShotGroup) {
     mergeModalRef.value?.open(displayedGroups.value, group.id)
   } else if (cmd === 'delete') {
     if (!group.id) return
-    ElMessageBox.confirm(`确定要删除镜头组【${group.name}】吗？`, '删除确认', {
+    ElMessageBox.confirm(`确定要删除镜头组【${group.name}】及其所有分镜吗？`, '删除确认', {
       type: 'warning',
       confirmButtonText: '确定删除',
       cancelButtonText: '取消'

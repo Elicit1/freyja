@@ -698,7 +698,6 @@ public class DramaShotServiceImpl implements DramaShotService {
             shot.setFirstFrameSourceType("AI_GENERATED");
             shot.setFirstFrameSourceShotId(null);
             shot.setFirstFrameSourceVideoUrl(null);
-            shot.setRenderStatus("SUCCESS");
         }
         shotMapper.updateById(shot);
 

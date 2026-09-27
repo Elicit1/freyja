@@ -194,12 +194,7 @@ public class DramaServiceImpl implements DramaService {
         );
 
         // 2. 获取所有场次
-        List<DramaScene> scenes = sceneMapper.selectList(
-                new LambdaQueryWrapper<DramaScene>()
-                        .eq(DramaScene::getDramaId, dramaId)
-                        .orderByAsc(DramaScene::getSceneNo)
-                        .orderByAsc(DramaScene::getSortOrder)
-        );
+        List<DramaScene> scenes = sceneMapper.selectActiveByDramaId(dramaId);
 
         // 3. 获取所有镜头组
         List<DramaShotGroup> shotGroups = shotGroupMapper.selectList(
@@ -211,12 +206,7 @@ public class DramaServiceImpl implements DramaService {
         );
 
         // 4. 获取所有分镜
-        List<DramaShot> shots = shotMapper.selectList(
-                new LambdaQueryWrapper<DramaShot>()
-                        .eq(DramaShot::getDramaId, dramaId)
-                        .orderByAsc(DramaShot::getShotNo)
-                        .orderByAsc(DramaShot::getSortOrder)
-        );
+        List<DramaShot> shots = shotMapper.selectActiveByDramaId(dramaId);
 
         // 5. 获取涉及的环境场景资产
         Map<Long, ResScene> resSceneMap = new HashMap<>();
@@ -239,7 +229,7 @@ public class DramaServiceImpl implements DramaService {
         int totalRenderedCount = 0;
 
         for (DramaShot s : shots) {
-            if ("SUCCESS".equalsIgnoreCase(s.getRenderStatus())) {
+            if (hasRenderedVideo(s)) {
                 totalRenderedCount++;
             }
             ShotSummaryVO summaryVO = ShotSummaryVO.builder()
@@ -280,7 +270,7 @@ public class DramaServiceImpl implements DramaService {
             List<DramaShotVO> childShots = shotVOMapByGroup.getOrDefault(g.getId(), Collections.emptyList());
             gvo.setShots(childShots);
             gvo.setShotCount(childShots.size());
-            gvo.setRenderedShotCount((int) childShots.stream().filter(s -> "SUCCESS".equalsIgnoreCase(s.getRenderStatus())).count());
+            gvo.setRenderedShotCount((int) childShots.stream().filter(s -> StringUtils.isNotBlank(s.getVideoUrl())).count());
 
             BigDecimal totalDur = BigDecimal.ZERO;
             for (DramaShotVO s : childShots) {
@@ -331,7 +321,7 @@ public class DramaServiceImpl implements DramaService {
                 if (sc.getShots() != null) {
                     epShotCount += sc.getShots().size();
                     for (ShotSummaryVO shot : sc.getShots()) {
-                        if ("SUCCESS".equalsIgnoreCase(shot.getRenderStatus())) {
+                        if (StringUtils.isNotBlank(shot.getVideoUrl())) {
                             epRenderedCount++;
                         }
                     }
@@ -386,8 +376,8 @@ public class DramaServiceImpl implements DramaService {
         }
 
         Long episodeCount = episodeMapper.selectCount(new LambdaQueryWrapper<DramaEpisode>().eq(DramaEpisode::getDramaId, dramaId));
-        Long sceneCount = sceneMapper.selectCount(new LambdaQueryWrapper<DramaScene>().eq(DramaScene::getDramaId, dramaId));
-        List<DramaShot> shots = shotMapper.selectList(new LambdaQueryWrapper<DramaShot>().eq(DramaShot::getDramaId, dramaId));
+        Long sceneCount = sceneMapper.countActiveByDramaId(dramaId);
+        List<DramaShot> shots = shotMapper.selectActiveByDramaId(dramaId);
 
         int totalShots = shots.size();
         int rendered = 0;
@@ -398,7 +388,7 @@ public class DramaServiceImpl implements DramaService {
 
         for (DramaShot s : shots) {
             String st = s.getRenderStatus();
-            if ("SUCCESS".equalsIgnoreCase(st)) {
+            if (hasRenderedVideo(s)) {
                 rendered++;
             } else if ("RENDERING".equalsIgnoreCase(st) || "QUEUED".equalsIgnoreCase(st)) {
                 rendering++;
@@ -435,11 +425,9 @@ public class DramaServiceImpl implements DramaService {
         BeanUtils.copyProperties(drama, vo);
 
         Long epCount = episodeMapper.selectCount(new LambdaQueryWrapper<DramaEpisode>().eq(DramaEpisode::getDramaId, drama.getId()));
-        Long scCount = sceneMapper.selectCount(new LambdaQueryWrapper<DramaScene>().eq(DramaScene::getDramaId, drama.getId()));
-        Long shCount = shotMapper.selectCount(new LambdaQueryWrapper<DramaShot>().eq(DramaShot::getDramaId, drama.getId()));
-        Long renderedCount = shotMapper.selectCount(new LambdaQueryWrapper<DramaShot>()
-                .eq(DramaShot::getDramaId, drama.getId())
-                .eq(DramaShot::getRenderStatus, "SUCCESS"));
+        Long scCount = sceneMapper.countActiveByDramaId(drama.getId());
+        Long shCount = shotMapper.countActiveByDramaId(drama.getId());
+        Long renderedCount = shotMapper.countRenderedActiveByDramaId(drama.getId());
 
         vo.setEpisodeCount(epCount.intValue());
         vo.setSceneCount(scCount.intValue());
@@ -447,5 +435,9 @@ public class DramaServiceImpl implements DramaService {
         vo.setRenderedShotCount(renderedCount.intValue());
         vo.setProgressPercentage(shCount == 0 ? 0 : (int) ((renderedCount * 100) / shCount));
         return vo;
+    }
+
+    private boolean hasRenderedVideo(DramaShot shot) {
+        return StringUtils.isNotBlank(shot.getVideoUrl());
     }
 }

@@ -8,8 +8,28 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.util.List;
+
 @Mapper
 public interface DramaShotMapper extends BaseMapper<DramaShot> {
+
+    String ACTIVE_DRAMA_SHOTS = " FROM drama_shot s "
+            + "JOIN drama_scene sc ON sc.id = s.scene_id AND sc.deleted = 0 "
+            + "JOIN drama_episode ep ON ep.id = s.episode_id AND ep.deleted = 0 "
+            + "AND ep.id = sc.episode_id "
+            + "WHERE s.drama_id = #{dramaId} AND s.deleted = 0 "
+            + "AND sc.drama_id = s.drama_id AND ep.drama_id = s.drama_id";
+
+    /** 仅包含所属场次、剧集均未删除的分镜，兼容历史遗留的孤立分镜。 */
+    @Select("SELECT s.*" + ACTIVE_DRAMA_SHOTS + " ORDER BY s.shot_no, s.sort_order")
+    List<DramaShot> selectActiveByDramaId(@Param("dramaId") Long dramaId);
+
+    @Select("SELECT COUNT(*)" + ACTIVE_DRAMA_SHOTS)
+    Long countActiveByDramaId(@Param("dramaId") Long dramaId);
+
+    @Select("SELECT COUNT(*)" + ACTIVE_DRAMA_SHOTS
+            + " AND s.video_url IS NOT NULL AND TRIM(s.video_url) <> ''")
+    Long countRenderedActiveByDramaId(@Param("dramaId") Long dramaId);
 
     /**
      * 查询某剧集下当前最大分镜序号

@@ -131,4 +131,24 @@ class DramaShotGroupServiceTest {
         // s2, s3 移入新组
         verify(shotMapper, times(2)).updateById(any(DramaShot.class));
     }
+
+    @Test
+    void deletingGroupDeletesItsShotsInsteadOfMovingThemIntoAnotherGroup() {
+        DramaShotGroup group = new DramaShotGroup();
+        group.setId(100L);
+        group.setEpisodeId(5L);
+        group.setSceneId(10L);
+        DramaShot shot = new DramaShot();
+        shot.setId(200L);
+        shot.setShotGroupId(100L);
+        when(shotGroupMapper.selectById(100L)).thenReturn(group);
+        when(shotMapper.selectList(any())).thenReturn(List.of(shot));
+
+        shotGroupService.delete(100L);
+
+        verify(shotService).delete(200L);
+        verify(shotGroupMapper).deleteById(100L);
+        verify(shotMapper, never()).updateById(any(DramaShot.class));
+        verify(episodeService).recalculateEpisodeDuration(5L);
+    }
 }

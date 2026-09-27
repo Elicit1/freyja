@@ -317,7 +317,7 @@
             @video-history="handleOpenVideoHistory"
             @process-video="handleProcessVideo"
             @reorder-shots="handleReorderShots"
-            @refresh="selectedSceneId ? loadShots(selectedSceneId) : refreshTreeAndShots()"
+            @refresh="refreshShotsAndStats"
           />
           <ShotDrawer ref="shotDrawerRef" @success="refreshShotsAndStats" @deleted="refreshShotsAndStats" />
         </div>
@@ -469,10 +469,12 @@ function handleRenderTaskEvent(e: Event) {
   const detail = customEv?.detail
   if (!detail || !detail.task) return
   const task = detail.task
-  if (viewMode.value === 'workbench' && selectedSceneId.value) {
-    if (!task.sceneId || String(task.sceneId) === String(selectedSceneId.value) || (currentDramaId.value && String(task.dramaId) === String(currentDramaId.value))) {
-      loadShots(selectedSceneId.value)
-    }
+  if (viewMode.value !== 'workbench' || !currentDramaId.value
+    || String(task.dramaId) !== String(currentDramaId.value)) return
+  if (task.taskType === 'SHOT_VIDEO') {
+    void refreshShotsAndStats()
+  } else if (selectedSceneId.value && String(task.sceneId) === String(selectedSceneId.value)) {
+    void loadShots(selectedSceneId.value)
   }
 }
 
@@ -987,9 +989,7 @@ function handleProcessVideo({ shot, operation }: { shot: DramaShot; operation: '
 }
 
 async function handleHistorySelected() {
-  if (selectedSceneId.value) {
-    await loadShots(selectedSceneId.value)
-  }
+  await refreshShotsAndStats()
 }
 
 async function handleReorderShots(newShotIds: any[]) {
@@ -1026,11 +1026,21 @@ async function refreshTreeAndShots(targetSceneId?: any, targetEpisodeId?: any) {
 
 async function refreshShotsAndStats() {
   if (selectedSceneId.value) {
-    loadShots(selectedSceneId.value)
+    void loadShots(selectedSceneId.value)
   }
   if (currentDramaId.value) {
-    const statsRes = await dramaApi.getStats(currentDramaId.value as number)
-    dramaStats.value = statsRes || null
+    const dramaId = currentDramaId.value
+    try {
+      const [treeRes, statsRes] = await Promise.all([
+        dramaApi.getTree(dramaId),
+        dramaApi.getStats(dramaId)
+      ])
+      if (String(currentDramaId.value) !== String(dramaId)) return
+      treeData.value = treeRes || null
+      dramaStats.value = statsRes || null
+    } catch (e: any) {
+      ElMessage.error(e.message || '刷新制作进度失败')
+    }
   }
 }
 </script>
