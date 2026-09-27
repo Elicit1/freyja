@@ -41,6 +41,7 @@ import com.astra.freyja.entity.DramaShotVideoTake;
 import com.astra.freyja.entity.RenderTask;
 import com.astra.freyja.service.ShotVideoTakeService;
 import com.astra.freyja.util.AspectRatioUtil;
+import com.astra.freyja.util.ShotSeedUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -178,6 +179,7 @@ public class DramaShotServiceImpl implements DramaShotService {
 
         DramaShot shot = new DramaShot();
         BeanUtils.copyProperties(dto, shot);
+        shot.setSeed(ShotSeedUtil.next());
 
         shot.setSceneId(scene.getId());
         if (shot.getEpisodeId() == null) {
@@ -413,6 +415,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         clone.setShotNo(nextNo);
         clone.setShotName(source.getShotName() + " (副本)");
         clone.setSortOrder(nextNo);
+        clone.setSeed(ShotSeedUtil.next());
         clone.setRenderStatus("INIT");
         clone.setPreviewImageUrl(null);
         clone.setEndFrameImageUrl(null);
@@ -427,6 +430,21 @@ public class DramaShotServiceImpl implements DramaShotService {
             episodeService.recalculateEpisodeDuration(clone.getEpisodeId());
         }
         return clone.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public Long refreshSeed(Long id) {
+        DramaShot shot = shotMapper.selectById(id);
+        if (shot == null) {
+            throw new BizException(404, "分镜不存在: " + id);
+        }
+        Long seed = ShotSeedUtil.nextDifferent(shot.getSeed());
+        DramaShot update = new DramaShot();
+        update.setId(id);
+        update.setSeed(seed);
+        shotMapper.updateById(update);
+        return seed;
     }
 
     @Override
@@ -757,6 +775,15 @@ public class DramaShotServiceImpl implements DramaShotService {
             assembleShotPrompt(id);
             shot = shotMapper.selectById(id);
         }
+
+        // Freeze the shot seed in this render request so later refreshes affect only future tasks.
+        if (shot.getSeed() == null || shot.getSeed() <= 0 || shot.getSeed() > ShotSeedUtil.MAX_SEED) {
+            shot.setSeed(ShotSeedUtil.next());
+        }
+        if (requestDTO == null) {
+            requestDTO = new DramaShotRenderRequestDTO();
+        }
+        requestDTO.setSeed(shot.getSeed());
 
         String taskId = "RENDER_" + System.currentTimeMillis();
         shot.setLatestTaskId(taskId);

@@ -291,6 +291,7 @@ export interface DramaShot {
   shotTypeLocked?: boolean
   cameraMovementLocked?: boolean
   duration: number
+  seed?: string
   scriptContent?: string
   actionDescription?: string
   dialogue?: string
@@ -356,7 +357,7 @@ export interface ShotVideoTake {
   providerName?: string
   modelCode?: string
   generationMode?: 'FIRST_LAST_FRAME' | 'REFERENCE_MODE' | string
-  seed?: number
+  seed?: string | number
   size?: string
   duration?: number
   promptSnapshot?: string

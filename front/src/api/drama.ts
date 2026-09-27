@@ -247,6 +247,13 @@ export const shotApi = {
     })
   },
 
+  refreshSeed(id: string | number) {
+    return request<string>({
+      url: `/drama/shot/${String(id)}/refresh-seed`,
+      method: 'post'
+    })
+  },
+
   reorder(data: DramaShotReorder) {
     return request<void>({
       url: '/drama/shot/reorder',

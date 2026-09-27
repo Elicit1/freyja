@@ -19,6 +19,7 @@ import com.astra.freyja.entity.DramaScene;
 import com.astra.freyja.entity.DramaShot;
 import com.astra.freyja.entity.DramaShotVideoTake;
 import com.astra.freyja.service.impl.DramaShotServiceImpl;
+import com.astra.freyja.util.ShotSeedUtil;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
@@ -124,6 +125,10 @@ class DramaShotServiceTest {
 
         Long id = shotService.create(dto);
         assertEquals(1000L, id);
+        ArgumentCaptor<DramaShot> inserted = ArgumentCaptor.forClass(DramaShot.class);
+        verify(shotMapper).insert(inserted.capture());
+        assertTrue(inserted.getValue().getSeed() > 0);
+        assertTrue(inserted.getValue().getSeed() <= ShotSeedUtil.MAX_SEED);
         verify(shotMapper, times(1)).insert(argThat((DramaShot shot) ->
                 shot != null && "MEDIUM_SHOT".equals(shot.getShotType())
                         && Boolean.FALSE.equals(shot.getShotTypeLocked())
@@ -223,6 +228,7 @@ class DramaShotServiceTest {
         source.setShotName("S01-01");
         source.setPrompt("1man, cinematic");
         source.setRenderStatus("SUCCESS");
+        source.setSeed(1234L);
 
         when(shotMapper.selectById(1000L)).thenReturn(source);
         when(shotMapper.selectList(any())).thenReturn(List.of(source));
@@ -239,9 +245,27 @@ class DramaShotServiceTest {
         verify(shotMapper, times(1)).insert((DramaShot) argThat(s ->
                 s != null &&
                 ((DramaShot) s).getShotNo() == 2 &&
+                ((DramaShot) s).getSeed() != null &&
+                !((DramaShot) s).getSeed().equals(source.getSeed()) &&
                 "INIT".equals(((DramaShot) s).getRenderStatus()) &&
                 "S01-01 (副本)".equals(((DramaShot) s).getShotName())
         ));
+    }
+
+    @Test
+    void testRefreshSeedUpdatesOnlySeed() {
+        DramaShot shot = new DramaShot();
+        shot.setId(1000L);
+        shot.setSeed(1234L);
+        when(shotMapper.selectById(1000L)).thenReturn(shot);
+
+        Long refreshed = shotService.refreshSeed(1000L);
+
+        assertNotEquals(1234L, refreshed);
+        assertTrue(refreshed > 0 && refreshed <= ShotSeedUtil.MAX_SEED);
+        verify(shotMapper).updateById(argThat((DramaShot update) ->
+                update.getId().equals(1000L) && update.getSeed().equals(refreshed)
+                        && update.getPrompt() == null && update.getRenderStatus() == null));
     }
 
     @Test
@@ -312,6 +336,7 @@ class DramaShotServiceTest {
         shot.setPrompt("1man, masterpiece");
         shot.setNegativePrompt("bad");
         shot.setComfyWorkflowTemplateId("SDXL_TXT2IMG");
+        shot.setSeed(1234L);
 
         when(shotMapper.selectById(1000L)).thenReturn(shot);
 
@@ -321,12 +346,31 @@ class DramaShotServiceTest {
         ComfyRenderTaskVO result = shotService.submitShotRender(1000L, req);
         assertNotNull(result);
         assertNotNull(result.getTaskId());
+        assertEquals(1234L, req.getSeed());
 
         verify(shotMapper, times(1)).updateById((DramaShot) argThat(s ->
                 s != null &&
                 "QUEUED".equals(((DramaShot) s).getRenderStatus())
         ));
         verify(renderAsyncExecutor, times(1)).execute(any(Runnable.class));
+    }
+
+    @Test
+    void testSubmitShotRenderRepairsMissingSeedBeforeQueueing() {
+        DramaShot shot = new DramaShot();
+        shot.setId(1000L);
+        shot.setDramaId(1L);
+        shot.setPrompt("video prompt");
+        when(shotMapper.selectById(1000L)).thenReturn(shot);
+
+        DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
+        shotService.submitShotRender(1000L, request);
+
+        assertNotNull(request.getSeed());
+        assertTrue(request.getSeed() > 0 && request.getSeed() <= ShotSeedUtil.MAX_SEED);
+        verify(shotMapper).updateById(argThat((DramaShot queued) ->
+                "QUEUED".equals(queued.getRenderStatus())
+                        && request.getSeed().equals(queued.getSeed())));
     }
 
     @Test

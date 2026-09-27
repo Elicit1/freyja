@@ -78,7 +78,7 @@ CREATE TABLE `sys_config` (
 DROP TABLE IF EXISTS `ai_provider`;
 CREATE TABLE `ai_provider` (
     `id`                BIGINT UNSIGNED NOT NULL COMMENT '主键',
-    `provider_code`     VARCHAR(64)   NOT NULL COMMENT '提供商编码，唯一（如 deepseek/openai/ollama）',
+    `provider_code`     VARCHAR(64)   NOT NULL COMMENT '提供商编码，未删除记录中唯一（如 deepseek/openai/ollama）',
     `provider_name`     VARCHAR(100)  NOT NULL COMMENT '提供商名称',
     `provider_type`     VARCHAR(32)   NOT NULL COMMENT '接入类型 OPENAI-OpenAI规范兼容 OLLAMA',
     `api_key`           VARCHAR(1024) DEFAULT NULL COMMENT 'API Key（AES 加密密文，接口返回掩码）',
@@ -96,7 +96,7 @@ CREATE TABLE `ai_provider` (
     `deleted`           TINYINT       NOT NULL DEFAULT 0 COMMENT '逻辑删除 0-正常 1-删除',
     `remark`            VARCHAR(500)  DEFAULT NULL COMMENT '备注',
     PRIMARY KEY (`id`),
-    KEY `idx_provider_code` (`provider_code`)
+    KEY `idx_provider_code_deleted` (`provider_code`, `deleted`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = 'AI 提供商配置表';
 
 -- 2.2 AI 模型表
@@ -104,7 +104,7 @@ DROP TABLE IF EXISTS `ai_model`;
 CREATE TABLE `ai_model` (
     `id`          BIGINT UNSIGNED NOT NULL COMMENT '主键',
     `provider_id` BIGINT UNSIGNED NOT NULL COMMENT '归属提供商 ID',
-    `model_code`  VARCHAR(64)  NOT NULL COMMENT '模型标识，同提供商下唯一',
+    `model_code`  VARCHAR(64)  NOT NULL COMMENT '模型标识，同提供商的未删除记录中唯一',
     `model_name`  VARCHAR(100) NOT NULL COMMENT '模型名称（展示用）',
     `model_type`  VARCHAR(32)  NOT NULL DEFAULT 'CHAT' COMMENT '模型类型: CHAT/TXT2IMG/IMG2IMG/TXT_IMG2IMG/TXT2VIDEO_FIRST_LAST/TXT2VIDEO_REF/TTS/LIP_SYNC/EMBEDDING/VIDEO_UPSCALE/FRAME_INTERPOLATION',
     `temperature` DOUBLE       DEFAULT NULL COMMENT '采样温度',
@@ -123,7 +123,7 @@ CREATE TABLE `ai_model` (
     `deleted`     TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除 0-正常 1-删除',
     `remark`      VARCHAR(500) DEFAULT NULL COMMENT '备注',
     PRIMARY KEY (`id`),
-    KEY `idx_provider_model` (`provider_id`, `model_code`),
+    KEY `idx_provider_model_deleted` (`provider_id`, `model_code`, `deleted`),
     KEY `idx_provider_id` (`provider_id`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = 'AI 模型配置表';
 
@@ -541,6 +541,7 @@ CREATE TABLE `drama_shot` (
     `shot_type_locked`           TINYINT(1)      NOT NULL DEFAULT 0 COMMENT '景别是否由创作者明确锁定',
     `camera_movement_locked`     TINYINT(1)      NOT NULL DEFAULT 0 COMMENT '运镜是否由创作者明确锁定',
     `duration`                   DECIMAL(4,2)    NOT NULL DEFAULT 3.00 COMMENT '预估镜头时长 (秒)',
+    `seed`                       BIGINT          NOT NULL COMMENT '镜头视频渲染随机种子（JavaScript 安全整数）',
     `script_content`             TEXT            DEFAULT NULL COMMENT '本镜头剧本文本 (供后续AI参考原文与剧本生成Prompt)',
     `action_description`         TEXT            DEFAULT NULL COMMENT '画面动作与视觉描述',
     `dialogue`                   TEXT            DEFAULT NULL COMMENT '对白台词',

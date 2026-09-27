@@ -148,12 +148,20 @@
           </el-row>
 
           <el-row :gutter="16">
-            <el-col :span="8">
+            <el-col :span="6">
               <el-form-item label="预估时长 (秒)" prop="duration">
                 <el-input-number v-model="form.duration" :min="0.5" :max="15" :step="0.5" :precision="2" class="w-full" />
               </el-form-item>
             </el-col>
-            <el-col :span="16">
+            <el-col :span="10">
+              <el-form-item label="视频随机种子 Seed">
+                <div class="flex w-full items-center gap-2">
+                  <el-input :model-value="form.seed || '创建后自动生成'" readonly class="flex-1 font-mono" />
+                  <el-button :disabled="!form.id" :loading="refreshingSeed" @click="handleRefreshSeed">刷新种子</el-button>
+                </div>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
               <el-form-item label="音效描述">
                 <el-input v-model="form.soundEffect" placeholder="如：雷鸣声、急促脚步声" />
               </el-form-item>
@@ -1132,6 +1140,7 @@ const historyDrawerVisible = ref(false)
 const loading = ref(false)
 const saving = ref(false)
 const rendering = ref(false)
+const refreshingSeed = ref(false)
 const formRef = ref<FormInstance>()
 
 const uploadingFirst = ref(false)
@@ -1165,6 +1174,7 @@ const form = reactive<DramaShot>({
   shotTypeLocked: false,
   cameraMovementLocked: false,
   duration: 3.0,
+  seed: undefined,
   scriptContent: '',
   actionDescription: '',
   dialogue: '',
@@ -1786,6 +1796,7 @@ function openCreate(dramaId: string | number, episodeId: string | number, sceneI
     shotTypeLocked: false,
     cameraMovementLocked: false,
     duration: 3.0,
+    seed: undefined,
     scriptContent: '',
     actionDescription: '',
     dialogue: '',
@@ -1861,6 +1872,20 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
   }
 }
 
+async function handleRefreshSeed() {
+  if (!form.id) return
+  refreshingSeed.value = true
+  try {
+    form.seed = await shotApi.refreshSeed(form.id)
+    ElMessage.success('已生成并保存新的镜头种子')
+    emit('success', form.id)
+  } catch (e: any) {
+    ElMessage.error(e.message || '刷新种子失败')
+  } finally {
+    refreshingSeed.value = false
+  }
+}
+
 async function handleRender() {
   const saved = await handleSave(false)
   if (!saved && !form.id) return
@@ -1900,6 +1925,7 @@ async function handleSave(closeAfter = false): Promise<boolean> {
       latestTaskId: _latestTaskId,
       videoUrl: _videoUrl,
       currentVideoTakeId: _currentVideoTakeId,
+      seed: _seed,
       ...editableForm
     } = form
     const payload = {
@@ -1923,6 +1949,11 @@ async function handleSave(closeAfter = false): Promise<boolean> {
       if (res) {
         form.id = res
         isEdit.value = true
+        try {
+          form.seed = (await shotApi.getById(res)).seed
+        } catch {
+          // Seed is persisted by the backend; the next detail load will display it.
+        }
       }
       if (closeAfter) visible.value = false
       emit('success', form.id)

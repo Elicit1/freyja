@@ -222,7 +222,7 @@
           </div>
           <div>
             <label class="text-xs font-bold text-slate-700 mb-1.5 block">视频随机种子 (Seed)</label>
-            <el-input-number v-model="step2Form.seed" :min="-1" placeholder="留空自动随机" class="!w-full" />
+            <el-input :model-value="currentShot?.seed || '镜头未设置'" readonly class="!w-full font-mono" />
           </div>
         </div>
 
@@ -435,7 +435,6 @@ const step1Form = reactive({
 // 步骤 2 表单
 const step2Form = reactive({
   workflowTemplateId: 'WAN_VIDEO_GEN',
-  seed: undefined as number | undefined,
   videoPrompt: ''
 })
 
@@ -610,8 +609,7 @@ async function handleRenderVideo() {
 
   try {
     const res = await shotApi.submitRender(currentShotId.value, {
-      workflowTemplateId: step2Form.workflowTemplateId,
-      seed: (step2Form.seed !== undefined && step2Form.seed >= 0) ? step2Form.seed : undefined
+      workflowTemplateId: step2Form.workflowTemplateId
     })
 
     if (res && res.taskId) {

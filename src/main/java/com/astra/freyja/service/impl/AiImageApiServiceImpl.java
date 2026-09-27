@@ -524,8 +524,9 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             payload.put("negative_prompt", shot.getNegativePrompt().trim());
         }
 
-        if (dto != null && dto.getSeed() != null && dto.getSeed() >= 0) {
-            payload.put("seed", dto.getSeed());
+        Long videoSeed = dto != null && dto.getSeed() != null ? dto.getSeed() : shot.getSeed();
+        if (videoSeed != null && videoSeed > 0) {
+            payload.put("seed", videoSeed);
         }
 
         if (shot.getDuration() != null) {

@@ -17,7 +17,7 @@ public class DramaShotRenderRequestDTO {
     /** 自定义完整 ComfyUI API 格式工作流 JSON (若未指定模板则必传) */
     private String workflowJson;
 
-    /** 自定义随机种子 (为空则随机) */
+    /** 服务端在提交渲染时固定的镜头种子快照。 */
     private Long seed;
 
     /** 业务渲染任务唯一标识 (用于网关关联与精准取消) */

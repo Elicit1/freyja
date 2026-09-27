@@ -51,6 +51,9 @@ public class DramaShot extends BaseEntity {
     /** 预估镜头时长 (秒) */
     private BigDecimal duration;
 
+    /** 本镜头视频渲染随机种子；刷新后后续渲染使用新值。 */
+    private Long seed;
+
     /** 本镜头剧本文本 (Shot Script: 供后续AI参考原文与剧本生成Prompt) */
     private String scriptContent;
 

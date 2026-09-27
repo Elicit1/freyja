@@ -970,6 +970,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                                         shot.setShotTypeLocked(isExplicitCameraConstraint(shotVO.getShotTypeLocked(), shotVO.getShotType()));
                                         shot.setCameraMovementLocked(isExplicitCameraConstraint(shotVO.getCameraMovementLocked(), shotVO.getCameraMovement()));
                                         shot.setDuration(duration);
+                                        shot.setSeed(com.astra.freyja.util.ShotSeedUtil.next());
                                         shot.setScriptContent(shotVO.getScriptContent());
                                         shot.setActionDescription(shotVO.getActionDescription());
                                         shot.setDialogueSpeaker(shotVO.getDialogueSpeaker());
@@ -1156,6 +1157,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                                             shot.setShotTypeLocked(isExplicitCameraConstraint(shotVO.getShotTypeLocked(), shotVO.getShotType()));
                                             shot.setCameraMovementLocked(isExplicitCameraConstraint(shotVO.getCameraMovementLocked(), shotVO.getCameraMovement()));
                                             shot.setDuration(duration);
+                                            shot.setSeed(com.astra.freyja.util.ShotSeedUtil.next());
                                             shot.setScriptContent(shotVO.getScriptContent());
                                             shot.setActionDescription(shotVO.getActionDescription());
                                             shot.setDialogueSpeaker(shotVO.getDialogueSpeaker());

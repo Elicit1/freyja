@@ -91,7 +91,7 @@
           </div>
           <div>
             <label class="text-[11px] font-medium text-slate-600 mb-1 block">随机种子 Seed</label>
-            <el-input-number v-model="renderConfig.seed" size="small" :min="-1" placeholder="随机" class="!w-full" />
+            <el-input :model-value="shotSeed || '镜头未设置'" size="small" readonly class="!w-full font-mono" />
           </div>
         </div>
       </div>
@@ -398,6 +398,7 @@ const endFrameUrl = ref<string>('')
 const videoUrl = ref<string>('')
 const extractingTail = ref(false)
 const dramaAspectRatio = ref<string>('')
+const shotSeed = ref<string>('')
 
 const imageGenerateModalRef = ref<InstanceType<typeof ShotImageGenerateModal> | null>(null)
 
@@ -413,8 +414,7 @@ const models = ref<AiModel[]>([])
 const renderConfig = reactive({
   providerId: '',
   modelCode: 'minimax-h3-fl2va',
-  size: '544x960',
-  seed: -1
+  size: '544x960'
 })
 
 function getStandardSizeByRatio(ratio?: string): string {
@@ -469,6 +469,7 @@ async function handleProviderChange(pid: string) {
 
 async function open(shot: DramaShot, _prevShotTailUrl?: string, dramaAspectRatioParam?: string) {
   currentShotId.value = shot.id
+  shotSeed.value = shot.seed || ''
   shotNo.value = shot.shotNo || 1
   shotName.value = shot.shotName || ''
   dramaId.value = shot.dramaId || 0
@@ -681,8 +682,7 @@ async function handleStartRender() {
     await shotApi.submitRender(currentShotId.value, {
       providerId: renderConfig.providerId ? (renderConfig.providerId as any) : undefined,
       workflowTemplateId: renderConfig.modelCode,
-      size: sizeValidation.normalized,
-      seed: (renderConfig.seed !== undefined && renderConfig.seed >= 0) ? renderConfig.seed : undefined
+      size: sizeValidation.normalized
     })
     ElMessage.success('首尾帧视频渲染任务已提交！')
     emit('success', currentShotId.value)

@@ -50,6 +50,9 @@ public interface DramaShotService {
      */
     Long cloneShot(Long id);
 
+    /** 为分镜重新生成并保存视频随机种子。 */
+    Long refreshSeed(Long id);
+
     /**
      * 重新排序分镜 (支持跨场次移动)
      */

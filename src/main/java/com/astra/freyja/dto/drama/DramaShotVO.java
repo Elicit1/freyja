@@ -24,6 +24,7 @@ public class DramaShotVO {
     private Boolean shotTypeLocked;
     private Boolean cameraMovementLocked;
     private BigDecimal duration;
+    private Long seed;
     private String scriptContent;
     private String actionDescription;
     private String dialogue;

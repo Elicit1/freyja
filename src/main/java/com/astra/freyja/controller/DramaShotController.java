@@ -89,6 +89,11 @@ public class DramaShotController {
         return R.ok(shotService.cloneShot(id));
     }
 
+    @PostMapping("/{id}/refresh-seed")
+    public R<Long> refreshSeed(@PathVariable Long id) {
+        return R.ok(shotService.refreshSeed(id));
+    }
+
     @PutMapping("/reorder")
     public R<Void> reorder(@RequestBody DramaShotReorderDTO dto) {
         shotService.reorderShots(dto);

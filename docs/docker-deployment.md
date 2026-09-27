@@ -75,6 +75,12 @@ docker compose up -d --build
 
 已有数据库更新场景空间类型为空值支持时，执行一次 `sh docker/mysql/migrations/apply-20260926-res-scene-optional-scene-type.sh`。初始化 SQL 仅在全新 MySQL 数据卷上运行；此迁移保留已有场景的空间类型。
 
+已有数据库如仍有 AI 提供商编码或模型标识的唯一索引，执行 `sh docker/mysql/migrations/apply-20260927-ai-provider-model-logical-delete-indexes.sh`。迁移会移除旧唯一索引，并建立包含 `deleted` 字段的普通查询索引，使逻辑删除后可以复用编码；未删除记录的重复编码仍由服务层校验。
+
+已有数据库启用分镜固定随机种子时，执行一次 `sh docker/mysql/migrations/apply-20260927-drama-shot-seed.sh`。迁移为历史分镜填充安全整数范围内的种子；新建分镜由后端自动生成，视频渲染读取并固定提交时的镜头种子。
+
+已有数据库启用 Story Normalizer 时，执行一次 `sh docker/mysql/migrations/apply-20260927-story-normalizer-prompt.sh`，将可编辑的标准化系统提示词加入系统配置。已有同键配置不会被覆盖。
+
 ### 4. 访问系统
 服务启动完成后，即可在浏览器打开：
 
