@@ -143,6 +143,7 @@
             v-model="activeBackgroundType"
             size="small"
             :disabled="disabled"
+            @change="handleBackgroundTypeChange"
           >
             <el-radio-button value="SCENE">🏞️ 环境场景 (默认)</el-radio-button>
             <el-radio-button value="KEYFRAME">🎬 分镜关键帧</el-radio-button>
@@ -387,7 +388,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import type { CharacterShotRefInfo, PropShotRefInfo } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
 
@@ -410,18 +411,28 @@ const emit = defineEmits<{
   (e: 'update:propRefs', val: PropShotRefInfo[]): void
 }>()
 
-const activeBackgroundType = computed<'SCENE' | 'KEYFRAME'>({
-  get() {
-    return props.resKeyframeId ? 'KEYFRAME' : 'SCENE'
-  },
-  set(val) {
-    if (val === 'SCENE') {
-      emit('update:resKeyframeId', undefined)
-    } else {
-      emit('update:resSceneId', undefined)
-    }
+const activeBackgroundType = ref<'SCENE' | 'KEYFRAME'>(props.resKeyframeId ? 'KEYFRAME' : 'SCENE')
+
+watch(() => props.resKeyframeId, (val) => {
+  if (val) {
+    activeBackgroundType.value = 'KEYFRAME'
   }
 })
+
+watch(() => props.resSceneId, (val) => {
+  if (val) {
+    activeBackgroundType.value = 'SCENE'
+  }
+})
+
+function handleBackgroundTypeChange(val: 'SCENE' | 'KEYFRAME') {
+  activeBackgroundType.value = val
+  if (val === 'SCENE') {
+    emit('update:resKeyframeId', undefined)
+  } else {
+    emit('update:resSceneId', undefined)
+  }
+}
 
 const currentKeyframe = computed(() => {
   if (!props.resKeyframeId) return null
@@ -550,6 +561,7 @@ function handleSceneSelect(val?: string) {
   emit('update:resSceneId', val || undefined)
   if (val) {
     emit('update:resKeyframeId', undefined)
+    activeBackgroundType.value = 'SCENE'
   }
 }
 
@@ -561,6 +573,7 @@ function handleKeyframeSelect(val?: string) {
   emit('update:resKeyframeId', val || undefined)
   if (val) {
     emit('update:resSceneId', undefined)
+    activeBackgroundType.value = 'KEYFRAME'
   }
 }
 
