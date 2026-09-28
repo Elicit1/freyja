@@ -422,6 +422,35 @@ CREATE TABLE `res_prop` (
     KEY `idx_prop_type` (`prop_type`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '核心道具资产表';
 
+-- 3.8 关键帧资产表
+DROP TABLE IF EXISTS `res_keyframe`;
+CREATE TABLE `res_keyframe` (
+    `id`                  BIGINT UNSIGNED NOT NULL COMMENT '主键ID (雪花ID)',
+    `drama_id`            BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '归属短剧ID，0为公共资源库',
+    `shot_id`             BIGINT UNSIGNED DEFAULT NULL COMMENT '关联分镜镜头ID (drama_shot.id)，为空表示未绑定具体分镜',
+    `name`                VARCHAR(100)    NOT NULL COMMENT '关键帧名称 (如: 雨夜对峙首帧 / 回眸特写关键帧)',
+    `frame_type`          VARCHAR(32)     NOT NULL DEFAULT 'KEYFRAME' COMMENT '关键帧类型: FIRST_FRAME(首帧)/END_FRAME(尾帧)/KEYFRAME(普通关键帧)/ACTION_BEAT(动作节奏帧)',
+    `frame_url`           VARCHAR(512)    NOT NULL COMMENT '关键帧图片URL (MinIO托管)',
+    `prompt`              TEXT            DEFAULT NULL COMMENT '关键帧生图/视觉控制Prompt',
+    `negative_prompt`     TEXT            DEFAULT NULL COMMENT '专属负向Prompt',
+    `description`         VARCHAR(512)    DEFAULT NULL COMMENT '画面动作、构图与镜头细节描述',
+    `source_type`         VARCHAR(32)     NOT NULL DEFAULT 'MANUAL_UPLOAD' COMMENT '来源: MANUAL_UPLOAD(手动上传)/AI_GENERATED(AI生图)/SHOT_EXTRACT(分镜抽取)/VIDEO_FRAME(视频截帧)',
+    `aspect_ratio`        VARCHAR(16)     DEFAULT NULL COMMENT '画面画幅比例 (如 16:9, 9:16, 1:1)',
+    `sort_order`          INT             NOT NULL DEFAULT 0 COMMENT '显示排序',
+    `status`              TINYINT         NOT NULL DEFAULT 1 COMMENT '状态 0-停用 1-启用',
+    `create_by`           BIGINT          DEFAULT NULL COMMENT '创建人 ID',
+    `create_time`         DATETIME        DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    `update_by`           BIGINT          DEFAULT NULL COMMENT '更新人 ID',
+    `update_time`         DATETIME        DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    `deleted`             TINYINT         NOT NULL DEFAULT 0 COMMENT '逻辑删除 0-正常 1-删除',
+    `remark`              VARCHAR(500)    DEFAULT NULL COMMENT '备注',
+    PRIMARY KEY (`id`),
+    KEY `idx_drama_id` (`drama_id`),
+    KEY `idx_shot_id` (`shot_id`),
+    KEY `idx_frame_type` (`frame_type`),
+    KEY `idx_status` (`status`)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '关键帧资产表';
+
 -- ==============================================================================
 -- 4. 短剧剧作工作台模块：短剧、剧集、情景场次、连续镜头组、分镜镜头
 -- ==============================================================================

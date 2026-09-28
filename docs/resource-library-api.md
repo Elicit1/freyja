@@ -322,3 +322,50 @@
 #### 6) 道具下拉选项
 - **URL**: `GET /res/prop/options?dramaId=0`
 
+---
+
+### 2.6 关键帧资产管理 (`ResKeyframeController`)
+
+#### 1) 分页查询关键帧列表
+- **URL**: `GET /res/keyframe/page`
+- **Query 参数**: `current`, `size`, `dramaId`, `shotId`, `name`, `frameType`, `status`, `sourceType`
+- **返回**: 包含关键帧基本信息、归属短剧标题 `dramaTitle`、关联分镜标识 `shotName` 及镜号 `shotNo`。
+
+#### 2) 获取关键帧详情
+- **URL**: `GET /res/keyframe/{id}`
+
+#### 3) 新增关键帧
+- **URL**: `POST /res/keyframe`
+- **Body**:
+```json
+{
+  "dramaId": 100,
+  "shotId": 200,
+  "name": "雨夜对峙首帧",
+  "frameType": "FIRST_FRAME",
+  "frameUrl": "http://127.0.0.1:9000/video-assets/keyframe/rain_night_first.png",
+  "prompt": "cinematic medium shot, heavy rain pouring down, dramatic streetlamp lighting",
+  "negativePrompt": "daylight, sunny, cartoon",
+  "description": "主角在暴雨中撑伞回眸，眼神警惕",
+  "sourceType": "MANUAL_UPLOAD",
+  "aspectRatio": "16:9",
+  "sortOrder": 0,
+  "status": 1
+}
+```
+
+#### 4) 修改关键帧
+- **URL**: `PUT /res/keyframe`
+- **Body**: `ResKeyframeDTO`
+
+#### 5) 删除关键帧
+- **URL**: `DELETE /res/keyframe/{id}`
+- **说明**: 逻辑删除。
+
+#### 6) 启停状态切换
+- **URL**: `PUT /res/keyframe/{id}/status?status=0|1`
+
+#### 7) 关键帧下拉引用选项
+- **URL**: `GET /res/keyframe/options?dramaId=100&shotId=200`
+
+

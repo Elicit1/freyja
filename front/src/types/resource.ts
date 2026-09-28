@@ -432,3 +432,47 @@ export interface AssetUploadResult {
   size: number
   contentType: string
 }
+
+export interface ResKeyframe {
+  id?: string
+  dramaId?: string | number
+  dramaTitle?: string
+  shotId?: string | number
+  shotName?: string
+  shotNo?: number
+  name: string
+  frameType: string // FIRST_FRAME | END_FRAME | KEYFRAME | ACTION_BEAT
+  frameUrl: string
+  prompt?: string
+  negativePrompt?: string
+  description?: string
+  sourceType?: string
+  aspectRatio?: string
+  sortOrder?: number
+  status?: number
+  remark?: string
+  createTime?: string
+  updateTime?: string
+}
+
+export interface ResKeyframeQuery {
+  current?: number
+  size?: number
+  dramaId?: string | number
+  shotId?: string | number
+  name?: string
+  frameType?: string
+  status?: number
+  sourceType?: string
+}
+
+export interface ResKeyframeOption {
+  id: string
+  name: string
+  frameType: string
+  frameUrl: string
+  dramaId?: string
+  shotId?: string
+  prompt?: string
+}
+

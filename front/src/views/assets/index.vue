@@ -3,7 +3,7 @@
     <!-- 资产中心工作区 Header -->
     <WorkspaceHeader
       title="数字资产中心"
-      subtitle="集中建档与调度角色、多造型服饰、场景环境与核心道具"
+      subtitle="集中建档与调度角色、多造型服饰、场景环境、核心道具与分镜关键帧"
       :icon="Collection"
     >
       <template #tag>
@@ -47,6 +47,15 @@
             </div>
           </template>
         </el-tab-pane>
+
+        <el-tab-pane name="keyframe">
+          <template #label>
+            <div class="flex items-center gap-2 py-1 text-xs font-semibold">
+              <el-icon><Film /></el-icon>
+              <span>关键帧资产</span>
+            </div>
+          </template>
+        </el-tab-pane>
       </el-tabs>
     </div>
 
@@ -78,6 +87,15 @@
           @asset-cancelled="handleAssetCancelled"
         />
       </div>
+
+      <!-- 4. 关键帧资产 -->
+      <div v-show="activeTab === 'keyframe'">
+        <KeyframeList
+          ref="keyframeListRef"
+          @asset-created="handleAssetCreated('keyframe', $event.id || '')"
+          @asset-cancelled="handleAssetCancelled"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -85,19 +103,21 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { UserFilled, Picture, Box, Collection } from '@element-plus/icons-vue'
+import { UserFilled, Picture, Box, Film, Collection } from '@element-plus/icons-vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import CharacterList from './components/CharacterList.vue'
 import SceneList from './components/SceneList.vue'
 import PropList from './components/PropList.vue'
+import KeyframeList from './components/KeyframeList.vue'
 
-const activeTab = ref<'character' | 'scene' | 'prop'>('character')
+const activeTab = ref<'character' | 'scene' | 'prop' | 'keyframe'>('character')
 
 const characterListRef = ref<InstanceType<typeof CharacterList>>()
 const sceneListRef = ref<InstanceType<typeof SceneList>>()
 const propListRef = ref<InstanceType<typeof PropList>>()
+const keyframeListRef = ref<InstanceType<typeof KeyframeList>>()
 
-type AssetType = 'character' | 'scene' | 'prop'
+type AssetType = 'character' | 'scene' | 'prop' | 'keyframe'
 const route = useRoute()
 const router = useRouter()
 
@@ -108,7 +128,7 @@ function queryValue(value: unknown): string | undefined {
 
 const returnAssetType = computed<AssetType | undefined>(() => {
   const value = queryValue(route.query.assetType)
-  return value === 'character' || value === 'scene' || value === 'prop' ? value : undefined
+  return value === 'character' || value === 'scene' || value === 'prop' || value === 'keyframe' ? value : undefined
 })
 
 const isShotReturnContext = computed(() => {
@@ -127,6 +147,7 @@ onMounted(async () => {
     sceneListRef.value?.handleCreate(dramaId, queryValue(route.query.referenceImageUrl))
   }
   if (returnAssetType.value === 'prop') propListRef.value?.handleCreate(dramaId)
+  if (returnAssetType.value === 'keyframe') keyframeListRef.value?.openCreate()
 })
 
 async function handleAssetCreated(assetType: AssetType, assetId: string | number) {

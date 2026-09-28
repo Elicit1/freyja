@@ -1172,4 +1172,31 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
         return AspectRatioUtil.DEFAULT_SHORT_DRAMA_SIZE;
     }
+
+    @Override
+    public List<com.astra.freyja.dto.drama.DramaShotOptionVO> optionsByDramaId(Long dramaId) {
+        if (dramaId == null || dramaId <= 0) {
+            return Collections.emptyList();
+        }
+        LambdaQueryWrapper<DramaShot> wrapper = new LambdaQueryWrapper<DramaShot>()
+                .eq(DramaShot::getDramaId, dramaId)
+                .orderByAsc(DramaShot::getShotNo)
+                .orderByAsc(DramaShot::getId);
+        List<DramaShot> shots = shotMapper.selectList(wrapper);
+        if (shots == null || shots.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return shots.stream().map(s -> {
+            com.astra.freyja.dto.drama.DramaShotOptionVO vo = new com.astra.freyja.dto.drama.DramaShotOptionVO();
+            vo.setId(s.getId());
+            vo.setDramaId(s.getDramaId());
+            vo.setEpisodeId(s.getEpisodeId());
+            vo.setSceneId(s.getSceneId());
+            vo.setShotNo(s.getShotNo());
+            vo.setShotName(s.getShotName());
+            vo.setActionDescription(s.getActionDescription());
+            vo.setPreviewImageUrl(s.getPreviewImageUrl());
+            return vo;
+        }).collect(Collectors.toList());
+    }
 }

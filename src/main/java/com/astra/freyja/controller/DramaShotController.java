@@ -225,4 +225,12 @@ public class DramaShotController {
         shotVideoTakeService.deleteTake(shotId, takeId);
         return R.ok();
     }
+    /**
+     * 根据短剧ID获取该剧下所有分镜镜头的下拉选项列表
+     */
+    @GetMapping("/options-by-drama")
+    public R<List<com.astra.freyja.dto.drama.DramaShotOptionVO>> optionsByDrama(
+            @RequestParam("dramaId") Long dramaId) {
+        return R.ok(shotService.optionsByDramaId(dramaId));
+    }
 }

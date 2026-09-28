@@ -210,6 +210,23 @@ export const shotApi = {
     })
   },
 
+  getOptionsByDrama(dramaId: string | number) {
+    return request<Array<{
+      id: string
+      dramaId: string
+      episodeId?: string
+      sceneId?: string
+      shotNo: number
+      shotName: string
+      actionDescription?: string
+      previewImageUrl?: string
+    }>>({
+      url: '/drama/shot/options-by-drama',
+      method: 'get',
+      params: { dramaId }
+    })
+  },
+
   getById(id: string | number) {
     return request<DramaShot>({
       url: `/drama/shot/${id}`,
