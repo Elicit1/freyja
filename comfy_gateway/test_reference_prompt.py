@@ -517,6 +517,33 @@ class TestReferenceRelationPrompt(unittest.TestCase):
         self.assertIn("上传参考", prompt)
         self.assertIn("SCENE", prompt)
 
+    def test_16_system_keyframe_reference_type_is_accepted(self):
+        """分镜关键帧保持 KEYFRAME 类型，并生成构图与视觉锚点提示词，适配 MiniMax Commercial Adapter。"""
+        binding = ReferenceBinding(
+            referenceType="KEYFRAME",
+            referenceId="kf_001",
+            entityId="kf_1001",
+            entityName="破晓对峙关键帧",
+            referenceImages=["keyframe_shot_01.png"]
+        )
+        self.assertEqual(binding.reference_type, ReferenceType.KEYFRAME)
+        prompt = ReferenceRelationPromptBuilder.build_relation_prompt([binding])
+        self.assertIn("【关键帧参考】", prompt)
+        self.assertIn("破晓对峙关键帧", prompt)
+        self.assertIn("镜头构图、人物姿态、空间关系与光影氛围应以此关键帧为主要视觉与构图锚点", prompt)
+
+        # 验证 MiniMaxCommercialAdapter
+        req = ImageGenerationRequest(
+            model="minimax-video",
+            prompt="双方向前迈步对峙",
+            references=[binding]
+        )
+        adapter = MiniMaxCommercialAdapter()
+        payload = adapter.prepare_payload(req)
+        self.assertIn("【关键帧参考】", payload["prompt"])
+        self.assertEqual(payload["subject_reference"][0]["type"], "keyframe")
+        self.assertEqual(payload["subject_reference"][0]["entity_name"], "破晓对峙关键帧")
+
 
 if __name__ == "__main__":
     unittest.main()

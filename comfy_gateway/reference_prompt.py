@@ -15,6 +15,7 @@ class ReferenceType(str, Enum):
     CHARACTER_REFERENCE = "CHARACTER_REFERENCE"
     SCENE = "SCENE"
     PROP = "PROP"
+    KEYFRAME = "KEYFRAME"
     UPLOAD = "UPLOAD"
     STYLE = "STYLE"
     FIRST_FRAME = "FIRST_FRAME"
@@ -140,6 +141,7 @@ class ReferenceRelationPromptBuilder:
         char_bindings: List[ReferenceBinding] = []
         scene_bindings: List[ReferenceBinding] = []
         prop_bindings: List[ReferenceBinding] = []
+        keyframe_bindings: List[ReferenceBinding] = []
         first_frame_bindings: List[ReferenceBinding] = []
         last_frame_bindings: List[ReferenceBinding] = []
         audio_bindings: List[ReferenceBinding] = []
@@ -155,6 +157,8 @@ class ReferenceRelationPromptBuilder:
                 scene_bindings.append(b)
             elif t == ReferenceType.PROP:
                 prop_bindings.append(b)
+            elif t == ReferenceType.KEYFRAME:
+                keyframe_bindings.append(b)
             elif t == ReferenceType.FIRST_FRAME:
                 first_frame_bindings.append(b)
             elif t == ReferenceType.LAST_FRAME:
@@ -184,6 +188,12 @@ class ReferenceRelationPromptBuilder:
         prop_prompt = cls._build_prop_prompt(prop_bindings, language=language)
         if prop_prompt:
             sections.append(prop_prompt)
+
+        # 4. Keyframe handling (composition & pose anchor)
+        if keyframe_bindings:
+            keyframe_prompt = cls._build_keyframe_prompt(keyframe_bindings, language=language)
+            if keyframe_prompt:
+                sections.append(keyframe_prompt)
 
         # 4. First Frame handling (explicitly separated from character)
         if first_frame_bindings:
@@ -351,6 +361,31 @@ class ReferenceRelationPromptBuilder:
         )
 
     @classmethod
+    def _build_keyframe_prompt(cls, bindings: List[ReferenceBinding], language: str = "zh") -> str:
+        if not bindings:
+            return ""
+
+        keyframe_names = [b.entity_name for b in bindings if b.entity_name]
+        kf_desc = "、".join([f"【{name}】" for name in keyframe_names]) if keyframe_names else "分镜关键帧"
+        kf_plain = "、".join(keyframe_names) if keyframe_names else "指定关键帧"
+
+        if language == "en":
+            name_str = ", ".join(keyframe_names) if keyframe_names else "designated keyframe"
+            return (
+                f"[KEYFRAME REFERENCE]\n\n"
+                f"The provided keyframe reference corresponds to [{name_str}].\n"
+                f"Use the framing, character pose, spatial composition, and lighting from this keyframe as the primary visual and composition anchor.\n"
+                f"Ensure character appearance, scene environment, and props strictly align with this keyframe composition."
+            )
+
+        return (
+            f"【关键帧参考】\n\n"
+            f"提供的关键帧参考图对应{kf_desc}。\n"
+            f"当前镜头的镜头构图、人物姿态、空间关系与光影氛围应以此关键帧为主要视觉与构图锚点。\n"
+            f"确保画面主体与环境氛围与该关键帧设定严格对应。"
+        )
+
+    @classmethod
     def _build_first_frame_prompt(cls, bindings: List[ReferenceBinding], language: str = "zh") -> str:
         if language == "en":
             return (
@@ -480,6 +515,7 @@ class ReferenceRelationPromptBuilder:
             and b.entity_name
         ]))
         scene_props = [b.entity_name for b in bindings if b.reference_type in (ReferenceType.SCENE, ReferenceType.PROP) and b.entity_name]
+        keyframes = [b.entity_name for b in bindings if b.reference_type == ReferenceType.KEYFRAME and b.entity_name]
 
         rules: List[str] = []
         if char_names:
@@ -489,6 +525,8 @@ class ReferenceRelationPromptBuilder:
                 rules.append("不要交换不同角色与其参考素材之间的对应关系。")
         if scene_props:
             rules.append("保持场景和道具的视觉身份稳定。")
+        if keyframes:
+            rules.append("保持关键帧设定的构图、人物姿态与视觉基调稳定。")
 
         return "\n".join(rules)
 

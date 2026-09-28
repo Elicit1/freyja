@@ -69,7 +69,7 @@ class MiniMaxCommercialAdapter(BaseVideoBackendAdapter):
                 if b.reference_type == ReferenceType.FIRST_FRAME:
                     if b.images:
                         first_frame_image = b.images[0]
-                elif b.reference_type in (ReferenceType.CHARACTER, ReferenceType.SCENE, ReferenceType.PROP):
+                elif b.reference_type in (ReferenceType.CHARACTER, ReferenceType.SCENE, ReferenceType.PROP, ReferenceType.KEYFRAME):
                     subject_references.append({
                         "type": b.reference_type.value.lower(),
                         "entity_id": b.entity_id,
