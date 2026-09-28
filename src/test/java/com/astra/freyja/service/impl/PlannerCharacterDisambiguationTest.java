@@ -151,7 +151,8 @@ class PlannerCharacterDisambiguationTest {
         LoadSkillToolFactory toolFactory = mock(LoadSkillToolFactory.class);
         AiModelMapper modelMapper = mock(AiModelMapper.class);
         ScriptSkillRuntime runtime = new ScriptSkillRuntime(catalogService, contentService,
-                promptContextService, toolFactory, modelMapper, new ObjectMapper());
+                promptContextService, toolFactory, mock(com.astra.freyja.skill.tool.ReadSkillFileToolFactory.class),
+                modelMapper, new ObjectMapper());
 
         ScriptDecomposeRequestDTO request = new ScriptDecomposeRequestDTO();
         ScriptSkillPolicy policy = new ScriptSkillPolicy();
@@ -187,6 +188,7 @@ class PlannerCharacterDisambiguationTest {
         SkillContentService contentService = mock(SkillContentService.class);
         ScriptSkillRuntime runtime = new ScriptSkillRuntime(catalogService, contentService,
                 mock(SkillPromptContextService.class), mock(LoadSkillToolFactory.class),
+                mock(com.astra.freyja.skill.tool.ReadSkillFileToolFactory.class),
                 mock(AiModelMapper.class), new ObjectMapper());
         when(catalogService.getEnabledCatalog()).thenReturn(List.of());
 

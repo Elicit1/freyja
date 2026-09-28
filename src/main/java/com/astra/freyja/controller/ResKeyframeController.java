@@ -65,8 +65,20 @@ public class ResKeyframeController {
 
     @GetMapping("/options")
     public R<List<ResKeyframeOptionVO>> options(
-            @RequestParam(value = "dramaId", required = false) Long dramaId,
-            @RequestParam(value = "shotId", required = false) Long shotId) {
-        return R.ok(keyframeService.options(dramaId, shotId));
+            @RequestParam(value = "dramaId", required = false) String dramaId,
+            @RequestParam(value = "shotId", required = false) String shotId) {
+        Long parsedDramaId = null;
+        if (dramaId != null && !dramaId.isBlank() && !"0".equals(dramaId) && !dramaId.contains("object")) {
+            try {
+                parsedDramaId = Long.parseLong(dramaId.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+        Long parsedShotId = null;
+        if (shotId != null && !shotId.isBlank() && !"0".equals(shotId) && !shotId.contains("object")) {
+            try {
+                parsedShotId = Long.parseLong(shotId.trim());
+            } catch (NumberFormatException ignored) {}
+        }
+        return R.ok(keyframeService.options(parsedDramaId, parsedShotId));
     }
 }

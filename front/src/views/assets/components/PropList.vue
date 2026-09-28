@@ -53,7 +53,7 @@
     <!-- 操作与视图切换栏 -->
     <div class="flex items-center justify-between flex-wrap gap-2">
       <div class="flex items-center gap-2">
-        <el-button type="primary" :icon="Plus" @click="handleCreate">新建道具</el-button>
+        <el-button type="primary" :icon="Plus" @click="handleCreate()">新建道具</el-button>
         <span class="text-xs text-[var(--text-muted)]">共 {{ total }} 个道具资产</span>
       </div>
 
@@ -333,8 +333,9 @@ function handleReset() {
   fetchData()
 }
 
-function handleCreate(dramaId?: string | number) {
-  propDrawerRef.value?.open(undefined, dramaId)
+function handleCreate(dramaId?: any) {
+  const safeDramaId = (dramaId && typeof dramaId !== 'object') ? dramaId : undefined
+  propDrawerRef.value?.open(undefined, safeDramaId)
 }
 
 function handleDrawerSuccess(assetId?: string | number) {

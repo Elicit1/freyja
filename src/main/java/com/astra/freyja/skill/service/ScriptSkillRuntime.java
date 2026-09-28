@@ -13,6 +13,7 @@ import com.astra.freyja.skill.model.SkillPromptContext;
 import com.astra.freyja.skill.tool.LoadSkillResponse;
 import com.astra.freyja.skill.tool.LoadSkillToolFactory;
 import com.astra.freyja.skill.tool.LoadSkillToolSession;
+import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,6 +43,7 @@ public class ScriptSkillRuntime {
     private final SkillContentService contentService;
     private final SkillPromptContextService promptContextService;
     private final LoadSkillToolFactory toolFactory;
+    private final ReadSkillFileToolFactory readSkillFileToolFactory;
     private final AiModelMapper modelMapper;
     private final tools.jackson.databind.ObjectMapper taskObjectMapper;
     private final ObjectMapper jsonMapper = new ObjectMapper();
@@ -163,7 +165,9 @@ public class ScriptSkillRuntime {
             log.info("[ScriptSkill] taskId={} stage={} segment={} attempt={} load_skill tool registered, catalogSize={}",
                     taskId, stageName, segmentId, attempt, versions.size());
         }
-        return new Invocation(prompt, tool, session, taskId, stageName, segmentId, attempt);
+        ToolCallback readFileTool = !session.getLoadedSkillNames().isEmpty() || stage.isAllowDynamicLoad()
+                ? readSkillFileToolFactory.createTool(session) : null;
+        return new Invocation(prompt, tool, readFileTool, session, taskId, stageName, segmentId, attempt);
     }
 
     public String streamWithTool(ChatModel model, Invocation invocation,
@@ -180,15 +184,16 @@ public class ScriptSkillRuntime {
         StringBuilder answer = new StringBuilder();
         var requestSpec = builder.build().prompt().system(invocation.systemPrompt());
         if (userPrompt != null) requestSpec = requestSpec.user(userPrompt);
-        requestSpec.tools(invocation.tool()).stream().content().toStream().forEach(chunk -> {
+        requestSpec.tools(invocation.tools()).stream().content().toStream().forEach(chunk -> {
                     if (StringUtils.isNotEmpty(chunk)) {
                         answer.append(chunk);
                         if (finalTextChunk != null) finalTextChunk.accept(chunk);
                     }
                 });
-        log.info("[ScriptSkill] taskId={} stage={} segment={} attempt={} model completed, loaded={}, toolCalls={}",
+        log.info("[ScriptSkill] taskId={} stage={} segment={} attempt={} model completed, loaded={}, loadedReferenceFiles={}, toolCalls={}",
                 invocation.taskId(), invocation.stage(), invocation.segmentId(), invocation.attempt(),
-                invocation.session().getLoadedSkillNames(), invocation.session().getInvocationHistory());
+                invocation.session().getLoadedSkillNames(), invocation.session().getLoadedReferenceFiles(),
+                invocation.session().getInvocationHistory());
         return answer.toString();
     }
 
@@ -221,7 +226,20 @@ public class ScriptSkillRuntime {
         return result;
     }
 
-    public record Invocation(String systemPrompt, ToolCallback tool, LoadSkillToolSession session,
+    public record Invocation(String systemPrompt, ToolCallback tool, ToolCallback readFileTool, LoadSkillToolSession session,
                              Long taskId, String stage, String segmentId, int attempt) {
+        public Invocation(String systemPrompt, ToolCallback tool, LoadSkillToolSession session,
+                          Long taskId, String stage, String segmentId, int attempt) {
+            this(systemPrompt, tool, null, session, taskId, stage, segmentId, attempt);
+        }
+
+        public boolean hasTools() {
+            return tool != null || readFileTool != null;
+        }
+
+        public ToolCallback[] tools() {
+            if (tool == null) return readFileTool == null ? new ToolCallback[0] : new ToolCallback[]{readFileTool};
+            return readFileTool == null ? new ToolCallback[]{tool} : new ToolCallback[]{tool, readFileTool};
+        }
     }
 }

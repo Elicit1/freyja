@@ -14,6 +14,7 @@ import com.astra.freyja.skill.model.SkillPromptContext;
 import com.astra.freyja.skill.model.SkillCatalogItem;
 import com.astra.freyja.skill.tool.LoadSkillToolFactory;
 import com.astra.freyja.skill.tool.LoadSkillToolSession;
+import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -43,6 +44,7 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
     private final AiModelFactory aiModelFactory;
     private final SkillCatalogService skillCatalogService;
     private final LoadSkillToolFactory loadSkillToolFactory;
+    private final ReadSkillFileToolFactory readSkillFileToolFactory;
     private final SkillPromptContextService skillPromptContextService;
     private final DirectorPlanValidator planValidator;
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -110,7 +112,7 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
             responseContent = chatClient.prompt()
                     .system(systemPrompt)
                     .user(userPrompt)
-                    .tools(loadSkillTool)
+                    .tools(loadSkillTool, readSkillFileToolFactory.createTool(session))
                     .call()
                     .content();
         } catch (Exception e) {

@@ -441,7 +441,7 @@
           </div>
         </div>
 
-        <!-- 场景环境资产 / 分镜关键帧 覆盖 (二选一互斥) -->
+        <!-- 场景环境资产 / 关键图参考 覆盖 (二选一互斥) -->
         <div class="studio-card p-5 mt-4">
           <div class="flex items-center justify-between border-b border-[var(--border-default)] pb-2.5 mb-4 flex-wrap gap-2">
             <div class="flex items-center gap-2">
@@ -450,10 +450,10 @@
               </h4>
               <el-radio-group v-model="drawerBackgroundType" size="small" @change="handleDrawerBackgroundTypeChange">
                 <el-radio-button value="SCENE">🏞️ 环境场景 (默认)</el-radio-button>
-                <el-radio-button value="KEYFRAME">🎬 分镜关键帧</el-radio-button>
+                <el-radio-button value="KEYFRAME">🎬 关键图参考</el-radio-button>
               </el-radio-group>
               <span class="text-xs text-gray-400">
-                {{ drawerBackgroundType === 'SCENE' ? '（与关键帧互斥）' : '（与场景互斥）' }}
+                {{ drawerBackgroundType === 'SCENE' ? '（与关键图互斥）' : '（与场景互斥）' }}
               </span>
             </div>
             <div v-if="drawerBackgroundType === 'SCENE'" class="flex items-center gap-2">
@@ -480,10 +480,10 @@
                 :loading="creatingTailKeyframe"
                 @click="handleSaveAndCreateAsset('keyframe', true)"
               >
-                + 用上一镜视频尾帧新建关键帧
+                + 用上一镜视频尾帧新建关键图
               </el-button>
               <el-button type="primary" link size="small" @click="handleSaveAndCreateAsset('keyframe')">
-                + 新建关键帧
+                + 新建关键图
               </el-button>
             </div>
           </div>
@@ -504,10 +504,10 @@
               />
             </el-select>
           </el-form-item>
-          <el-form-item v-else label="分镜关键帧资产">
+          <el-form-item v-else label="关键图参考资产">
             <el-select
               :model-value="form.resKeyframeId ? String(form.resKeyframeId) : undefined"
-              placeholder="选择分镜关键帧资产 (与环境场景互斥)"
+              placeholder="选择关键图参考资产 (与环境场景互斥)"
               clearable
               filterable
               class="w-full"
@@ -686,7 +686,7 @@
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item command="scene">🏞️ 场景资产图</el-dropdown-item>
-                      <el-dropdown-item command="keyframe">🎬 分镜关键帧</el-dropdown-item>
+                      <el-dropdown-item command="keyframe">🎬 关键图参考</el-dropdown-item>
                       <el-dropdown-item command="character">👥 人物造型图</el-dropdown-item>
                       <el-dropdown-item command="prop">🗡️ 道具资产图</el-dropdown-item>
                     </el-dropdown-menu>
@@ -724,7 +724,7 @@
                   <el-select v-model="img.usageRole" size="small" placeholder="角色" class="w-full !text-[10px]">
                     <el-option label="主体 (SUBJECT)" value="SUBJECT" />
                     <el-option label="场景 (SCENE)" value="SCENE" />
-                    <el-option label="关键帧 (MOTION_KEYFRAME)" value="MOTION_KEYFRAME" />
+                    <el-option label="关键图参考 (MOTION_KEYFRAME)" value="MOTION_KEYFRAME" />
                     <el-option label="道具 (PROP)" value="PROP" />
                     <el-option label="首帧 (FIRST_FRAME)" value="FIRST_FRAME" />
                     <el-option label="尾帧 (END_FRAME)" value="END_FRAME" />
@@ -1487,7 +1487,7 @@ async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | '
       drawerAssetPickerList.value = items
     } catch (e) {}
   } else if (type === 'keyframe') {
-    drawerAssetPickerTitle.value = '分镜关键帧资产'
+    drawerAssetPickerTitle.value = '关键图参考资产'
     try {
       const list = await keyframeApi.getOptions({ dramaId: form.dramaId, shotId: form.id })
       drawerAssetPickerList.value = (list || [])
@@ -1497,7 +1497,7 @@ async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | '
           imageUrl: k.frameUrl,
           sourceType: 'KEYFRAME',
           sourceId: k.id,
-          tag: '关键帧'
+          tag: '关键图参考'
         }))
     } catch (e) {}
   } else if (type === 'character') {

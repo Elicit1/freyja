@@ -3,7 +3,7 @@
     <!-- 资产中心工作区 Header -->
     <WorkspaceHeader
       title="数字资产中心"
-      subtitle="集中建档与调度角色、多造型服饰、场景环境、核心道具与分镜关键帧"
+      subtitle="集中建档与调度角色、多造型服饰、场景环境、核心道具与关键图资产"
       :icon="Collection"
     >
       <template #tag>
@@ -52,7 +52,7 @@
           <template #label>
             <div class="flex items-center gap-2 py-1 text-xs font-semibold">
               <el-icon><Film /></el-icon>
-              <span>关键帧资产</span>
+              <span>关键图资产</span>
             </div>
           </template>
         </el-tab-pane>
@@ -88,7 +88,7 @@
         />
       </div>
 
-      <!-- 4. 关键帧资产 -->
+      <!-- 4. 关键图资产 -->
       <div v-show="activeTab === 'keyframe'">
         <KeyframeList
           ref="keyframeListRef"

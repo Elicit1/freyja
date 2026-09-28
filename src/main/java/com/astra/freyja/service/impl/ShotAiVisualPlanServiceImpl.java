@@ -78,6 +78,7 @@ import com.astra.freyja.director.model.DirectorPlan;
 import com.astra.freyja.skill.model.SkillPromptContext;
 import com.astra.freyja.skill.tool.LoadSkillToolFactory;
 import com.astra.freyja.skill.tool.LoadSkillToolSession;
+import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.astra.freyja.skill.service.SkillPromptContextService;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -251,11 +252,11 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "人物双手被道具占用时，不得为了完成额外动作让同一只手无依据地同时执行冲突的操作，也不得擅自添加放下、换手或凭空出现的第三只手。",
             "道具随动作自然摆动可以补充，但不得改变其数量、归属及已确定的状态。道具数量未明确时，不得编造精确数量。",
             "局部特写或画面裁切导致部分道具暂时不可见时，必须在场景实际状态中保持其数量与归属，不得将画面外的道具解释为消失，也不得为了保持可见性复制新的道具。",
-            "7.【参考媒体与关键帧规范】",
+            "7.【参考媒体与关键图参考规范】",
             "只有 REFERENCE_MANIFEST 中实际提供的图片和音频才能被引用；不得虚构 Picture、Audio、Subject 编号，也不得把无图片资产描述成有参考图。",
-            "分镜视觉基准资产分为环境场景（SCENE）与分镜关键帧（KEYFRAME），二者严格互斥。若当前镜头配置了关键帧资产或 REFERENCE_MANIFEST 包含关键帧（KEYFRAME / MOTION_KEYFRAME），说明本分镜采用关键帧锚点模式，不存在环境场景资产！",
-            "【严禁将关键帧当成场景】关键帧是当前镜头动作与画面定格的视觉锚点，严禁在提示词中将关键帧误识别或描述为环境场景 (Scene)！若关键帧为起始定格，firstFramePrompt 必须以此关键帧呈现的主体姿态、构图与动作状态为核心基准继承，严禁脑补虚构的场景背景！",
-            "必须根据实际参考媒体的角色、关键帧、场景及用途建立对应关系，不得交换人物参考图、误将场景或关键帧当作人物参考图，或让参考图中无关元素成为新增剧情事件。",
+            "分镜视觉基准资产分为环境场景（SCENE）与分镜关键图（KEYFRAME），二者严格互斥。若当前镜头配置了关键图资产或 REFERENCE_MANIFEST 包含关键图参考（KEYFRAME / MOTION_KEYFRAME），说明本分镜采用关键图参考锚点模式，不存在环境场景资产！在 subject_definitions 中应当以 Key Image / Key Picture / Main Subject 建立主体定义，严禁将关键图参考指代或描述为 Scene！",
+            "【严禁将关键图参考当成场景】关键图参考是当前镜头动作与画面定格的视觉锚点，严禁在提示词中将关键图参考误识别或描述为环境场景 (Scene)！若关键图为起始定格，firstFramePrompt 必须以此关键图参考呈现的主体姿态、构图与动作状态为核心基准继承，严禁脑补虚构的场景背景！",
+            "必须根据实际参考媒体的角色、关键图参考、场景及用途建立对应关系，不得交换人物参考图、误将场景或关键图当作人物参考图，或让参考图中无关元素成为新增剧情事件。",
             "参考图用于保持外观、场景和必要的空间关系，不得因为参考图突出便利店大门，就擅自增加“自动门打开”等当前镜头没有要求的事件。",
             "如果当前剧情的画面重点是人物沿人行道移动，不得仅因场景参考图包含便利店就把镜头重点转移到便利店门口。",
             "参考图不强制当前镜头沿用其原始景别和构图，除非当前任务明确锁定参考图构图或首尾帧画面。",
@@ -428,15 +429,15 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "道具可以随人物移动自然摆动，但不得因此改变其数量、归属或已确定的状态。",
             "原文未明确数量时，不得编造精确数量。",
             "局部特写或画面裁切导致部分道具暂时不可见时，必须在场景实际状态中保持其数量与归属，不得将画面外的道具解释为消失，也不得为了保持可见性复制新的道具。",
-            "7.【参考媒体、关键帧与文字身份规范】",
+            "7.【参考媒体、关键图参考与文字身份规范】",
             "只能引用 REFERENCE_MANIFEST 中实际存在的 Picture、Audio 和 Subject；不得跳号、伪造编号，缺少图片时必须使用文字环境或人物、道具描述，不得声称存在参考图。",
-            "分镜视觉基准资产分为环境场景（SCENE）与分镜关键帧（KEYFRAME），二者严格互斥。若分镜绑定了关键帧资产或 REFERENCE_MANIFEST 包含关键帧（KEYFRAME / MOTION_KEYFRAME），说明当前分镜已进入【关键帧锚点模式】，不存在环境场景资产！",
-            "【严禁将关键帧当成场景 (Scene)】关键帧是当前镜头动作演进与画面定格的视觉锚点，严禁将关键帧误识别或描述为环境场景 (Scene)！",
-            "在 subject_definitions 中，关键帧绝不能声明为 Scene: 或 <Picture N> (Scene)，必须明确声明为动态关键帧锚点（例如：<Picture N>: Motion keyframe reference depicting ...）；",
-            "在 retention_analysis 中，严禁写成保留场景环境外观布局 (Scene retention)，必须声明保留的是关键帧的主体动作状态、视觉构图、光影基调与动态瞬间；",
-            "在 detailed_description 中，镜头视听必须承接并动态演变该关键帧所确立的构图与动作状态，严禁将其作为背景布景！",
-            "每个角色、场景、关键帧和道具都必须保留清晰的文字身份描述，并与实际参考媒体正确对应；不得交换角色参考图、误用场景或关键帧参考图或把没有图片的道具描述成有图片参考。",
-            "参考图用于保持人物外观、服装、关键帧姿态动作、场景和必要的空间关系，不等于授权新增参考图中可能出现的剧情事件。",
+            "分镜视觉基准资产分为环境场景（SCENE）与分镜关键图（KEYFRAME），二者严格互斥。若分镜绑定了关键图资产或 REFERENCE_MANIFEST 包含关键图参考（KEYFRAME / MOTION_KEYFRAME），说明当前分镜已进入【关键图参考锚点模式】，不存在环境场景资产！",
+            "【严禁将关键图参考当成场景 (Scene)】关键图参考是当前镜头动作演进与画面定格的视觉锚点，严禁将关键图参考误识别或描述为环境场景 (Scene)！",
+            "在 subject_definitions 中，关键图参考绝不能声明为 Scene: 或 <Picture N> (Scene)，必须明确声明为动态关键图锚点（例如：<Picture N>: Key image reference depicting ... 或 Main Subject: <Picture N>）；",
+            "在 retention_analysis 中，严禁写成保留场景环境外观布局 (Scene retention)，必须声明保留的是关键图参考的主体动作状态、视觉构图、光影基调与动态瞬间；",
+            "在 detailed_description 中，镜头视听必须承接并动态演变该关键图参考所确立的构图与动作状态，严禁将其作为背景布景！",
+            "每个角色、场景、关键图和道具都必须保留清晰的文字身份描述，并与实际参考媒体正确对应；不得交换角色参考图、误用场景或关键图参考图或把没有图片的道具描述成有图片参考。",
+            "参考图用于保持人物外观、服装、关键图姿态动作、场景和必要的空间关系，不等于授权新增参考图中可能出现的剧情事件。",
             "例如，场景参考图包含便利店自动门，不代表当前镜头必须出现自动门打开的动作。当前剧情没有要求时，不得擅自增加这一事件。",
             "当剧情重点是人物沿人行道移动时，不得仅因场景参考图突出便利店门口，就擅自将镜头重点转移到自动门或店内活动。",
             "参考图不强制当前镜头沿用其原始景别和构图，除非当前任务明确锁定参考图构图或画面要求。",
@@ -464,7 +465,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "确认人物真实运动方向与摄影机运动相互独立且空间关系正确，特别检查多人相遇、擦肩、追逐和分离等动作是否出现方向混淆。",
             "确认当前镜头能够在规定时长内连续完成，且没有未经授权的硬切、跳切、转场或额外镜头。",
             "确认局部特写、视觉焦点转移及画面裁切没有导致必要剧情丢失、道具数量变化或人物状态不连续。",
-            "确认所有 Picture、Audio、Subject 引用均来自 REFERENCE_MANIFEST，角色、场景、关键帧及道具的参考媒体对应关系正确；若存在关键帧（KEYFRAME / MOTION_KEYFRAME），确认其未被误识别或描述为场景 (Scene)。",
+            "确认所有 Picture、Audio、Subject 引用均来自 REFERENCE_MANIFEST，角色、场景、关键图及道具的参考媒体对应关系正确；若存在关键图参考（KEYFRAME / MOTION_KEYFRAME），确认其未被误识别或描述为场景 (Scene)。",
             "确认 DIALOGUE_REUSE 与 VOICE_TIMBRE 的使用符合当前任务提供的 usageMode，且没有复用未授权的旧台词。",
             "确认声音、台词、参考媒体及所有资产引用均来自当前任务提供的事实。",
             "确认 prompt 与 videoPrompt 完全一致，firstFramePrompt 与 endFramePrompt 均为 null。",
@@ -529,6 +530,9 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     @Autowired(required = false)
     private LoadSkillToolFactory loadSkillToolFactory;
+
+    @Autowired
+    private ReadSkillFileToolFactory readSkillFileToolFactory;
 
     @Autowired(required = false)
     private ResKeyframeMapper resKeyframeMapper;
@@ -817,7 +821,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             ResKeyframe kf = resKeyframeMapper.selectById(keyframeId);
             if (kf != null && StringUtils.isNotBlank(kf.getFrameUrl())) {
                 images.add(ControlImageVO.builder().controlType("KEYFRAME_REF").imageUrl(kf.getFrameUrl())
-                        .weight(new BigDecimal("0.85")).label("关键帧参考: " + kf.getName()).build());
+                        .weight(new BigDecimal("0.85")).label("关键图参考: " + kf.getName()).build());
             }
         } else {
             DramaScene dramaScene = sceneMapper.selectById(shot.getSceneId());
@@ -970,6 +974,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         apiSystemPrompt = skillPromptContextService.appendCatalogToSystemPrompt(apiSystemPrompt);
         apiSystemPrompt = appendCameraDutyBoundary(apiSystemPrompt);
         ToolCallback tool = loadSkillToolFactory.createTool(session, stageListener);
+        ToolCallback readFileTool = readSkillFileToolFactory.createTool(session);
         ChatClient.Builder clientBuilder = ChatClient.builder(chatModel);
         ChatOptions defaultOptions = chatModel.getOptions();
         if (defaultOptions != null) {
@@ -979,7 +984,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         String content;
         if (chunkListener != null) {
             StringBuilder accumulated = new StringBuilder();
-            client.prompt().system(apiSystemPrompt).user(userPrompt).tools(tool)
+            client.prompt().system(apiSystemPrompt).user(userPrompt).tools(tool, readFileTool)
                     .stream().content().toIterable().forEach(chunk -> {
                         if (StringUtils.isNotEmpty(chunk)) {
                             accumulated.append(chunk);
@@ -988,10 +993,10 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                     });
             content = accumulated.toString();
         } else {
-            content = client.prompt().system(apiSystemPrompt).user(userPrompt).tools(tool).call().content();
+            content = client.prompt().system(apiSystemPrompt).user(userPrompt).tools(tool, readFileTool).call().content();
         }
-        log.info("[SkillPrompt] consumer={}, requestId={}, apiLoadedSkills={}, toolCalls={}",
-                consumer, requestId, session.getLoadedSkillNames(), session.getInvocationHistory());
+        log.info("[SkillPrompt] consumer={}, requestId={}, apiLoadedSkills={}, loadedReferenceFiles={}, toolCalls={}",
+                consumer, requestId, session.getLoadedSkillNames(), session.getLoadedReferenceFiles(), session.getInvocationHistory());
         if (StringUtils.startsWith(consumer, "shot-h3-")
                 && session.getLoadedSkillNames().stream().noneMatch("h3-prompt-writing"::equals)) {
             log.warn("[SkillPrompt] H3 提示词模型未成功加载 h3-prompt-writing: consumer={}, requestId={}, toolCalls={}",
@@ -1726,20 +1731,20 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if (keyframeId != null && keyframeId > 0 && resKeyframeMapper != null) {
             ResKeyframe kf = resKeyframeMapper.selectById(keyframeId);
             if (kf != null) {
-                sb.append("\n【当前分镜视觉基准：分镜关键帧锚点模式 (Keyframe Visual Anchor Mode)】（⚠️ 当前镜头已启用关键帧模式，已替代并禁用传统环境场景资产）:\n");
-                sb.append("- 关键帧名称: ").append(kf.getName()).append("\n");
+                sb.append("\n【当前分镜视觉基准：分镜关键图参考锚点模式 (Key Image Visual Anchor Mode)】（⚠️ 当前镜头已启用关键图参考模式，已替代并禁用传统环境场景资产）:\n");
+                sb.append("- 关键图名称: ").append(kf.getName()).append("\n");
                 if (StringUtils.isNotBlank(kf.getFrameType())) {
                     sb.append("- 帧类型: ").append(kf.getFrameType()).append("\n");
                 }
                 if (StringUtils.isNotBlank(kf.getPrompt())) {
-                    sb.append("- 关键帧生图Prompt/视觉基准: ").append(kf.getPrompt()).append("\n");
+                    sb.append("- 关键图生图Prompt/视觉基准: ").append(kf.getPrompt()).append("\n");
                 } else if (StringUtils.isNotBlank(kf.getDescription())) {
-                    sb.append("- 关键帧描述/视觉基准: ").append(kf.getDescription()).append("\n");
+                    sb.append("- 关键图描述/视觉基准: ").append(kf.getDescription()).append("\n");
                 }
-                sb.append("- ⚠️ 关键帧生成约束（必须严格遵守）:\n");
-                sb.append("  1. 当前镜头未配置独立的环境场景，严禁在提示词或 subject_definitions 中将此关键帧误识别为场景 (Scene) 或定义 <Subject N> (Scene)！\n");
-                sb.append("  2. 当前关键帧是整个镜头画面构图、主体初始姿态或特定动作定格的唯一视觉基准 (Motion Keyframe Anchor)。\n");
-                sb.append("  3. 提示词与画面动态必须以该关键帧呈现的状态作为起点/演进锚点进行视听展开！\n");
+                sb.append("- ⚠️ 关键图参考生成约束（必须严格遵守）:\n");
+                sb.append("  1. 当前镜头未配置独立的环境场景，严禁在提示词或 subject_definitions 中将此关键图参考误识别为场景 (Scene) 或定义 <Subject N> (Scene)！\n");
+                sb.append("  2. 当前关键图是整个镜头画面构图、主体初始姿态或特定动作定格的唯一视觉基准 (Key Image / Motion Anchor)。\n");
+                sb.append("  3. 提示词与画面动态必须以该关键图呈现的状态作为起点/演进锚点进行视听展开！\n");
             }
         } else if (sceneId != null && sceneId > 0) {
             ResScene resScene = resSceneMapper.selectById(sceneId);

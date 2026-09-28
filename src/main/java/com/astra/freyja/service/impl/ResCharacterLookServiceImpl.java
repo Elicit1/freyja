@@ -19,6 +19,7 @@ import com.astra.freyja.skill.model.SkillPromptContext;
 import com.astra.freyja.skill.service.SkillPromptContextService;
 import com.astra.freyja.skill.tool.LoadSkillToolFactory;
 import com.astra.freyja.skill.tool.LoadSkillToolSession;
+import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.astra.freyja.util.JsonExtractionUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -63,6 +64,9 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
 
     @Autowired(required = false)
     private LoadSkillToolFactory loadSkillToolFactory;
+
+    @Autowired
+    private ReadSkillFileToolFactory readSkillFileToolFactory;
 
     @Override
     public List<ResCharacterLookVO> listByCharacterId(Long characterId) {
@@ -454,7 +458,7 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
         String content = clientBuilder.build().prompt()
                 .system(apiSystemPrompt)
                 .user(userPrompt)
-                .tools(tool)
+                .tools(tool, readSkillFileToolFactory.createTool(session))
                 .call()
                 .content();
         log.info("[SkillPrompt] consumer={}, requestId={}, apiLoadedSkills={}, toolCalls={}",

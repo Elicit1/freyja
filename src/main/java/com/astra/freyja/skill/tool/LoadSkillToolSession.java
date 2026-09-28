@@ -26,6 +26,8 @@ public class LoadSkillToolSession {
     private final Map<String, Long> versionSnapshot = Collections.synchronizedMap(new LinkedHashMap<>());
     /** load_skill 工具实际收到的调用名称，包含重复和失败调用，按调用顺序保留。 */
     private final List<String> invocationHistory = Collections.synchronizedList(new ArrayList<>());
+    /** 本次会话中已成功返回给模型的 Skill 附属文件。 */
+    private final List<String> loadedReferenceFiles = Collections.synchronizedList(new ArrayList<>());
 
     public LoadSkillToolSession() {
     }
@@ -83,6 +85,23 @@ public class LoadSkillToolSession {
     public List<String> getLoadedSkillNames() {
         synchronized (loadedSkills) {
             return List.copyOf(loadedSkills.keySet());
+        }
+    }
+
+    public void recordReferenceFile(String name, String path) {
+        String key = name.trim().toLowerCase() + "/" + path;
+        if (!loadedReferenceFiles.contains(key)) {
+            loadedReferenceFiles.add(key);
+        }
+    }
+
+    public boolean hasReadReferenceFile(String name, String path) {
+        return loadedReferenceFiles.contains(name.trim().toLowerCase() + "/" + path);
+    }
+
+    public List<String> getLoadedReferenceFiles() {
+        synchronized (loadedReferenceFiles) {
+            return List.copyOf(loadedReferenceFiles);
         }
     }
 

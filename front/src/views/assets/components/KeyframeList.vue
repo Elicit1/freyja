@@ -5,10 +5,10 @@
       <!-- 筛选搜索栏 -->
       <div class="studio-card p-4">
         <el-form :model="queryParams" inline class="flex flex-wrap items-center gap-2 mb-0">
-          <el-form-item label="关键帧名称">
+          <el-form-item label="关键图名称">
             <el-input
               v-model="queryParams.name"
-              placeholder="搜索关键帧名称"
+              placeholder="搜索关键图名称"
               clearable
               @keyup.enter="handleSearch"
               class="!w-44"
@@ -17,9 +17,7 @@
 
           <el-form-item label="类型">
             <el-select v-model="queryParams.frameType" placeholder="全部类型" clearable class="!w-40">
-              <el-option label="普通关键帧" value="KEYFRAME" />
-              <el-option label="首帧 (FIRST)" value="FIRST_FRAME" />
-              <el-option label="尾帧 (END)" value="END_FRAME" />
+              <el-option label="普通关键图" value="KEYFRAME" />
               <el-option label="动作节奏帧" value="ACTION_BEAT" />
             </el-select>
           </el-form-item>
@@ -78,8 +76,8 @@
       <!-- 操作与视图切换栏 -->
       <div class="flex items-center justify-between flex-wrap gap-2">
         <div class="flex items-center gap-2">
-          <el-button type="primary" :icon="Plus" @click="handleCreate">新建关键帧</el-button>
-          <span class="text-xs text-[var(--text-muted)]">共 {{ total }} 个关键帧资产</span>
+          <el-button type="primary" :icon="Plus" @click="handleCreate()">新建关键图</el-button>
+          <span class="text-xs text-[var(--text-muted)]">共 {{ total }} 个关键图资产</span>
         </div>
 
         <div class="flex items-center gap-2">
@@ -99,7 +97,7 @@
             class="studio-card overflow-hidden flex flex-col justify-between group transition-all cursor-pointer hover:-translate-y-0.5 hover:shadow-md"
             @click="handleEdit(item)"
           >
-            <!-- 关键帧封面 -->
+            <!-- 关键图封面 -->
             <div class="relative h-44 bg-[var(--surface-muted)] overflow-hidden">
               <div class="w-full h-full" @click.stop>
                 <el-image
@@ -112,7 +110,7 @@
                 />
                 <div v-else class="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)] gap-1">
                   <el-icon class="text-3xl opacity-40"><PictureFilled /></el-icon>
-                  <span class="text-[11px] font-mono opacity-60">暂无关键帧图像</span>
+                  <span class="text-[11px] font-mono opacity-60">暂无关键图图像</span>
                 </div>
               </div>
 
@@ -185,14 +183,14 @@
 
         <div v-else class="studio-card p-12 text-center text-[var(--text-muted)] flex flex-col items-center justify-center min-h-[300px]">
           <el-icon class="text-4xl opacity-30 mb-2"><PictureFilled /></el-icon>
-          <p class="text-sm">暂无关键帧资产，可点击上方「新建关键帧」开始建档</p>
+          <p class="text-sm">暂无关键图资产，可点击上方「新建关键图」开始建档</p>
         </div>
       </div>
 
       <!-- 2. 表格列表视图 -->
       <div v-else class="studio-card p-4">
         <el-table :data="keyframeList" v-loading="loading" stripe style="width: 100%">
-          <el-table-column label="关键帧图像" width="100" align="center">
+          <el-table-column label="关键图图像" width="100" align="center">
             <template #default="{ row }">
               <el-image
                 v-if="row.frameUrl"
@@ -206,7 +204,7 @@
             </template>
           </el-table-column>
 
-          <el-table-column prop="name" label="关键帧名称" min-width="140" show-overflow-tooltip />
+          <el-table-column prop="name" label="关键图名称" min-width="140" show-overflow-tooltip />
 
           <el-table-column prop="frameType" label="类型" width="110" align="center">
             <template #default="{ row }">
@@ -335,9 +333,9 @@ function getFrameTypeLabel(type?: string): string {
   switch (type) {
     case 'FIRST_FRAME': return '首帧'
     case 'END_FRAME': return '尾帧'
-    case 'KEYFRAME': return '普通关键帧'
+    case 'KEYFRAME': return '普通关键图'
     case 'ACTION_BEAT': return '动作节奏帧'
-    default: return type || '普通关键帧'
+    default: return type || '普通关键图'
   }
 }
 
@@ -386,7 +384,7 @@ async function fetchList() {
     keyframeList.value = res.records || []
     total.value = res.total || 0
   } catch (error) {
-    ElMessage.error('获取关键帧列表失败')
+    ElMessage.error('获取关键图列表失败')
   } finally {
     loading.value = false
   }
@@ -408,9 +406,12 @@ function handleReset() {
   fetchList()
 }
 
-function handleCreate(dramaId?: string | number, referenceImageUrl?: string, shotId?: string | number) {
+function handleCreate(dramaId?: any, referenceImageUrl?: any, shotId?: any) {
   isEditing.value = true
-  drawerRef.value?.open(undefined, dramaId, referenceImageUrl, shotId)
+  const safeDramaId = (dramaId && typeof dramaId !== 'object') ? dramaId : undefined
+  const safeRefUrl = (referenceImageUrl && typeof referenceImageUrl !== 'object') ? referenceImageUrl : undefined
+  const safeShotId = (shotId && typeof shotId !== 'object') ? shotId : undefined
+  drawerRef.value?.open(undefined, safeDramaId, safeRefUrl, safeShotId)
 }
 
 function handleEdit(row: ResKeyframe) {
@@ -434,7 +435,7 @@ async function handleStatusToggle(row: ResKeyframe) {
   try {
     await keyframeApi.changeStatus(row.id!, newStatus)
     row.status = newStatus
-    ElMessage.success(`关键帧已${newStatus === 1 ? '启用' : '停用'}`)
+    ElMessage.success(`关键图已${newStatus === 1 ? '启用' : '停用'}`)
   } catch (error: any) {
     ElMessage.error(error.message || '更新状态失败')
   }
@@ -443,7 +444,7 @@ async function handleStatusToggle(row: ResKeyframe) {
 async function handleDelete(row: ResKeyframe) {
   try {
     await ElMessageBox.confirm(
-      `确定要删除关键帧「${row.name}」吗？删除后将无法恢复。`,
+      `确定要删除关键图「${row.name}」吗？删除后将无法恢复。`,
       '删除确认',
       {
         type: 'warning',
@@ -452,7 +453,7 @@ async function handleDelete(row: ResKeyframe) {
       }
     )
     await keyframeApi.delete(row.id!)
-    ElMessage.success('关键帧删除成功')
+    ElMessage.success('关键图删除成功')
     fetchList()
   } catch (error) {
     // 用户取消删除

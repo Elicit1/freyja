@@ -165,18 +165,18 @@ export function useShotReferenceAssets(
       }
     }
 
-    // B2. 选中的分镜关键帧 (与环境场景互斥)
+    // B2. 选中的关键图参考 (与环境场景互斥)
     if (draft.value.resKeyframeId && options.keyframeOptions?.value) {
       const kf = options.keyframeOptions.value.find(k => String(k.id) === String(draft.value.resKeyframeId))
       if (kf && kf.frameUrl) {
         pushImage({
           id: `cand_keyframe_${kf.id}`,
-          name: `${kf.name} (${kf.frameType || '关键帧'})`,
+          name: `${kf.name} (${kf.frameType || '关键图'})`,
           imageUrl: kf.frameUrl,
           sourceType: 'KEYFRAME',
           sourceId: String(kf.id),
           usageRole: 'MOTION_KEYFRAME',
-          tag: '分镜关键帧',
+          tag: '关键图参考',
           assetName: kf.name,
           assetType: 'KEYFRAME'
         })

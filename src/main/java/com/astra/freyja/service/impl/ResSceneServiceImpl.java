@@ -23,6 +23,7 @@ import com.astra.freyja.skill.model.SkillPromptContext;
 import com.astra.freyja.skill.service.SkillPromptContextService;
 import com.astra.freyja.skill.tool.LoadSkillToolFactory;
 import com.astra.freyja.skill.tool.LoadSkillToolSession;
+import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.astra.freyja.util.JsonExtractionUtil;
 import com.astra.freyja.util.JsonRepairUtil;
 import org.apache.commons.lang3.StringUtils;
@@ -66,6 +67,9 @@ public class ResSceneServiceImpl implements ResSceneService {
 
     @Autowired(required = false)
     private LoadSkillToolFactory loadSkillToolFactory;
+
+    @Autowired
+    private ReadSkillFileToolFactory readSkillFileToolFactory;
 
     @Override
     public Page<ResSceneVO> page(ResSceneQuery query) {
@@ -541,7 +545,7 @@ public class ResSceneServiceImpl implements ResSceneService {
         String content = clientBuilder.build().prompt()
                 .system(apiSystemPrompt)
                 .user(userPrompt)
-                .tools(tool)
+                .tools(tool, readSkillFileToolFactory.createTool(session))
                 .call()
                 .content();
         log.info("[SkillPrompt] consumer={}, requestId={}, apiLoadedSkills={}, toolCalls={}",

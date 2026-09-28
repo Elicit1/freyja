@@ -230,7 +230,15 @@ public class DramaShotController {
      */
     @GetMapping("/options-by-drama")
     public R<List<com.astra.freyja.dto.drama.DramaShotOptionVO>> optionsByDrama(
-            @RequestParam("dramaId") Long dramaId) {
-        return R.ok(shotService.optionsByDramaId(dramaId));
+            @RequestParam(value = "dramaId", required = false) String dramaId) {
+        if (dramaId == null || dramaId.isBlank() || "0".equals(dramaId) || dramaId.contains("object")) {
+            return R.ok(java.util.Collections.emptyList());
+        }
+        try {
+            Long parsedId = Long.parseLong(dramaId.trim());
+            return R.ok(shotService.optionsByDramaId(parsedId));
+        } catch (NumberFormatException e) {
+            return R.ok(java.util.Collections.emptyList());
+        }
     }
 }

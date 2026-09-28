@@ -16,6 +16,8 @@ import com.astra.freyja.skill.service.SkillContentService;
 import com.astra.freyja.skill.service.SkillPromptContextService;
 import com.astra.freyja.skill.tool.LoadSkillToolFactory;
 import com.astra.freyja.skill.tool.LoadSkillToolSession;
+import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
+import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -43,6 +45,7 @@ class ScriptSkillRuntimeTest {
     @Mock private SkillContentService contentService;
     @Mock private SkillPromptContextService promptContextService;
     @Mock private LoadSkillToolFactory toolFactory;
+    @Mock private ReadSkillFileToolFactory readSkillFileToolFactory;
     @Mock private AiModelMapper modelMapper;
     @Mock private tools.jackson.databind.ObjectMapper taskObjectMapper;
     @InjectMocks private ScriptSkillRuntime runtime;
@@ -57,6 +60,7 @@ class ScriptSkillRuntimeTest {
                 .thenReturn(new SkillPromptContext("SKILL RULES", "hash", List.of("story-structure@v1")));
         when(promptContextService.appendToSystemPrompt(anyString(), any())).thenAnswer(call ->
                 call.getArgument(0, String.class) + "\n" + ((SkillPromptContext) call.getArgument(1)).prompt());
+        when(readSkillFileToolFactory.createTool(any())).thenReturn(mock(ToolCallback.class));
 
         runtime.prepareRequest(request);
         assertEquals(List.of("story-structure"), request.getSkillPolicy().getPlanner().getRequiredSkillNames());
@@ -70,6 +74,9 @@ class ScriptSkillRuntimeTest {
         assertNotSame(first.session(), second.session());
         assertTrue(first.systemPrompt().contains("SKILL RULES"));
         assertNull(first.tool());
+        assertTrue(first.hasTools());
+        assertEquals(1, first.tools().length);
+        assertNotNull(first.readFileTool());
         assertEquals(2, context.getSkillEvents().size());
         assertEquals("REQUIRED", context.getSkillEvents().getFirst().source());
         assertEquals(11L, context.getSkillEvents().getFirst().versionId());
@@ -113,11 +120,13 @@ class ScriptSkillRuntimeTest {
         when(toolFactory.createTool(any(LoadSkillToolSession.class), any(), any())).thenAnswer(call ->
                 new LoadSkillToolFactory(contentService).createTool(
                         call.getArgument(0), call.getArgument(1), call.getArgument(2)));
+        when(readSkillFileToolFactory.createTool(any())).thenReturn(mock(ToolCallback.class));
         GlobalStoryContext context = new GlobalStoryContext();
 
         var invocation = runtime.begin(request, request.getSkillPolicy().getPlanner(), context,
                 "PLANNER", "PLANNER", null, 0, null);
         assertNotNull(invocation.tool());
+        assertEquals(2, invocation.tools().length);
         invocation.tool().call("{\"name\":\"story-structure\"}");
 
         assertEquals(1, context.getSkillEvents().size());

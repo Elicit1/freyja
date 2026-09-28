@@ -10,9 +10,9 @@
           </el-button>
           <div class="h-4 w-px bg-slate-200"></div>
           <div class="flex items-center gap-2">
-            <span class="text-xs text-slate-400">数字资产中心 / 关键帧资产管理 /</span>
+            <span class="text-xs text-slate-400">数字资产中心 / 关键图资产管理 /</span>
             <h2 class="text-base font-bold text-slate-800 tracking-tight">
-              {{ isEdit ? `编辑关键帧 - ${formData.name || ''}` : '新建关键帧资产' }}
+              {{ isEdit ? `编辑关键图 - ${formData.name || ''}` : '新建关键图资产' }}
             </h2>
             <el-tag v-if="formData.frameType" size="small" type="primary" effect="plain">
               {{ getFrameTypeLabel(formData.frameType) }}
@@ -23,7 +23,7 @@
         <div class="flex items-center gap-2">
           <el-button @click="handleClose()">取消</el-button>
           <el-button type="primary" :loading="saving" @click="handleSubmit">
-            保存关键帧
+            保存关键图
           </el-button>
         </div>
       </div>
@@ -39,7 +39,7 @@
         class="pr-2"
       >
         <el-tabs v-model="activeTab" class="mb-4">
-          <!-- 标签页 1: 关键帧基本信息与关联 -->
+          <!-- 标签页 1: 关键图基本信息与关联 -->
           <el-tab-pane label="基本信息与绑定" name="basic">
             <!-- 上一镜尾帧提示条 -->
             <div
@@ -53,26 +53,24 @@
                 preview-teleported
               />
               <div class="flex-1 min-w-0">
-                <div class="font-bold text-emerald-900">📎 已自动载入上一镜视频尾帧作为关键帧图像</div>
+                <div class="font-bold text-emerald-900">📎 已自动载入上一镜视频尾帧作为关键图参考</div>
                 <div class="text-[11px] text-emerald-700 truncate font-mono mt-0.5">{{ formData.frameUrl }}</div>
               </div>
             </div>
 
-            <el-form-item label="关键帧名称" prop="name">
+            <el-form-item label="关键图名称" prop="name">
               <el-input
                 v-model="formData.name"
-                placeholder="如：雨夜决战首帧 / 回眸特写关键帧"
+                placeholder="如：雨夜决战首帧 / 回眸特写关键图"
                 maxlength="100"
                 show-word-limit
               />
             </el-form-item>
 
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <el-form-item label="关键帧类型" prop="frameType">
-                <el-select v-model="formData.frameType" placeholder="选择关键帧类型" class="w-full">
-                  <el-option label="🎬 普通关键帧 (KEYFRAME)" value="KEYFRAME" />
-                  <el-option label="🏁 首帧 (FIRST_FRAME)" value="FIRST_FRAME" />
-                  <el-option label="🛑 尾帧 (END_FRAME)" value="END_FRAME" />
+              <el-form-item label="关键图类型" prop="frameType">
+                <el-select v-model="formData.frameType" placeholder="选择关键图类型" class="w-full">
+                  <el-option label="🎬 普通关键图 (KEYFRAME)" value="KEYFRAME" />
                   <el-option label="⚡ 动作节奏帧 (ACTION_BEAT)" value="ACTION_BEAT" />
                 </el-select>
               </el-form-item>
@@ -98,7 +96,7 @@
                   class="w-full"
                   @change="handleDramaChange"
                 >
-                  <el-option label="🌐 全局公共资源库 (通用关键帧)" value="0" />
+                  <el-option label="🌐 全局公共资源库 (通用关键图)" value="0" />
                   <el-option
                     v-for="d in dramaOptions"
                     :key="String(d.id)"
@@ -133,7 +131,7 @@
                 v-model="formData.description"
                 type="textarea"
                 :rows="3"
-                placeholder="描述关键帧的画面构图、人物动作姿态、视听焦点与情绪氛围..."
+                placeholder="说明这张图希望视频参考什么，例如人物位置、左右关系、朝向、相对距离、构图、观察方向和当前画面状态。"
               />
             </el-form-item>
 
@@ -171,13 +169,13 @@
             </el-collapse>
           </el-tab-pane>
 
-          <!-- 标签页 2: 关键帧图片与上传 -->
-          <el-tab-pane label="关键帧图像" name="image">
+          <!-- 标签页 2: 关键图图片与上传 -->
+          <el-tab-pane label="关键图图像" name="image">
             <div class="text-xs text-slate-500 mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
-              💡 关键帧图像可作为镜头渲染的首帧、尾帧或 ControlNet / IP-Adapter 的动态演进参考（MOTION_KEYFRAME）。
+              💡 关键图图像可作为镜头渲染的首帧、尾帧或多模态视频生成的关键图参考（MOTION_KEYFRAME）。
             </div>
 
-            <el-form-item label="关键帧图像" prop="frameUrl">
+            <el-form-item label="关键图图像" prop="frameUrl">
               <div class="flex flex-col gap-3">
                 <div class="flex items-center gap-4">
                   <div v-if="formData.frameUrl" class="relative group cursor-pointer">
@@ -208,7 +206,7 @@
                     >
                       <el-button type="primary" :loading="uploadingImage">
                         <el-icon class="mr-1"><Upload /></el-icon>
-                        {{ formData.frameUrl ? '重新上传关键帧' : '上传关键帧图像' }}
+                        {{ formData.frameUrl ? '重新上传关键图' : '上传关键图图像' }}
                       </el-button>
                     </el-upload>
                     <div class="text-xs text-slate-400">支持 JPG/PNG/WebP 格式</div>
@@ -315,14 +313,17 @@ const formData = reactive<{
 
 const formRules: FormRules = {
   name: [
-    { required: true, message: '请输入关键帧名称', trigger: 'blur' },
+    { required: true, message: '请输入关键图名称', trigger: 'blur' },
     { min: 2, max: 100, message: '长度在 2 到 100 个字符', trigger: 'blur' }
   ],
   frameUrl: [
-    { required: true, message: '请上传关键帧图像', trigger: 'change' }
+    { required: true, message: '请上传关键图图像', trigger: 'change' }
   ],
   frameType: [
-    { required: true, message: '请选择关键帧类型', trigger: 'change' }
+    { required: true, message: '请选择关键图类型', trigger: 'change' }
+  ],
+  description: [
+    { required: true, message: '请输入画面动作描述', trigger: 'blur' }
   ]
 }
 
@@ -330,7 +331,7 @@ function getFrameTypeLabel(type: string): string {
   switch (type) {
     case 'FIRST_FRAME': return '首帧'
     case 'END_FRAME': return '尾帧'
-    case 'KEYFRAME': return '普通关键帧'
+    case 'KEYFRAME': return '普通关键图'
     case 'ACTION_BEAT': return '动作节奏帧'
     default: return type
   }
@@ -351,15 +352,15 @@ async function loadDramaOptions() {
   }
 }
 
-async function loadShotOptions(dramaId: string) {
-  if (!dramaId || dramaId === '0') {
+async function loadShotOptions(dramaId?: any) {
+  if (!dramaId || dramaId === '0' || typeof dramaId === 'object' || String(dramaId).includes('object')) {
     shotOptions.value = []
     formData.shotId = undefined
     return
   }
   try {
     loadingShots.value = true
-    const res = await shotApi.getOptionsByDrama(dramaId)
+    const res = await shotApi.getOptionsByDrama(String(dramaId))
     shotOptions.value = (res || []).map((s: any) => ({
       id: String(s.id),
       dramaId: String(s.dramaId),
@@ -385,7 +386,7 @@ async function handleImageUpload(options: UploadRequestOptions) {
     uploadingImage.value = true
     const res = await assetApi.upload(options.file, 'keyframe')
     formData.frameUrl = res.url
-    ElMessage.success('关键帧图片上传成功')
+    ElMessage.success('关键图图片上传成功')
   } catch (error) {
     ElMessage.error('上传图片失败')
   } finally {
@@ -393,10 +394,14 @@ async function handleImageUpload(options: UploadRequestOptions) {
   }
 }
 
-async function open(row?: ResKeyframe, defaultDramaId?: string | number, defaultFrameUrl?: string, defaultShotId?: string | number) {
+async function open(row?: ResKeyframe, defaultDramaId?: any, defaultFrameUrl?: any, defaultShotId?: any) {
   await loadDramaOptions()
   activeTab.value = 'basic'
   activeCollapseNames.value = []
+
+  const safeDramaId = (defaultDramaId && typeof defaultDramaId !== 'object') ? defaultDramaId : undefined
+  const safeFrameUrl = (typeof defaultFrameUrl === 'string') ? defaultFrameUrl : ''
+  const safeShotId = (defaultShotId && typeof defaultShotId !== 'object') ? defaultShotId : undefined
 
   if (row && row.id) {
     isEdit.value = true
@@ -423,8 +428,8 @@ async function open(row?: ResKeyframe, defaultDramaId?: string | number, default
     }
   } else {
     isEdit.value = false
-    const normalizedDramaId = (defaultDramaId !== undefined && defaultDramaId !== null && defaultDramaId !== '' && String(defaultDramaId) !== '0')
-      ? String(defaultDramaId)
+    const normalizedDramaId = (safeDramaId !== undefined && safeDramaId !== null && safeDramaId !== '' && String(safeDramaId) !== '0')
+      ? String(safeDramaId)
       : '0'
 
     Object.assign(formData, {
@@ -433,11 +438,11 @@ async function open(row?: ResKeyframe, defaultDramaId?: string | number, default
       shotId: undefined,
       name: '',
       frameType: 'KEYFRAME',
-      frameUrl: defaultFrameUrl || '',
+      frameUrl: safeFrameUrl,
       prompt: '',
       negativePrompt: '',
       description: '',
-      sourceType: defaultFrameUrl ? 'PREVIOUS_VIDEO_TAIL' : 'MANUAL_UPLOAD',
+      sourceType: safeFrameUrl ? 'PREVIOUS_VIDEO_TAIL' : 'MANUAL_UPLOAD',
       aspectRatio: '16:9',
       sortOrder: 0,
       status: 1,
@@ -446,14 +451,14 @@ async function open(row?: ResKeyframe, defaultDramaId?: string | number, default
 
     if (normalizedDramaId !== '0') {
       await loadShotOptions(normalizedDramaId)
-      formData.shotId = defaultShotId !== undefined && defaultShotId !== null && defaultShotId !== ''
-        ? String(defaultShotId)
+      formData.shotId = safeShotId !== undefined && safeShotId !== null && safeShotId !== ''
+        ? String(safeShotId)
         : undefined
 
-      if (defaultFrameUrl && formData.shotId) {
+      if (safeFrameUrl && formData.shotId) {
         const targetShot = shotOptions.value.find(s => String(s.id) === String(formData.shotId))
         if (targetShot) {
-          formData.name = `${targetShot.shotName || `镜头#${targetShot.shotNo}`} 视频尾帧关键帧`
+          formData.name = `${targetShot.shotName || `镜头#${targetShot.shotNo}`} 视频尾帧关键图`
         }
       }
     } else {
@@ -482,11 +487,11 @@ async function handleSubmit() {
 
       if (isEdit.value) {
         await keyframeApi.update(payload)
-        ElMessage.success('关键帧资产更新成功')
+        ElMessage.success('关键图资产更新成功')
       } else {
         const id = await keyframeApi.create(payload)
         payload.id = id
-        ElMessage.success('关键帧资产创建成功')
+        ElMessage.success('关键图资产创建成功')
       }
       visible.value = false
       emit('success', payload as ResKeyframe)

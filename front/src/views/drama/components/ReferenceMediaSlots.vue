@@ -100,7 +100,7 @@
               >
                 <el-option label="主体 (SUBJECT)" value="SUBJECT" />
                 <el-option label="场景 (SCENE)" value="SCENE" />
-                <el-option label="关键帧 (MOTION_KEYFRAME)" value="MOTION_KEYFRAME" />
+                <el-option label="关键图参考 (MOTION_KEYFRAME)" value="MOTION_KEYFRAME" />
                 <el-option label="道具 (PROP)" value="PROP" />
                 <el-option label="首帧 (FIRST_FRAME)" value="FIRST_FRAME" />
                 <el-option label="尾帧 (END_FRAME)" value="END_FRAME" />
@@ -522,7 +522,7 @@ function getSourceTypeLabel(type?: string) {
     case 'CHARACTER': return '人物'
     case 'CHARACTER_REFERENCE': return '造型'
     case 'SCENE': return '场景'
-    case 'KEYFRAME': return '关键帧'
+    case 'KEYFRAME': return '关键图'
     case 'PROP': return '道具'
     case 'UPLOAD': return '上传'
     default: return '素材'
@@ -533,7 +533,7 @@ function getUsageRoleLabel(role?: string) {
   switch (role) {
     case 'SUBJECT': return '主体'
     case 'SCENE': return '场景'
-    case 'MOTION_KEYFRAME': return '关键帧'
+    case 'MOTION_KEYFRAME': return '关键图参考'
     case 'PROP': return '道具'
     case 'FIRST_FRAME': return '首帧'
     case 'END_FRAME': return '尾帧'

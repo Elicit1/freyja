@@ -121,7 +121,7 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
                             .controlType("KEYFRAME_REF")
                             .imageUrl(kf.getFrameUrl())
                             .weight(new BigDecimal("0.85"))
-                            .label("关键帧参考: " + kf.getName())
+                            .label("关键图参考: " + kf.getName())
                             .build());
                 }
             }

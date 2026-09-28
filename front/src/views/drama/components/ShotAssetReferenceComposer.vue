@@ -135,7 +135,7 @@
       </div>
     </div>
 
-    <!-- 2. 环境背景：环境场景 与 分镜关键帧 互斥二选一 (默认场景) -->
+    <!-- 2. 环境背景：环境场景 与 关键图参考 互斥二选一 (默认场景) -->
     <div class="asset-block space-y-2">
       <div class="flex items-center justify-between flex-wrap gap-2">
         <div class="flex items-center gap-2">
@@ -146,10 +146,10 @@
             @change="handleBackgroundTypeChange"
           >
             <el-radio-button value="SCENE">🏞️ 环境场景 (默认)</el-radio-button>
-            <el-radio-button value="KEYFRAME">🎬 分镜关键帧</el-radio-button>
+            <el-radio-button value="KEYFRAME">🎬 关键图参考</el-radio-button>
           </el-radio-group>
           <span class="text-[10px] text-slate-400">
-            {{ activeBackgroundType === 'SCENE' ? '空间参考图与封面（与关键帧互斥）' : '关键帧资产引导动态与画面（与场景互斥）' }}
+            {{ activeBackgroundType === 'SCENE' ? '空间参考图与封面（与关键图互斥）' : '关键图参考资产引导动态与画面（与场景互斥）' }}
           </span>
         </div>
 
@@ -174,11 +174,11 @@
             />
           </el-select>
 
-          <!-- 关键帧下拉 -->
+          <!-- 关键图下拉 -->
           <el-select
             v-else
             :model-value="resKeyframeId ? String(resKeyframeId) : undefined"
-            placeholder="选择分镜关键帧资产"
+            placeholder="选择关键图参考资产"
             size="small"
             filterable
             clearable
@@ -267,10 +267,10 @@
         </div>
       </template>
 
-      <!-- 关键帧卡片 -->
+      <!-- 关键图卡片 -->
       <template v-else>
         <div v-if="!currentKeyframe" class="text-slate-400 text-xs py-2 text-center bg-slate-50 rounded border border-dashed border-slate-200">
-          （未绑定分镜关键帧资产，可在右上角下拉选择）
+          （未绑定关键图参考资产，可在右上角下拉选择）
         </div>
         <div v-else class="flex items-start gap-3 bg-indigo-50/50 border border-indigo-200/80 rounded-lg p-2">
           <div class="w-14 h-14 rounded overflow-hidden bg-slate-100 shrink-0 border border-indigo-100 flex items-center justify-center">
@@ -297,7 +297,7 @@
                   effect="plain"
                   class="!text-[9px] !px-1 !h-4"
                 >
-                  🎬 分镜关键帧
+                  🎬 关键图参考
                 </el-tag>
                 <el-button
                   type="danger"
@@ -306,7 +306,7 @@
                   class="!p-0 ml-1 text-xs"
                   :disabled="disabled"
                   @click="handleClearKeyframe"
-                  title="清除关键帧"
+                  title="清除关键图"
                 >
                   ✕
                 </el-button>

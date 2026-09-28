@@ -401,7 +401,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
             systemPrompt = skillInvocation.systemPrompt();
             skillInvocation = new ScriptSkillRuntime.Invocation(
                     systemPrompt,
-                    skillInvocation.tool(), skillInvocation.session(), skillInvocation.taskId(),
+                    skillInvocation.tool(), skillInvocation.readFileTool(), skillInvocation.session(), skillInvocation.taskId(),
                     skillInvocation.stage(), skillInvocation.segmentId(), skillInvocation.attempt());
         }
 
@@ -421,7 +421,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
 
         StringBuilder fullOutput = new StringBuilder();
         try {
-            if (skillInvocation != null && skillInvocation.tool() != null) {
+            if (skillInvocation != null && skillInvocation.hasTools()) {
                 fullOutput.append(scriptSkillRuntime.streamWithTool(chatModel, skillInvocation, token -> {
                             if (channelChunkConsumer != null) channelChunkConsumer.accept(segment.getId(), token);
                         }));

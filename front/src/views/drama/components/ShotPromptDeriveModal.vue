@@ -62,7 +62,7 @@
 
       </div>
 
-      <!-- 一、资产选择区 (人物/造型、场景、关键道具、关键帧) -->
+      <!-- 一、资产选择区 (人物/造型、场景、关键道具、关键图参考) -->
         <ShotAssetReferenceComposer
           v-model:characterRefs="draft.characterRefs"
           v-model:resSceneId="draft.resSceneId"
@@ -824,7 +824,6 @@ const generationMode = ref<'FIRST_LAST_FRAME' | 'REFERENCE_MODE'>('FIRST_LAST_FR
 // 双通道执行模式: API 自动流式 / MANUAL 外部 AI 手工生成
 type ExecutionMode = 'API' | 'MANUAL'
 const executionMode = ref<ExecutionMode>('API')
-const DEFAULT_H3_SKILL = 'h3-prompt-writing'
 const activeManualTab = ref<'prompt' | 'paste'>('prompt')
 const promptPackage = ref<ShotPromptPackageVO | null>(null)
 const rawManualResponse = ref('')
@@ -882,7 +881,7 @@ const episodeSummary = ref('')
 const stylePreset = ref('')
 const styleTone = ref('')
 const instruction = ref('')
-const skillNames = ref<string[]>([DEFAULT_H3_SKILL])
+const skillNames = ref<string[]>([])
 
 const providers = ref<AiProviderVO[]>([])
 const models = ref<AiModel[]>([])
@@ -1020,7 +1019,7 @@ async function open(params: {
   generationMode.value = params.generationMode || params.shot.generationMode || 'FIRST_LAST_FRAME'
   episodeSummary.value = params.episodeSummary || ''
   executionMode.value = 'API'
-  skillNames.value = [DEFAULT_H3_SKILL]
+  skillNames.value = []
   promptPackage.value = null
   rawManualResponse.value = ''
   validationInfo.value = null
@@ -1183,7 +1182,7 @@ function restorePromptInputSnapshot(inputPayload?: string, expectedShotId?: stri
     styleTone.value = payload.styleTone || ''
     instruction.value = payload.userInstruction || ''
     includeBgm.value = Boolean(payload.includeBgm)
-    skillNames.value = [...(payload.requiredSkillNames || payload.selectedSkillNames || [DEFAULT_H3_SKILL])]
+    skillNames.value = [...(payload.requiredSkillNames || payload.selectedSkillNames || [])]
     providerId.value = payload.providerId
     modelCode.value = payload.modelCode
 

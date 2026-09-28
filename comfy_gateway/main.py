@@ -323,10 +323,12 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
 
     # Extract the exact prompt submitted to ComfyUI
     extracted_prompt = None
-    if "136" in prompt_workflow and "prompt" in prompt_workflow["136"].get("inputs", {}):
-        extracted_prompt = prompt_workflow["136"]["inputs"]["prompt"]
-    elif "4" in prompt_workflow and "text" in prompt_workflow["4"].get("inputs", {}):
-        extracted_prompt = prompt_workflow["4"]["inputs"]["text"]
+    if model_cfg.mappings and "prompt" in model_cfg.mappings:
+        prompt_path = model_cfg.mappings["prompt"]
+        if len(prompt_path) == 3 and prompt_path[0] in prompt_workflow:
+            extracted_prompt = prompt_workflow[prompt_path[0]].get(prompt_path[1], {}).get(prompt_path[2])
+    if extracted_prompt is None:
+        extracted_prompt = request.prompt
 
     target_node_id = target_node.node_id if 'target_node' in locals() else 'default'
     logger.info(

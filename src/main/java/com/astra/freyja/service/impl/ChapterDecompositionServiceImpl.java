@@ -240,7 +240,7 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
         PlannerDecomposeResultVO result;
         StringBuilder fullOutput = new StringBuilder();
         try {
-            if (skillInvocation != null && skillInvocation.tool() != null) {
+            if (skillInvocation != null && skillInvocation.hasTools()) {
                 fullOutput.append(scriptSkillRuntime.streamWithTool(chatModel, skillInvocation,
                         userPromptSb.toString(), token -> {
                             if (channelChunkConsumer != null) {

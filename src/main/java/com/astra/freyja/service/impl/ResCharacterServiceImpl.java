@@ -20,6 +20,7 @@ import com.astra.freyja.skill.model.SkillPromptContext;
 import com.astra.freyja.skill.service.SkillPromptContextService;
 import com.astra.freyja.skill.tool.LoadSkillToolFactory;
 import com.astra.freyja.skill.tool.LoadSkillToolSession;
+import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
@@ -71,6 +72,9 @@ public class ResCharacterServiceImpl implements ResCharacterService {
 
     @Autowired(required = false)
     private LoadSkillToolFactory loadSkillToolFactory;
+
+    @Autowired
+    private ReadSkillFileToolFactory readSkillFileToolFactory;
 
     @Override
     public Page<ResCharacterVO> page(ResCharacterQuery query) {
@@ -622,7 +626,7 @@ public class ResCharacterServiceImpl implements ResCharacterService {
         String content = clientBuilder.build().prompt()
                 .system(apiSystemPrompt)
                 .user(userPrompt)
-                .tools(tool)
+                .tools(tool, readSkillFileToolFactory.createTool(session))
                 .call()
                 .content();
         log.info("[SkillPrompt] consumer={}, requestId={}, apiLoadedSkills={}, toolCalls={}",
