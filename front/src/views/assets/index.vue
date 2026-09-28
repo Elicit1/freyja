@@ -147,7 +147,9 @@ onMounted(async () => {
     sceneListRef.value?.handleCreate(dramaId, queryValue(route.query.referenceImageUrl))
   }
   if (returnAssetType.value === 'prop') propListRef.value?.handleCreate(dramaId)
-  if (returnAssetType.value === 'keyframe') keyframeListRef.value?.openCreate()
+  if (returnAssetType.value === 'keyframe') {
+    keyframeListRef.value?.openCreate(dramaId, queryValue(route.query.referenceImageUrl), queryValue(route.query.shotId))
+  }
 })
 
 async function handleAssetCreated(assetType: AssetType, assetId: string | number) {

@@ -408,9 +408,9 @@ function handleReset() {
   fetchList()
 }
 
-function handleCreate() {
+function handleCreate(dramaId?: string | number, referenceImageUrl?: string, shotId?: string | number) {
   isEditing.value = true
-  drawerRef.value?.open()
+  drawerRef.value?.open(undefined, dramaId, referenceImageUrl, shotId)
 }
 
 function handleEdit(row: ResKeyframe) {

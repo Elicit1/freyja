@@ -41,6 +41,23 @@
         <el-tabs v-model="activeTab" class="mb-4">
           <!-- 标签页 1: 关键帧基本信息与关联 -->
           <el-tab-pane label="基本信息与绑定" name="basic">
+            <!-- 上一镜尾帧提示条 -->
+            <div
+              v-if="formData.frameUrl && formData.sourceType === 'PREVIOUS_VIDEO_TAIL'"
+              class="mb-4 flex items-center gap-3 p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-lg text-xs text-emerald-800"
+            >
+              <el-image
+                :src="formData.frameUrl"
+                class="w-16 h-10 rounded object-cover flex-shrink-0 border border-emerald-300"
+                :preview-src-list="[formData.frameUrl]"
+                preview-teleported
+              />
+              <div class="flex-1 min-w-0">
+                <div class="font-bold text-emerald-900">📎 已自动载入上一镜视频尾帧作为关键帧图像</div>
+                <div class="text-[11px] text-emerald-700 truncate font-mono mt-0.5">{{ formData.frameUrl }}</div>
+              </div>
+            </div>
+
             <el-form-item label="关键帧名称" prop="name">
               <el-input
                 v-model="formData.name"
@@ -376,7 +393,7 @@ async function handleImageUpload(options: UploadRequestOptions) {
   }
 }
 
-async function open(row?: ResKeyframe) {
+async function open(row?: ResKeyframe, defaultDramaId?: string | number, defaultFrameUrl?: string, defaultShotId?: string | number) {
   await loadDramaOptions()
   activeTab.value = 'basic'
   activeCollapseNames.value = []
@@ -406,23 +423,42 @@ async function open(row?: ResKeyframe) {
     }
   } else {
     isEdit.value = false
+    const normalizedDramaId = (defaultDramaId !== undefined && defaultDramaId !== null && defaultDramaId !== '' && String(defaultDramaId) !== '0')
+      ? String(defaultDramaId)
+      : '0'
+
     Object.assign(formData, {
       id: undefined,
-      dramaId: '0',
+      dramaId: normalizedDramaId,
       shotId: undefined,
       name: '',
       frameType: 'KEYFRAME',
-      frameUrl: '',
+      frameUrl: defaultFrameUrl || '',
       prompt: '',
       negativePrompt: '',
       description: '',
-      sourceType: 'MANUAL_UPLOAD',
+      sourceType: defaultFrameUrl ? 'PREVIOUS_VIDEO_TAIL' : 'MANUAL_UPLOAD',
       aspectRatio: '16:9',
       sortOrder: 0,
       status: 1,
       remark: ''
     })
-    shotOptions.value = []
+
+    if (normalizedDramaId !== '0') {
+      await loadShotOptions(normalizedDramaId)
+      formData.shotId = defaultShotId !== undefined && defaultShotId !== null && defaultShotId !== ''
+        ? String(defaultShotId)
+        : undefined
+
+      if (defaultFrameUrl && formData.shotId) {
+        const targetShot = shotOptions.value.find(s => String(s.id) === String(formData.shotId))
+        if (targetShot) {
+          formData.name = `${targetShot.shotName || `镜头#${targetShot.shotNo}`} 视频尾帧关键帧`
+        }
+      }
+    } else {
+      shotOptions.value = []
+    }
   }
   visible.value = true
 }

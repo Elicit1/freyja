@@ -448,7 +448,7 @@
               <h4 class="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
                 <el-icon class="text-emerald-600"><Picture /></el-icon> 镜头环境背景
               </h4>
-              <el-radio-group v-model="drawerBackgroundType" size="small">
+              <el-radio-group v-model="drawerBackgroundType" size="small" @change="handleDrawerBackgroundTypeChange">
                 <el-radio-button value="SCENE">🏞️ 环境场景 (默认)</el-radio-button>
                 <el-radio-button value="KEYFRAME">🎬 分镜关键帧</el-radio-button>
               </el-radio-group>
@@ -469,6 +469,21 @@
               </el-button>
               <el-button type="success" link size="small" @click="handleSaveAndCreateAsset('scene')">
                 + 新建场景
+              </el-button>
+            </div>
+            <div v-else class="flex items-center gap-2">
+              <el-button
+                v-if="form.generationMode === 'REFERENCE_MODE'"
+                type="primary"
+                link
+                size="small"
+                :loading="creatingTailKeyframe"
+                @click="handleSaveAndCreateAsset('keyframe', true)"
+              >
+                + 用上一镜视频尾帧新建关键帧
+              </el-button>
+              <el-button type="primary" link size="small" @click="handleSaveAndCreateAsset('keyframe')">
+                + 新建关键帧
               </el-button>
             </div>
           </div>
@@ -1128,7 +1143,7 @@ const emit = defineEmits<{
   (e: 'deleted', shotId?: string | number): void
 }>()
 
-type ShotAssetType = 'character' | 'scene' | 'prop'
+type ShotAssetType = 'character' | 'scene' | 'prop' | 'keyframe'
 type DerivedPromptResult = {
   generationMode: 'FIRST_LAST_FRAME' | 'REFERENCE_MODE'
   prompt?: string
@@ -1175,6 +1190,7 @@ const uploadingFirst = ref(false)
 const uploadingEnd = ref(false)
 const uploadingRefImg = ref(false)
 const creatingTailScene = ref(false)
+const creatingTailKeyframe = ref(false)
 const uploadingRefAud = ref(false)
 
 const characterOptions = ref<ResCharacterOption[]>([])
@@ -1233,23 +1249,22 @@ const form = reactive<DramaShot>({
   sortOrder: 1
 })
 
-const drawerBackgroundType = computed<'SCENE' | 'KEYFRAME'>({
-  get() {
-    return form.resKeyframeId ? 'KEYFRAME' : 'SCENE'
-  },
-  set(val) {
-    if (val === 'SCENE') {
-      form.resKeyframeId = undefined
-    } else {
-      form.resSceneId = undefined
-    }
+const drawerBackgroundType = ref<'SCENE' | 'KEYFRAME'>('SCENE')
+
+function handleDrawerBackgroundTypeChange(val: 'SCENE' | 'KEYFRAME') {
+  drawerBackgroundType.value = val
+  if (val === 'SCENE') {
+    form.resKeyframeId = undefined
+  } else {
+    form.resSceneId = undefined
   }
-})
+}
 
 function handleDrawerSceneChange(val?: string | number) {
   form.resSceneId = val || undefined
   if (val) {
     form.resKeyframeId = undefined
+    drawerBackgroundType.value = 'SCENE'
   }
 }
 
@@ -1257,6 +1272,7 @@ function handleDrawerKeyframeChange(val?: string | number) {
   form.resKeyframeId = val || undefined
   if (val) {
     form.resSceneId = undefined
+    drawerBackgroundType.value = 'KEYFRAME'
   }
 }
 
@@ -1810,6 +1826,12 @@ async function bindAsset(assetType: ShotAssetType, assetId: string | number): Pr
   const normalizedId = String(assetId)
   if (assetType === 'scene') {
     form.resSceneId = normalizedId
+    form.resKeyframeId = undefined
+    drawerBackgroundType.value = 'SCENE'
+  } else if (assetType === 'keyframe') {
+    form.resKeyframeId = normalizedId
+    form.resSceneId = undefined
+    drawerBackgroundType.value = 'KEYFRAME'
   } else if (assetType === 'character') {
     const existing = characterRefs.value.find(item => String(item.characterId || '') === normalizedId)
     const item = existing || characterRefs.value.find(item => !item.characterId || String(item.characterId) === '0') || {
@@ -1900,6 +1922,7 @@ function openCreate(dramaId: string | number, episodeId: string | number, sceneI
     comfyWorkflowTemplateId: 'SDXL_TXT2IMG',
     sortOrder: nextShotNo
   })
+  drawerBackgroundType.value = 'SCENE'
   visible.value = true
 }
 
@@ -1936,6 +1959,7 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
       // 兼容服务端省略 null 字段的序列化配置，始终以本次详情结果为准。
       form.directorPlanJson = res.directorPlanJson || undefined
       if (!form.generationMode) form.generationMode = 'FIRST_LAST_FRAME'
+      drawerBackgroundType.value = res.resKeyframeId ? 'KEYFRAME' : 'SCENE'
       characterRefs.value = res.characterRefs ? [...res.characterRefs] : []
       propRefs.value = res.propRefs ? [...res.propRefs] : []
       refImages.value = res.refImages ? [...res.refImages] : []
@@ -2050,13 +2074,14 @@ function openVideoProcessing(name: 'VideoUpscale' | 'FrameInterpolation') {
 }
 
 async function handleSaveAndCreateAsset(assetType: ShotAssetType, usePreviousVideoTail = false) {
-  if (saving.value || creatingTailScene.value) return
+  if (saving.value || creatingTailScene.value || creatingTailKeyframe.value) return
   const saved = await handleSave(false)
   if (!saved || !form.id) return
 
   let referenceImageUrl: string | undefined
-  if (assetType === 'scene' && usePreviousVideoTail && form.generationMode === 'REFERENCE_MODE') {
-    creatingTailScene.value = true
+  if ((assetType === 'scene' || assetType === 'keyframe') && usePreviousVideoTail && form.generationMode === 'REFERENCE_MODE') {
+    if (assetType === 'scene') creatingTailScene.value = true
+    else creatingTailKeyframe.value = true
     try {
       const tail = await shotApi.extractPreviousVideoTail(form.id)
       referenceImageUrl = tail.tailFrameUrl
@@ -2064,7 +2089,8 @@ async function handleSaveAndCreateAsset(assetType: ShotAssetType, usePreviousVid
       ElMessage.error(e.message || '提取上一镜视频尾帧失败')
       return
     } finally {
-      creatingTailScene.value = false
+      if (assetType === 'scene') creatingTailScene.value = false
+      else creatingTailKeyframe.value = false
     }
   }
 
@@ -2261,11 +2287,17 @@ function handleApplyDerivedPrompts(res: DerivedPromptResult) {
   if (res.characterRefs) {
     characterRefs.value = res.characterRefs.map(item => ({ ...item }))
   }
-  if (res.resSceneId !== undefined) {
-    form.resSceneId = res.resSceneId
-  }
-  if (res.resKeyframeId !== undefined) {
+  if (res.resKeyframeId !== undefined && res.resKeyframeId) {
     form.resKeyframeId = res.resKeyframeId
+    drawerBackgroundType.value = 'KEYFRAME'
+    form.resSceneId = undefined
+  } else if (res.resSceneId !== undefined && res.resSceneId) {
+    form.resSceneId = res.resSceneId
+    drawerBackgroundType.value = 'SCENE'
+    form.resKeyframeId = undefined
+  } else {
+    if (res.resSceneId !== undefined) form.resSceneId = res.resSceneId
+    if (res.resKeyframeId !== undefined) form.resKeyframeId = res.resKeyframeId
   }
   if (res.propRefs) {
     propRefs.value = res.propRefs.map(item => ({ ...item }))

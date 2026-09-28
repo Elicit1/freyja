@@ -576,7 +576,7 @@ async function resumeRouteContext() {
       }
       const assetType = routeQueryValue(route.query.newAssetType)
       const assetId = routeQueryValue(route.query.newAssetId)
-      if ((assetType === 'character' || assetType === 'scene' || assetType === 'prop') && assetId) {
+      if ((assetType === 'character' || assetType === 'scene' || assetType === 'prop' || assetType === 'keyframe') && assetId) {
         await drawer.bindAsset(assetType, assetId)
       }
     }
