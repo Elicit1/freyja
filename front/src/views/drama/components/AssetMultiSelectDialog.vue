@@ -156,7 +156,7 @@ export interface AssetSelectItem {
   name: string
   subTitle?: string
   imageUrl: string
-  sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP'
+  sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP' | 'KEYFRAME'
   sourceId?: string | number
   characterId?: string | number
   lookId?: string | number

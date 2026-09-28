@@ -262,7 +262,7 @@ export interface ShotRefImage {
   name: string
   imageUrl: string
   referenceRole?: 'IDENTITY' | 'LOOK' | 'COMBINED' | 'POSE' | 'STYLE' | string
-  usageRole?: 'SUBJECT' | 'FIRST_FRAME' | 'END_FRAME' | 'SCENE' | 'PROP' | string
+  usageRole?: 'SUBJECT' | 'FIRST_FRAME' | 'END_FRAME' | 'SCENE' | 'PROP' | 'MOTION_KEYFRAME' | string
 }
 
 export interface ShotRefAudio {

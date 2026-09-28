@@ -100,6 +100,7 @@
               >
                 <el-option label="主体 (SUBJECT)" value="SUBJECT" />
                 <el-option label="场景 (SCENE)" value="SCENE" />
+                <el-option label="关键帧 (MOTION_KEYFRAME)" value="MOTION_KEYFRAME" />
                 <el-option label="道具 (PROP)" value="PROP" />
                 <el-option label="首帧 (FIRST_FRAME)" value="FIRST_FRAME" />
                 <el-option label="尾帧 (END_FRAME)" value="END_FRAME" />
@@ -376,7 +377,7 @@
             </div>
             <div class="flex items-center justify-between text-[10px] text-slate-400">
               <span>{{ cand.assetName }}</span>
-              <span class="text-sky-600 font-mono">{{ cand.usageRole }}</span>
+              <span class="text-sky-600 font-mono">{{ getUsageRoleLabel(cand.usageRole) }}</span>
             </div>
           </div>
         </div>
@@ -525,6 +526,18 @@ function getSourceTypeLabel(type?: string) {
     case 'PROP': return '道具'
     case 'UPLOAD': return '上传'
     default: return '素材'
+  }
+}
+
+function getUsageRoleLabel(role?: string) {
+  switch (role) {
+    case 'SUBJECT': return '主体'
+    case 'SCENE': return '场景'
+    case 'MOTION_KEYFRAME': return '关键帧'
+    case 'PROP': return '道具'
+    case 'FIRST_FRAME': return '首帧'
+    case 'END_FRAME': return '尾帧'
+    default: return role || '未指定'
   }
 }
 

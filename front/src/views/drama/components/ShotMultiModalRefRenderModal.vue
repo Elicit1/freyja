@@ -199,6 +199,7 @@
               <el-select v-model="img.usageRole" size="small" placeholder="角色" class="w-full !text-[10px]">
                 <el-option label="主体 (SUBJECT)" value="SUBJECT" />
                 <el-option label="场景 (SCENE)" value="SCENE" />
+                <el-option label="关键帧 (MOTION_KEYFRAME)" value="MOTION_KEYFRAME" />
                 <el-option label="道具 (PROP)" value="PROP" />
                 <el-option label="首帧 (FIRST_FRAME)" value="FIRST_FRAME" />
                 <el-option label="尾帧 (END_FRAME)" value="END_FRAME" />
@@ -599,6 +600,7 @@ function handleAssetConfirm(items: AssetSelectItem[]) {
     let defaultRole = 'SUBJECT'
     if (item.sourceType === 'SCENE') defaultRole = 'SCENE'
     else if (item.sourceType === 'PROP') defaultRole = 'PROP'
+    else if (item.sourceType === 'KEYFRAME') defaultRole = 'MOTION_KEYFRAME'
 
     refImages.value.push({
       id: item.uniqueKey || `img_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
