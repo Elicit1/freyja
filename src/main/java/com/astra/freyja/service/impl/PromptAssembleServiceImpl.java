@@ -27,6 +27,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import com.astra.freyja.dao.ResKeyframeMapper;
+import com.astra.freyja.entity.ResKeyframe;
 import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -38,6 +40,7 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
     private final ResSceneMapper sceneMapper;
     private final ResCharacterMapper characterMapper;
     private final ResCharacterOutfitMapper outfitMapper;
+    private final ResKeyframeMapper keyframeMapper;
     private final SysConfigService sysConfigService;
     private final ObjectMapper objectMapper;
     private final CharacterVisualAssetResolver characterVisualAssetResolver;
@@ -46,12 +49,14 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
     public PromptAssembleServiceImpl(ResSceneMapper sceneMapper,
                                      ResCharacterMapper characterMapper,
                                      ResCharacterOutfitMapper outfitMapper,
+                                     @Autowired(required = false) ResKeyframeMapper keyframeMapper,
                                      SysConfigService sysConfigService,
                                      ObjectMapper objectMapper,
                                      CharacterVisualAssetResolver characterVisualAssetResolver) {
         this.sceneMapper = sceneMapper;
         this.characterMapper = characterMapper;
         this.outfitMapper = outfitMapper;
+        this.keyframeMapper = keyframeMapper;
         this.sysConfigService = sysConfigService;
         this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
         this.characterVisualAssetResolver = characterVisualAssetResolver != null ? characterVisualAssetResolver
@@ -62,15 +67,24 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
                                      ResCharacterMapper characterMapper,
                                      ResCharacterOutfitMapper outfitMapper,
                                      SysConfigService sysConfigService,
+                                     ObjectMapper objectMapper,
+                                     CharacterVisualAssetResolver characterVisualAssetResolver) {
+        this(sceneMapper, characterMapper, outfitMapper, null, sysConfigService, objectMapper, characterVisualAssetResolver);
+    }
+
+    public PromptAssembleServiceImpl(ResSceneMapper sceneMapper,
+                                     ResCharacterMapper characterMapper,
+                                     ResCharacterOutfitMapper outfitMapper,
+                                     SysConfigService sysConfigService,
                                      ObjectMapper objectMapper) {
-        this(sceneMapper, characterMapper, outfitMapper, sysConfigService, objectMapper, null);
+        this(sceneMapper, characterMapper, outfitMapper, null, sysConfigService, objectMapper, null);
     }
 
     public PromptAssembleServiceImpl(ResSceneMapper sceneMapper,
                                      ResCharacterMapper characterMapper,
                                      ResCharacterOutfitMapper outfitMapper,
                                      SysConfigService sysConfigService) {
-        this(sceneMapper, characterMapper, outfitMapper, sysConfigService, new ObjectMapper(), null);
+        this(sceneMapper, characterMapper, outfitMapper, null, sysConfigService, new ObjectMapper(), null);
     }
 
     private static final String DEFAULT_BASE_NEGATIVE =
@@ -84,9 +98,34 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
         List<String> negativeSegments = new ArrayList<>();
         List<ControlImageVO> controlImages = new ArrayList<>();
 
-        // 1. 场景环境信息解析与注入 (纯净场景空间)
+        // 1. 关键帧视觉基准 vs 场景环境信息解析与注入 (二者互斥，关键帧优先替代传统场景)
         ResSceneVO sceneSummary = null;
-        if (request.getSceneId() != null && request.getSceneId() > 0) {
+        if (request.getKeyframeId() != null && request.getKeyframeId() > 0 && keyframeMapper != null) {
+            ResKeyframe kf = keyframeMapper.selectById(request.getKeyframeId());
+            if (kf != null) {
+                if (StringUtils.isNotBlank(kf.getPrompt())) {
+                    positiveSegments.add(kf.getPrompt().trim());
+                } else if (StringUtils.isNotBlank(kf.getDescription())) {
+                    positiveSegments.add(kf.getDescription().trim());
+                } else if (StringUtils.isNotBlank(kf.getName())) {
+                    positiveSegments.add(kf.getName().trim());
+                }
+
+                if (StringUtils.isNotBlank(kf.getFrameType())) {
+                    positiveSegments.add(kf.getFrameType().toLowerCase().replace("_", " ") + " keyframe");
+                }
+
+                // 关键帧视觉控制图
+                if (StringUtils.isNotBlank(kf.getFrameUrl())) {
+                    controlImages.add(ControlImageVO.builder()
+                            .controlType("KEYFRAME_REF")
+                            .imageUrl(kf.getFrameUrl())
+                            .weight(new BigDecimal("0.85"))
+                            .label("关键帧参考: " + kf.getName())
+                            .build());
+                }
+            }
+        } else if (request.getSceneId() != null && request.getSceneId() > 0) {
             ResScene scene = sceneMapper.selectById(request.getSceneId());
             if (scene != null) {
                 sceneSummary = toSceneVO(scene);

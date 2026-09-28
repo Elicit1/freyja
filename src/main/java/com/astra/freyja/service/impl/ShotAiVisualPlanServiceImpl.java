@@ -251,9 +251,11 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "人物双手被道具占用时，不得为了完成额外动作让同一只手无依据地同时执行冲突的操作，也不得擅自添加放下、换手或凭空出现的第三只手。",
             "道具随动作自然摆动可以补充，但不得改变其数量、归属及已确定的状态。道具数量未明确时，不得编造精确数量。",
             "局部特写或画面裁切导致部分道具暂时不可见时，必须在场景实际状态中保持其数量与归属，不得将画面外的道具解释为消失，也不得为了保持可见性复制新的道具。",
-            "7.【参考媒体】",
+            "7.【参考媒体与关键帧规范】",
             "只有 REFERENCE_MANIFEST 中实际提供的图片和音频才能被引用；不得虚构 Picture、Audio、Subject 编号，也不得把无图片资产描述成有参考图。",
-            "必须根据实际参考媒体的角色、场景及用途建立对应关系，不得交换人物参考图、误将场景参考图当作人物参考图，或让参考图中无关元素成为新增剧情事件。",
+            "分镜视觉基准资产分为环境场景（SCENE）与分镜关键帧（KEYFRAME），二者严格互斥。若当前镜头配置了关键帧资产或 REFERENCE_MANIFEST 包含关键帧（KEYFRAME / MOTION_KEYFRAME），说明本分镜采用关键帧锚点模式，不存在环境场景资产！",
+            "【严禁将关键帧当成场景】关键帧是当前镜头动作与画面定格的视觉锚点，严禁在提示词中将关键帧误识别或描述为环境场景 (Scene)！若关键帧为起始定格，firstFramePrompt 必须以此关键帧呈现的主体姿态、构图与动作状态为核心基准继承，严禁脑补虚构的场景背景！",
+            "必须根据实际参考媒体的角色、关键帧、场景及用途建立对应关系，不得交换人物参考图、误将场景或关键帧当作人物参考图，或让参考图中无关元素成为新增剧情事件。",
             "参考图用于保持外观、场景和必要的空间关系，不得因为参考图突出便利店大门，就擅自增加“自动门打开”等当前镜头没有要求的事件。",
             "如果当前剧情的画面重点是人物沿人行道移动，不得仅因场景参考图包含便利店就把镜头重点转移到便利店门口。",
             "参考图不强制当前镜头沿用其原始景别和构图，除非当前任务明确锁定参考图构图或首尾帧画面。",
@@ -276,6 +278,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "确认视觉导演方案没有增加、删除或改变 Worker 已确定的剧情事实、人物行为、情绪表情、道具数量及事件结果。",
             "确认人物真实运动方向与摄影机运动相互独立且空间关系正确，特别检查多人相遇、擦肩、追逐和分离等动作是否出现方向混淆。",
             "确认 FIRST_LAST_FRAME 的首尾画面与最终视频过程一致，摄影机运动和人物动作能够在规定时长内连续完成。",
+            "确认若配置了关键帧，未将其误识别或描述为普通环境场景 (Scene)。",
             "确认当前镜头没有未经授权的硬切、跳切、转场或额外镜头。",
             "确认局部特写、视觉焦点转移及画面裁切没有导致必要剧情丢失、道具数量变化或人物状态不连续。",
             "确认声音、台词、参考媒体及所有资产引用均来自当前任务提供的事实。",
@@ -296,7 +299,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             【导演规划】
             ${DIRECTOR_PLAN}
 
-            【场景、角色与道具事实】
+            【视觉环境/关键帧、角色与道具事实】
             ${SCENE_CONTEXT}
             ${CHARACTER_CONTEXT}
             ${PROP_CONTEXT}
@@ -425,10 +428,15 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "道具可以随人物移动自然摆动，但不得因此改变其数量、归属或已确定的状态。",
             "原文未明确数量时，不得编造精确数量。",
             "局部特写或画面裁切导致部分道具暂时不可见时，必须在场景实际状态中保持其数量与归属，不得将画面外的道具解释为消失，也不得为了保持可见性复制新的道具。",
-            "7.【参考媒体与文字身份】",
+            "7.【参考媒体、关键帧与文字身份规范】",
             "只能引用 REFERENCE_MANIFEST 中实际存在的 Picture、Audio 和 Subject；不得跳号、伪造编号，缺少图片时必须使用文字环境或人物、道具描述，不得声称存在参考图。",
-            "每个角色、场景和道具都必须保留清晰的文字身份描述，并与实际参考媒体正确对应；不得交换角色参考图、误用场景参考图或把没有图片的道具描述成有图片参考。",
-            "参考图用于保持人物外观、服装、场景和必要的空间关系，不等于授权新增参考图中可能出现的剧情事件。",
+            "分镜视觉基准资产分为环境场景（SCENE）与分镜关键帧（KEYFRAME），二者严格互斥。若分镜绑定了关键帧资产或 REFERENCE_MANIFEST 包含关键帧（KEYFRAME / MOTION_KEYFRAME），说明当前分镜已进入【关键帧锚点模式】，不存在环境场景资产！",
+            "【严禁将关键帧当成场景 (Scene)】关键帧是当前镜头动作演进与画面定格的视觉锚点，严禁将关键帧误识别或描述为环境场景 (Scene)！",
+            "在 subject_definitions 中，关键帧绝不能声明为 Scene: 或 <Picture N> (Scene)，必须明确声明为动态关键帧锚点（例如：<Picture N>: Motion keyframe reference depicting ...）；",
+            "在 retention_analysis 中，严禁写成保留场景环境外观布局 (Scene retention)，必须声明保留的是关键帧的主体动作状态、视觉构图、光影基调与动态瞬间；",
+            "在 detailed_description 中，镜头视听必须承接并动态演变该关键帧所确立的构图与动作状态，严禁将其作为背景布景！",
+            "每个角色、场景、关键帧和道具都必须保留清晰的文字身份描述，并与实际参考媒体正确对应；不得交换角色参考图、误用场景或关键帧参考图或把没有图片的道具描述成有图片参考。",
+            "参考图用于保持人物外观、服装、关键帧姿态动作、场景和必要的空间关系，不等于授权新增参考图中可能出现的剧情事件。",
             "例如，场景参考图包含便利店自动门，不代表当前镜头必须出现自动门打开的动作。当前剧情没有要求时，不得擅自增加这一事件。",
             "当剧情重点是人物沿人行道移动时，不得仅因场景参考图突出便利店门口，就擅自将镜头重点转移到自动门或店内活动。",
             "参考图不强制当前镜头沿用其原始景别和构图，除非当前任务明确锁定参考图构图或画面要求。",
@@ -456,7 +464,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "确认人物真实运动方向与摄影机运动相互独立且空间关系正确，特别检查多人相遇、擦肩、追逐和分离等动作是否出现方向混淆。",
             "确认当前镜头能够在规定时长内连续完成，且没有未经授权的硬切、跳切、转场或额外镜头。",
             "确认局部特写、视觉焦点转移及画面裁切没有导致必要剧情丢失、道具数量变化或人物状态不连续。",
-            "确认所有 Picture、Audio、Subject 引用均来自 REFERENCE_MANIFEST，角色、场景及道具的参考媒体对应关系正确。",
+            "确认所有 Picture、Audio、Subject 引用均来自 REFERENCE_MANIFEST，角色、场景、关键帧及道具的参考媒体对应关系正确；若存在关键帧（KEYFRAME / MOTION_KEYFRAME），确认其未被误识别或描述为场景 (Scene)。",
             "确认 DIALOGUE_REUSE 与 VOICE_TIMBRE 的使用符合当前任务提供的 usageMode，且没有复用未授权的旧台词。",
             "确认声音、台词、参考媒体及所有资产引用均来自当前任务提供的事实。",
             "确认 prompt 与 videoPrompt 完全一致，firstFramePrompt 与 endFramePrompt 均为 null。",
@@ -477,7 +485,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             【导演规划】
             ${DIRECTOR_PLAN}
 
-            【场景、角色与道具事实】
+            【视觉环境/关键帧、角色与道具事实】
             ${SCENE_CONTEXT}
             ${CHARACTER_CONTEXT}
             ${PROP_CONTEXT}
@@ -657,9 +665,18 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     private String buildUserPrompt(DramaShot shot, String instruction, String format) {
         Drama drama = shot.getDramaId() != null ? dramaMapper.selectById(shot.getDramaId()) : null;
         DramaScene dramaScene = sceneMapper.selectById(shot.getSceneId());
-        Long sceneId = shot.getResSceneId();
-        if ((sceneId == null || sceneId <= 0) && dramaScene != null) sceneId = dramaScene.getResSceneId();
-        ResScene scene = sceneId != null ? resSceneMapper.selectById(sceneId) : null;
+        Long keyframeId = shot.getResKeyframeId();
+        Long sceneId = null;
+        ResKeyframe keyframe = null;
+        ResScene scene = null;
+
+        if (keyframeId != null && keyframeId > 0 && resKeyframeMapper != null) {
+            keyframe = resKeyframeMapper.selectById(keyframeId);
+        } else {
+            sceneId = shot.getResSceneId();
+            if ((sceneId == null || sceneId <= 0) && dramaScene != null) sceneId = dramaScene.getResSceneId();
+            scene = sceneId != null ? resSceneMapper.selectById(sceneId) : null;
+        }
 
         Map<String, Object> context = new LinkedHashMap<>();
         Map<String, Object> shotData = new LinkedHashMap<>();
@@ -682,7 +699,13 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         shotData.put("stylePreset", StringUtils.firstNonBlank(shot.getStylePreset(), drama != null ? drama.getStylePreset() : null));
         shotData.put("aspectRatio", drama != null ? drama.getAspectRatio() : null);
         context.put("shot", shotData);
-        context.put("scene", sceneData(scene));
+        if (keyframe != null) {
+            context.put("keyframe", keyframeData(keyframe));
+            context.put("scene", null);
+        } else {
+            context.put("scene", sceneData(scene));
+            context.put("keyframe", null);
+        }
         context.put("characters", characterData(shot.getCharacterRefsJson()));
         context.put("props", propData(shot.getPropRefsJson()));
 
@@ -705,6 +728,18 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         data.put("timeOfDay", scene.getTimeOfDay());
         data.put("weatherAtmosphere", scene.getWeatherAtmosphere());
         // 彻底隔离模型输入：严禁向大模型上下文注入场景 referenceImageUrl
+        return data;
+    }
+
+    private Map<String, Object> keyframeData(ResKeyframe kf) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        if (kf == null) return data;
+        data.put("id", kf.getId());
+        data.put("name", kf.getName());
+        data.put("frameType", kf.getFrameType());
+        data.put("prompt", kf.getPrompt());
+        data.put("description", kf.getDescription());
+        data.put("modeNotice", "【注意】：当前镜头采用分镜关键帧锚点模式，替代并禁用传统环境场景，严禁误识别为场景背景！");
         return data;
     }
 
@@ -777,13 +812,22 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     private List<ControlImageVO> buildControlImages(DramaShot shot) {
         List<ControlImageVO> images = new ArrayList<>();
-        DramaScene dramaScene = sceneMapper.selectById(shot.getSceneId());
-        Long sceneId = shot.getResSceneId();
-        if ((sceneId == null || sceneId <= 0) && dramaScene != null) sceneId = dramaScene.getResSceneId();
-        ResScene scene = sceneId != null ? resSceneMapper.selectById(sceneId) : null;
-        if (scene != null && StringUtils.isNotBlank(scene.getReferenceImageUrl())) {
-            images.add(ControlImageVO.builder().controlType("SCENE_REF").imageUrl(scene.getReferenceImageUrl())
-                    .weight(new BigDecimal("0.80")).label("场景参考: " + scene.getName()).build());
+        Long keyframeId = shot.getResKeyframeId();
+        if (keyframeId != null && keyframeId > 0 && resKeyframeMapper != null) {
+            ResKeyframe kf = resKeyframeMapper.selectById(keyframeId);
+            if (kf != null && StringUtils.isNotBlank(kf.getFrameUrl())) {
+                images.add(ControlImageVO.builder().controlType("KEYFRAME_REF").imageUrl(kf.getFrameUrl())
+                        .weight(new BigDecimal("0.85")).label("关键帧参考: " + kf.getName()).build());
+            }
+        } else {
+            DramaScene dramaScene = sceneMapper.selectById(shot.getSceneId());
+            Long sceneId = shot.getResSceneId();
+            if ((sceneId == null || sceneId <= 0) && dramaScene != null) sceneId = dramaScene.getResSceneId();
+            ResScene scene = sceneId != null ? resSceneMapper.selectById(sceneId) : null;
+            if (scene != null && StringUtils.isNotBlank(scene.getReferenceImageUrl())) {
+                images.add(ControlImageVO.builder().controlType("SCENE_REF").imageUrl(scene.getReferenceImageUrl())
+                        .weight(new BigDecimal("0.80")).label("场景参考: " + scene.getName()).build());
+            }
         }
         JsonNode root = parseJson(shot.getCharacterRefsJson());
         if (root != null && root.isArray()) {
@@ -857,6 +901,10 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 if (dto.getCameraMovementLocked() == null && StringUtils.isBlank(dto.getCameraMovement())) {
                     dto.setCameraMovement(existingShot.getCameraMovement());
                     dto.setCameraMovementLocked(existingShot.getCameraMovementLocked());
+                }
+                if (dto.getResKeyframeId() == null && dto.getResSceneId() == null) {
+                    dto.setResKeyframeId(existingShot.getResKeyframeId());
+                    dto.setResSceneId(existingShot.getResSceneId());
                 }
             }
         }
@@ -1678,16 +1726,20 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if (keyframeId != null && keyframeId > 0 && resKeyframeMapper != null) {
             ResKeyframe kf = resKeyframeMapper.selectById(keyframeId);
             if (kf != null) {
-                sb.append("\n【绑定分镜关键帧资产 (替代传统环境场景)】:\n");
+                sb.append("\n【当前分镜视觉基准：分镜关键帧锚点模式 (Keyframe Visual Anchor Mode)】（⚠️ 当前镜头已启用关键帧模式，已替代并禁用传统环境场景资产）:\n");
                 sb.append("- 关键帧名称: ").append(kf.getName()).append("\n");
                 if (StringUtils.isNotBlank(kf.getFrameType())) {
                     sb.append("- 帧类型: ").append(kf.getFrameType()).append("\n");
                 }
                 if (StringUtils.isNotBlank(kf.getPrompt())) {
-                    sb.append("- 关键帧生图Prompt: ").append(kf.getPrompt()).append("\n");
+                    sb.append("- 关键帧生图Prompt/视觉基准: ").append(kf.getPrompt()).append("\n");
                 } else if (StringUtils.isNotBlank(kf.getDescription())) {
-                    sb.append("- 关键帧描述: ").append(kf.getDescription()).append("\n");
+                    sb.append("- 关键帧描述/视觉基准: ").append(kf.getDescription()).append("\n");
                 }
+                sb.append("- ⚠️ 关键帧生成约束（必须严格遵守）:\n");
+                sb.append("  1. 当前镜头未配置独立的环境场景，严禁在提示词或 subject_definitions 中将此关键帧误识别为场景 (Scene) 或定义 <Subject N> (Scene)！\n");
+                sb.append("  2. 当前关键帧是整个镜头画面构图、主体初始姿态或特定动作定格的唯一视觉基准 (Motion Keyframe Anchor)。\n");
+                sb.append("  3. 提示词与画面动态必须以该关键帧呈现的状态作为起点/演进锚点进行视听展开！\n");
             }
         } else if (sceneId != null && sceneId > 0) {
             ResScene resScene = resSceneMapper.selectById(sceneId);

@@ -1039,4 +1039,59 @@ class ShotPromptDeriveH3Test {
         assertFalse(userPrompt.contains("白色围裙"));
         assertFalse(userPrompt.contains("原著外貌视觉SSOT"));
     }
+
+    @Test
+    @DisplayName("关键帧模式：互斥排除场景且明确将关键帧作为视觉锚点与 MOTION_KEYFRAME")
+    void testKeyframeModeExcludesSceneAndSetsKeyframeAnchor() {
+        Long keyframeId = 888L;
+        ResKeyframe kf = new ResKeyframe();
+        kf.setId(keyframeId);
+        kf.setName("雨夜决战拔剑定格");
+        kf.setFrameType("FIRST_FRAME");
+        kf.setPrompt("dramatic standoff keyframe, rain pouring, sword drawn, cinematic neon lighting");
+        kf.setDescription("决战关键帧视觉基准定格");
+        kf.setFrameUrl("http://minio.local/keyframe/888.png");
+        when(resKeyframeMapper.selectById(keyframeId)).thenReturn(kf);
+
+        ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder()
+                .shotNo(1)
+                .scriptContent("二人雨夜对峙，肃杀气氛蔓延")
+                .actionDescription("拔剑相向")
+                .generationMode("REFERENCE_MODE")
+                .resKeyframeId(keyframeId)
+                .refImages(List.of(
+                        ShotRefImageDTO.builder()
+                                .id("ref_kf_1")
+                                .sourceType("KEYFRAME")
+                                .sourceId(keyframeId)
+                                .usageRole("MOTION_KEYFRAME")
+                                .name("雨夜决战拔剑定格")
+                                .imageUrl("http://minio.local/keyframe/888.png")
+                                .build()
+                ))
+                .build();
+
+        ShotPromptPackageVO pkg = service.buildPromptPackage(dto);
+        assertNotNull(pkg);
+
+        String userPrompt = pkg.getUserPrompt();
+        String systemPrompt = pkg.getSystemPrompt();
+
+        // 1. 用户提示词中必须包含关键帧锚点模式声明
+        assertTrue(userPrompt.contains("Keyframe Visual Anchor Mode"));
+        assertTrue(userPrompt.contains("雨夜决战拔剑定格"));
+        assertTrue(userPrompt.contains("dramatic standoff keyframe, rain pouring, sword drawn"));
+        assertTrue(userPrompt.contains("严禁在提示词或 subject_definitions 中将此关键帧误识别为场景"));
+
+        // 2. 严禁出现环境场景资产绑定
+        assertFalse(userPrompt.contains("【绑定环境场景资产】"));
+
+        // 3. 验证 ReferenceManifest 中明确标注关键帧且定位为 MOTION_KEYFRAME
+        assertTrue(userPrompt.contains("MOTION_KEYFRAME"));
+        assertTrue(userPrompt.contains("⚠️ 关键帧提示: 此图为本镜头的动作与构图定格参考 (MOTION_KEYFRAME)，绝非普通场景环境 (Scene)"));
+
+        // 4. 系统提示词中包含对关键帧模式的硬性约束
+        assertTrue(systemPrompt.contains("严禁将关键帧当成场景 (Scene)"));
+        assertTrue(systemPrompt.contains("关键帧绝不能声明为 Scene: 或 <Picture N> (Scene)"));
+    }
 }

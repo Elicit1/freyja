@@ -82,6 +82,9 @@ public class ReferenceManifest {
                 if (StringUtils.isNotBlank(pic.getDescription())) {
                     sb.append(String.format("- 实体特征与保留基准: %s\n", pic.getDescription().trim()));
                 }
+                if ("KEYFRAME".equalsIgnoreCase(pic.getSourceType()) || "MOTION_KEYFRAME".equalsIgnoreCase(pic.getUsageRole())) {
+                    sb.append(String.format("- ⚠️ 关键帧提示: 此图为本镜头的动作与构图定格参考 (MOTION_KEYFRAME)，绝非普通场景环境 (Scene)！在 subject_definitions 中严禁写成 Scene: <Picture %d> 或 <Picture %d> (Scene)；在 retention_analysis 中必须声明保留的是关键帧的主体动作、姿态、构图与动态瞬间，严禁将其描述为场景背景布局！\n", pic.getPictureIndex(), pic.getPictureIndex()));
+                }
                 sb.append("\n");
             }
         }

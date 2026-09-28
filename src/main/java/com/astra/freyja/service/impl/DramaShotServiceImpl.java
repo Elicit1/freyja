@@ -561,16 +561,24 @@ public class DramaShotServiceImpl implements DramaShotService {
         // 1. 解析角色引用
         List<CharacterShotRefDTO> characterRefs = parseCharacterRefs(shot.getCharacterRefsJson());
 
-        // 2. 确定环境场景资产 ID (优先分镜本身，其次继承所属场次)
-        Long effectiveResSceneId = shot.getResSceneId();
-        if ((effectiveResSceneId == null || effectiveResSceneId <= 0) && scene != null) {
-            effectiveResSceneId = scene.getResSceneId();
+        // 2. 确定视觉基准与环境场景资产 ID (关键帧与场景互斥：若显式绑定关键帧，严禁回退继承所属场次场景)
+        Long effectiveResSceneId = null;
+        Long effectiveKeyframeId = shot.getResKeyframeId();
+        if (effectiveKeyframeId != null && effectiveKeyframeId > 0) {
+            // 关键帧模式：不注入场景
+            effectiveResSceneId = null;
+        } else {
+            effectiveResSceneId = shot.getResSceneId();
+            if ((effectiveResSceneId == null || effectiveResSceneId <= 0) && scene != null) {
+                effectiveResSceneId = scene.getResSceneId();
+            }
         }
 
         // 3. 构建 Prompt 组装请求
         PromptAssembleRequestDTO assembleRequest = new PromptAssembleRequestDTO();
         assembleRequest.setDramaId(shot.getDramaId());
         assembleRequest.setSceneId(effectiveResSceneId);
+        assembleRequest.setKeyframeId(effectiveKeyframeId);
         assembleRequest.setCustomScenePrompt(shot.getCustomScenePrompt());
         assembleRequest.setCharacterRefs(characterRefs);
 

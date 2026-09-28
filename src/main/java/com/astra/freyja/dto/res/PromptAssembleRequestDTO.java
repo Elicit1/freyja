@@ -13,8 +13,11 @@ public class PromptAssembleRequestDTO {
     /** 所属短剧 ID (可选) */
     private Long dramaId;
 
-    /** 所选场景 ID (可选) */
+    /** 所选场景 ID (可选，与 keyframeId 互斥) */
     private Long sceneId;
+
+    /** 所选关键帧 ID (可选，与 sceneId 互斥，作为视觉定格基准替代传统场景) */
+    private Long keyframeId;
 
     /** 自定义场景 Prompt（当不选择场景资产或需覆盖时使用） */
     private String customScenePrompt;
