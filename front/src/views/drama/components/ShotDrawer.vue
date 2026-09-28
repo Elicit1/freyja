@@ -692,21 +692,11 @@
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
-                <el-upload
-                  :show-file-list="false"
-                  :before-upload="handleUploadRefImage"
-                  accept="image/*"
-                  :disabled="refImages.length >= 9"
-                >
-                  <el-button size="small" plain :disabled="refImages.length >= 9" :loading="uploadingRefImg">
-                    📤 上传图片
-                  </el-button>
-                </el-upload>
               </div>
             </div>
 
             <div v-if="refImages.length === 0" class="text-center py-4 text-xs text-gray-400 bg-gray-50 rounded border border-dashed border-gray-200">
-              暂未绑定参考图，点击上方按钮添加 (上限 9 张)
+              暂未绑定参考图，点击上方按钮从资产库选取 (上限 9 张)
             </div>
             <div v-else class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
               <div
@@ -764,21 +754,11 @@
                 >
                   👥 引入人物库角色配音
                 </el-button>
-                <el-upload
-                  :show-file-list="false"
-                  :before-upload="handleUploadRefAudio"
-                  accept="audio/*"
-                  :disabled="refAudios.length >= 3"
-                >
-                  <el-button size="small" plain :disabled="refAudios.length >= 3" :loading="uploadingRefAud">
-                    📤 上传音频
-                  </el-button>
-                </el-upload>
               </div>
             </div>
 
             <div v-if="refAudios.length === 0" class="text-center py-4 text-xs text-gray-400 bg-gray-50 rounded border border-dashed border-gray-200">
-              暂未绑定参考音频，点击上方按钮引入人物库角色配音或上传 (上限 3 段，单段 2~15s，总长 ≤ 15s)
+              暂未绑定参考音频，点击上方按钮引入人物库角色配音 (上限 3 段，单段 2~15s，总长 ≤ 15s)
             </div>
             <div v-else class="space-y-2">
               <div
@@ -1189,10 +1169,8 @@ const formRef = ref<FormInstance>()
 
 const uploadingFirst = ref(false)
 const uploadingEnd = ref(false)
-const uploadingRefImg = ref(false)
 const creatingTailScene = ref(false)
 const creatingTailKeyframe = ref(false)
-const uploadingRefAud = ref(false)
 
 const characterOptions = ref<ResCharacterOption[]>([])
 const sceneOptions = ref<ResSceneOption[]>([])
@@ -1598,31 +1576,6 @@ function handleConfirmSelectDrawerAsset(item: any) {
   ElMessage.success(`已添加参考图: ${item.name}`)
 }
 
-async function handleUploadRefImage(file: File) {
-  if (refImages.value.length >= 9) {
-    ElMessage.warning('参考图最多支持 9 张')
-    return false
-  }
-  uploadingRefImg.value = true
-  try {
-    const res = await assetApi.upload(file, 'shots')
-    if (res && res.url) {
-      refImages.value.push({
-        id: `img_${Date.now()}`,
-        name: file.name,
-        imageUrl: res.url,
-        sourceType: 'UPLOAD',
-        usageRole: 'SUBJECT'
-      })
-      ElMessage.success('参考图上传成功！')
-    }
-  } catch (e: any) {
-    ElMessage.error(e.message || '上传参考图失败')
-  } finally {
-    uploadingRefImg.value = false
-  }
-  return false
-}
 
 const characterVoicePickerVisible = ref(false)
 const previewingVoiceUrl = ref<string | null>(null)
@@ -1703,46 +1656,6 @@ function handleConfirmSelectCharacterVoice(char: ResCharacterOption) {
   })
 }
 
-async function handleUploadRefAudio(file: File) {
-  if (refAudios.value.length >= 3) {
-    ElMessage.warning('参考音频最多支持 3 段')
-    return false
-  }
-  const objectUrl = URL.createObjectURL(file)
-  const audio = new Audio(objectUrl)
-  audio.addEventListener('loadedmetadata', async () => {
-    const dur = Math.round(audio.duration * 10) / 10
-    if (dur < 2.0 || dur > 15.0) {
-      ElMessage.warning(`单段音频官方规范时长为 2~15 秒，当前音频为 ${dur} 秒`)
-    }
-    uploadingRefAud.value = true
-    try {
-      const res = await assetApi.upload(file, 'shots')
-      if (res && res.url) {
-        refAudios.value.push({
-          id: `aud_${Date.now()}`,
-          sourceType: 'UPLOAD',
-          name: file.name,
-          audioUrl: res.url,
-          duration: dur,
-          usageMode: 'VOICE_TIMBRE',
-          language: 'zh'
-        })
-        ElMessage.success(`音频上传成功 (${dur}s)`)
-      }
-    } catch (e: any) {
-      ElMessage.error(e.message || '上传音频失败')
-    } finally {
-      uploadingRefAud.value = false
-      URL.revokeObjectURL(objectUrl)
-    }
-  })
-  audio.addEventListener('error', () => {
-    ElMessage.error('无法读取所选音频的时长，请检查文件格式')
-    URL.revokeObjectURL(objectUrl)
-  })
-  return false
-}
 
 function getOutfitsForCharacter(characterId?: string | number) {
   if (!characterId) return []
