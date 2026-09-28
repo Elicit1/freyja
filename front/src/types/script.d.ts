@@ -161,7 +161,7 @@ export interface WorkerRetryRequest {
   segmentId: string
   customInstructions?: string
   rawTextOverride?: string
-  providerIdOverride?: number
+  providerIdOverride?: string | number
   modelCodeOverride?: string
   skillPolicyOverride?: ScriptSkillStagePolicy
 }
@@ -207,7 +207,7 @@ export interface ScriptDecomposeRequest {
     planner?: ScriptSkillStagePolicy
     worker?: ScriptSkillStagePolicy
   }
-  providerId: number
+  providerId: string | number
   modelCode: string
   rawText: string
   dramaId?: number | null

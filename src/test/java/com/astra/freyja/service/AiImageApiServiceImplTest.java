@@ -25,6 +25,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.nullable;
@@ -59,6 +60,28 @@ class AiImageApiServiceImplTest {
     @Spy
     @InjectMocks
     private AiImageApiServiceImpl aiImageApiService;
+
+    @Test
+    @DisplayName("参考模式拒绝聊天模型并只查询参考视频模型")
+    void testReferenceModeRejectsChatModel() {
+        assertVideoModeRejectsUnmatchedModel("REFERENCE_MODE", "TXT2VIDEO_REF");
+    }
+
+    @Test
+    @DisplayName("首尾帧模式拒绝聊天模型并只查询首尾帧视频模型")
+    void testFirstLastModeRejectsChatModel() {
+        assertVideoModeRejectsUnmatchedModel("FIRST_LAST_FRAME", "TXT2VIDEO_FIRST_LAST");
+    }
+
+    private void assertVideoModeRejectsUnmatchedModel(String mode, String requiredType) {
+        DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
+        request.setWorkflowTemplateId("deepseek-flash");
+        doReturn(null).when(modelMapper).selectOne(any());
+
+        BizException error = assertThrows(BizException.class,
+                () -> aiImageApiService.resolveVideoModelCode(request, 5L, mode));
+        assertTrue(error.getMessage().contains(requiredType));
+    }
 
     @Test
     @DisplayName("视频网关请求使用提交时固定的镜头种子")

@@ -214,7 +214,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         return p;
     }
 
-    private static final List<String> IMAGE_MODEL_TYPES = List.of("TXT_IMG2IMG", "TXT2IMG", "IMAGE");
+    private static final List<String> IMAGE_MODEL_TYPES = List.of("TXT_IMG2IMG", "TXT2IMG", "IMG2IMG", "IMAGE");
 
     @Override
     public String resolveModelCode(DramaShotFirstFrameDTO dto, Long providerId) {
@@ -246,8 +246,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 throw new BizException(400, "所选模型类型为 [" + anyModel.getModelType() + "]，不是生图模型 (需为 TXT_IMG2IMG 或 TXT2IMG)");
             }
 
-            // 若数据库未录入该模型，但用户在前端显式输入了模型标识，直接放行透传给网关
-            return requestedCode;
+            throw new BizException(400, "所选生图模型未在当前提供商下启用: " + requestedCode);
         }
 
         // 查询提供商下启用的生图模型
@@ -420,38 +419,30 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         return prepareMediaAsBase64(refUrl, "image/png");
     }
 
-    private static final List<String> VIDEO_MODEL_TYPES = List.of(
-            "TXT2VIDEO_REF", "TXT2VIDEO_FIRST_LAST", "TXT2VIDEO", "VIDEO", "I2V", "T2V", "IMG2VIDEO"
-    );
-
     @Override
     public String resolveVideoModelCode(com.astra.freyja.dto.drama.DramaShotRenderRequestDTO dto, Long providerId, String generationMode) {
+        boolean isRefMode = "REFERENCE_MODE".equalsIgnoreCase(generationMode);
+        String requiredType = isRefMode ? "TXT2VIDEO_REF" : "TXT2VIDEO_FIRST_LAST";
         if (dto != null && StringUtils.isNotBlank(dto.getWorkflowTemplateId())) {
             String requestedCode = dto.getWorkflowTemplateId().trim();
             AiModel selected = modelMapper.selectOne(
                     new LambdaQueryWrapper<AiModel>()
                             .eq(AiModel::getProviderId, providerId)
                             .eq(AiModel::getModelCode, requestedCode)
-                            .in(AiModel::getModelType, VIDEO_MODEL_TYPES)
+                            .eq(AiModel::getModelType, requiredType)
                             .eq(AiModel::getStatus, 1)
                             .last("LIMIT 1")
             );
             if (selected != null) {
                 return selected.getModelCode();
             }
-            // 若数据库没有严格类型匹配或未录入，放行透传给网关 (如 minimax-h3-fl2va 等)
-            return requestedCode;
+            throw new BizException(400, "所选视频模型未启用或不属于当前提供商，当前模式仅支持 " + requiredType + ": " + requestedCode);
         }
-
-        // 根据生成模式自动选型
-        boolean isRefMode = "REFERENCE_MODE".equalsIgnoreCase(generationMode);
-        String targetModelPrefix = isRefMode ? "minimax-h3-ref2va" : "minimax-h3-fl2va";
 
         AiModel model = modelMapper.selectOne(
                 new LambdaQueryWrapper<AiModel>()
                         .eq(AiModel::getProviderId, providerId)
-                        .like(AiModel::getModelCode, targetModelPrefix)
-                        .in(AiModel::getModelType, VIDEO_MODEL_TYPES)
+                        .eq(AiModel::getModelType, requiredType)
                         .eq(AiModel::getStatus, 1)
                         .orderByAsc(AiModel::getSortOrder)
                         .last("LIMIT 1")
@@ -460,21 +451,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             return model.getModelCode();
         }
 
-        // 查询任一启用的视频模型
-        AiModel fallbackModel = modelMapper.selectOne(
-                new LambdaQueryWrapper<AiModel>()
-                        .eq(AiModel::getProviderId, providerId)
-                        .in(AiModel::getModelType, VIDEO_MODEL_TYPES)
-                        .eq(AiModel::getStatus, 1)
-                        .orderByAsc(AiModel::getSortOrder)
-                        .last("LIMIT 1")
-        );
-        if (fallbackModel != null && StringUtils.isNotBlank(fallbackModel.getModelCode())) {
-            return fallbackModel.getModelCode();
-        }
-
-        // 默认按 MiniMax 标准模型下发
-        return isRefMode ? "minimax-h3-ref2va" : "minimax-h3-fl2va";
+        throw new BizException(400, "当前供应商未配置启用的 " + requiredType + " 视频模型");
     }
 
     private String buildVideoEndpointUrl(String baseUrl) {

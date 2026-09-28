@@ -17,7 +17,7 @@ export interface RenderTaskVO {
   assetId?: number
   assetName?: string
   assetSlot?: string
-  providerId?: number
+  providerId?: string | number
   providerName?: string
   modelCode?: string
   status: 'QUEUED' | 'RENDERING' | 'SUCCESS' | 'FAILED' | 'CANCELLED'

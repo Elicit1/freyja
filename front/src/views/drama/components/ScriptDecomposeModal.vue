@@ -66,9 +66,9 @@
               >
                 <el-option
                   v-for="p in providerList"
-                  :key="p.id"
+                  :key="String(p.id)"
                   :label="p.providerName"
-                  :value="p.id"
+                  :value="String(p.id)"
                 >
                   <div class="flex items-center justify-between">
                     <span>{{ p.providerName }}</span>
@@ -1906,9 +1906,9 @@
             <el-select v-model="retryForm.providerIdOverride" class="w-full" placeholder="默认保持原配置" clearable @change="handleRetryProviderChange">
               <el-option
                 v-for="p in providerList"
-                :key="p.id"
+                :key="String(p.id)"
                 :label="p.providerName"
-                :value="p.id"
+                :value="String(p.id)"
               />
             </el-select>
           </el-form-item>
@@ -2590,7 +2590,7 @@ const retryForm = reactive({
   segmentTitle: '',
   rawTextOverride: '',
   customInstructions: '',
-  providerIdOverride: undefined as number | undefined,
+  providerIdOverride: undefined as string | undefined,
   modelCodeOverride: undefined as string | undefined
 })
 
@@ -2623,13 +2623,13 @@ function openWorkerRetryDialog(seg: any) {
   const storySeg = result.value.segments?.find(s => s.id === seg.id)
   retryForm.rawTextOverride = storySeg?.rawText || ''
   retryForm.customInstructions = '请避开直接血腥暴力描写，利用现场环境与人物反应表现紧张情绪，保留完整动作与剧情结果，严格按照 JSON 格式输出'
-  retryForm.providerIdOverride = form.providerId
+  retryForm.providerIdOverride = form.providerId ? String(form.providerId) : undefined
   retryForm.modelCodeOverride = form.modelCode
   retryModelList.value = modelList.value
   workerRetryDialogVisible.value = true
 }
 
-async function handleRetryProviderChange(pId?: number) {
+async function handleRetryProviderChange(pId?: string) {
   if (!pId) {
     retryModelList.value = modelList.value
     retryForm.modelCodeOverride = undefined
@@ -2786,7 +2786,7 @@ async function loadProviders() {
   }
 }
 
-async function handleProviderChange(providerId: number) {
+async function handleProviderChange(providerId: string) {
   form.modelCode = ''
   modelList.value = []
   if (providerId) {
@@ -2794,7 +2794,7 @@ async function handleProviderChange(providerId: number) {
   }
 }
 
-async function loadModels(providerId: number) {
+async function loadModels(providerId: string) {
   if (!providerId) {
     modelList.value = []
     form.modelCode = ''

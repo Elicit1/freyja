@@ -737,7 +737,7 @@ async function loadModels() {
     models.value = await aiProviderApi.getModelList(form.providerId, 'TXT2IMG,IMG2IMG,TXT_IMG2IMG')
     // 优先推荐图生图双模模型
     const preferred = models.value.find((m) => m.modelType === 'TXT_IMG2IMG') || models.value[0]
-    form.modelCode = preferred?.modelCode || (models.value.length ? models.value[0].modelCode : 'flux-2-klein-9b')
+    form.modelCode = preferred?.modelCode || ''
   } finally {
     modelsLoading.value = false
   }
@@ -750,7 +750,7 @@ async function handleGenerate() {
   if (!form.prompt.trim()) {
     return ElMessage.warning('生图 Prompt 不能为空')
   }
-  if (!form.providerId || !form.modelCode) {
+  if (!form.providerId || !models.value.some(m => m.modelCode === form.modelCode)) {
     return ElMessage.warning('请选择供应商和生图模型')
   }
   const sizeValidation = validateGenerationSize(form.size, 'image')

@@ -214,16 +214,21 @@
       <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
         <div class="grid grid-cols-2 gap-4">
           <div>
-            <label class="text-xs font-bold text-slate-700 mb-1.5 block">视频生成工作流模板</label>
-            <el-select v-model="step2Form.workflowTemplateId" class="w-full">
-              <el-option label="Wan 2.1 视频生成标准工作流 (WAN_VIDEO_GEN)" value="WAN_VIDEO_GEN" />
-              <el-option label="可灵 I2V 高清工作流 (KLING_I2V)" value="KLING_I2V" />
+            <label class="text-xs font-bold text-slate-700 mb-1.5 block">视频提供商</label>
+            <el-select v-model="step2Form.providerId" placeholder="请选择视频提供商" class="w-full" @change="handleVideoProviderChange">
+              <el-option v-for="p in videoProviders" :key="String(p.id)" :label="p.providerName" :value="String(p.id)" />
             </el-select>
           </div>
           <div>
             <label class="text-xs font-bold text-slate-700 mb-1.5 block">视频随机种子 (Seed)</label>
             <el-input :model-value="currentShot?.seed || '镜头未设置'" readonly class="!w-full font-mono" />
           </div>
+        </div>
+        <div>
+          <label class="text-xs font-bold text-slate-700 mb-1.5 block">视频模型</label>
+          <el-select v-model="step2Form.modelCode" placeholder="请选择当前模式的视频模型" class="w-full" :disabled="!step2Form.providerId">
+            <el-option v-for="m in videoModels" :key="m.modelCode" :label="`${m.modelName} (${m.modelCode})`" :value="m.modelCode" />
+          </el-select>
         </div>
 
         <div>
@@ -419,6 +424,9 @@ const videoStatusText = ref<string>('视频排队渲染中...')
 
 const enabledProviders = ref<AiProviderVO[]>([])
 const models = ref<AiModel[]>([])
+const videoProviders = ref<AiProviderVO[]>([])
+const videoModels = ref<AiModel[]>([])
+const videoModelType = ref('TXT2VIDEO_FIRST_LAST')
 
 // 步骤 1 表单
 const step1Form = reactive({
@@ -434,7 +442,8 @@ const step1Form = reactive({
 
 // 步骤 2 表单
 const step2Form = reactive({
-  workflowTemplateId: 'WAN_VIDEO_GEN',
+  providerId: '',
+  modelCode: '',
   videoPrompt: ''
 })
 
@@ -490,6 +499,7 @@ async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
   step1Form.prompt = shot.firstFramePrompt || shot.prompt || ''
   step1Form.negativePrompt = shot.negativePrompt || ''
   step2Form.videoPrompt = shot.videoPrompt || shot.prompt || ''
+  videoModelType.value = shot.generationMode === 'REFERENCE_MODE' ? 'TXT2VIDEO_REF' : 'TXT2VIDEO_FIRST_LAST'
 
   visible.value = true
   loadProviders()
@@ -498,13 +508,37 @@ async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
 async function loadProviders() {
   try {
     const list = await aiProviderApi.getListEnabled()
-    enabledProviders.value = list || []
+    const candidates = await Promise.all((list || []).map(async p => ({
+      provider: p,
+      imageModels: await aiProviderApi.getModelList(String(p.id), 'TXT2IMG,IMG2IMG,TXT_IMG2IMG').catch(() => [] as AiModel[]),
+      videoModels: await aiProviderApi.getModelList(String(p.id), videoModelType.value).catch(() => [] as AiModel[])
+    })))
+    enabledProviders.value = candidates.filter(item => item.imageModels.length > 0).map(item => item.provider)
+    if (!enabledProviders.value.some(p => String(p.id) === String(step1Form.providerId))) {
+      step1Form.providerId = enabledProviders.value[0] ? String(enabledProviders.value[0].id) : undefined
+    }
+    if (step1Form.providerId) await handleProviderChange(String(step1Form.providerId))
+    videoProviders.value = candidates.filter(item => item.videoModels.length > 0).map(item => item.provider)
+    if (!videoProviders.value.some(p => String(p.id) === step2Form.providerId)) {
+      step2Form.providerId = videoProviders.value[0] ? String(videoProviders.value[0].id) : ''
+    }
+    await handleVideoProviderChange(step2Form.providerId)
   } catch (ignored) {
   }
 }
 
+async function handleVideoProviderChange(pid: string) {
+  videoModels.value = []
+  step2Form.modelCode = ''
+  if (!pid) return
+  const list = await aiProviderApi.getModelList(pid, videoModelType.value)
+  videoModels.value = (list || []).filter(m => m.status === 1 && m.modelType === videoModelType.value)
+  step2Form.modelCode = videoModels.value[0]?.modelCode || ''
+}
+
 async function handleProviderChange(pid: string) {
   models.value = []
+  step1Form.modelCode = ''
   if (!pid) {
     step1Form.modelCode = ''
     return
@@ -521,6 +555,10 @@ async function handleProviderChange(pid: string) {
 // 步骤 1：生成首帧图
 async function handleGenerateFirstFrame() {
   if (!currentShotId.value) return
+  if (!step1Form.providerId || !models.value.some(m => m.modelCode === step1Form.modelCode)) {
+    ElMessage.warning('请选择已配置的生图模型')
+    return
+  }
   const sizeValidation = validateGenerationSize(step1Form.size, 'image')
   if (!sizeValidation.valid) return ElMessage.warning(sizeValidation.message)
   step1Generating.value = true
@@ -598,6 +636,10 @@ async function handleSaveFirstFrame() {
 // 步骤 2：启动视频渲染
 async function handleRenderVideo() {
   if (!currentShotId.value) return
+  if (!step2Form.providerId || !videoModels.value.some(m => m.modelCode === step2Form.modelCode)) {
+    ElMessage.warning('请选择当前模式支持的视频模型')
+    return
+  }
   if (!currentPreviewUrl.value) {
     ElMessage.warning('请先完成步骤 1 选定首帧图')
     activeStep.value = 0
@@ -609,7 +651,8 @@ async function handleRenderVideo() {
 
   try {
     const res = await shotApi.submitRender(currentShotId.value, {
-      workflowTemplateId: step2Form.workflowTemplateId
+      providerId: step2Form.providerId,
+      workflowTemplateId: step2Form.modelCode
     })
 
     if (res && res.taskId) {

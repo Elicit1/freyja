@@ -241,9 +241,9 @@
                     >
                       <el-option
                         v-for="p in voiceProviders"
-                        :key="p.id"
+                        :key="String(p.id)"
                         :label="p.providerName"
-                        :value="p.id"
+                        :value="String(p.id)"
                       />
                     </el-select>
                   </div>
@@ -251,11 +251,9 @@
                     <label class="text-[11px] font-medium text-gray-600 mb-1 block">语音克隆模型代码</label>
                     <el-select
                       v-model="voiceModelCode"
-                      placeholder="输入或选择模型代码"
+                      placeholder="请选择已配置的语音模型"
                       clearable
                       filterable
-                      allow-create
-                      default-first-option
                       size="small"
                       class="w-full"
                     >
@@ -265,11 +263,11 @@
                         :label="`${m.modelName} (${m.modelCode})`"
                         :value="m.modelCode"
                       />
-                      <el-option-group v-if="!voiceModels.some(m => m.modelCode === 'mimo-v2.5-tts-voiceclone')" label="推荐预设模型">
-                        <el-option label="MiMo 角色声音克隆 (mimo-v2.5-tts-voiceclone)" value="mimo-v2.5-tts-voiceclone" />
-                        <el-option label="CosyVoice 声音克隆 (cosyvoice-v1)" value="cosyvoice-v1" />
-                        <el-option label="F5-TTS 声音克隆 (f5-tts)" value="f5-tts" />
-                      </el-option-group>
+                      <el-option
+                        v-if="isXiaomiVoiceProvider && !voiceModels.some(m => m.modelCode === 'mimo-v2.5-tts-voiceclone')"
+                        label="MiMo 角色声音克隆 (mimo-v2.5-tts-voiceclone)"
+                        value="mimo-v2.5-tts-voiceclone"
+                      />
                     </el-select>
                   </div>
                   <div>
@@ -2280,6 +2278,9 @@ const voiceModels = ref<AiModel[]>([])
 const voiceProviderId = ref<number | string>()
 const voiceModelCode = ref<string>('mimo-v2.5-tts-voiceclone')
 const voiceEmotion = ref<string>('')
+const isXiaomiVoiceProvider = computed(() => voiceProviders.value.some(p =>
+  String(p.id) === String(voiceProviderId.value) && p.providerName === 'Xiaomi'
+))
 
 async function loadVoiceProviders() {
   try {
@@ -2310,25 +2311,23 @@ async function handleVoiceProviderChange(pid?: number | string) {
   if (!pid) return
   try {
     const list = await aiProviderApi.getModelList(pid, 'TTS,AUDIO,VOICE')
-    let validModels = (list || []).filter(m => m.status === 1)
-    if (validModels.length === 0) {
-      const allList = await aiProviderApi.getModelList(pid)
-      validModels = (allList || []).filter(m => m.status === 1)
-    }
+    const validModels = (list || []).filter(m => m.status === 1 && m.modelCode !== 'mimo-v2.5-tts-voicedesign')
     voiceModels.value = validModels
     // 优先匹配 mimo-v2.5-tts-voiceclone，或者保留已有有效选择
     const targetModel = voiceModels.value.find(m => m.modelCode === 'mimo-v2.5-tts-voiceclone')
       || voiceModels.value.find(m => m.modelCode === voiceModelCode.value)
       || voiceModels.value[0]
-    if (targetModel) {
-      voiceModelCode.value = targetModel.modelCode
-    }
+    voiceModelCode.value = targetModel?.modelCode || (isXiaomiVoiceProvider.value ? 'mimo-v2.5-tts-voiceclone' : '')
   } catch (e) {
     console.error('加载配音模型列表失败:', e)
   }
 }
 
 async function handleGenerateDrawerVoice() {
+  if (!voiceProviderId.value || !(voiceModels.value.some(m => m.modelCode === voiceModelCode.value)
+      || (isXiaomiVoiceProvider.value && voiceModelCode.value === 'mimo-v2.5-tts-voiceclone'))) {
+    return ElMessage.warning('请选择已配置的语音模型')
+  }
   if (!form.id) {
     return ElMessage.warning('请先保存分镜基础信息，再生成配音')
   }

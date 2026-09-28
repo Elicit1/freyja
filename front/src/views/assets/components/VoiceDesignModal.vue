@@ -75,11 +75,9 @@
             </label>
             <el-select
               v-model="selectedModelCode"
-              placeholder="选择或输入模型代码"
+              placeholder="请选择已配置的语音模型"
               clearable
               filterable
-              allow-create
-              default-first-option
               size="small"
               class="w-full"
             >
@@ -89,9 +87,6 @@
                 :label="`${m.modelName} (${m.modelCode})`"
                 :value="m.modelCode"
               />
-              <el-option-group v-if="!models.some(m => m.modelCode === 'mimo-v2.5-tts-voicedesign')" label="推荐预设模型">
-                <el-option label="MiMo-V2.5-TTS 声音设计 (mimo-v2.5-tts-voicedesign)" value="mimo-v2.5-tts-voicedesign" />
-              </el-option-group>
             </el-select>
           </div>
         </div>
@@ -349,19 +344,13 @@ async function handleProviderChange(pid?: number | string) {
   if (!pid) return
   try {
     const list = await aiProviderApi.getModelList(pid, 'TTS,AUDIO,VOICE')
-    let validModels = (list || []).filter(m => m.status === 1)
-    if (validModels.length === 0) {
-      const allList = await aiProviderApi.getModelList(pid)
-      validModels = (allList || []).filter(m => m.status === 1)
-    }
+    const validModels = (list || []).filter(m => m.status === 1 && m.modelCode !== 'mimo-v2.5-tts-voiceclone')
     models.value = validModels
     // 优先匹配 mimo-v2.5-tts-voicedesign，或者保留已有有效选择
     const targetModel = models.value.find(m => m.modelCode === 'mimo-v2.5-tts-voicedesign')
       || models.value.find(m => m.modelCode === selectedModelCode.value)
       || models.value[0]
-    if (targetModel) {
-      selectedModelCode.value = targetModel.modelCode
-    }
+    selectedModelCode.value = targetModel?.modelCode
   } catch (e) {
     console.error('加载模型列表失败:', e)
   }
@@ -409,6 +398,9 @@ function handleAutoFillVoiceDesc() {
 }
 
 async function handleDesignVoice() {
+  if (!selectedProviderId.value || !models.value.some(m => m.modelCode === selectedModelCode.value)) {
+    return ElMessage.warning('请选择已配置的语音模型')
+  }
   if (!designForm.voiceDesc && !currentContext.personality) {
     return ElMessage.warning('请先输入音色设计提示词或角色性格')
   }

@@ -34,7 +34,7 @@
         <div class="grid grid-cols-4 gap-3 text-xs">
           <div>
             <label class="text-[11px] font-medium text-slate-600 mb-1 block">AI 提供商</label>
-            <el-select v-model="renderConfig.providerId" placeholder="系统默认" clearable size="small" class="w-full" @change="handleProviderChange">
+            <el-select v-model="renderConfig.providerId" placeholder="请选择支持首尾帧模式的提供商" size="small" class="w-full" @change="handleProviderChange">
               <el-option
                 v-for="p in enabledProviders"
                 :key="String(p.id)"
@@ -50,8 +50,7 @@
               placeholder="请选择已配置的视频模型"
               size="small"
               filterable
-              allow-create
-              default-first-option
+              :disabled="!renderConfig.providerId || models.length === 0"
               class="w-full"
             >
               <el-option
@@ -436,7 +435,14 @@ function copyText(text?: string, msg = '已复制') {
 async function loadProviders() {
   try {
     const list = await aiProviderApi.getListEnabled()
-    enabledProviders.value = list || []
+    const candidates = await Promise.all((list || []).map(async p => ({
+      provider: p,
+      models: await aiProviderApi.getModelList(String(p.id), 'TXT2VIDEO_FIRST_LAST').catch(() => [] as AiModel[])
+    })))
+    enabledProviders.value = candidates.filter(item => item.models.length > 0).map(item => item.provider)
+    if (!enabledProviders.value.some(p => String(p.id) === renderConfig.providerId)) {
+      renderConfig.providerId = ''
+    }
     if (!renderConfig.providerId && enabledProviders.value.length > 0) {
       renderConfig.providerId = String(enabledProviders.value[0].id)
     }
@@ -448,20 +454,14 @@ async function loadProviders() {
 
 async function handleProviderChange(pid: string) {
   models.value = []
+  renderConfig.modelCode = ''
   if (!pid) {
     return
   }
   try {
-    const list = await aiProviderApi.getModelList(pid, 'TXT2VIDEO_FIRST_LAST,TXT2VIDEO_REF,TXT2VIDEO,VIDEO,I2V,T2V,IMG2VIDEO')
-    let validModels = (list || []).filter(m => m.status === 1)
-    if (validModels.length === 0) {
-      const allList = await aiProviderApi.getModelList(pid)
-      validModels = (allList || []).filter(m => m.status === 1)
-    }
-    models.value = validModels
-    if (models.value.length && !models.value.find(m => m.modelCode === renderConfig.modelCode)) {
-      renderConfig.modelCode = models.value[0].modelCode
-    }
+    const list = await aiProviderApi.getModelList(pid, 'TXT2VIDEO_FIRST_LAST')
+    models.value = (list || []).filter(m => m.status === 1 && m.modelType === 'TXT2VIDEO_FIRST_LAST')
+    renderConfig.modelCode = models.value[0]?.modelCode || ''
   } catch (e: any) {
     console.error('加载视频模型列表失败:', e)
   }
@@ -667,8 +667,8 @@ async function handleSaveConfig() {
 // 启动首尾帧渲染
 async function handleStartRender() {
   if (!currentShotId.value) return
-  if (!renderConfig.modelCode) {
-    ElMessage.warning('请选择或输入视频模型代码')
+  if (!renderConfig.providerId || !models.value.some(m => m.modelCode === renderConfig.modelCode)) {
+    ElMessage.warning('请选择支持 TXT2VIDEO_FIRST_LAST 的提供商和视频模型')
     return
   }
   const sizeValidation = validateGenerationSize(renderConfig.size, 'video')
