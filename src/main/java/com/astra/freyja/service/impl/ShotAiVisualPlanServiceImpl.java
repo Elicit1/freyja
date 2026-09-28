@@ -39,6 +39,8 @@ import com.astra.freyja.entity.DramaScene;
 import com.astra.freyja.entity.DramaShot;
 import com.astra.freyja.entity.ResCharacter;
 import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.dao.ResKeyframeMapper;
+import com.astra.freyja.entity.ResKeyframe;
 import com.astra.freyja.entity.ResProp;
 import com.astra.freyja.entity.ResScene;
 import com.astra.freyja.entity.AiTask;
@@ -519,6 +521,13 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     @Autowired(required = false)
     private LoadSkillToolFactory loadSkillToolFactory;
+
+    @Autowired(required = false)
+    private ResKeyframeMapper resKeyframeMapper;
+
+    public void setResKeyframeMapper(ResKeyframeMapper resKeyframeMapper) {
+        this.resKeyframeMapper = resKeyframeMapper;
+    }
 
     private CharacterVisualAssetResolver getCharacterVisualAssetResolver() {
         if (this.characterVisualAssetResolver != null) {
@@ -1662,8 +1671,25 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     private String buildSceneContext(ShotPromptDeriveDTO dto) {
         StringBuilder sb = new StringBuilder();
+        Long keyframeId = dto.getResKeyframeId();
         Long sceneId = dto.getResSceneId();
-        if (sceneId != null && sceneId > 0) {
+
+        // 互斥原则：优先检查是否绑定了关键帧资产 (替代传统环境场景)
+        if (keyframeId != null && keyframeId > 0 && resKeyframeMapper != null) {
+            ResKeyframe kf = resKeyframeMapper.selectById(keyframeId);
+            if (kf != null) {
+                sb.append("\n【绑定分镜关键帧资产 (替代传统环境场景)】:\n");
+                sb.append("- 关键帧名称: ").append(kf.getName()).append("\n");
+                if (StringUtils.isNotBlank(kf.getFrameType())) {
+                    sb.append("- 帧类型: ").append(kf.getFrameType()).append("\n");
+                }
+                if (StringUtils.isNotBlank(kf.getPrompt())) {
+                    sb.append("- 关键帧生图Prompt: ").append(kf.getPrompt()).append("\n");
+                } else if (StringUtils.isNotBlank(kf.getDescription())) {
+                    sb.append("- 关键帧描述: ").append(kf.getDescription()).append("\n");
+                }
+            }
+        } else if (sceneId != null && sceneId > 0) {
             ResScene resScene = resSceneMapper.selectById(sceneId);
             if (resScene != null) {
                 sb.append("\n【绑定环境场景资产】:\n");
@@ -1812,6 +1838,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 if (StringUtils.isBlank(role)) {
                     role = switch (sType) {
                         case "SCENE" -> "SCENE_LAYOUT";
+                        case "KEYFRAME" -> "MOTION_KEYFRAME";
                         case "CHARACTER", "CHARACTER_REFERENCE" -> "IDENTITY";
                         case "PROP" -> "PROP_APPEARANCE";
                         default -> "IDENTITY";
@@ -1851,6 +1878,25 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                         );
                         if (resolved != null) {
                             desc = resolved.toManifestDescription();
+                        }
+                    }
+                } else if ("KEYFRAME".equalsIgnoreCase(sType) && img.getSourceId() != null && img.getSourceId() > 0) {
+                    if (resKeyframeMapper != null) {
+                        ResKeyframe kf = resKeyframeMapper.selectById(img.getSourceId());
+                        if (kf != null) {
+                            StringBuilder dsb = new StringBuilder();
+                            if (StringUtils.isNotBlank(kf.getName())) {
+                                dsb.append(kf.getName());
+                            }
+                            if (StringUtils.isNotBlank(kf.getFrameType())) {
+                                dsb.append(" (").append(kf.getFrameType()).append(")");
+                            }
+                            if (StringUtils.isNotBlank(kf.getPrompt())) {
+                                dsb.append(": ").append(kf.getPrompt().trim());
+                            } else if (StringUtils.isNotBlank(kf.getDescription())) {
+                                dsb.append(": ").append(kf.getDescription().trim());
+                            }
+                            desc = dsb.toString();
                         }
                     }
                 } else if ("SCENE".equalsIgnoreCase(sType) && img.getSourceId() != null && img.getSourceId() > 0) {

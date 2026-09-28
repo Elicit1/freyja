@@ -18,7 +18,7 @@ public class ShotRefImageDTO {
     /** 唯一标识 (前端生成或自增) */
     private String id;
 
-    /** 来源类型: SCENE/CHARACTER_REFERENCE/CHARACTER/PROP/UPLOAD。CHARACTER 为旧兼容值。 */
+    /** 来源类型: SCENE/CHARACTER_REFERENCE/CHARACTER/PROP/KEYFRAME/UPLOAD。CHARACTER 为旧兼容值。 */
     private String sourceType;
 
     /** 关联源资产 ID (如 res_scene.id / res_character_outfit.id / res_prop.id) */

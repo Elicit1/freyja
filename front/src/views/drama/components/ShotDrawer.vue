@@ -441,13 +441,22 @@
           </div>
         </div>
 
-        <!-- 场景环境资产覆盖 -->
+        <!-- 场景环境资产 / 分镜关键帧 覆盖 (二选一互斥) -->
         <div class="studio-card p-5 mt-4">
-          <div class="flex items-center justify-between border-b border-[var(--border-default)] pb-2.5 mb-4">
-            <h4 class="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
-              <el-icon class="text-emerald-600"><Picture /></el-icon> 镜头环境场景
-            </h4>
+          <div class="flex items-center justify-between border-b border-[var(--border-default)] pb-2.5 mb-4 flex-wrap gap-2">
             <div class="flex items-center gap-2">
+              <h4 class="text-sm font-bold text-[var(--text-primary)] flex items-center gap-2">
+                <el-icon class="text-emerald-600"><Picture /></el-icon> 镜头环境背景
+              </h4>
+              <el-radio-group v-model="drawerBackgroundType" size="small">
+                <el-radio-button value="SCENE">🏞️ 环境场景 (默认)</el-radio-button>
+                <el-radio-button value="KEYFRAME">🎬 分镜关键帧</el-radio-button>
+              </el-radio-group>
+              <span class="text-xs text-gray-400">
+                {{ drawerBackgroundType === 'SCENE' ? '（与关键帧互斥）' : '（与场景互斥）' }}
+              </span>
+            </div>
+            <div v-if="drawerBackgroundType === 'SCENE'" class="flex items-center gap-2">
               <el-button
                 v-if="form.generationMode === 'REFERENCE_MODE'"
                 type="success"
@@ -463,19 +472,37 @@
               </el-button>
             </div>
           </div>
-          <el-form-item label="环境场景资产">
+          <el-form-item v-if="drawerBackgroundType === 'SCENE'" label="环境场景资产">
             <el-select
-              v-model="form.resSceneId"
+              :model-value="form.resSceneId ? String(form.resSceneId) : undefined"
               placeholder="默认继承所属场次设置"
               clearable
               filterable
               class="w-full"
+              @update:model-value="handleDrawerSceneChange"
             >
               <el-option
                 v-for="s in sceneOptions"
                 :key="String(s.id)"
                 :label="`${s.name}${s.sceneType || s.timeOfDay ? ` (${[s.sceneType, s.timeOfDay].filter(Boolean).join('/')})` : ''}`"
                 :value="String(s.id)"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-else label="分镜关键帧资产">
+            <el-select
+              :model-value="form.resKeyframeId ? String(form.resKeyframeId) : undefined"
+              placeholder="选择分镜关键帧资产 (与环境场景互斥)"
+              clearable
+              filterable
+              class="w-full"
+              @update:model-value="handleDrawerKeyframeChange"
+            >
+              <el-option
+                v-for="k in keyframeOptions"
+                :key="String(k.id)"
+                :label="`${k.name}${k.frameType ? ` [${k.frameType}]` : ''}`"
+                :value="String(k.id)"
               />
             </el-select>
           </el-form-item>
@@ -644,6 +671,7 @@
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item command="scene">🏞️ 场景资产图</el-dropdown-item>
+                      <el-dropdown-item command="keyframe">🎬 分镜关键帧</el-dropdown-item>
                       <el-dropdown-item command="character">👥 人物造型图</el-dropdown-item>
                       <el-dropdown-item command="prop">🗡️ 道具资产图</el-dropdown-item>
                     </el-dropdown-menu>
@@ -1083,9 +1111,10 @@ import { aiProviderApi } from '@/api/ai-provider'
 import { characterApi } from '@/api/res-character'
 import { sceneApi } from '@/api/res-scene'
 import { resPropApi, type ResPropItem } from '@/api/res-prop'
+import { keyframeApi } from '@/api/res-keyframe'
 import { assetApi } from '@/api/res-asset'
 import type { DramaShot, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, DirectorPlan } from '@/types/drama'
-import type { ResCharacterOption, ResSceneOption } from '@/types/resource'
+import type { ResCharacterOption, ResSceneOption, ResKeyframeOption } from '@/types/resource'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import ShotPromptDeriveModal from './ShotPromptDeriveModal.vue'
 import ShotPromptPreviewModal from './ShotPromptPreviewModal.vue'
@@ -1110,6 +1139,7 @@ type DerivedPromptResult = {
   characterRefs: CharacterShotRefInfo[]
   propRefs: PropShotRefInfo[]
   resSceneId?: string | number
+  resKeyframeId?: string | number
   refImages: ShotRefImage[]
   refAudios: ShotRefAudio[]
   directorPlan?: DirectorPlan
@@ -1150,6 +1180,7 @@ const uploadingRefAud = ref(false)
 const characterOptions = ref<ResCharacterOption[]>([])
 const sceneOptions = ref<ResSceneOption[]>([])
 const propOptions = ref<ResPropItem[]>([])
+const keyframeOptions = ref<ResKeyframeOption[]>([])
 const groupOptions = ref<DramaShotGroup[]>([])
 const characterRefs = ref<CharacterShotRefInfo[]>([])
 const propRefs = ref<PropShotRefInfo[]>([])
@@ -1180,6 +1211,7 @@ const form = reactive<DramaShot>({
   voiceover: '',
   soundEffect: '',
   resSceneId: undefined,
+  resKeyframeId: undefined,
   customScenePrompt: '',
   generationMode: 'FIRST_LAST_FRAME',
   firstFramePrompt: '',
@@ -1200,6 +1232,33 @@ const form = reactive<DramaShot>({
   directorPlanJson: undefined,
   sortOrder: 1
 })
+
+const drawerBackgroundType = computed<'SCENE' | 'KEYFRAME'>({
+  get() {
+    return form.resKeyframeId ? 'KEYFRAME' : 'SCENE'
+  },
+  set(val) {
+    if (val === 'SCENE') {
+      form.resKeyframeId = undefined
+    } else {
+      form.resSceneId = undefined
+    }
+  }
+})
+
+function handleDrawerSceneChange(val?: string | number) {
+  form.resSceneId = val || undefined
+  if (val) {
+    form.resKeyframeId = undefined
+  }
+}
+
+function handleDrawerKeyframeChange(val?: string | number) {
+  form.resKeyframeId = val || undefined
+  if (val) {
+    form.resSceneId = undefined
+  }
+}
 
 const parsedDirectorPlan = computed<DirectorPlan | null>(() => {
   if (!form.directorPlanJson) return null
@@ -1250,15 +1309,17 @@ async function loadOptions(dramaId: string | number, sceneId?: string | number) 
     const promises: Promise<any>[] = [
       characterApi.getOptions(dramaId),
       sceneApi.getOptions(dramaId),
-      resPropApi.getOptions(dramaId)
+      resPropApi.getOptions(dramaId),
+      keyframeApi.getOptions({ dramaId, shotId: form.id })
     ]
     if (sceneId) {
       promises.push(shotGroupApi.getListBySceneId(sceneId))
     }
-    const [cRes, sRes, pRes, gRes] = await Promise.all(promises)
+    const [cRes, sRes, pRes, kRes, gRes] = await Promise.all(promises)
     characterOptions.value = cRes || []
     sceneOptions.value = sRes || []
     propOptions.value = pRes || []
+    keyframeOptions.value = kRes || []
     if (gRes) {
       groupOptions.value = gRes || []
     }
@@ -1266,6 +1327,7 @@ async function loadOptions(dramaId: string | number, sceneId?: string | number) 
     characterOptions.value = []
     sceneOptions.value = []
     propOptions.value = []
+    keyframeOptions.value = []
     groupOptions.value = []
   }
 }
@@ -1406,9 +1468,9 @@ async function handleUploadEndFrame(file: File) {
 // 资产选取器 (用于 REFERENCE_MODE)
 const drawerAssetPickerVisible = ref(false)
 const drawerAssetPickerTitle = ref('')
-const drawerAssetPickerList = ref<Array<{ name: string; imageUrl: string; sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP'; sourceId: string | number; characterId?: string | number; lookId?: string | number; referenceRole?: string; tag?: string }>>([])
+const drawerAssetPickerList = ref<Array<{ name: string; imageUrl: string; sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP' | 'KEYFRAME'; sourceId: string | number; characterId?: string | number; lookId?: string | number; referenceRole?: string; tag?: string }>>([])
 
-async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop') {
+async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | 'keyframe') {
   if (refImages.value.length >= 9) {
     ElMessage.warning('参考图最多支持 9 张')
     return
@@ -1428,6 +1490,20 @@ async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop') {
         }
       }
       drawerAssetPickerList.value = items
+    } catch (e) {}
+  } else if (type === 'keyframe') {
+    drawerAssetPickerTitle.value = '分镜关键帧资产'
+    try {
+      const list = await keyframeApi.getOptions({ dramaId: form.dramaId, shotId: form.id })
+      drawerAssetPickerList.value = (list || [])
+        .filter(k => k.frameUrl)
+        .map(k => ({
+          name: `${k.name}${k.frameType ? ` [${k.frameType}]` : ''}`,
+          imageUrl: k.frameUrl,
+          sourceType: 'KEYFRAME',
+          sourceId: k.id,
+          tag: '关键帧'
+        }))
     } catch (e) {}
   } else if (type === 'character') {
     drawerAssetPickerTitle.value = '人物造型资产'
@@ -1487,6 +1563,7 @@ function handleConfirmSelectDrawerAsset(item: any) {
   }
   let defaultRole = 'SUBJECT'
   if (item.sourceType === 'SCENE') defaultRole = 'SCENE'
+  else if (item.sourceType === 'KEYFRAME') defaultRole = 'MOTION_KEYFRAME'
   else if (item.sourceType === 'PROP') defaultRole = 'PROP'
 
   refImages.value.push({
@@ -1802,6 +1879,7 @@ function openCreate(dramaId: string | number, episodeId: string | number, sceneI
     voiceover: '',
     soundEffect: '',
     resSceneId: defaultResSceneId,
+    resKeyframeId: undefined,
     customScenePrompt: '',
     generationMode: 'FIRST_LAST_FRAME',
     firstFramePrompt: '',
@@ -2093,6 +2171,7 @@ async function handleOpenPromptDerive(eventOrTaskId?: string | Event) {
     characterRefs: characterRefsSnapshot,
     propRefs: propRefsSnapshot,
     resSceneId: shotSnapshot.resSceneId,
+    resKeyframeId: shotSnapshot.resKeyframeId,
     sceneName,
     episodeSummary,
     dramaTitle,
@@ -2104,6 +2183,7 @@ async function handleOpenPromptDerive(eventOrTaskId?: string | Event) {
     characterOptions: characterOptionsSnapshot,
     sceneOptions: sceneOptionsSnapshot,
     propOptions: propOptionsSnapshot,
+    keyframeOptions: [...keyframeOptions.value],
     taskId
   }
   await openPromptPanel(shotId, taskId, panelParams)
@@ -2184,6 +2264,9 @@ function handleApplyDerivedPrompts(res: DerivedPromptResult) {
   if (res.resSceneId !== undefined) {
     form.resSceneId = res.resSceneId
   }
+  if (res.resKeyframeId !== undefined) {
+    form.resKeyframeId = res.resKeyframeId
+  }
   if (res.propRefs) {
     propRefs.value = res.propRefs.map(item => ({ ...item }))
   }
@@ -2220,6 +2303,7 @@ async function handleApplyDerivedPromptsForPanel(shotId: string, res: DerivedPro
     characterRefs: res.characterRefs.map(item => ({ ...item })),
     propRefs: res.propRefs.map(item => ({ ...item })),
     resSceneId: res.resSceneId,
+    resKeyframeId: res.resKeyframeId,
     refImages: res.refImages.map(item => ({ ...item })),
     refAudios: res.refAudios.map(item => ({ ...item })),
     directorPlanJson: res.directorPlanJson || (res.directorPlan ? JSON.stringify(res.directorPlan) : undefined)

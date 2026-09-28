@@ -1,11 +1,12 @@
 import { ref, computed, type Ref } from 'vue'
 import type { CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio } from '@/types/drama'
-import type { ResCharacterOption, ResSceneOption, ResPropOption } from '@/types/resource'
+import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
 
 export interface ShotPromptDraft {
   characterRefs: CharacterShotRefInfo[]
   propRefs: PropShotRefInfo[]
   resSceneId?: string | number
+  resKeyframeId?: string | number
   refImages: ShotRefImage[]
   refAudios: ShotRefAudio[]
 }
@@ -14,15 +15,15 @@ export interface CandidateImageItem {
   id: string
   name: string
   imageUrl: string
-  sourceType: 'CHARACTER_REFERENCE' | 'CHARACTER' | 'SCENE' | 'PROP' | 'UPLOAD'
+  sourceType: 'CHARACTER_REFERENCE' | 'CHARACTER' | 'SCENE' | 'PROP' | 'KEYFRAME' | 'UPLOAD'
   sourceId?: string | number
   characterId?: string | number
   lookId?: string | number
-  referenceRole?: 'IDENTITY' | 'LOOK' | 'COMBINED' | 'POSE' | 'STYLE' | string
-  usageRole: 'SUBJECT' | 'SCENE' | 'PROP' | 'FIRST_FRAME' | 'END_FRAME' | string
+  referenceRole?: 'IDENTITY' | 'LOOK' | 'COMBINED' | 'POSE' | 'STYLE' | 'MOTION_KEYFRAME' | string
+  usageRole: 'SUBJECT' | 'SCENE' | 'PROP' | 'FIRST_FRAME' | 'END_FRAME' | 'MOTION_KEYFRAME' | string
   tag: string
   assetName: string
-  assetType: 'CHARACTER' | 'SCENE' | 'PROP' | 'UPLOAD'
+  assetType: 'CHARACTER' | 'SCENE' | 'PROP' | 'KEYFRAME' | 'UPLOAD'
   isOccupied?: boolean
   occupiedSlotIndex?: number
 }
@@ -55,6 +56,7 @@ export function useShotReferenceAssets(
     characterOptions: Ref<ResCharacterOption[]>
     sceneOptions: Ref<ResSceneOption[]>
     propOptions: Ref<ResPropOption[]>
+    keyframeOptions?: Ref<ResKeyframeOption[]>
   }
 ) {
   // 1. 候选图片池 (根据 draft.characterRefs、draft.resSceneId、draft.propRefs 与已有 UPLOAD 提取)
@@ -160,6 +162,24 @@ export function useShotReferenceAssets(
             assetType: 'SCENE'
           })
         }
+      }
+    }
+
+    // B2. 选中的分镜关键帧 (与环境场景互斥)
+    if (draft.value.resKeyframeId && options.keyframeOptions?.value) {
+      const kf = options.keyframeOptions.value.find(k => String(k.id) === String(draft.value.resKeyframeId))
+      if (kf && kf.frameUrl) {
+        pushImage({
+          id: `cand_keyframe_${kf.id}`,
+          name: `${kf.name} (${kf.frameType || '关键帧'})`,
+          imageUrl: kf.frameUrl,
+          sourceType: 'KEYFRAME',
+          sourceId: String(kf.id),
+          usageRole: 'MOTION_KEYFRAME',
+          tag: '分镜关键帧',
+          assetName: kf.name,
+          assetType: 'KEYFRAME'
+        })
       }
     }
 
@@ -412,10 +432,11 @@ export function useShotReferenceAssets(
   function computeDraftFingerprint(): string {
     const chars = draft.value.characterRefs.map(c => `${c.characterId}:${c.lookId || ''}`).sort().join(';')
     const scene = String(draft.value.resSceneId || '')
+    const keyframe = String(draft.value.resKeyframeId || '')
     const props = draft.value.propRefs.map(p => String(p.propId || '')).sort().join(';')
     const imgs = draft.value.refImages.map(i => `${i.imageUrl}|${i.usageRole || ''}`).join(';')
     const auds = draft.value.refAudios.map(a => `${a.audioUrl}|${a.usageMode || ''}`).join(';')
-    return `${chars}__${scene}__${props}__${imgs}__${auds}`
+    return `${chars}__${scene}__${keyframe}__${props}__${imgs}__${auds}`
   }
 
   const isResultStale = computed(() => {

@@ -62,14 +62,16 @@
 
       </div>
 
-      <!-- 一、资产选择区 (人物/造型、场景、关键道具) -->
+      <!-- 一、资产选择区 (人物/造型、场景、关键道具、关键帧) -->
         <ShotAssetReferenceComposer
           v-model:characterRefs="draft.characterRefs"
           v-model:resSceneId="draft.resSceneId"
+          v-model:resKeyframeId="draft.resKeyframeId"
           v-model:propRefs="draft.propRefs"
           :character-options="characterOptions"
           :scene-options="sceneOptions"
           :prop-options="propOptions"
+          :keyframe-options="keyframeOptions"
           :disabled="isStreaming"
         />
 
@@ -753,6 +755,7 @@ import { shotApi, dramaApi } from '@/api/drama'
 import { characterApi } from '@/api/res-character'
 import { sceneApi } from '@/api/res-scene'
 import { propApi } from '@/api/res-prop'
+import { keyframeApi } from '@/api/res-keyframe'
 import { aiProviderApi } from '@/api/ai-provider'
 import DictSelect from '@/components/DictSelect.vue'
 import SkillSelector from '@/components/SkillSelector.vue'
@@ -778,7 +781,7 @@ import type {
   DirectorPlan
 } from '@/types/drama'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
-import type { ResCharacterOption, ResSceneOption, ResPropOption } from '@/types/resource'
+import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
 
 const emit = defineEmits<{
   (e: 'apply', result: {
@@ -791,6 +794,7 @@ const emit = defineEmits<{
     propRefs: PropShotRefInfo[]
     characterRefs: CharacterShotRefInfo[]
     resSceneId?: string | number
+    resKeyframeId?: string | number
     refImages: ShotRefImage[]
     refAudios: ShotRefAudio[]
     directorPlan?: DirectorPlan
@@ -833,12 +837,14 @@ const includeBgm = ref(false)
 const characterOptions = ref<ResCharacterOption[]>([])
 const sceneOptions = ref<ResSceneOption[]>([])
 const propOptions = ref<ResPropOption[]>([])
+const keyframeOptions = ref<ResKeyframeOption[]>([])
 
 // 弹窗内部一次性草稿 (Draft)
 const draft = ref<ShotPromptDraft>({
   characterRefs: [],
   propRefs: [],
   resSceneId: undefined,
+  resKeyframeId: undefined,
   refImages: [],
   refAudios: []
 })
@@ -853,7 +859,8 @@ const {
 } = useShotReferenceAssets(draft, {
   characterOptions,
   sceneOptions,
-  propOptions
+  propOptions,
+  keyframeOptions
 })
 
 const modalTitle = computed(() => {
@@ -919,18 +926,20 @@ async function handleProviderChange(pid?: string | number) {
   }
 }
 
-async function loadAssetOptions(dramaId: string | number | undefined, viewVersion: number) {
+async function loadAssetOptions(dramaId: string | number | undefined, viewVersion: number, shotId?: string | number) {
   if (!dramaId) return
   try {
-    const [cRes, sRes, pRes] = await Promise.all([
+    const [cRes, sRes, pRes, kRes] = await Promise.all([
       characterApi.getOptions(dramaId),
       sceneApi.getOptions(dramaId),
-      propApi.getOptions(dramaId)
+      propApi.getOptions(dramaId),
+      keyframeApi.getOptions({ dramaId, shotId })
     ])
     if (viewVersion !== promptViewVersion) return
     if (cRes) characterOptions.value = cRes
     if (sRes) sceneOptions.value = sRes
     if (pRes) propOptions.value = pRes
+    if (kRes) keyframeOptions.value = kRes
   } catch (e) {
     console.warn('加载资产选项库失败', e)
   }
@@ -941,6 +950,7 @@ async function open(params: {
   characterRefs?: CharacterShotRefInfo[]
   propRefs?: PropShotRefInfo[]
   resSceneId?: string | number
+  resKeyframeId?: string | number
   episodeSummary?: string
   dramaTitle?: string
   stylePreset?: string
@@ -951,6 +961,7 @@ async function open(params: {
   characterOptions?: ResCharacterOption[]
   sceneOptions?: ResSceneOption[]
   propOptions?: ResPropOption[]
+  keyframeOptions?: ResKeyframeOption[]
   taskId?: string
 }) {
   const targetShotId = String(params.shot.id ?? '')
@@ -991,6 +1002,7 @@ async function open(params: {
     characterRefs: (params.characterRefs || params.shot.characterRefs || []).map(c => ({ ...c })),
     propRefs: (params.propRefs || params.shot.propRefs || []).map(p => ({ ...p })),
     resSceneId: params.resSceneId !== undefined ? params.resSceneId : params.shot.resSceneId,
+    resKeyframeId: params.resKeyframeId !== undefined ? params.resKeyframeId : params.shot.resKeyframeId,
     refImages: (params.refImages || params.shot.refImages || []).map(img => ({ ...img })),
     refAudios: (params.refAudios || params.shot.refAudios || []).map(aud => ({ ...aud }))
   }
@@ -999,9 +1011,10 @@ async function open(params: {
   characterOptions.value = params.characterOptions ? [...params.characterOptions] : []
   sceneOptions.value = params.sceneOptions ? [...params.sceneOptions] : []
   propOptions.value = params.propOptions ? [...params.propOptions] : []
+  keyframeOptions.value = params.keyframeOptions ? [...params.keyframeOptions] : []
 
   if (params.shot.dramaId) {
-    void loadAssetOptions(params.shot.dramaId, viewVersion)
+    void loadAssetOptions(params.shot.dramaId, viewVersion, params.shot.id)
   }
 
   generationMode.value = params.generationMode || params.shot.generationMode || 'FIRST_LAST_FRAME'
@@ -1160,6 +1173,7 @@ function restorePromptInputSnapshot(inputPayload?: string, expectedShotId?: stri
       characterRefs: (payload.characterRefs || []).map(item => ({ ...item })),
       propRefs: (payload.propRefs || []).map(item => ({ ...item })),
       resSceneId: payload.resSceneId,
+      resKeyframeId: payload.resKeyframeId,
       refImages: (payload.refImages || []).map(item => ({ ...item })),
       refAudios: (payload.refAudios || []).map(item => ({ ...item }))
     }
@@ -1304,6 +1318,7 @@ function buildDerivePayload(): ShotPromptDeriveDTO {
     soundEffect: optionalText(currentShotContext.value?.soundEffect),
     includeBgm: includeBgm.value,
     resSceneId: draft.value.resSceneId,
+    resKeyframeId: draft.value.resKeyframeId,
     customScenePrompt: optionalText(currentShotContext.value?.customScenePrompt),
     characterRefs: draft.value.characterRefs.map(c => ({
       ...c,
@@ -1598,6 +1613,7 @@ async function doApply() {
     characterRefs: draft.value.characterRefs.map(item => ({ ...item })),
     propRefs: draft.value.propRefs.map(item => ({ ...item })),
     resSceneId: draft.value.resSceneId,
+    resKeyframeId: draft.value.resKeyframeId,
     refImages: draft.value.refImages.map(item => ({ ...item })),
     refAudios: draft.value.refAudios.map(item => ({ ...item }))
   }

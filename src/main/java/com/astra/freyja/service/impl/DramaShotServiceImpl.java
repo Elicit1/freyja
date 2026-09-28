@@ -14,7 +14,9 @@ import com.astra.freyja.dto.drama.DramaShotBatchAssembleDTO;
 import com.astra.freyja.dto.drama.DramaShotDTO;
 import com.astra.freyja.dto.drama.DramaShotFirstFrameDTO;
 import com.astra.freyja.dto.drama.DramaShotRenderRequestDTO;
+import com.astra.freyja.dao.ResKeyframeMapper;
 import com.astra.freyja.dao.ResPropMapper;
+import com.astra.freyja.entity.ResKeyframe;
 import com.astra.freyja.dto.drama.DramaShotReorderDTO;
 import com.astra.freyja.dto.drama.DramaShotVO;
 import com.astra.freyja.dto.drama.PropShotRefDTO;
@@ -79,6 +81,7 @@ public class DramaShotServiceImpl implements DramaShotService {
     private final DramaMapper dramaMapper;
     private final ResSceneMapper resSceneMapper;
     private final ResPropMapper resPropMapper;
+    private final ResKeyframeMapper resKeyframeMapper;
     private final ResCharacterMapper characterMapper;
     private final ResCharacterOutfitMapper outfitMapper;
     private final DramaEpisodeService episodeService;
@@ -97,6 +100,7 @@ public class DramaShotServiceImpl implements DramaShotService {
                                 DramaMapper dramaMapper,
                                 ResSceneMapper resSceneMapper,
                                 ResPropMapper resPropMapper,
+                                ResKeyframeMapper resKeyframeMapper,
                                 ResCharacterMapper characterMapper,
                                 ResCharacterOutfitMapper outfitMapper,
                                 DramaEpisodeService episodeService,
@@ -114,6 +118,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         this.dramaMapper = dramaMapper;
         this.resSceneMapper = resSceneMapper;
         this.resPropMapper = resPropMapper;
+        this.resKeyframeMapper = resKeyframeMapper;
         this.characterMapper = characterMapper;
         this.outfitMapper = outfitMapper;
         this.episodeService = episodeService;
@@ -187,6 +192,18 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
         if (shot.getDramaId() == null) {
             shot.setDramaId(scene.getDramaId());
+        }
+
+        // 场景资产与关键帧资产互斥清洗 (两者不可同时生效)
+        if (dto.getResKeyframeId() != null && dto.getResKeyframeId() > 0) {
+            shot.setResKeyframeId(dto.getResKeyframeId());
+            shot.setResSceneId(null);
+            shot.setCustomScenePrompt(null);
+        } else if (dto.getResSceneId() != null && dto.getResSceneId() > 0) {
+            shot.setResSceneId(dto.getResSceneId());
+            shot.setResKeyframeId(null);
+        } else {
+            shot.setResKeyframeId(null);
         }
 
         // 自动关联或创建镜头组 (ShotGroup)
@@ -321,6 +338,23 @@ public class DramaShotServiceImpl implements DramaShotService {
                 shot, dto.getShotType(), dto.getShotTypeLocked(), existing.getShotType(), existing.getShotTypeLocked(), true);
         applyCameraConstraintUpdate(
                 shot, dto.getCameraMovement(), dto.getCameraMovementLocked(), existing.getCameraMovement(), existing.getCameraMovementLocked(), false);
+
+        // 场景资产与关键帧资产互斥清洗 (两者不可同时生效)
+        if (dto.getResKeyframeId() != null && dto.getResKeyframeId() > 0) {
+            shot.setResKeyframeId(dto.getResKeyframeId());
+            shot.setResSceneId(null);
+            shot.setCustomScenePrompt(null);
+        } else if (dto.getResSceneId() != null && dto.getResSceneId() > 0) {
+            shot.setResSceneId(dto.getResSceneId());
+            shot.setResKeyframeId(null);
+        } else {
+            if (dto.getResKeyframeId() != null && dto.getResKeyframeId() == 0) {
+                shot.setResKeyframeId(null);
+            }
+            if (dto.getResSceneId() != null && dto.getResSceneId() == 0) {
+                shot.setResSceneId(null);
+            }
+        }
         if (dto.getDuration() != null) {
             if (dto.getDuration().compareTo(BigDecimal.ZERO) <= 0) {
                 throw new BizException(400, "分镜镜头时长必须大于 0 秒");
@@ -949,19 +983,35 @@ public class DramaShotServiceImpl implements DramaShotService {
         DramaShotVO vo = new DramaShotVO();
         BeanUtils.copyProperties(shot, vo);
 
-        // 1. 补充环境场景信息
-        Long effectiveSceneId = shot.getResSceneId();
-        if (effectiveSceneId == null || effectiveSceneId <= 0) {
-            DramaScene scene = sceneMapper.selectById(shot.getSceneId());
-            if (scene != null) {
-                effectiveSceneId = scene.getResSceneId();
+        // 1. 补充环境场景或关键帧信息 (二者严格互斥)
+        if (shot.getResKeyframeId() != null && shot.getResKeyframeId() > 0) {
+            vo.setResKeyframeId(shot.getResKeyframeId());
+            vo.setResSceneId(null);
+            vo.setResSceneName(null);
+            vo.setResSceneCoverUrl(null);
+            if (resKeyframeMapper != null) {
+                ResKeyframe kf = resKeyframeMapper.selectById(shot.getResKeyframeId());
+                if (kf != null) {
+                    vo.setKeyframeName(kf.getName());
+                    vo.setKeyframeUrl(kf.getFrameUrl());
+                    vo.setKeyframeType(kf.getFrameType());
+                }
             }
-        }
-        if (effectiveSceneId != null && effectiveSceneId > 0) {
-            ResScene resScene = resSceneMapper.selectById(effectiveSceneId);
-            if (resScene != null) {
-                vo.setResSceneName(resScene.getName());
-                vo.setResSceneCoverUrl(resScene.getCoverUrl());
+        } else {
+            vo.setResKeyframeId(null);
+            Long effectiveSceneId = shot.getResSceneId();
+            if (effectiveSceneId == null || effectiveSceneId <= 0) {
+                DramaScene scene = sceneMapper.selectById(shot.getSceneId());
+                if (scene != null) {
+                    effectiveSceneId = scene.getResSceneId();
+                }
+            }
+            if (effectiveSceneId != null && effectiveSceneId > 0) {
+                ResScene resScene = resSceneMapper.selectById(effectiveSceneId);
+                if (resScene != null) {
+                    vo.setResSceneName(resScene.getName());
+                    vo.setResSceneCoverUrl(resScene.getCoverUrl());
+                }
             }
         }
 

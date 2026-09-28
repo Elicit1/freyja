@@ -578,6 +578,7 @@ CREATE TABLE `drama_shot` (
     `voiceover`                  TEXT            DEFAULT NULL COMMENT '旁白/内心独白',
     `sound_effect`               VARCHAR(255)    DEFAULT NULL COMMENT '音效描述',
     `res_scene_id`               BIGINT UNSIGNED DEFAULT NULL COMMENT '环境场景资产ID (为空则继承场次设置)',
+    `res_keyframe_id`            BIGINT UNSIGNED DEFAULT NULL COMMENT '关联关键帧资产ID (res_keyframe.id)，与 res_scene_id 互斥',
     `custom_scene_prompt`        TEXT            DEFAULT NULL COMMENT '自定义场景提示词覆盖',
     `character_refs_json`        TEXT            DEFAULT NULL COMMENT '多角色引用 JSON 数组 (含角色ID、造型ID、动作、表情、站位)',
     `prop_refs_json`             TEXT            DEFAULT NULL COMMENT '关联道具引用 JSON 数组 (含道具ID、名称、类型、提示词)',
@@ -618,6 +619,7 @@ CREATE TABLE `drama_shot` (
     KEY `idx_shot_group_id` (`shot_group_id`),
     KEY `idx_episode_id` (`episode_id`),
     KEY `idx_drama_id` (`drama_id`),
+    KEY `idx_res_keyframe_id` (`res_keyframe_id`),
     KEY `idx_render_status` (`render_status`),
     KEY `idx_generation_mode` (`generation_mode`),
     KEY `idx_current_video_take_id` (`current_video_take_id`)

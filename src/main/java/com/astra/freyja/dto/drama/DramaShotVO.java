@@ -38,6 +38,12 @@ public class DramaShotVO {
     private String resSceneCoverUrl;
     private String customScenePrompt;
 
+    /** 关联关键帧资产信息 (与 resScene 互斥) */
+    private Long resKeyframeId;
+    private String keyframeName;
+    private String keyframeUrl;
+    private String keyframeType;
+
     /** 结构化角色及造型列表 */
     private List<CharacterShotRefInfoVO> characterRefs;
 

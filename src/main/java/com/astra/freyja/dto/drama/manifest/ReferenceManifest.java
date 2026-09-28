@@ -34,7 +34,7 @@ public class ReferenceManifest {
         /** 1-based index (e.g. 1 -> Picture 1) */
         private Integer pictureIndex;
         private String referenceId;
-        private String sourceType; // SCENE, CHARACTER, PROP, UPLOAD
+        private String sourceType; // SCENE, CHARACTER, PROP, UPLOAD, KEYFRAME
         private Long sourceId;
         private String entityName;
         private String usageRole; // IDENTITY, SCENE_LAYOUT, PROP_APPEARANCE, STYLE, MOTION_KEYFRAME

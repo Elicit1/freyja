@@ -255,7 +255,7 @@ export interface PropShotRefInfo {
 
 export interface ShotRefImage {
   id?: string
-  sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP' | 'UPLOAD'
+  sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP' | 'KEYFRAME' | 'UPLOAD'
   sourceId?: string | number
   characterId?: string | number
   lookId?: string | number
@@ -301,6 +301,10 @@ export interface DramaShot {
   resSceneId?: number | string
   resSceneName?: string
   resSceneCoverUrl?: string
+  resKeyframeId?: number | string
+  keyframeName?: string
+  keyframeUrl?: string
+  keyframeType?: string
   customScenePrompt?: string
   characterRefs?: CharacterShotRefInfo[]
   propRefs?: PropShotRefInfo[]
@@ -437,6 +441,7 @@ export interface ShotPromptDeriveDTO {
   voiceover?: string
   soundEffect?: string
   resSceneId?: number | string
+  resKeyframeId?: number | string
   customScenePrompt?: string
   characterRefs?: CharacterShotRefInfo[]
   propRefs?: PropShotRefInfo[]

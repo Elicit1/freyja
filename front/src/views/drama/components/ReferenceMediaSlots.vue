@@ -519,7 +519,9 @@ const validationAlerts = computed(() => {
 function getSourceTypeLabel(type?: string) {
   switch (type) {
     case 'CHARACTER': return '人物'
+    case 'CHARACTER_REFERENCE': return '造型'
     case 'SCENE': return '场景'
+    case 'KEYFRAME': return '关键帧'
     case 'PROP': return '道具'
     case 'UPLOAD': return '上传'
     default: return '素材'

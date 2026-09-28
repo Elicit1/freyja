@@ -135,15 +135,27 @@
       </div>
     </div>
 
-    <!-- 2. 环境场景 (单选一个场景) -->
+    <!-- 2. 环境背景：环境场景 与 分镜关键帧 互斥二选一 (默认场景) -->
     <div class="asset-block space-y-2">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-1.5">
-          <span class="text-xs font-semibold text-slate-700">🏞️ 镜头环境场景 (单选)</span>
-          <span class="text-[10px] text-slate-400">优先提取空间参考图与封面作为参考图</span>
-        </div>
+      <div class="flex items-center justify-between flex-wrap gap-2">
         <div class="flex items-center gap-2">
+          <el-radio-group
+            v-model="activeBackgroundType"
+            size="small"
+            :disabled="disabled"
+          >
+            <el-radio-button value="SCENE">🏞️ 环境场景 (默认)</el-radio-button>
+            <el-radio-button value="KEYFRAME">🎬 分镜关键帧</el-radio-button>
+          </el-radio-group>
+          <span class="text-[10px] text-slate-400">
+            {{ activeBackgroundType === 'SCENE' ? '空间参考图与封面（与关键帧互斥）' : '关键帧资产引导动态与画面（与场景互斥）' }}
+          </span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- 场景下拉 -->
           <el-select
+            v-if="activeBackgroundType === 'SCENE'"
             :model-value="resSceneId ? String(resSceneId) : undefined"
             placeholder="选择环境场景资产"
             size="small"
@@ -160,76 +172,151 @@
               :value="String(s.id)"
             />
           </el-select>
+
+          <!-- 关键帧下拉 -->
+          <el-select
+            v-else
+            :model-value="resKeyframeId ? String(resKeyframeId) : undefined"
+            placeholder="选择分镜关键帧资产"
+            size="small"
+            filterable
+            clearable
+            class="w-64"
+            :disabled="disabled"
+            @update:model-value="handleKeyframeSelect"
+          >
+            <el-option
+              v-for="k in (keyframeOptions || [])"
+              :key="String(k.id)"
+              :label="`${k.name}${k.frameType ? ` [${k.frameType}]` : ''}`"
+              :value="String(k.id)"
+            />
+          </el-select>
         </div>
       </div>
 
-      <div v-if="!currentScene" class="text-slate-400 text-xs py-2 text-center bg-slate-50 rounded border border-dashed border-slate-200">
-        （未单独指定镜头场景，默认继承剧集场次环境）
-      </div>
-      <div v-else class="flex items-start gap-3 bg-emerald-50/50 border border-emerald-200/80 rounded-lg p-2">
-        <div class="w-14 h-14 rounded overflow-hidden bg-slate-100 shrink-0 border border-emerald-100 flex items-center justify-center">
-          <el-image
-            v-if="currentScene.referenceImageUrl || currentScene.coverUrl"
-            :src="currentScene.referenceImageUrl || currentScene.coverUrl"
-            fit="cover"
-            class="w-full h-full"
-          />
-          <span v-else class="text-lg">🏞️</span>
+      <!-- 场景卡片 -->
+      <template v-if="activeBackgroundType === 'SCENE'">
+        <div v-if="!currentScene" class="text-slate-400 text-xs py-2 text-center bg-slate-50 rounded border border-dashed border-slate-200">
+          （未单独指定镜头场景，默认继承剧集场次环境）
         </div>
-        <div class="flex-1 min-w-0 space-y-1">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-bold text-slate-800 truncate">{{ currentScene.name }}</span>
-              <el-tag v-if="currentScene.sceneType || currentScene.timeOfDay" size="small" type="success" class="!text-[9px] !px-1 !h-4">
-                {{ [currentScene.sceneType, currentScene.timeOfDay].filter(Boolean).join(' · ') }}
-              </el-tag>
+        <div v-else class="flex items-start gap-3 bg-emerald-50/50 border border-emerald-200/80 rounded-lg p-2">
+          <div class="w-14 h-14 rounded overflow-hidden bg-slate-100 shrink-0 border border-emerald-100 flex items-center justify-center">
+            <el-image
+              v-if="currentScene.referenceImageUrl || currentScene.coverUrl"
+              :src="currentScene.referenceImageUrl || currentScene.coverUrl"
+              fit="cover"
+              class="w-full h-full"
+            />
+            <span v-else class="text-lg">🏞️</span>
+          </div>
+          <div class="flex-1 min-w-0 space-y-1">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-800 truncate">{{ currentScene.name }}</span>
+                <el-tag v-if="currentScene.sceneType || currentScene.timeOfDay" size="small" type="success" class="!text-[9px] !px-1 !h-4">
+                  {{ [currentScene.sceneType, currentScene.timeOfDay].filter(Boolean).join(' · ') }}
+                </el-tag>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <el-tag
+                  v-if="currentScene.referenceImageUrl"
+                  size="small"
+                  type="primary"
+                  effect="plain"
+                  class="!text-[9px] !px-1 !h-4"
+                >
+                  🌐 空间参考图
+                </el-tag>
+                <el-tag
+                  v-if="currentScene.coverUrl"
+                  size="small"
+                  type="success"
+                  effect="plain"
+                  class="!text-[9px] !px-1 !h-4"
+                >
+                  🖼️ 场景封面
+                </el-tag>
+                <el-tag
+                  v-if="!currentScene.referenceImageUrl && !currentScene.coverUrl"
+                  size="small"
+                  type="warning"
+                  effect="plain"
+                  class="!text-[9px] !px-1 !h-4"
+                >
+                  仅文字设定
+                </el-tag>
+                <el-button
+                  type="danger"
+                  link
+                  size="small"
+                  class="!p-0 ml-1 text-xs"
+                  :disabled="disabled"
+                  @click="handleClearScene"
+                  title="清除场景"
+                >
+                  ✕
+                </el-button>
+              </div>
             </div>
-            <div class="flex items-center gap-1.5">
-              <el-tag
-                v-if="currentScene.referenceImageUrl"
-                size="small"
-                type="primary"
-                effect="plain"
-                class="!text-[9px] !px-1 !h-4"
-              >
-                🌐 空间参考图
-              </el-tag>
-              <el-tag
-                v-if="currentScene.coverUrl"
-                size="small"
-                type="success"
-                effect="plain"
-                class="!text-[9px] !px-1 !h-4"
-              >
-                🖼️ 场景封面
-              </el-tag>
-              <el-tag
-                v-if="!currentScene.referenceImageUrl && !currentScene.coverUrl"
-                size="small"
-                type="warning"
-                effect="plain"
-                class="!text-[9px] !px-1 !h-4"
-              >
-                仅文字设定
-              </el-tag>
-              <el-button
-                type="danger"
-                link
-                size="small"
-                class="!p-0 ml-1 text-xs"
-                :disabled="disabled"
-                @click="handleClearScene"
-                title="清除场景"
-              >
-                ✕
-              </el-button>
+            <div class="text-[11px] text-slate-600 line-clamp-1" :title="currentScene.scenePrompt || currentScene.description || '无详细描述'">
+              {{ currentScene.scenePrompt || currentScene.description || '无详细提示词描述' }}
             </div>
           </div>
-          <div class="text-[11px] text-slate-600 line-clamp-1" :title="currentScene.scenePrompt || currentScene.description || '无详细描述'">
-            {{ currentScene.scenePrompt || currentScene.description || '无详细提示词描述' }}
+        </div>
+      </template>
+
+      <!-- 关键帧卡片 -->
+      <template v-else>
+        <div v-if="!currentKeyframe" class="text-slate-400 text-xs py-2 text-center bg-slate-50 rounded border border-dashed border-slate-200">
+          （未绑定分镜关键帧资产，可在右上角下拉选择）
+        </div>
+        <div v-else class="flex items-start gap-3 bg-indigo-50/50 border border-indigo-200/80 rounded-lg p-2">
+          <div class="w-14 h-14 rounded overflow-hidden bg-slate-100 shrink-0 border border-indigo-100 flex items-center justify-center">
+            <el-image
+              v-if="currentKeyframe.frameUrl"
+              :src="currentKeyframe.frameUrl"
+              fit="cover"
+              class="w-full h-full"
+            />
+            <span v-else class="text-lg">🎬</span>
+          </div>
+          <div class="flex-1 min-w-0 space-y-1">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-xs font-bold text-slate-800 truncate">{{ currentKeyframe.name }}</span>
+                <el-tag v-if="currentKeyframe.frameType" size="small" type="primary" class="!text-[9px] !px-1 !h-4">
+                  {{ currentKeyframe.frameType }}
+                </el-tag>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <el-tag
+                  size="small"
+                  type="primary"
+                  effect="plain"
+                  class="!text-[9px] !px-1 !h-4"
+                >
+                  🎬 分镜关键帧
+                </el-tag>
+                <el-button
+                  type="danger"
+                  link
+                  size="small"
+                  class="!p-0 ml-1 text-xs"
+                  :disabled="disabled"
+                  @click="handleClearKeyframe"
+                  title="清除关键帧"
+                >
+                  ✕
+                </el-button>
+              </div>
+            </div>
+            <div class="text-[11px] text-slate-600 line-clamp-1" :title="currentKeyframe.prompt || '无提示词'">
+              {{ currentKeyframe.prompt || '暂无详细提示词描述' }}
+            </div>
           </div>
         </div>
-      </div>
+      </template>
     </div>
 
     <!-- 3. 关键道具 (多选) -->
@@ -302,23 +389,44 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { CharacterShotRefInfo, PropShotRefInfo } from '@/types/drama'
-import type { ResCharacterOption, ResSceneOption, ResPropOption } from '@/types/resource'
+import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
 
 const props = defineProps<{
   characterRefs: CharacterShotRefInfo[]
   resSceneId?: string | number
+  resKeyframeId?: string | number
   propRefs: PropShotRefInfo[]
   characterOptions: ResCharacterOption[]
   sceneOptions: ResSceneOption[]
   propOptions: ResPropOption[]
+  keyframeOptions?: ResKeyframeOption[]
   disabled?: boolean
 }>()
 
 const emit = defineEmits<{
   (e: 'update:characterRefs', val: CharacterShotRefInfo[]): void
   (e: 'update:resSceneId', val?: string | number): void
+  (e: 'update:resKeyframeId', val?: string | number): void
   (e: 'update:propRefs', val: PropShotRefInfo[]): void
 }>()
+
+const activeBackgroundType = computed<'SCENE' | 'KEYFRAME'>({
+  get() {
+    return props.resKeyframeId ? 'KEYFRAME' : 'SCENE'
+  },
+  set(val) {
+    if (val === 'SCENE') {
+      emit('update:resKeyframeId', undefined)
+    } else {
+      emit('update:resSceneId', undefined)
+    }
+  }
+})
+
+const currentKeyframe = computed(() => {
+  if (!props.resKeyframeId) return null
+  return (props.keyframeOptions || []).find(k => String(k.id) === String(props.resKeyframeId)) || null
+})
 
 const selectedCharIdToAdd = ref<string | undefined>()
 const selectedPropIdToAdd = ref<string | undefined>()
@@ -440,10 +548,24 @@ function handleOutfitSelect(cRef: CharacterShotRefInfo, lookId?: string) {
 
 function handleSceneSelect(val?: string) {
   emit('update:resSceneId', val || undefined)
+  if (val) {
+    emit('update:resKeyframeId', undefined)
+  }
 }
 
 function handleClearScene() {
   emit('update:resSceneId', undefined)
+}
+
+function handleKeyframeSelect(val?: string) {
+  emit('update:resKeyframeId', val || undefined)
+  if (val) {
+    emit('update:resSceneId', undefined)
+  }
+}
+
+function handleClearKeyframe() {
+  emit('update:resKeyframeId', undefined)
 }
 
 function handleAddProp(propId?: string) {

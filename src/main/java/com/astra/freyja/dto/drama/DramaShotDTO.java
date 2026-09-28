@@ -68,6 +68,9 @@ public class DramaShotDTO {
     /** 环境场景资产 ID (为空则继承场次设置) */
     private Long resSceneId;
 
+    /** 关联关键帧资产 ID (与 resSceneId 互斥) */
+    private Long resKeyframeId;
+
     /** 自定义场景提示词覆盖 */
     private String customScenePrompt;
 

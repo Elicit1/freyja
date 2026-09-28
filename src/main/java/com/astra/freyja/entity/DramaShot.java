@@ -73,7 +73,12 @@ public class DramaShot extends BaseEntity {
     private String soundEffect;
 
     /** 环境场景资产ID (为空则继承场次设置) */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long resSceneId;
+
+    /** 关联关键帧资产ID (res_keyframe.id，与 resSceneId 互斥) */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
+    private Long resKeyframeId;
 
     /** 自定义场景提示词覆盖 */
     private String customScenePrompt;

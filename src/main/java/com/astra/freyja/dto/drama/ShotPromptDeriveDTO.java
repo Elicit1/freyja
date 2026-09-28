@@ -73,6 +73,9 @@ public class ShotPromptDeriveDTO {
     /** 绑定的场景资产ID */
     private Long resSceneId;
 
+    /** 绑定的关键帧资产ID (与 resSceneId 互斥) */
+    private Long resKeyframeId;
+
     /** 自定义场景描述覆盖 */
     private String customScenePrompt;
 

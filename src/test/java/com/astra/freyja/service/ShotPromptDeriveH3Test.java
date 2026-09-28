@@ -12,6 +12,7 @@ import com.astra.freyja.dto.drama.ShotRefImageDTO;
 import com.astra.freyja.dto.drama.manifest.ReferenceManifest;
 import com.astra.freyja.entity.ResCharacter;
 import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.entity.ResKeyframe;
 import com.astra.freyja.entity.ResProp;
 import com.astra.freyja.entity.ResScene;
 import com.astra.freyja.service.impl.ShotAiVisualPlanServiceImpl;
@@ -46,6 +47,8 @@ class ShotPromptDeriveH3Test {
     private DramaSceneMapper sceneMapper;
     @Mock
     private ResSceneMapper resSceneMapper;
+    @Mock
+    private ResKeyframeMapper resKeyframeMapper;
     @Mock
     private ResCharacterMapper characterMapper;
     @Mock
@@ -92,6 +95,7 @@ class ShotPromptDeriveH3Test {
                 directorPlanMergeService,
                 new com.astra.freyja.service.impl.CharacterVisualAssetResolverImpl(characterMapper, outfitMapper)
         );
+        service.setResKeyframeMapper(resKeyframeMapper);
         lenient().when(sysConfigService.getConfigValue(anyString(), anyString())).thenAnswer(inv -> inv.getArgument(1));
     }
 
@@ -176,6 +180,45 @@ class ShotPromptDeriveH3Test {
         assertTrue(context.contains("<Picture 2>"));
         assertTrue(context.contains("Audio 1"));
         assertTrue(context.contains("<Audio 1>"));
+    }
+
+    @Test
+    @DisplayName("构建 MiniMax H3 ReferenceManifest 映射与上下文 - 关键帧模式 (互斥场景)")
+    void testBuildReferenceManifestWithKeyframe() {
+        ResKeyframe keyframe = new ResKeyframe();
+        keyframe.setId(301L);
+        keyframe.setName("雨夜飞跃关键动作");
+        keyframe.setFrameType("ACTION_FRAME");
+        keyframe.setPrompt("hero leaping across rooftops under heavy rain, neon glow");
+        when(resKeyframeMapper.selectById(301L)).thenReturn(keyframe);
+
+        ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder()
+                .shotNo(2)
+                .generationMode("REFERENCE_MODE")
+                .promptTarget("MINIMAX_H3")
+                .resKeyframeId(301L)
+                .refImages(List.of(
+                        ShotRefImageDTO.builder()
+                                .id("ref_kf_1")
+                                .sourceType("KEYFRAME")
+                                .sourceId(301L)
+                                .name("雨夜飞跃关键动作")
+                                .imageUrl("http://minio/keyframe1.png")
+                                .build()
+                ))
+                .build();
+
+        ReferenceManifest manifest = service.buildReferenceManifest(dto);
+
+        assertNotNull(manifest);
+        assertEquals(1, manifest.getPictures().size());
+
+        ReferenceManifest.PictureManifestItem pic1 = manifest.getPictures().get(0);
+        assertEquals(1, pic1.getPictureIndex());
+        assertEquals("KEYFRAME", pic1.getSourceType());
+        assertEquals("MOTION_KEYFRAME", pic1.getUsageRole());
+        assertTrue(pic1.getDescription().contains("ACTION_FRAME"));
+        assertTrue(pic1.getDescription().contains("hero leaping"));
     }
 
     @Test
