@@ -51,6 +51,11 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
 
     @Override
     public DirectorPlan plan(ShotPromptDeriveDTO dto) {
+        return plan(dto, null);
+    }
+
+    @Override
+    public DirectorPlan plan(ShotPromptDeriveDTO dto, java.util.function.Consumer<String> stageListener) {
         if (dto == null) {
             throw new BizException("ShotPromptDeriveDTO 不能为空");
         }
@@ -112,7 +117,7 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
             responseContent = chatClient.prompt()
                     .system(systemPrompt)
                     .user(userPrompt)
-                    .tools(loadSkillTool, readSkillFileToolFactory.createTool(session))
+                    .tools(loadSkillTool, readSkillFileToolFactory.createTool(session, stageListener))
                     .call()
                     .content();
         } catch (Exception e) {

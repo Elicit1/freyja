@@ -466,7 +466,8 @@ public class ResPropServiceImpl implements ResPropService {
                 ChatModel chatModel = aiModelFactory.getChatModelOrDefault(dto.getProviderId(), dto.getModelCode());
 
                 String rawText = invokeApiWithSkills(chatModel, packageVO.getSystemPrompt(), packageVO.getUserPrompt(),
-                        "prop-prompt", String.valueOf(dto.getPropId()), dto.getRequiredSkillNames());
+                        "prop-prompt", String.valueOf(dto.getPropId()), dto.getRequiredSkillNames(),
+                        sseBridge::sendChunk);
                 if (StringUtils.isNotBlank(rawText)) {
                     sseBridge.sendChunk(rawText);
                 }
@@ -500,6 +501,12 @@ public class ResPropServiceImpl implements ResPropService {
 
     private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
                                        String consumer, String requestId, List<String> requiredSkillNames) {
+        return invokeApiWithSkills(chatModel, systemPrompt, userPrompt, consumer, requestId, requiredSkillNames, null);
+    }
+
+    private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
+                                       String consumer, String requestId, List<String> requiredSkillNames,
+                                       java.util.function.Consumer<String> stageListener) {
         if (skillPromptContextService == null || loadSkillToolFactory == null) {
             ChatResponse response = chatModel.call(new Prompt(List.of(
                     new SystemMessage(systemPrompt), new UserMessage(userPrompt))));
@@ -520,7 +527,7 @@ public class ResPropServiceImpl implements ResPropService {
         String content = clientBuilder.build().prompt()
                 .system(apiSystemPrompt)
                 .user(userPrompt)
-                .tools(tool, readSkillFileToolFactory.createTool(session))
+                .tools(tool, readSkillFileToolFactory.createTool(session, stageListener))
                 .call()
                 .content();
         log.info("[SkillPrompt] consumer={}, requestId={}, apiLoadedSkills={}, toolCalls={}",

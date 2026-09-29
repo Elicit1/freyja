@@ -357,7 +357,8 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
                 String systemPrompt = sysConfigService.getConfigValue("PROMPT_OUTFIT_DERIVE_SYSTEM", DEFAULT_OUTFIT_SYSTEM_PROMPT);
                 String userPrompt = buildOutfitUserPrompt(dto);
                 String rawText = invokeApiWithSkills(chatModel, systemPrompt, userPrompt,
-                        "character-outfit-prompt", String.valueOf(dto.getLookId()), dto.getRequiredSkillNames());
+                        "character-outfit-prompt", String.valueOf(dto.getLookId()), dto.getRequiredSkillNames(),
+                        sseBridge::sendChunk);
                 if (StringUtils.isNotBlank(rawText)) {
                     sseBridge.sendChunk(rawText);
                 }
@@ -438,6 +439,12 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
 
     private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
                                        String consumer, String requestId, List<String> requiredSkillNames) {
+        return invokeApiWithSkills(chatModel, systemPrompt, userPrompt, consumer, requestId, requiredSkillNames, null);
+    }
+
+    private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
+                                       String consumer, String requestId, List<String> requiredSkillNames,
+                                       java.util.function.Consumer<String> stageListener) {
         if (skillPromptContextService == null || loadSkillToolFactory == null) {
             ChatResponse response = chatModel.call(new Prompt(List.of(
                     new SystemMessage(systemPrompt), new UserMessage(userPrompt))));
@@ -458,7 +465,7 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
         String content = clientBuilder.build().prompt()
                 .system(apiSystemPrompt)
                 .user(userPrompt)
-                .tools(tool, readSkillFileToolFactory.createTool(session))
+                .tools(tool, readSkillFileToolFactory.createTool(session, stageListener))
                 .call()
                 .content();
         log.info("[SkillPrompt] consumer={}, requestId={}, apiLoadedSkills={}, toolCalls={}",

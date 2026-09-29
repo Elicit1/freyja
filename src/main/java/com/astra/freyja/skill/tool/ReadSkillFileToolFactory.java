@@ -12,6 +12,7 @@ import org.springframework.ai.tool.function.FunctionToolCallback;
 import org.springframework.stereotype.Component;
 
 import java.util.Locale;
+import java.util.function.Consumer;
 
 /** 为一次模型请求提供只读的 Skill references/ 文本读取工具。 */
 @Slf4j
@@ -25,6 +26,10 @@ public class ReadSkillFileToolFactory {
     private final SkillRepository skillRepository;
 
     public ToolCallback createTool(LoadSkillToolSession session) {
+        return createTool(session, null);
+    }
+
+    public ToolCallback createTool(LoadSkillToolSession session, Consumer<String> stageListener) {
         return FunctionToolCallback.builder("read_skill_file", (ReadSkillFileRequest request) -> {
             String name = request == null ? null : StringUtils.trimToNull(request.getName());
             String path = request == null ? null : StringUtils.trimToNull(request.getPath());
@@ -61,16 +66,21 @@ public class ReadSkillFileToolFactory {
                 if (StringUtils.isBlank(file.getObjectKey()) || StringUtils.isBlank(file.getContentHash())) {
                     return error(name, path, "参考文本文件缺少存储或校验信息");
                 }
+                String fileLabel = name + "/" + path;
+                if (stageListener != null) stageListener.accept("正在加载 " + fileLabel + " 文件…\n");
                 String content = skillRepository.loadTextFile(
                         file.getObjectKey(), file.getContentHash(), file.getContentSize());
                 if (StringUtils.isBlank(content)) {
+                    if (stageListener != null) stageListener.accept("加载 " + fileLabel + " 文件失败\n");
                     return error(name, path, "参考文本文件正文为空");
                 }
                 session.recordReferenceFile(name, path);
+                if (stageListener != null) stageListener.accept("已加载 " + fileLabel + " 文件\n");
                 log.info("[ReadSkillFile] loaded: name={}, versionId={}, path={}, bytes={}, chars={}, estimatedTokens={}",
                         name, versionId, path, file.getContentSize(), content.length(), Math.ceilDiv(content.length(), 4));
                 return new ReadSkillFileResponse("SUCCESS", name, path, content, null);
             } catch (Exception e) {
+                if (stageListener != null) stageListener.accept("加载 " + name + "/" + path + " 文件失败\n");
                 log.warn("[ReadSkillFile] failed: name={}, versionId={}, path={}, reason={}",
                         name, versionId, path, e.getMessage());
                 return new ReadSkillFileResponse("ERROR", name, path, null, "读取 Skill 参考文件失败");

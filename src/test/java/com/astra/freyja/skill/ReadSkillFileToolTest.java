@@ -12,6 +12,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.tool.ToolCallback;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,6 +47,28 @@ class ReadSkillFileToolTest {
                 .doesNotContain("private/object-key");
         assertThat(session.hasReadReferenceFile("h3-prompt-writing", "references/ref-en.txt")).isTrue();
         verify(fileMapper).selectOne(any(LambdaQueryWrapper.class));
+    }
+
+    @Test
+    void reportsReferenceFileProgressWithoutExposingContent() {
+        session.preload("h3-prompt-writing", LoadedSkill.builder().name("h3-prompt-writing").build());
+        AiSkillFile file = new AiSkillFile();
+        file.setFileType("REFERENCE");
+        file.setObjectKey("private/object-key");
+        file.setContentHash("sha256:abc");
+        file.setContentSize(10L);
+        when(fileMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(file);
+        when(repository.loadTextFile("private/object-key", "sha256:abc", 10L)).thenReturn("private rules");
+        List<String> progress = new ArrayList<>();
+
+        ToolCallback reportingTool = new ReadSkillFileToolFactory(fileMapper, repository)
+                .createTool(session, progress::add);
+        reportingTool.call("{\"name\":\"h3-prompt-writing\",\"path\":\"references/ref-en.txt\"}");
+
+        assertThat(progress).containsExactly(
+                "正在加载 h3-prompt-writing/references/ref-en.txt 文件…\n",
+                "已加载 h3-prompt-writing/references/ref-en.txt 文件\n");
+        assertThat(String.join("", progress)).doesNotContain("private rules", "private/object-key");
     }
 
     @Test

@@ -491,7 +491,8 @@ public class ResSceneServiceImpl implements ResSceneService {
                 ChatModel chatModel = aiModelFactory.getChatModelOrDefault(dto.getProviderId(), dto.getModelCode());
 
                 String rawText = invokeApiWithSkills(chatModel, packageVO.getSystemPrompt(), packageVO.getUserPrompt(),
-                        "scene-prompt", String.valueOf(dto.getSceneId()), dto.getRequiredSkillNames());
+                        "scene-prompt", String.valueOf(dto.getSceneId()), dto.getRequiredSkillNames(),
+                        sseBridge::sendChunk);
                 if (StringUtils.isNotBlank(rawText)) {
                     sseBridge.sendChunk(rawText);
                 }
@@ -525,6 +526,12 @@ public class ResSceneServiceImpl implements ResSceneService {
 
     private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
                                        String consumer, String requestId, List<String> requiredSkillNames) {
+        return invokeApiWithSkills(chatModel, systemPrompt, userPrompt, consumer, requestId, requiredSkillNames, null);
+    }
+
+    private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
+                                       String consumer, String requestId, List<String> requiredSkillNames,
+                                       java.util.function.Consumer<String> stageListener) {
         if (skillPromptContextService == null || loadSkillToolFactory == null) {
             ChatResponse response = chatModel.call(new Prompt(List.of(
                     new SystemMessage(systemPrompt), new UserMessage(userPrompt))));
@@ -545,7 +552,7 @@ public class ResSceneServiceImpl implements ResSceneService {
         String content = clientBuilder.build().prompt()
                 .system(apiSystemPrompt)
                 .user(userPrompt)
-                .tools(tool, readSkillFileToolFactory.createTool(session))
+                .tools(tool, readSkillFileToolFactory.createTool(session, stageListener))
                 .call()
                 .content();
         log.info("[SkillPrompt] consumer={}, requestId={}, apiLoadedSkills={}, toolCalls={}",

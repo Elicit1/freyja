@@ -166,7 +166,12 @@ public class ScriptSkillRuntime {
                     taskId, stageName, segmentId, attempt, versions.size());
         }
         ToolCallback readFileTool = !session.getLoadedSkillNames().isEmpty() || stage.isAllowDynamicLoad()
-                ? readSkillFileToolFactory.createTool(session) : null;
+                ? readSkillFileToolFactory.createTool(session, message -> {
+                    log.info("[ScriptSkill] taskId={} stage={} segment={} attempt={} {}",
+                            taskId, stageName, segmentId, attempt, message.trim());
+                    if (channel != null) channel.accept("PLANNER".equalsIgnoreCase(stageName) ? "PLANNER" : segmentId,
+                            "📄 " + message);
+                }) : null;
         return new Invocation(prompt, tool, readFileTool, session, taskId, stageName, segmentId, attempt);
     }
 

@@ -60,7 +60,7 @@ class ScriptSkillRuntimeTest {
                 .thenReturn(new SkillPromptContext("SKILL RULES", "hash", List.of("story-structure@v1")));
         when(promptContextService.appendToSystemPrompt(anyString(), any())).thenAnswer(call ->
                 call.getArgument(0, String.class) + "\n" + ((SkillPromptContext) call.getArgument(1)).prompt());
-        when(readSkillFileToolFactory.createTool(any())).thenReturn(mock(ToolCallback.class));
+        when(readSkillFileToolFactory.createTool(any(), any())).thenReturn(mock(ToolCallback.class));
 
         runtime.prepareRequest(request);
         assertEquals(List.of("story-structure"), request.getSkillPolicy().getPlanner().getRequiredSkillNames());
@@ -120,7 +120,7 @@ class ScriptSkillRuntimeTest {
         when(toolFactory.createTool(any(LoadSkillToolSession.class), any(), any())).thenAnswer(call ->
                 new LoadSkillToolFactory(contentService).createTool(
                         call.getArgument(0), call.getArgument(1), call.getArgument(2)));
-        when(readSkillFileToolFactory.createTool(any())).thenReturn(mock(ToolCallback.class));
+        when(readSkillFileToolFactory.createTool(any(), any())).thenReturn(mock(ToolCallback.class));
         GlobalStoryContext context = new GlobalStoryContext();
 
         var invocation = runtime.begin(request, request.getSkillPolicy().getPlanner(), context,

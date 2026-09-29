@@ -10,4 +10,8 @@ import com.astra.freyja.dto.drama.ShotPromptDeriveDTO;
 public interface DirectorPlanningService {
 
     DirectorPlan plan(ShotPromptDeriveDTO dto);
+
+    default DirectorPlan plan(ShotPromptDeriveDTO dto, java.util.function.Consumer<String> stageListener) {
+        return plan(dto);
+    }
 }

@@ -975,7 +975,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         apiSystemPrompt = skillPromptContextService.appendCatalogToSystemPrompt(apiSystemPrompt);
         apiSystemPrompt = appendCameraDutyBoundary(apiSystemPrompt);
         ToolCallback tool = loadSkillToolFactory.createTool(session, stageListener);
-        ToolCallback readFileTool = readSkillFileToolFactory.createTool(session);
+        ToolCallback readFileTool = readSkillFileToolFactory.createTool(session, stageListener);
         ChatClient.Builder clientBuilder = ChatClient.builder(chatModel);
         ChatOptions defaultOptions = chatModel.getOptions();
         if (defaultOptions != null) {
@@ -1541,7 +1541,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 try {
                     // Hydrate persisted script and explicitly locked values before DirectorPlanningService sees the request.
                     populateContext(dto);
-                    directorPlan = directorPlanningService.plan(dto);
+                    directorPlan = directorPlanningService.plan(dto,
+                            stage -> publishPromptEvent(taskId, sseBridge, "stage", stage));
                 } catch (Exception ex) {
                     log.warn("[ShotPromptDeriveStream] 导演决策层规划异常，将降级为常规提示词衍生: {}", ex.getMessage());
                 }
