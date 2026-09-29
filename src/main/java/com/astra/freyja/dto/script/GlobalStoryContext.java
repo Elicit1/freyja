@@ -52,9 +52,9 @@ public class GlobalStoryContext implements Serializable {
     /** 视觉风格基调/导演风格指南（自然语言融入，如光影、色调、镜头质感） */
     private String styleTone;
 
-    /** 剪辑节奏预设 (STANDARD, CINEMATIC_LONG, FAST_PACED) */
+    /** 剪辑节奏预设 (AUTO, STANDARD, CINEMATIC_LONG, FAST_PACED) */
     @Builder.Default
-    private String pacingPreset = "STANDARD";
+    private String pacingPreset = "AUTO";
 
     /** 目标起始集号 (默认 1) */
     @Builder.Default

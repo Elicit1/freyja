@@ -300,6 +300,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 ? request.getAspectRatio()
                 : (existingDrama != null && StringUtils.isNotBlank(existingDrama.getAspectRatio()) ? existingDrama.getAspectRatio() : "9:16");
         request.setAspectRatio(effectiveAspectRatio);
+        request.setPacingPreset(StringUtils.defaultIfBlank(request.getPacingPreset(), "AUTO"));
         if (draftStore != null && taskId != null) draftStore.saveRequest(taskId, request);
 
         GlobalStoryContext globalContext = GlobalStoryContext.builder()
@@ -313,7 +314,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 .aspectRatio(effectiveAspectRatio)
                 .stylePreset(effectiveStylePreset)
                 .styleTone(effectiveStyleTone)
-                .pacingPreset(StringUtils.defaultIfBlank(request.getPacingPreset(), "STANDARD"))
+                .pacingPreset(StringUtils.defaultIfBlank(request.getPacingPreset(), "AUTO"))
                 .characterRegistryPromptText(registryContext)
                 .sceneRegistryPromptText(sceneRegistryContext)
                 .build();
@@ -1653,7 +1654,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 .chapterTitle(request.getChapterTitle())
                 .aspectRatio(request.getAspectRatio())
                 .stylePreset(request.getStylePreset())
-                .pacingPreset(request.getPacingPreset())
+                .pacingPreset(StringUtils.defaultIfBlank(request.getPacingPreset(), "AUTO"))
                 .characters(currentResult.getCharacters())
                 .scenes(currentResult.getScenes())
                 .props(currentResult.getProps())

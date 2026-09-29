@@ -272,6 +272,11 @@ class ScriptDecomposeServiceTest {
 
         ScriptDecomposeResultVO result = scriptDecomposeService.decompose(req);
 
+        assertEquals("AUTO", req.getPacingPreset());
+        ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
+        verify(mockChatModel, times(2)).call(promptCaptor.capture());
+        assertFalse(promptCaptor.getAllValues().get(1).toString().contains("剪辑节奏偏好:"));
+
         assertNotNull(result);
         assertEquals("都市风云", result.getDramaTitle());
         assertEquals("URBAN_ABILITY", result.getGenre());
@@ -297,7 +302,7 @@ class ScriptDecomposeServiceTest {
 
         assertNotNull(result.getFragmentationStats());
         assertEquals(2, result.getFragmentationStats().getTotalShots());
-        assertEquals(0, result.getFragmentationStats().getShortShots());
+        assertEquals(2, result.getFragmentationStats().getShortShots());
     }
 
     @Test

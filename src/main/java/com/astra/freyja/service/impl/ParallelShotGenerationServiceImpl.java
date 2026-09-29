@@ -344,10 +344,11 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
         ChatModel chatModel = aiModelFactory.getChatModel(request.getProviderId(), request.getModelCode());
         BeanOutputConverter<WorkerShotResult> converter = new BeanOutputConverter<>(WorkerShotResult.class);
 
-        String pacingDesc = switch (StringUtils.defaultIfBlank(request.getPacingPreset(), "STANDARD")) {
+        String pacingDesc = switch (StringUtils.defaultIfBlank(request.getPacingPreset(), "AUTO")) {
             case "CINEMATIC_LONG" -> "倾向保留完整的连续动作和空间关系，减少无必要的切镜；具体时长按镜头可行性决定";
             case "FAST_PACED" -> "节奏紧凑，优先保留关键动作与反应；不得为追求快节奏截断动作或对白";
-            default -> "标准工业短剧节奏，单镜以 5~8 秒为参考；按原文叙事节奏拆解，保持动作完整，避免无意义的碎镜头";
+            case "STANDARD" -> "标准工业短剧节奏，单镜以 5~8 秒为参考；按原文叙事节奏拆解，保持动作完整，避免无意义的碎镜头";
+            default -> null;
         };
 
         StringBuilder taskInput = new StringBuilder();
@@ -380,9 +381,11 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                 .append("涉及道具引用: ").append(segment.getPropIds() != null && !segment.getPropIds().isEmpty()
                         ? String.join(", ", segment.getPropIds())
                         : segment.getImportantPropIds() != null && !segment.getImportantPropIds().isEmpty()
-                                ? String.join(", ", segment.getImportantPropIds()) : "未提供").append("\n")
-                .append("剪辑节奏偏好: ").append(pacingDesc).append("\n")
-                .append("originalContent（最高事实来源）: \n")
+                                ? String.join(", ", segment.getImportantPropIds()) : "未提供").append("\n");
+        if (pacingDesc != null) {
+            taskInput.append("剪辑节奏偏好: ").append(pacingDesc).append("\n");
+        }
+        taskInput.append("originalContent（最高事实来源）: \n")
                 .append(StringUtils.defaultString(segment.getRawText())).append("\n\n")
                 .append("normalizedContent（主要拆解执行输入；为空则使用 originalContent）: \n")
                 .append(StringUtils.defaultIfBlank(segment.getNormalizedContent(), segment.getRawText())).append("\n\n")

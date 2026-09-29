@@ -70,9 +70,10 @@ Worker 默认系统提示词与 `init.sql` 初始配置只规定原文忠实、�
   "targetDurationPerEpisode": 90,
   "aspectRatio": "9:16",
   "stylePreset": "cinematic-realism",
-  "pacingPreset": "STANDARD"
+  "pacingPreset": "AUTO"
 }
 ```
+- `pacingPreset` 默认 `AUTO`；省略或传空值时，Worker 不附加剪辑节奏与镜头时长偏好。可显式选择 `STANDARD`、`CINEMATIC_LONG` 或 `FAST_PACED`。
 - **返回结构 (`ScriptDecomposeResultVO`)**:
 ```json
 {

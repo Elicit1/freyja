@@ -49,11 +49,12 @@ public class ScriptDecomposeRequestDTO {
 
     /**
      * 剪辑节奏与镜头粒度偏好:
-     * - STANDARD: 标准工业短剧 (默认, 5~8s/镜, 动作单元聚合, 对白过肩中景承载)
+     * - AUTO: 默认，不指定剪辑节奏或镜头时长偏好
+     * - STANDARD: 标准工业短剧 (5~8s/镜, 动作单元聚合, 对白过肩中景承载)
      * - CINEMATIC_LONG: 电影感长镜头 (7~12s/镜, 极少切镜, 运镜平稳连贯, 单场仅2~3镜)
      * - FAST_PACED: 快节奏高冲突 (2~4s/镜, 紧凑切镜, 密集反应与特写)
      */
-    private String pacingPreset;
+    private String pacingPreset = "AUTO";
 
     /** Optional, independent Planner and Worker Skill policies. */
     private ScriptSkillPolicy skillPolicy;

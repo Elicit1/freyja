@@ -154,9 +154,10 @@
           <!-- 剪辑节奏与镜头粒度偏好 (防碎镜头) -->
           <el-form-item label="剪辑节奏与镜头粒度" class="!mb-2">
             <el-select v-model="form.pacingPreset" placeholder="选择镜头节奏" class="w-full" :disabled="isStreaming">
-              <el-option value="STANDARD" label="⚡ 标准工业短剧 (推荐 · 5~8s/镜，动作单元聚合)">
+              <el-option value="AUTO" label="自动 (默认 · 不指定镜头时长与剪辑节奏)" />
+              <el-option value="STANDARD" label="⚡ 标准工业短剧 (5~8s/镜，动作单元聚合)">
                 <div class="flex items-center justify-between">
-                  <span class="font-medium text-slate-800">⚡ 标准工业短剧 (推荐)</span>
+                  <span class="font-medium text-slate-800">⚡ 标准工业短剧</span>
                   <span class="text-[11px] text-emerald-600 font-mono">5~8s/镜 · 动作聚合防碎</span>
                 </div>
               </el-option>
@@ -2245,7 +2246,7 @@ const form = reactive<ScriptDecomposeRequest>({
   stylePreset: 'cinematic-realism',
   styleTone: '',
   aspectRatio: '9:16',
-  pacingPreset: 'STANDARD'
+  pacingPreset: 'AUTO'
 })
 
 // 已有剧集与入库策略状态 (用户自主选择)
@@ -2458,6 +2459,7 @@ function resetDecomposeState() {
   form.rawText = ''
   form.chapterTitle = ''
   form.styleTone = ''
+  form.pacingPreset = 'AUTO'
   plannerDynamicSkills.value = true
   workerDynamicSkills.value = true
   plannerRequiredSkills.value = []
@@ -2762,7 +2764,6 @@ async function open(target?: number | Drama, currentEpisodeId?: number | null) {
     form.styleTone = ''
     form.targetEpisodes = undefined
     form.targetDurationPerEpisode = 300
-    form.pacingPreset = 'STANDARD'
     form.startEpisodeNo = 1
   }
 
@@ -2993,7 +2994,7 @@ function buildDecomposeRequest(): ScriptDecomposeRequest {
     aspectRatio: form.aspectRatio || '9:16',
     stylePreset: form.stylePreset || 'cinematic-realism',
     styleTone: form.styleTone,
-    pacingPreset: form.pacingPreset || 'STANDARD',
+    pacingPreset: form.pacingPreset || 'AUTO',
     skillPolicy: {
       planner: { allowDynamicLoad: plannerDynamicSkills.value, requiredSkillNames: [...plannerRequiredSkills.value] },
       worker: { allowDynamicLoad: workerDynamicSkills.value, requiredSkillNames: [...workerRequiredSkills.value] }
