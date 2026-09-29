@@ -126,7 +126,7 @@ class ShotDualChannelPromptDeriveTest {
         assertTrue(pkg.getCombinedPrompt().contains("天命龙帝"));
         // SysConfig 是 H3 模板唯一来源；测试配置覆写后应原样保留。
         assertTrue(pkg.getSystemPrompt().contains("System H3 Rules"));
-        assertTrue(pkg.getOutputFormat().contains("videoPrompt"));
+        assertTrue(pkg.getOutputFormat().contains("prompt"));
         assertFalse(pkg.getSystemPrompt().contains("H3_SKILL_USAGE_PROTOCOL"));
         assertNotNull(pkg.getReferenceManifest());
         assertEquals(1, pkg.getReferenceManifest().getPictures().size());

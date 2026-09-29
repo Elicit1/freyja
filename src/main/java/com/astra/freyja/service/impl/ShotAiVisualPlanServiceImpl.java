@@ -17,6 +17,7 @@ import com.astra.freyja.dto.drama.ShotAiVisualPlanVO;
 import com.astra.freyja.dto.drama.ShotPromptDeriveDTO;
 import com.astra.freyja.dto.drama.ShotPromptDeriveVO;
 import com.astra.freyja.dto.drama.H3Fl2VaPromptOutput;
+import com.astra.freyja.dto.drama.H3Ref2VaPromptOutput;
 import com.astra.freyja.dto.drama.ShotPromptPackageVO;
 import com.astra.freyja.dto.drama.ShotPromptParseRequestDTO;
 import com.astra.freyja.dto.drama.ShotPromptValidationResult;
@@ -468,7 +469,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "确认所有 Picture、Audio、Subject 引用均来自 REFERENCE_MANIFEST，角色、场景、关键图及道具的参考媒体对应关系正确；若存在关键图参考（KEYFRAME / MOTION_KEYFRAME），确认其未被误识别或描述为场景 (Scene)。",
             "确认 DIALOGUE_REUSE 与 VOICE_TIMBRE 的使用符合当前任务提供的 usageMode，且没有复用未授权的旧台词。",
             "确认声音、台词、参考媒体及所有资产引用均来自当前任务提供的事实。",
-            "确认 prompt 与 videoPrompt 完全一致，firstFramePrompt 与 endFramePrompt 均为 null。",
+            "确认 prompt 格式完整规范，firstFramePrompt 与 endFramePrompt 均为 null。",
             "确认最终 JSON 的字段名称、字段类型、语言、空值约定及内容与 OUTPUT_FORMAT 完全一致。"
         );
 
@@ -1061,9 +1062,10 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
         mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
+        ShotPromptDeriveVO vo = null;
         // 2. 尝试直接反序列化
         try {
-            return mapper.readValue(text, ShotPromptDeriveVO.class);
+            vo = mapper.readValue(text, ShotPromptDeriveVO.class);
         } catch (Exception e) {
             log.debug("[cleanAndParseJson] 直接反序列化未成功: {}", e.getMessage());
         }
@@ -1074,13 +1076,21 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if (startIdx >= 0 && endIdx > startIdx) {
             String jsonBlock = text.substring(startIdx, endIdx + 1);
             try {
-                return mapper.readValue(jsonBlock, ShotPromptDeriveVO.class);
+                vo = mapper.readValue(jsonBlock, ShotPromptDeriveVO.class);
             } catch (Exception e) {
                 log.warn("[cleanAndParseJson] 截取 JSON 块反序列化失败: {}", e.getMessage());
             }
         }
 
-        return null;
+        if (vo != null) {
+            if (StringUtils.isBlank(vo.getVideoPrompt()) && StringUtils.isNotBlank(vo.getPrompt())) {
+                vo.setVideoPrompt(vo.getPrompt());
+            } else if (StringUtils.isBlank(vo.getPrompt()) && StringUtils.isNotBlank(vo.getVideoPrompt())) {
+                vo.setPrompt(vo.getVideoPrompt());
+            }
+        }
+
+        return vo;
     }
 
     public ShotPromptValidationResult validateAndNormalize(
@@ -1326,7 +1336,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         String genMode = StringUtils.defaultIfBlank(dto.getGenerationMode(), "FIRST_LAST_FRAME");
 
         String outputFormat = "REFERENCE_MODE".equalsIgnoreCase(genMode)
-                ? new BeanOutputConverter<>(ShotPromptDeriveVO.class).getFormat()
+                ? new BeanOutputConverter<>(H3Ref2VaPromptOutput.class).getFormat()
                 : new BeanOutputConverter<>(H3Fl2VaPromptOutput.class).getFormat();
 
         Map<String, String> vars = new LinkedHashMap<>();

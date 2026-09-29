@@ -111,7 +111,21 @@ class ShotAiVisualPlanServiceTest {
             latch.countDown();
             return Flux.just(resp);
         });
+        when(chatModel.call(any(Prompt.class))).thenAnswer(inv -> {
+            latch.countDown();
+            return resp;
+        });
         return latch;
+    }
+
+    private Prompt capturePrompt(ArgumentCaptor<Prompt> promptCaptor) {
+        try {
+            verify(chatModel, atLeastOnce()).stream(promptCaptor.capture());
+            return promptCaptor.getValue();
+        } catch (Throwable t) {
+            verify(chatModel, atLeastOnce()).call(promptCaptor.capture());
+            return promptCaptor.getValue();
+        }
     }
 
     @Test
@@ -216,8 +230,7 @@ class ShotAiVisualPlanServiceTest {
         assertTrue(latch.await(5, TimeUnit.SECONDS));
         Thread.sleep(200);
 
-        verify(chatModel).stream(promptCaptor.capture());
-        Prompt capturedPrompt = promptCaptor.getValue();
+        Prompt capturedPrompt = capturePrompt(promptCaptor);
         assertNotNull(capturedPrompt);
 
         String systemText = capturedPrompt.getInstructions().stream()
@@ -286,8 +299,7 @@ class ShotAiVisualPlanServiceTest {
         assertTrue(latch.await(5, TimeUnit.SECONDS));
         Thread.sleep(200);
 
-        verify(chatModel).stream(promptCaptor.capture());
-        String userText = promptCaptor.getValue().getInstructions().stream()
+        String userText = capturePrompt(promptCaptor).getInstructions().stream()
                 .filter(m -> m instanceof org.springframework.ai.chat.messages.UserMessage)
                 .findFirst().orElseThrow().getText();
 
@@ -432,8 +444,7 @@ class ShotAiVisualPlanServiceTest {
         assertTrue(latch.await(5, TimeUnit.SECONDS));
         Thread.sleep(200);
 
-        verify(chatModel).stream(promptCaptor.capture());
-        Prompt capturedPrompt = promptCaptor.getValue();
+        Prompt capturedPrompt = capturePrompt(promptCaptor);
         assertNotNull(capturedPrompt);
 
         String userText = capturedPrompt.getInstructions().stream()
