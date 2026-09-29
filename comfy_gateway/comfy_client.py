@@ -197,6 +197,13 @@ class ComfyAsyncClient:
         ws_url = f"{self.ws_base}?clientId={client_id}"
         output_assets: List[Dict[str, Any]] = []
         timeout = timeout_override if timeout_override and timeout_override > 0 else self.timeout
+        last_history_check = 0.0
+
+        # A cached workflow may finish between /prompt and WebSocket subscription.
+        output_assets = await self._get_completed_history_assets(prompt_id)
+        if output_assets:
+            logger.info(f"[{self.http_base}] Already completed prompt {prompt_id} recovered from HTTP history")
+            return output_assets
 
         try:
             logger.info(f"[{self.http_base}] Connecting to WebSocket: {ws_url} (timeout: {timeout}s)")
@@ -207,6 +214,16 @@ class ComfyAsyncClient:
                     elapsed = asyncio.get_event_loop().time() - start_time
                     if elapsed > timeout:
                         raise TimeoutError(f"ComfyUI generation on {self.http_base} timed out after {timeout}s.")
+
+                    # Check ComfyUI's durable result even if the final WebSocket event
+                    # was missed or the socket keeps receiving unrelated messages.
+                    if elapsed - last_history_check >= 10.0:
+                        last_history_check = elapsed
+                        history_assets = await self._get_completed_history_assets(prompt_id)
+                        if history_assets:
+                            logger.info(f"[{self.http_base}] Completed prompt {prompt_id} recovered from HTTP history")
+                            output_assets = history_assets
+                            break
 
                     try:
                         message = await asyncio.wait_for(ws.recv(), timeout=5.0)
@@ -235,6 +252,11 @@ class ComfyAsyncClient:
                             break
                         elif curr_prompt_id == prompt_id:
                             logger.info(f"⚙️ [{self.http_base}] Running node ID: {node_id}")
+
+                    elif msg_type == "execution_success":
+                        if msg_data.get("prompt_id") == prompt_id:
+                            logger.info(f"✅ [{self.http_base}] ComfyUI reported success for prompt {prompt_id}")
+                            break
 
                     elif msg_type == "executed":
                         curr_prompt_id = msg_data.get("prompt_id")
@@ -268,6 +290,26 @@ class ComfyAsyncClient:
             raise RuntimeError(f"Workflow completed on {self.http_base} but no output assets were found for prompt {prompt_id}")
 
         return output_assets
+
+    async def _get_completed_history_assets(self, prompt_id: str) -> List[Dict[str, Any]]:
+        try:
+            client = await self.get_http_client()
+            resp = await client.get(f"{self.http_base}/history/{prompt_id}", timeout=5.0)
+            if resp.status_code != 200:
+                return []
+            item = resp.json().get(prompt_id)
+            if not item or not item.get("status", {}).get("completed"):
+                return []
+            assets = []
+            for node_out in item.get("outputs", {}).values():
+                for asset_key in ("videos", "gifs", "images", "video"):
+                    found = node_out.get(asset_key)
+                    if isinstance(found, list):
+                        assets.extend(found)
+            return assets
+        except Exception as e:
+            logger.debug(f"History status check failed on {self.http_base}: {e}")
+            return []
 
     async def _poll_history_fallback(self, prompt_id: str, max_retries: int = 15) -> List[Dict[str, Any]]:
         client = await self.get_http_client()

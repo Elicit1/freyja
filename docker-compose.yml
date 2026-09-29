@@ -93,6 +93,9 @@ services:
       COMFYUI_HTTP_URL: ${COMFYUI_HTTP_URL:-http://host.docker.internal:8188}
       COMFYUI_WS_URL: ${COMFYUI_WS_URL:-ws://host.docker.internal:8188/ws}
       BASE_URL: ${GATEWAY_BASE_URL:-http://localhost:8000}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-123456}
       TZ: Asia/Shanghai
     extra_hosts:
       - "host.docker.internal:host-gateway"
