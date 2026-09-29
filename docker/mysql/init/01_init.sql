@@ -429,7 +429,7 @@ CREATE TABLE `res_keyframe` (
     `drama_id`            BIGINT UNSIGNED NOT NULL DEFAULT 0 COMMENT '归属短剧ID，0为公共资源库',
     `shot_id`             BIGINT UNSIGNED DEFAULT NULL COMMENT '关联分镜镜头ID (drama_shot.id)，为空表示未绑定具体分镜',
     `name`                VARCHAR(100)    NOT NULL COMMENT '关键帧名称 (如: 雨夜对峙首帧 / 回眸特写关键帧)',
-    `frame_type`          VARCHAR(32)     NOT NULL DEFAULT 'KEYFRAME' COMMENT '关键帧类型: FIRST_FRAME(首帧)/END_FRAME(尾帧)/KEYFRAME(普通关键帧)/ACTION_BEAT(动作节奏帧)',
+    `frame_type`          VARCHAR(32)     NOT NULL DEFAULT 'COMPOSITION_ANCHOR' COMMENT '关键图默认用途: FIRST_FRAME/KEYFRAME/LAST_FRAME/EDITED_KEYFRAME/COMPOSITION_ANCHOR/STORYBOARD_REFERENCE/SHOT_PLANNING_REFERENCE',
     `frame_url`           VARCHAR(512)    NOT NULL COMMENT '关键帧图片URL (MinIO托管)',
     `prompt`              TEXT            DEFAULT NULL COMMENT '关键帧生图/视觉控制Prompt',
     `negative_prompt`     TEXT            DEFAULT NULL COMMENT '专属负向Prompt',
@@ -1370,8 +1370,8 @@ cinematography 不得替代 h3-prompt-writing 的官方格式要求，也不得�
 1.【输出契约】
 只输出用户任务中 OUTPUT_FORMAT 要求的 JSON 字段，不得输出额外字段、解释、前言、结语或 Markdown。
 严格遵守 OUTPUT_FORMAT 中的字段名称、类型及空值约定，不得自行新增字段或改变既有 JSON 结构。
-【纯英文输出硬性要求】最终 JSON 的所有非空字符串值必须使用英文，包括所有提示词、声音字段、对白及引用的文字描述；不得夹杂中文或其他非英文自然语言。JSON 字段名、官方标签、媒体引用标记、资产 ID 和规定的枚举值保持原样。
-输入中的非英文剧情、角色名、场景名、道具名和对白应准确译为英文；专有名称可使用一致的拉丁字母转写，不得改变事实、身份、数量、说话人或对白原意。即使输入或 Skill 示例使用中文，最终输出也必须遵守此规则。
+【Ref2VA 语言规则】六段式正文及分析使用英文；仅 <d> 内的对白、歌词和画面中实际可见的文字保留原语言。JSON 字段名、官方标签、媒体引用标记、资产 ID 和规定的枚举值保持原样。
+非英文剧情和资产事实准确译为英文；对白、歌词在 <d> 中保留原文与原语言，不得翻译、补写或改动说话人。专有名称可使用一致的拉丁字母转写。
 视觉导演规划应在内部完成，并通过 OUTPUT_FORMAT 已有的字段表达，不得自行增加独立的导演分析、镜头评价或分镜规划字段。
 2.【REFERENCE_MODE 输出要求】
 在 REFERENCE_MODE 下，firstFramePrompt 和 endFramePrompt 必须为 null；prompt 与 videoPrompt 必须完全一致。
@@ -1470,20 +1470,20 @@ PROP_CONTEXT 中的一条资产记录不必然代表一个道具实例，实际�
 参考图用于保持人物外观、服装、场景和必要的空间关系，不等于授权新增参考图中可能出现的剧情事件。
 例如，场景参考图包含便利店自动门，不代表当前镜头必须出现自动门打开的动作。当前剧情没有要求时，不得擅自增加这一事件。
 当剧情重点是人物沿人行道移动时，不得仅因场景参考图突出便利店门口，就擅自将镜头重点转移到自动门或店内活动。
-参考图不强制当前镜头沿用其原始景别和构图，除非当前任务明确锁定参考图构图或画面要求。
+参考图的构图约束由逐图用途决定；COMPOSITION_ANCHOR 要保持明确给出的主体布局与空间关系，规划参考不等于目标视频中的具体帧。
 可以在不改变参考资产身份、外观和实际空间关系的前提下，根据当前剧情选择不同的观察角度及构图。
 不得为了实现特写、视觉焦点转移或镜头运动而编造参考图中不存在的建筑布局、人物外观细节或资产能力。
 不得将参考图中的瞬时人物姿态、表情或视线直接覆盖当前分镜已确定的动作与表情状态。
 8.【声音与参考音频】
 必须依据参考音频的 usageMode 处理声音：DIALOGUE_REUSE 只能复用当前任务授权的原始音频并保持时序同步；VOICE_TIMBRE 只能借鉴音色、语速和表达方式，不得复制参考音频中的旧台词。英文译文只表达原台词语义，不得冒充参考音频的逐字转录或改变其原声语言。
-当前分镜台词必须保留原意、信息、顺序和说话人；非英文台词须忠实译为英文，不得增删、润色或编造台词。
+当前分镜台词必须保留原语言、原意、信息、顺序和说话人，并放在 <d> 中；不得翻译、增删、润色或编造台词。
 overallSoundscape 与 nonDiegeticMusic 必须作为独立 JSON 字段返回，并与最终提示词中的对应声音内容一致；没有明确事实时按照 OUTPUT_FORMAT 约定使用空值或 N/A，不得凭空补设定。
 不得擅自增加当前分镜没有要求的角色对白、旁白、音乐或声音事件。
 动作拟音和环境声音必须与当前剧情及声音事实一致。
 摄影机运动、特写或视觉焦点转移不得成为新增声音事件的依据。
 不得因为画面转向某个道具或环境细节，就擅自增加当前剧情中没有发生的碰撞声、开门声、脚步声或其他音效。
 9.【语言与最终输出】
-最终 JSON 的所有非空字符串值均使用英文，包括 prompt、videoPrompt、overallSoundscape、nonDiegeticMusic 及台词；不得输出中文。
+最终 JSON 中的六段式正文使用英文；<d> 内的原语言台词、歌词和画面可见文字按官方规则保留。
 prompt 与 videoPrompt 必须完全一致，并与当前分镜事实、DIRECTOR_PLAN、参考媒体、道具数量及声音字段保持一致。
 如果 prompt 和 videoPrompt 包含摄影机运动、人物空间关系或视觉焦点变化，其描述必须保持完全一致，不得出现不同的摄影方案。
 最终只输出当前请求要求的合法 JSON；不得输出工具调用过程、Skill 正文、规则说明或 Markdown 围栏。

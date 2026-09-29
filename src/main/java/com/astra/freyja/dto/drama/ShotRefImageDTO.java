@@ -44,7 +44,7 @@ public class ShotRefImageDTO {
      * SCENE_LAYOUT: 场景空间布局与固定陈设
      * PROP_APPEARANCE: 道具材质与造型
      * STYLE: 艺术风格基调
-     * MOTION_KEYFRAME: 关键帧动态演进
+     * 关键图参考可使用七种 KeyImageRole 值；MOTION_KEYFRAME 仅为旧数据兼容值。
      */
     private String usageRole;
 

@@ -4,9 +4,12 @@ import com.astra.freyja.common.BizException;
 import com.astra.freyja.config.MinioProperties;
 import com.astra.freyja.dao.AiModelMapper;
 import com.astra.freyja.dao.AiProviderMapper;
+import com.astra.freyja.dao.ResKeyframeMapper;
 import com.astra.freyja.dto.drama.DramaShotFirstFrameDTO;
+import com.astra.freyja.dto.drama.manifest.KeyImageRole;
 import com.astra.freyja.entity.AiModel;
 import com.astra.freyja.entity.AiProvider;
+import com.astra.freyja.entity.ResKeyframe;
 import com.astra.freyja.service.AiImageApiService;
 import com.astra.freyja.util.CryptoUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -46,6 +49,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
 
     private final AiProviderMapper providerMapper;
     private final AiModelMapper modelMapper;
+    private final ResKeyframeMapper resKeyframeMapper;
     private final CryptoUtil cryptoUtil;
     private final MinioClient minioClient;
     private final MinioProperties minioProperties;
@@ -562,7 +566,15 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                             binding.put("characterId", refImg.getCharacterId() != null ? String.valueOf(refImg.getCharacterId()) : null);
                             binding.put("lookId", refImg.getLookId() != null ? String.valueOf(refImg.getLookId()) : null);
                             binding.put("entityName", refImg.getName());
-                            binding.put("usageRole", refImg.getUsageRole());
+                            String usageRole = refImg.getUsageRole();
+                            if ("KEYFRAME".equals(refType)) {
+                                ResKeyframe asset = refImg.getSourceId() != null
+                                        ? resKeyframeMapper.selectById(refImg.getSourceId()) : null;
+                                KeyImageRole role = KeyImageRole.resolve(usageRole,
+                                        asset != null ? asset.getFrameType() : null);
+                                if (role != null) usageRole = role.name();
+                            }
+                            binding.put("usageRole", usageRole);
                             binding.put("referenceRole", refImg.getReferenceRole());
                             binding.put("referenceImages", List.of(b64Img));
                             references.add(binding);

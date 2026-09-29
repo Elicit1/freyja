@@ -23,6 +23,7 @@ import com.astra.freyja.dto.drama.ShotPromptValidationResult;
 import com.astra.freyja.dto.drama.ShotRefAudioDTO;
 import com.astra.freyja.dto.drama.ShotRefImageDTO;
 import com.astra.freyja.dto.drama.manifest.ReferenceManifest;
+import com.astra.freyja.dto.drama.manifest.KeyImageRole;
 import com.astra.freyja.dto.drama.CharacterShotRefInfoVO;
 import com.astra.freyja.dto.drama.PropShotRefInfoVO;
 import com.astra.freyja.dto.res.ControlImageVO;
@@ -335,8 +336,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "1.【输出契约】",
             "只输出用户任务中 OUTPUT_FORMAT 要求的 JSON 字段，不得输出额外字段、解释、前言、结语或 Markdown。",
             "严格遵守 OUTPUT_FORMAT 中的字段名称、类型及空值约定，不得自行新增字段或改变既有 JSON 结构。",
-            "【纯英文输出硬性要求】最终 JSON 的所有非空字符串值必须使用英文，包括所有提示词、声音字段、对白及引用的文字描述；不得夹杂中文或其他非英文自然语言。JSON 字段名、官方标签、媒体引用标记、资产 ID 和规定的枚举值保持原样。",
-            "输入中的非英文剧情、角色名、场景名、道具名和对白应准确译为英文；专有名称可使用一致的拉丁字母转写，不得改变事实、身份、数量、说话人或对白原意。即使输入或 Skill 示例使用中文，最终输出也必须遵守此规则。",
+            "【Ref2VA 语言规则】六段式正文及分析使用英文；仅 <d> 内的对白、歌词和画面中实际可见的文字保留原语言。JSON 字段名、官方标签、媒体引用标记、资产 ID 和规定的枚举值保持原样。",
+            "非英文剧情和资产事实准确译为英文；对白、歌词在 <d> 中保留原文与原语言，不得翻译、补写或改动说话人。专有名称可使用一致的拉丁字母转写。",
             "视觉导演规划应在内部完成，并通过 OUTPUT_FORMAT 已有的字段表达，不得自行增加独立的导演分析、镜头评价或分镜规划字段。",
             "2.【REFERENCE_MODE 输出要求】",
             "在 REFERENCE_MODE 下，firstFramePrompt 和 endFramePrompt 必须为 null；prompt 与 videoPrompt 必须完全一致。",
@@ -431,29 +432,28 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "局部特写或画面裁切导致部分道具暂时不可见时，必须在场景实际状态中保持其数量与归属，不得将画面外的道具解释为消失，也不得为了保持可见性复制新的道具。",
             "7.【参考媒体、关键图参考与文字身份规范】",
             "只能引用 REFERENCE_MANIFEST 中实际存在的 Picture、Audio 和 Subject；不得跳号、伪造编号，缺少图片时必须使用文字环境或人物、道具描述，不得声称存在参考图。",
-            "分镜视觉基准资产分为环境场景（SCENE）与分镜关键图（KEYFRAME），二者严格互斥。若分镜绑定了关键图资产或 REFERENCE_MANIFEST 包含关键图参考（KEYFRAME / MOTION_KEYFRAME），说明当前分镜已进入【关键图参考锚点模式】，不存在环境场景资产！",
-            "【严禁将关键图参考当成场景 (Scene)】关键图参考是当前镜头动作演进与画面定格的视觉锚点，严禁将关键图参考误识别或描述为环境场景 (Scene)！",
-            "在 subject_definitions 中，关键图参考绝不能声明为 Scene: 或 <Picture N> (Scene)，必须明确声明为动态关键图锚点（例如：<Picture N>: Key image reference depicting ... 或 Main Subject: <Picture N>）；",
-            "在 retention_analysis 中，严禁写成保留场景环境外观布局 (Scene retention)，必须声明保留的是关键图参考的主体动作状态、视觉构图、光影基调与动态瞬间；",
-            "在 detailed_description 中，镜头视听必须承接并动态演变该关键图参考所确立的构图与动作状态，严禁将其作为背景布景！",
+            "环境场景资产（SCENE）与关键图资产（KEYFRAME）互斥，但 KEYFRAME 只是本系统的资产来源，不等于 H3 的 Keyframe 用途。关键图的实际 Picture 角色以本次 REFERENCE_MANIFEST 的 usageRole 及逐图用途约束为准。",
+            "关键图参考不得误写为环境场景 (Scene)。Concrete Frame 类对应目标视频的具体画面状态；Planning / Reference 类只指导构图或镜头规划，不要求目标视频中存在一帧完全复现图片。",
+            "只有 FIRST_FRAME、KEYFRAME、LAST_FRAME 及具体画面含义的 EDITED_KEYFRAME 可以使用相应的帧对应关系。COMPOSITION_ANCHOR、STORYBOARD_REFERENCE、SHOT_PLANNING_REFERENCE 不得使用起始帧、关键帧对应或结束帧措辞。",
+            "提示词 AI 未收到图片像素，必须从所选关键图 Prompt（优先）或 description（回退）以及分镜显式事实中获取站位、距离、朝向、构图、空间和动作阶段；不得从图片 URL 或名称猜测。",
             "每个角色、场景、关键图和道具都必须保留清晰的文字身份描述，并与实际参考媒体正确对应；不得交换角色参考图、误用场景或关键图参考图或把没有图片的道具描述成有图片参考。",
             "参考图用于保持人物外观、服装、关键图姿态动作、场景和必要的空间关系，不等于授权新增参考图中可能出现的剧情事件。",
             "例如，场景参考图包含便利店自动门，不代表当前镜头必须出现自动门打开的动作。当前剧情没有要求时，不得擅自增加这一事件。",
             "当剧情重点是人物沿人行道移动时，不得仅因场景参考图突出便利店门口，就擅自将镜头重点转移到自动门或店内活动。",
-            "参考图不强制当前镜头沿用其原始景别和构图，除非当前任务明确锁定参考图构图或画面要求。",
+            "参考图的构图约束以逐图用途为准：COMPOSITION_ANCHOR 应遵守明确给出的构图关系；其他类型不得无依据地强制复现其景别或构图。",
             "可以在不改变参考资产身份、外观和实际空间关系的前提下，根据当前剧情选择不同的观察角度及构图。",
             "不得为了实现特写、视觉焦点转移或镜头运动而编造参考图中不存在的建筑布局、人物外观细节或资产能力。",
             "不得将参考图中的瞬时人物姿态、表情或视线直接覆盖当前分镜已确定的动作与表情状态。",
             "8.【声音与参考音频】",
             "必须依据参考音频的 usageMode 处理声音：DIALOGUE_REUSE 只能复用当前任务授权的原始音频并保持时序同步；VOICE_TIMBRE 只能借鉴音色、语速和表达方式，不得复制参考音频中的旧台词。英文译文只表达原台词语义，不得冒充参考音频的逐字转录或改变其原声语言。",
-            "当前分镜台词必须保留原意、信息、顺序和说话人；非英文台词须忠实译为英文，不得增删、润色或编造台词。",
+            "当前分镜台词必须保留原语言、原意、信息、顺序和说话人，并放在 <d> 中；不得翻译、增删、润色或编造台词。",
             "overallSoundscape 与 nonDiegeticMusic 必须作为独立 JSON 字段返回，并与最终提示词中的对应声音内容一致；没有明确事实时按照 OUTPUT_FORMAT 约定使用空值或 N/A，不得凭空补设定。",
             "不得擅自增加当前分镜没有要求的角色对白、旁白、音乐或声音事件。",
             "动作拟音和环境声音必须与当前剧情及声音事实一致。",
             "摄影机运动、特写或视觉焦点转移不得成为新增声音事件的依据。",
             "不得因为画面转向某个道具或环境细节，就擅自增加当前剧情中没有发生的碰撞声、开门声、脚步声或其他音效。",
             "9.【语言与最终输出】",
-            "最终 JSON 的所有非空字符串值均使用英文，包括 prompt、videoPrompt、overallSoundscape、nonDiegeticMusic 及台词；不得输出中文。",
+            "最终 JSON 中的六段式正文使用英文；<d> 内的原语言台词、歌词和画面可见文字按官方规则保留。",
             "prompt 与 videoPrompt 必须完全一致，并与当前分镜事实、DIRECTOR_PLAN、参考媒体、道具数量及声音字段保持一致。",
             "如果 prompt 和 videoPrompt 包含摄影机运动、人物空间关系或视觉焦点变化，其描述必须保持完全一致，不得出现不同的摄影方案。",
             "最终只输出当前请求要求的合法 JSON；不得输出工具调用过程、Skill 正文、规则说明或 Markdown 围栏。",
@@ -1333,7 +1333,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         vars.put("DRAMA_CONTEXT", buildDramaContext(drama, dto));
         vars.put("SHOT_SPEC", buildShotSpec(dto, genMode));
         vars.put("DIRECTOR_PLAN", formatDirectorPlan(directorPlan));
-        vars.put("SCENE_CONTEXT", buildSceneContext(dto));
+        vars.put("SCENE_CONTEXT", buildVisualAssetContext(dto, manifest));
         vars.put("CHARACTER_CONTEXT", buildCharacterContext(dto));
         vars.put("PROP_CONTEXT", buildPropContext(dto));
         vars.put("REFERENCE_MANIFEST", manifest.toPromptContext());
@@ -1359,6 +1359,9 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         SkillPromptContext skillContext = loadSkillContext("shot-h3-" + genMode, String.valueOf(dto.getShotId()), dto.getSelectedSkillNames());
         systemPrompt = appendSkillContext(systemPrompt, skillContext);
         systemPrompt = appendCameraDutyBoundary(systemPrompt);
+        if ("REFERENCE_MODE".equalsIgnoreCase(genMode)) {
+            systemPrompt += manifest.toSystemRoleGuidance();
+        }
         systemPrompt = appendFl2VaOutputContract(systemPrompt, genMode, dto.getDuration());
 
         String userPrompt = resolveTemplate(userTemplate, vars);
@@ -1434,6 +1437,9 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         SkillPromptContext skillContext = loadSkillContext("shot-h3-" + genMode, String.valueOf(request.getShotId()), request.getSelectedSkillNames());
         currentSystemPrompt = appendSkillContext(currentSystemPrompt, skillContext);
         currentSystemPrompt = appendCameraDutyBoundary(currentSystemPrompt);
+        if ("REFERENCE_MODE".equalsIgnoreCase(genMode)) {
+            currentSystemPrompt += manifest.toSystemRoleGuidance();
+        }
         currentSystemPrompt = appendFl2VaOutputContract(currentSystemPrompt, genMode, contextDto.getDuration());
         String currentUserTemplate = "REFERENCE_MODE".equalsIgnoreCase(genMode)
                 ? sysConfigService.getConfigValue("ai.prompt.minimax_h3_ref2va_user", DEFAULT_MINIMAX_H3_REF2VA_USER_TEMPLATE)
@@ -1722,42 +1728,56 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         return Boolean.TRUE.equals(locked) && StringUtils.isNotBlank(value) && !"AUTO".equalsIgnoreCase(value.trim());
     }
 
-    private String buildSceneContext(ShotPromptDeriveDTO dto) {
+    private String buildVisualAssetContext(ShotPromptDeriveDTO dto, ReferenceManifest manifest) {
         StringBuilder sb = new StringBuilder();
         Long keyframeId = dto.getResKeyframeId();
         Long sceneId = dto.getResSceneId();
 
-        // 互斥原则：优先检查是否绑定了关键帧资产 (替代传统环境场景)
+        // Keep the existing SCENE_CONTEXT template slot for stored sys_config templates.
         if (keyframeId != null && keyframeId > 0 && resKeyframeMapper != null) {
             ResKeyframe kf = resKeyframeMapper.selectById(keyframeId);
             if (kf != null) {
-                sb.append("\n【当前分镜视觉基准：分镜关键图参考锚点模式 (Key Image Visual Anchor Mode)】（⚠️ 当前镜头已启用关键图参考模式，已替代并禁用传统环境场景资产）:\n");
-                sb.append("- 关键图名称: ").append(kf.getName()).append("\n");
-                if (StringUtils.isNotBlank(kf.getFrameType())) {
-                    sb.append("- 帧类型: ").append(kf.getFrameType()).append("\n");
-                }
-                if (StringUtils.isNotBlank(kf.getPrompt())) {
-                    sb.append("- 关键图生图Prompt/视觉基准: ").append(kf.getPrompt()).append("\n");
-                } else if (StringUtils.isNotBlank(kf.getDescription())) {
-                    sb.append("- 关键图描述/视觉基准: ").append(kf.getDescription()).append("\n");
-                }
-                sb.append("- ⚠️ 关键图参考生成约束（必须严格遵守）:\n");
-                sb.append("  1. 当前镜头未配置独立的环境场景，严禁在提示词或 subject_definitions 中将此关键图参考误识别为场景 (Scene) 或定义 <Subject N> (Scene)！\n");
-                sb.append("  2. 当前关键图是整个镜头画面构图、主体初始姿态或特定动作定格的唯一视觉基准 (Key Image / Motion Anchor)。\n");
-                sb.append("  3. 提示词与画面动态必须以该关键图呈现的状态作为起点/演进锚点进行视听展开！\n");
+                sb.append(buildKeyImageContext(kf, manifest));
             }
         } else if (sceneId != null && sceneId > 0) {
             ResScene resScene = resSceneMapper.selectById(sceneId);
             if (resScene != null) {
-                sb.append("\n【绑定环境场景资产】:\n");
-                sb.append("- 场景名称: ").append(resScene.getName()).append("\n");
-                if (StringUtils.isNotBlank(resScene.getScenePrompt())) {
-                    sb.append("- 场景生图Prompt: ").append(resScene.getScenePrompt()).append("\n");
-                }
+                sb.append(buildEnvironmentSceneContext(resScene));
             }
         }
         if (StringUtils.isNotBlank(dto.getCustomScenePrompt())) {
             sb.append("- 自定义场景覆盖Prompt: ").append(dto.getCustomScenePrompt()).append("\n");
+        }
+        return sb.toString();
+    }
+
+    private String buildKeyImageContext(ResKeyframe keyImage, ReferenceManifest manifest) {
+        StringBuilder sb = new StringBuilder("\n【当前分镜关键图资产（替代环境场景资产）】:\n");
+        sb.append("- 关键图名称: ").append(keyImage.getName()).append("\n");
+        KeyImageRole assetRole = KeyImageRole.fromCode(keyImage.getFrameType());
+        sb.append("- 资产默认用途: ").append(assetRole != null ? assetRole.name() : "未指定")
+                .append("；实际 Picture 用途以参考图槽位为准。\n");
+        if (StringUtils.isNotBlank(keyImage.getPrompt())) {
+            sb.append("- 关键图文字依据（Prompt）: ").append(keyImage.getPrompt().trim()).append("\n");
+        } else if (StringUtils.isNotBlank(keyImage.getDescription())) {
+            sb.append("- 关键图文字依据（description）: ").append(keyImage.getDescription().trim()).append("\n");
+        }
+        sb.append("- 提示词 AI 看不到图片。只使用上述文字中明确的站位、距离、朝向、构图及空间/动作阶段；缺失的信息不猜测。\n");
+        boolean matchedPicture = keyImage.getId() != null && manifest != null && manifest.getPictures() != null
+                && manifest.getPictures().stream().anyMatch(pic -> pic != null
+                && "KEYFRAME".equalsIgnoreCase(pic.getSourceType())
+                && keyImage.getId().equals(pic.getSourceId()));
+        if (!matchedPicture) {
+            sb.append("- 当前素材清单没有此图的 Picture 槽位；不得引用不存在的 <Picture N>。\n");
+        }
+        return sb.toString();
+    }
+
+    private String buildEnvironmentSceneContext(ResScene scene) {
+        StringBuilder sb = new StringBuilder("\n【绑定环境场景资产】:\n");
+        sb.append("- 场景名称: ").append(scene.getName()).append("\n");
+        if (StringUtils.isNotBlank(scene.getScenePrompt())) {
+            sb.append("- 场景生图Prompt: ").append(scene.getScenePrompt()).append("\n");
         }
         return sb.toString();
     }
@@ -1895,7 +1915,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 if (StringUtils.isBlank(role)) {
                     role = switch (sType) {
                         case "SCENE" -> "SCENE_LAYOUT";
-                        case "KEYFRAME" -> "MOTION_KEYFRAME";
+                        case "KEYFRAME" -> "UNSPECIFIED";
                         case "CHARACTER", "CHARACTER_REFERENCE" -> "IDENTITY";
                         case "PROP" -> "PROP_APPEARANCE";
                         default -> "IDENTITY";
@@ -1945,9 +1965,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                             if (StringUtils.isNotBlank(kf.getName())) {
                                 dsb.append(kf.getName());
                             }
-                            if (StringUtils.isNotBlank(kf.getFrameType())) {
-                                dsb.append(" (").append(kf.getFrameType()).append(")");
-                            }
+                            KeyImageRole keyImageRole = KeyImageRole.resolve(img.getUsageRole(), kf.getFrameType());
+                            role = keyImageRole != null ? keyImageRole.name() : "UNSPECIFIED";
                             if (StringUtils.isNotBlank(kf.getPrompt())) {
                                 dsb.append(": ").append(kf.getPrompt().trim());
                             } else if (StringUtils.isNotBlank(kf.getDescription())) {
@@ -1955,6 +1974,9 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                             }
                             desc = dsb.toString();
                         }
+                    }
+                    if ("MOTION_KEYFRAME".equalsIgnoreCase(role)) {
+                        role = KeyImageRole.KEYFRAME.name();
                     }
                 } else if ("SCENE".equalsIgnoreCase(sType) && img.getSourceId() != null && img.getSourceId() > 0) {
                     ResScene sc = resSceneMapper.selectById(img.getSourceId());

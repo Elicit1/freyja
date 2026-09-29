@@ -199,10 +199,8 @@
               <el-select v-model="img.usageRole" size="small" placeholder="角色" class="w-full !text-[10px]">
                 <el-option label="主体 (SUBJECT)" value="SUBJECT" />
                 <el-option label="场景 (SCENE)" value="SCENE" />
-                <el-option label="关键图参考 (MOTION_KEYFRAME)" value="MOTION_KEYFRAME" />
+                <el-option v-for="role in KEY_IMAGE_ROLE_OPTIONS" :key="role.value" :label="role.label" :value="role.value" />
                 <el-option label="道具 (PROP)" value="PROP" />
-                <el-option label="首帧 (FIRST_FRAME)" value="FIRST_FRAME" />
-                <el-option label="尾帧 (END_FRAME)" value="END_FRAME" />
               </el-select>
             </div>
           </div>
@@ -406,6 +404,7 @@ import AssetMultiSelectDialog, { type AssetSelectItem } from './AssetMultiSelect
 import type { DramaShot, ShotRefImage, ShotRefAudio } from '@/types/drama'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
+import { KEY_IMAGE_ROLE_OPTIONS } from '@/constants/keyImageRoles'
 
 const emit = defineEmits<{
   (e: 'success', shotId: string | number): void
@@ -600,7 +599,7 @@ function handleAssetConfirm(items: AssetSelectItem[]) {
     let defaultRole = 'SUBJECT'
     if (item.sourceType === 'SCENE') defaultRole = 'SCENE'
     else if (item.sourceType === 'PROP') defaultRole = 'PROP'
-    else if (item.sourceType === 'KEYFRAME') defaultRole = 'MOTION_KEYFRAME'
+    else if (item.sourceType === 'KEYFRAME') defaultRole = item.usageRole || 'COMPOSITION_ANCHOR'
 
     refImages.value.push({
       id: item.uniqueKey || `img_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,

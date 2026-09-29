@@ -17,8 +17,7 @@
 
           <el-form-item label="类型">
             <el-select v-model="queryParams.frameType" placeholder="全部类型" clearable class="!w-40">
-              <el-option label="普通关键图" value="KEYFRAME" />
-              <el-option label="动作节奏帧" value="ACTION_BEAT" />
+              <el-option v-for="role in KEY_IMAGE_ROLE_OPTIONS" :key="role.value" :label="role.label" :value="role.value" />
             </el-select>
           </el-form-item>
 
@@ -116,7 +115,7 @@
 
               <!-- 顶部半透明浮层 Tag -->
               <div class="absolute top-2 left-2 flex items-center gap-1.5 pointer-events-none">
-                <el-tag size="small" effect="dark" :type="getFrameTypeTag(item.frameType)">
+                <el-tag size="small" effect="dark" :type="getFrameTypeTagColor(item.frameType)">
                   {{ getFrameTypeLabel(item.frameType) }}
                 </el-tag>
                 <el-tag size="small" effect="dark" :type="isGlobalDrama(item.dramaId) ? 'success' : 'warning'">
@@ -208,7 +207,7 @@
 
           <el-table-column prop="frameType" label="类型" width="110" align="center">
             <template #default="{ row }">
-              <el-tag size="small" :type="getFrameTypeTag(row.frameType)">
+              <el-tag size="small" :type="getFrameTypeTagColor(row.frameType)">
                 {{ getFrameTypeLabel(row.frameType) }}
               </el-tag>
             </template>
@@ -293,6 +292,7 @@ import { keyframeApi } from '@/api/res-keyframe'
 import { dramaApi, shotApi } from '@/api/drama'
 import KeyframeDrawer from './KeyframeDrawer.vue'
 import type { ResKeyframe, ResKeyframeQuery } from '@/types/resource'
+import { KEY_IMAGE_ROLE_OPTIONS, keyImageRoleLabel } from '@/constants/keyImageRoles'
 
 const emit = defineEmits<{
   (e: 'assetCreated', payload: ResKeyframe): void
@@ -330,20 +330,20 @@ function getDramaLabel(dramaId?: string | number): string {
 }
 
 function getFrameTypeLabel(type?: string): string {
-  switch (type) {
-    case 'FIRST_FRAME': return '首帧'
-    case 'END_FRAME': return '尾帧'
-    case 'KEYFRAME': return '普通关键图'
-    case 'ACTION_BEAT': return '动作节奏帧'
-    default: return type || '普通关键图'
-  }
+  return keyImageRoleLabel(type)
 }
 
-function getFrameTypeTag(type?: string): '' | 'success' | 'warning' | 'info' | 'danger' {
+// 只控制 Element Plus 标签颜色；用户看到的文字由 getFrameTypeLabel 返回中文。
+function getFrameTypeTagColor(type?: string): '' | 'success' | 'warning' | 'info' | 'danger' {
   switch (type) {
     case 'FIRST_FRAME': return 'success'
+    case 'LAST_FRAME':
     case 'END_FRAME': return 'danger'
     case 'KEYFRAME': return 'warning'
+    case 'EDITED_KEYFRAME': return 'warning'
+    case 'COMPOSITION_ANCHOR':
+    case 'STORYBOARD_REFERENCE':
+    case 'SHOT_PLANNING_REFERENCE':
     case 'ACTION_BEAT': return 'info'
     default: return ''
   }

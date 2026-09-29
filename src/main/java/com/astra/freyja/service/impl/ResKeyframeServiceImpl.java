@@ -11,6 +11,7 @@ import com.astra.freyja.dto.res.ResKeyframeVO;
 import com.astra.freyja.entity.Drama;
 import com.astra.freyja.entity.DramaShot;
 import com.astra.freyja.entity.ResKeyframe;
+import com.astra.freyja.dto.drama.manifest.KeyImageRole;
 import com.astra.freyja.service.ResKeyframeService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -51,11 +52,20 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
                 .eq(query.getDramaId() != null, ResKeyframe::getDramaId, query.getDramaId())
                 .eq(query.getShotId() != null, ResKeyframe::getShotId, query.getShotId())
                 .like(StringUtils.isNotBlank(query.getName()), ResKeyframe::getName, query.getName())
-                .eq(StringUtils.isNotBlank(query.getFrameType()), ResKeyframe::getFrameType, query.getFrameType())
                 .eq(StringUtils.isNotBlank(query.getSourceType()), ResKeyframe::getSourceType, query.getSourceType())
-                .eq(query.getStatus() != null, ResKeyframe::getStatus, query.getStatus())
-                .orderByAsc(ResKeyframe::getSortOrder)
-                .orderByDesc(ResKeyframe::getId);
+                .eq(query.getStatus() != null, ResKeyframe::getStatus, query.getStatus());
+
+        if (StringUtils.isNotBlank(query.getFrameType())) {
+            KeyImageRole role = KeyImageRole.fromCode(query.getFrameType());
+            if (role == KeyImageRole.KEYFRAME) {
+                wrapper.in(ResKeyframe::getFrameType, "KEYFRAME", "ACTION_BEAT");
+            } else if (role == KeyImageRole.LAST_FRAME) {
+                wrapper.in(ResKeyframe::getFrameType, "LAST_FRAME", "END_FRAME");
+            } else {
+                wrapper.eq(ResKeyframe::getFrameType, role != null ? role.name() : query.getFrameType());
+            }
+        }
+        wrapper.orderByAsc(ResKeyframe::getSortOrder).orderByDesc(ResKeyframe::getId);
 
         Page<ResKeyframe> entityPage = resKeyframeMapper.selectPage(pageParam, wrapper);
 
@@ -158,9 +168,7 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
         entity.setId(null);
         entity.setDramaId(dramaId);
         entity.setShotId(shotId);
-        if (StringUtils.isBlank(entity.getFrameType())) {
-            entity.setFrameType("KEYFRAME");
-        }
+        entity.setFrameType(resolveFrameType(entity.getFrameType()));
         if (StringUtils.isBlank(entity.getSourceType())) {
             entity.setSourceType("MANUAL_UPLOAD");
         }
@@ -208,6 +216,7 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
         }
 
         BeanUtils.copyProperties(dto, existing);
+        existing.setFrameType(resolveFrameType(existing.getFrameType()));
         existing.setDramaId(dramaId);
         existing.setShotId(shotId);
 
@@ -282,5 +291,12 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
         ResKeyframeVO vo = new ResKeyframeVO();
         BeanUtils.copyProperties(entity, vo);
         return vo;
+    }
+
+    private String resolveFrameType(String frameType) {
+        if (StringUtils.isBlank(frameType)) return KeyImageRole.COMPOSITION_ANCHOR.name();
+        KeyImageRole role = KeyImageRole.fromCode(frameType);
+        if (role == null) throw new BizException("不支持的关键图类型: " + frameType);
+        return role.name();
     }
 }

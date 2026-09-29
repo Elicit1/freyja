@@ -20,7 +20,7 @@ public class ResKeyframeDTO {
     /** 关键帧名称 (如: 开场回眸特写帧、雨夜决战首帧) */
     private String name;
 
-    /** 关键帧类型: FIRST_FRAME(首帧)/END_FRAME(尾帧)/KEYFRAME(普通关键帧)/ACTION_BEAT(动作节奏帧) */
+    /** 七种 Picture 用途之一；旧 END_FRAME/ACTION_BEAT 在写入时归一化。 */
     private String frameType;
 
     /** 关键帧图片URL (MinIO URL) */

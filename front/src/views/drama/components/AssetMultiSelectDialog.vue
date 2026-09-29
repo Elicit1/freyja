@@ -161,6 +161,7 @@ export interface AssetSelectItem {
   characterId?: string | number
   lookId?: string | number
   referenceRole?: string
+  usageRole?: string
 }
 
 const emit = defineEmits<{

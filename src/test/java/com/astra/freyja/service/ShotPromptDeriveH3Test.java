@@ -188,7 +188,7 @@ class ShotPromptDeriveH3Test {
         ResKeyframe keyframe = new ResKeyframe();
         keyframe.setId(301L);
         keyframe.setName("雨夜飞跃关键动作");
-        keyframe.setFrameType("ACTION_FRAME");
+        keyframe.setFrameType("KEYFRAME");
         keyframe.setPrompt("hero leaping across rooftops under heavy rain, neon glow");
         when(resKeyframeMapper.selectById(301L)).thenReturn(keyframe);
 
@@ -216,8 +216,7 @@ class ShotPromptDeriveH3Test {
         ReferenceManifest.PictureManifestItem pic1 = manifest.getPictures().get(0);
         assertEquals(1, pic1.getPictureIndex());
         assertEquals("KEYFRAME", pic1.getSourceType());
-        assertEquals("MOTION_KEYFRAME", pic1.getUsageRole());
-        assertTrue(pic1.getDescription().contains("ACTION_FRAME"));
+        assertEquals("KEYFRAME", pic1.getUsageRole());
         assertTrue(pic1.getDescription().contains("hero leaping"));
     }
 
@@ -1041,7 +1040,7 @@ class ShotPromptDeriveH3Test {
     }
 
     @Test
-    @DisplayName("关键帧模式：互斥排除场景且明确将关键帧作为视觉锚点与 MOTION_KEYFRAME")
+    @DisplayName("首帧角色：绑定图片时使用官方起始帧关系")
     void testKeyframeModeExcludesSceneAndSetsKeyframeAnchor() {
         Long keyframeId = 888L;
         ResKeyframe kf = new ResKeyframe();
@@ -1077,21 +1076,61 @@ class ShotPromptDeriveH3Test {
         String userPrompt = pkg.getUserPrompt();
         String systemPrompt = pkg.getSystemPrompt();
 
-        // 1. 用户提示词中必须包含关键帧锚点模式声明
-        assertTrue(userPrompt.contains("Keyframe Visual Anchor Mode"));
+        // 用户提示词保留资产文字事实，不凭图片猜测画面。
+        assertTrue(userPrompt.contains("当前分镜关键图资产"));
         assertTrue(userPrompt.contains("雨夜决战拔剑定格"));
         assertTrue(userPrompt.contains("dramatic standoff keyframe, rain pouring, sword drawn"));
-        assertTrue(userPrompt.contains("严禁在提示词或 subject_definitions 中将此关键帧误识别为场景"));
+        assertTrue(userPrompt.contains("提示词 AI 看不到图片"));
 
         // 2. 严禁出现环境场景资产绑定
         assertFalse(userPrompt.contains("【绑定环境场景资产】"));
 
-        // 3. 验证 ReferenceManifest 中明确标注关键帧且定位为 MOTION_KEYFRAME
-        assertTrue(userPrompt.contains("MOTION_KEYFRAME"));
-        assertTrue(userPrompt.contains("⚠️ 关键帧提示: 此图为本镜头的动作与构图定格参考 (MOTION_KEYFRAME)，绝非普通场景环境 (Scene)"));
+        // 旧槽位角色由资产类型归一化为 FIRST_FRAME。
+        assertTrue(userPrompt.contains("建议角色定位: FIRST_FRAME"));
 
-        // 4. 系统提示词中包含对关键帧模式的硬性约束
-        assertTrue(systemPrompt.contains("严禁将关键帧当成场景 (Scene)"));
-        assertTrue(systemPrompt.contains("关键帧绝不能声明为 Scene: 或 <Picture N> (Scene)"));
+        assertTrue(systemPrompt.contains("[keyframe completion]"));
+        assertTrue(systemPrompt.contains("the shot begins from <Picture 1>"));
+        assertFalse(systemPrompt.contains("the shot ends on <Picture 1>"));
+    }
+
+    @Test
+    @DisplayName("构图锚点只指导布局，不成为具体帧；Prompt 优先于 description")
+    void testCompositionAnchorDoesNotBecomeConcreteFrame() {
+        ResKeyframe kf = new ResKeyframe();
+        kf.setId(901L);
+        kf.setName("双人站位参考");
+        kf.setFrameType("KEYFRAME");
+        kf.setPrompt("A stands left of B, two meters apart, both in profile");
+        kf.setDescription("这是旧的画面描述，不应覆盖 Prompt");
+        when(resKeyframeMapper.selectById(901L)).thenReturn(kf);
+
+        ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder()
+                .shotNo(1)
+                .scriptContent("两人在街道上交谈")
+                .generationMode("REFERENCE_MODE")
+                .resKeyframeId(901L)
+                .refImages(List.of(ShotRefImageDTO.builder()
+                        .id("composition")
+                        .sourceType("KEYFRAME")
+                        .sourceId(901L)
+                        .usageRole("COMPOSITION_ANCHOR")
+                        .name("双人站位参考")
+                        .imageUrl("http://minio.local/composition.png")
+                        .build()))
+                .build();
+
+        ShotPromptPackageVO pkg = service.buildPromptPackage(dto);
+        assertTrue(pkg.getUserPrompt().contains("A stands left of B, two meters apart"));
+        assertFalse(pkg.getUserPrompt().contains("这是旧的画面描述"));
+        assertTrue(pkg.getUserPrompt().contains("建议角色定位: COMPOSITION_ANCHOR"));
+        assertTrue(pkg.getSystemPrompt().contains("[reference generation]"));
+        assertTrue(pkg.getSystemPrompt().contains("<d> 内的对白、歌词和画面可见文字保留原语言"));
+        assertTrue(pkg.getSystemPrompt().contains("Do not require any video frame to reproduce it exactly"));
+        assertFalse(pkg.getSystemPrompt().contains("the shot begins from <Picture 1>"));
+        assertFalse(pkg.getSystemPrompt().contains("the shot's keyframe corresponds to <Picture 1>"));
+
+        kf.setPrompt(null);
+        ShotPromptPackageVO fallback = service.buildPromptPackage(dto);
+        assertTrue(fallback.getUserPrompt().contains("这是旧的画面描述，不应覆盖 Prompt"));
     }
 }

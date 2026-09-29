@@ -43,6 +43,9 @@ class AiImageApiServiceImplTest {
     private AiModelMapper modelMapper;
 
     @Mock
+    private com.astra.freyja.dao.ResKeyframeMapper resKeyframeMapper;
+
+    @Mock
     private CryptoUtil cryptoUtil;
 
     @Mock

@@ -1,6 +1,7 @@
 import { ref, computed, type Ref } from 'vue'
 import type { CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
+import { normalizeKeyImageRole } from '@/constants/keyImageRoles'
 
 export interface ShotPromptDraft {
   characterRefs: CharacterShotRefInfo[]
@@ -175,7 +176,7 @@ export function useShotReferenceAssets(
           imageUrl: kf.frameUrl,
           sourceType: 'KEYFRAME',
           sourceId: String(kf.id),
-          usageRole: 'MOTION_KEYFRAME',
+          usageRole: normalizeKeyImageRole(kf.frameType) || 'COMPOSITION_ANCHOR',
           tag: '关键图参考',
           assetName: kf.name,
           assetType: 'KEYFRAME'

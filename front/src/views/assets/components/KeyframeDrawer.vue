@@ -70,8 +70,7 @@
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <el-form-item label="关键图类型" prop="frameType">
                 <el-select v-model="formData.frameType" placeholder="选择关键图类型" class="w-full">
-                  <el-option label="🎬 普通关键图 (KEYFRAME)" value="KEYFRAME" />
-                  <el-option label="⚡ 动作节奏帧 (ACTION_BEAT)" value="ACTION_BEAT" />
+                  <el-option v-for="role in KEY_IMAGE_ROLE_OPTIONS" :key="role.value" :label="role.label" :value="role.value" />
                 </el-select>
               </el-form-item>
 
@@ -131,7 +130,7 @@
                 v-model="formData.description"
                 type="textarea"
                 :rows="3"
-                placeholder="说明这张图希望视频参考什么，例如人物位置、左右关系、朝向、相对距离、构图、观察方向和当前画面状态。"
+                placeholder="写明该图提供的画面事实：人物左右位置、相对距离、朝向、构图、空间和动作阶段。具体帧类型说明需复现的画面状态；规划参考类型说明要遵循的构图或镜头信息。"
               />
             </el-form-item>
 
@@ -172,7 +171,7 @@
           <!-- 标签页 2: 关键图图片与上传 -->
           <el-tab-pane label="关键图图像" name="image">
             <div class="text-xs text-slate-500 mb-4 bg-slate-50 p-3 rounded-lg border border-slate-200">
-              💡 关键图图像可作为镜头渲染的首帧、尾帧或多模态视频生成的关键图参考（MOTION_KEYFRAME）。
+              💡 具体帧类型要求目标视频出现对应画面状态；构图与分镜规划参考只指导画面组织，不要求逐帧复现。
             </div>
 
             <el-form-item label="关键图图像" prop="frameUrl">
@@ -254,6 +253,7 @@ import { keyframeApi } from '@/api/res-keyframe'
 import { dramaApi, shotApi } from '@/api/drama'
 import { assetApi } from '@/api/res-asset'
 import type { ResKeyframe } from '@/types/resource'
+import { KEY_IMAGE_ROLE_OPTIONS, keyImageRoleLabel, normalizeKeyImageRole } from '@/constants/keyImageRoles'
 
 const emit = defineEmits<{
   (e: 'success', keyframe: ResKeyframe): void
@@ -299,7 +299,7 @@ const formData = reactive<{
   dramaId: '0',
   shotId: undefined,
   name: '',
-  frameType: 'KEYFRAME',
+  frameType: 'COMPOSITION_ANCHOR',
   frameUrl: '',
   prompt: '',
   negativePrompt: '',
@@ -328,13 +328,7 @@ const formRules: FormRules = {
 }
 
 function getFrameTypeLabel(type: string): string {
-  switch (type) {
-    case 'FIRST_FRAME': return '首帧'
-    case 'END_FRAME': return '尾帧'
-    case 'KEYFRAME': return '普通关键图'
-    case 'ACTION_BEAT': return '动作节奏帧'
-    default: return type
-  }
+  return keyImageRoleLabel(type)
 }
 
 function formatShotLabel(shot: ShotOptionItem): string {
@@ -408,7 +402,7 @@ async function open(row?: ResKeyframe, defaultDramaId?: any, defaultFrameUrl?: a
     formData.id = String(row.id)
     formData.name = row.name || ''
     formData.dramaId = row.dramaId !== undefined && row.dramaId !== null ? String(row.dramaId) : '0'
-    formData.frameType = row.frameType || 'KEYFRAME'
+    formData.frameType = normalizeKeyImageRole(row.frameType) || 'COMPOSITION_ANCHOR'
     formData.frameUrl = row.frameUrl || ''
     formData.prompt = row.prompt || ''
     formData.negativePrompt = row.negativePrompt || ''
@@ -437,7 +431,7 @@ async function open(row?: ResKeyframe, defaultDramaId?: any, defaultFrameUrl?: a
       dramaId: normalizedDramaId,
       shotId: undefined,
       name: '',
-      frameType: 'KEYFRAME',
+      frameType: 'COMPOSITION_ANCHOR',
       frameUrl: safeFrameUrl,
       prompt: '',
       negativePrompt: '',

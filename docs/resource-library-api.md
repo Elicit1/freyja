@@ -336,6 +336,8 @@
 
 #### 3) 新增关键帧
 - **URL**: `POST /res/keyframe`
+- **`frameType`**: 关键图在目标视频中的默认 Picture 用途，可选 `FIRST_FRAME`、`KEYFRAME`、`LAST_FRAME`、`EDITED_KEYFRAME`、`COMPOSITION_ANCHOR`、`STORYBOARD_REFERENCE`、`SHOT_PLANNING_REFERENCE`。前四种对应具体画面（`keyframe completion`），后三种用于构图或镜头规划（`reference generation`），不要求目标视频出现完全相同的一帧。未填写时默认 `COMPOSITION_ANCHOR`；已有的 `END_FRAME`、`ACTION_BEAT` 在写入时分别归一化为 `LAST_FRAME`、`KEYFRAME`。
+- **分镜内覆盖**: 参考图片槽位的 `usageRole` 可为当前分镜选择不同用途；提示词组装优先使用槽位用途，旧的 `MOTION_KEYFRAME` 槽位会回退到资产的 `frameType`。关键图 `prompt` 有值时作为文字依据，否则使用 `description`。提示词 AI 不直接查看图片。
 - **Body**:
 ```json
 {

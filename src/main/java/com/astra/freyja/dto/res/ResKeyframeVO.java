@@ -31,7 +31,7 @@ public class ResKeyframeVO {
     /** 关键帧名称 (如: 开场回眸特写帧、雨夜决战首帧) */
     private String name;
 
-    /** 关键帧类型: FIRST_FRAME(首帧)/END_FRAME(尾帧)/KEYFRAME(普通关键帧)/ACTION_BEAT(动作节奏帧) */
+    /** 关键图在目标视频中的默认 Picture 用途。 */
     private String frameType;
 
     /** 关键帧图片URL */

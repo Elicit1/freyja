@@ -724,10 +724,8 @@
                   <el-select v-model="img.usageRole" size="small" placeholder="角色" class="w-full !text-[10px]">
                     <el-option label="主体 (SUBJECT)" value="SUBJECT" />
                     <el-option label="场景 (SCENE)" value="SCENE" />
-                    <el-option label="关键图参考 (MOTION_KEYFRAME)" value="MOTION_KEYFRAME" />
+                    <el-option v-for="role in KEY_IMAGE_ROLE_OPTIONS" :key="role.value" :label="role.label" :value="role.value" />
                     <el-option label="道具 (PROP)" value="PROP" />
-                    <el-option label="首帧 (FIRST_FRAME)" value="FIRST_FRAME" />
-                    <el-option label="尾帧 (END_FRAME)" value="END_FRAME" />
                   </el-select>
                 </div>
               </div>
@@ -1108,6 +1106,7 @@ import { characterApi } from '@/api/res-character'
 import { sceneApi } from '@/api/res-scene'
 import { resPropApi, type ResPropItem } from '@/api/res-prop'
 import { keyframeApi } from '@/api/res-keyframe'
+import { KEY_IMAGE_ROLE_OPTIONS, normalizeKeyImageRole } from '@/constants/keyImageRoles'
 import { assetApi } from '@/api/res-asset'
 import type { DramaShot, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, DirectorPlan } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResKeyframeOption } from '@/types/resource'
@@ -1463,7 +1462,7 @@ async function handleUploadEndFrame(file: File) {
 // 资产选取器 (用于 REFERENCE_MODE)
 const drawerAssetPickerVisible = ref(false)
 const drawerAssetPickerTitle = ref('')
-const drawerAssetPickerList = ref<Array<{ name: string; imageUrl: string; sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP' | 'KEYFRAME'; sourceId: string | number; characterId?: string | number; lookId?: string | number; referenceRole?: string; tag?: string }>>([])
+const drawerAssetPickerList = ref<Array<{ name: string; imageUrl: string; sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP' | 'KEYFRAME'; sourceId: string | number; characterId?: string | number; lookId?: string | number; referenceRole?: string; usageRole?: string; tag?: string }>>([])
 
 async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | 'keyframe') {
   if (refImages.value.length >= 9) {
@@ -1497,6 +1496,7 @@ async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | '
           imageUrl: k.frameUrl,
           sourceType: 'KEYFRAME',
           sourceId: k.id,
+          usageRole: normalizeKeyImageRole(k.frameType) || 'COMPOSITION_ANCHOR',
           tag: '关键图参考'
         }))
     } catch (e) {}
@@ -1558,7 +1558,7 @@ function handleConfirmSelectDrawerAsset(item: any) {
   }
   let defaultRole = 'SUBJECT'
   if (item.sourceType === 'SCENE') defaultRole = 'SCENE'
-  else if (item.sourceType === 'KEYFRAME') defaultRole = 'MOTION_KEYFRAME'
+  else if (item.sourceType === 'KEYFRAME') defaultRole = item.usageRole || 'COMPOSITION_ANCHOR'
   else if (item.sourceType === 'PROP') defaultRole = 'PROP'
 
   refImages.value.push({

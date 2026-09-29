@@ -100,10 +100,8 @@
               >
                 <el-option label="主体 (SUBJECT)" value="SUBJECT" />
                 <el-option label="场景 (SCENE)" value="SCENE" />
-                <el-option label="关键图参考 (MOTION_KEYFRAME)" value="MOTION_KEYFRAME" />
+                <el-option v-for="role in KEY_IMAGE_ROLE_OPTIONS" :key="role.value" :label="role.label" :value="role.value" />
                 <el-option label="道具 (PROP)" value="PROP" />
-                <el-option label="首帧 (FIRST_FRAME)" value="FIRST_FRAME" />
-                <el-option label="尾帧 (END_FRAME)" value="END_FRAME" />
               </el-select>
             </div>
 
@@ -463,6 +461,7 @@
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { ShotRefImage, ShotRefAudio } from '@/types/drama'
+import { KEY_IMAGE_ROLE_OPTIONS, keyImageRoleLabel, normalizeKeyImageRole } from '@/constants/keyImageRoles'
 import type { CandidateImageItem, CandidateAudioItem } from '../composables/useShotReferenceAssets'
 import {
   MAX_REF_IMAGES,
@@ -530,13 +529,11 @@ function getSourceTypeLabel(type?: string) {
 }
 
 function getUsageRoleLabel(role?: string) {
+  if (normalizeKeyImageRole(role)) return keyImageRoleLabel(role)
   switch (role) {
     case 'SUBJECT': return '主体'
     case 'SCENE': return '场景'
-    case 'MOTION_KEYFRAME': return '关键图参考'
     case 'PROP': return '道具'
-    case 'FIRST_FRAME': return '首帧'
-    case 'END_FRAME': return '尾帧'
     default: return role || '未指定'
   }
 }

@@ -37,7 +37,7 @@ public class ReferenceManifest {
         private String sourceType; // SCENE, CHARACTER, PROP, UPLOAD, KEYFRAME
         private Long sourceId;
         private String entityName;
-        private String usageRole; // IDENTITY, SCENE_LAYOUT, PROP_APPEARANCE, STYLE, MOTION_KEYFRAME
+        private String usageRole; // For KEYFRAME: one of the seven KeyImageRole values
         private String description; // 完整的原著/资产文字描述 (外貌、场景、道具材质等)
         private String imageUrl;
     }
@@ -82,8 +82,10 @@ public class ReferenceManifest {
                 if (StringUtils.isNotBlank(pic.getDescription())) {
                     sb.append(String.format("- 实体特征与保留基准: %s\n", pic.getDescription().trim()));
                 }
-                if ("KEYFRAME".equalsIgnoreCase(pic.getSourceType()) || "MOTION_KEYFRAME".equalsIgnoreCase(pic.getUsageRole())) {
-                    sb.append(String.format("- ⚠️ 关键图参考提示: 此图为本镜头的关键图参考 (Key Image / Key Picture Reference, MOTION_KEYFRAME)，绝非普通场景环境 (Scene)！在 subject_definitions 中应定义为 Key Image: <Picture %d> 或 Main Subject: <Picture %d>，严禁写成 Scene: <Picture %d> 或 <Picture %d> (Scene)；在 retention_analysis 中必须声明保留的是关键图参考的主体动作、姿态、构图与视觉锚点，严禁将其描述为场景背景布局！\n", pic.getPictureIndex(), pic.getPictureIndex(), pic.getPictureIndex(), pic.getPictureIndex()));
+                if ("KEYFRAME".equalsIgnoreCase(pic.getSourceType())) {
+                    KeyImageRole role = KeyImageRole.fromCode(pic.getUsageRole());
+                    sb.append("- 关键图用途: ").append(role != null ? role.name() : "未指定").append("；这不是环境场景资产。\n");
+                    sb.append("- 文字依据只能来自资产 Prompt（优先）或 description（回退）；提示词 AI 看不到图片本身。\n");
                 }
                 sb.append("\n");
             }
@@ -107,6 +109,22 @@ public class ReferenceManifest {
             }
         }
 
+        return sb.toString();
+    }
+
+    /** Per-picture system instructions, after the selected role has been resolved. */
+    public String toSystemRoleGuidance() {
+        StringBuilder sb = new StringBuilder("\n【本次关键图 Picture 的用途约束】\n");
+        sb.append("以下逐图规则优先于模板中笼统的关键图定格或参考图构图规则。KEYFRAME 只是本系统的资产来源类型；目标视频中的用途由下列逐图角色决定。提示词 AI 未收到图片像素，只能依据提供的文字事实编写提示词。\n");
+        sb.append("本次 Ref2VA 输出按官方 full-reference 语言规则：六段正文使用英文，但 <d> 内的对白、歌词和画面可见文字保留原语言；如旧模板要求把非英文台词翻译为英文，以本条为准。\n");
+        sb.append("按官方 full-reference 格式：具体帧或构图/故事板/镜头规划锚点在 subject_definitions 中独立定义 <Picture N>；summary 根据实际用途使用 [keyframe completion] 或 [reference generation]，并与其他任务类型去重组合。retention_analysis 按该 Picture 的已定义用途说明保留关系；detailed_description 只在该用途实际生效处引用。仅凭关键图来源不得虚构人物、时间点、Shot 映射或画面细节。\n");
+        if (pictures != null) {
+            for (PictureManifestItem pic : pictures) {
+                if (pic == null || !"KEYFRAME".equalsIgnoreCase(pic.getSourceType())) continue;
+                KeyImageRole role = KeyImageRole.fromCode(pic.getUsageRole());
+                if (role != null) sb.append(role.systemGuidance(pic.getPictureIndex())).append("\n");
+            }
+        }
         return sb.toString();
     }
 }
