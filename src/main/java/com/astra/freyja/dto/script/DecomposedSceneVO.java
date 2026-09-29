@@ -35,8 +35,9 @@ public class DecomposedSceneVO {
 
     @JsonPropertyDescription("场景中文背景与空间视觉细节描述 (原著视觉源，如: 极简主义黑白冷色调，巨大的落地窗外是暴雨中的摩天大楼)")
     private String description;
-
-    @JsonPropertyDescription("场景生图英文Prompt (包含空间、陈设与光影一体化描述)，例如: modern luxury office, floor-to-ceiling windows, city skyline view, cinematic dramatic lighting")
+    /**
+     * 场景生图提示词，剧本拆解阶段不生成
+     */
     private String scenePrompt;
 
     @JsonPropertyDescription("若匹配到系统已有场景资产，回填对应已有场景ID，否则为null")

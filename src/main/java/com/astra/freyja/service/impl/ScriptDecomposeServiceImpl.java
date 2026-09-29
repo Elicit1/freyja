@@ -390,19 +390,19 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         // 动态注水格式化场景资产库与道具资产库上下文供所有并行 Worker AI 强引用
         StringBuilder sceneRegistrySb = new StringBuilder();
         for (DecomposedSceneVO sc : scenes) {
-            sceneRegistrySb.append(String.format("- 场景编号: %s | 空间名称: %s | 场景生图描述: %s\n",
+            sceneRegistrySb.append(String.format("- 场景编号: %s | 空间名称: %s | 场景描述: %s\n",
                     StringUtils.defaultIfBlank(sc.getId(), "SC001"),
                     sc.getSceneName(),
-                    StringUtils.defaultIfBlank(sc.getScenePrompt(), "interior scene")));
+                    StringUtils.defaultIfBlank(sc.getDescription(), sc.getSceneName())));
         }
         globalContext.setSceneRegistryPromptText(sceneRegistrySb.toString());
 
         StringBuilder propRegistrySb = new StringBuilder();
         for (DecomposedPropVO pr : props) {
-            propRegistrySb.append(String.format("- 道具编号: %s | 名称: %s | 视觉生图词: %s\n",
+            propRegistrySb.append(String.format("- 道具编号: %s | 名称: %s | 特征与作用描述: %s\n",
                     StringUtils.defaultIfBlank(pr.getId(), "PR001"),
                     pr.getName(),
-                    StringUtils.defaultIfBlank(pr.getPropPrompt(), "key prop")));
+                    StringUtils.defaultIfBlank(pr.getDescription(), pr.getName())));
         }
         globalContext.setPropRegistryPromptText(propRegistrySb.toString());
 
@@ -815,7 +815,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                     resScene.setSceneType(StringUtils.defaultIfBlank(scVO.getSceneType(), "INDOOR"));
                     resScene.setTimeOfDay(StringUtils.defaultIfBlank(scVO.getTimeOfDay(), "DAY"));
                     resScene.setWeatherAtmosphere(scVO.getWeatherAtmosphere());
-                    resScene.setScenePrompt(StringUtils.defaultIfBlank(scVO.getScenePrompt(), scVO.getSceneName()));
+                    resScene.setScenePrompt(StringUtils.trimToNull(scVO.getScenePrompt()));
                     resScene.setStatus(1);
                     resScene.setSortOrder(0);
                     resSceneMapper.insert(resScene);
@@ -849,7 +849,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                     resProp.setName(propVO.getName().trim());
                     resProp.setPropType(StringUtils.defaultIfBlank(propVO.getPropType(), "KEY_PROP"));
                     resProp.setDescription(propVO.getDescription());
-                    resProp.setPropPrompt(StringUtils.defaultIfBlank(propVO.getPropPrompt(), propVO.getName()));
+                    resProp.setPropPrompt(StringUtils.trimToNull(propVO.getPropPrompt()));
                     resProp.setStatus(1);
                     resProp.setSortOrder(0);
                     resPropMapper.insert(resProp);
@@ -1450,6 +1450,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         planner.setRequiredSkillNames(List.copyOf(requiredSkills));
     }
 
+
     private void validateDecomposeRequest(ScriptDecomposeRequestDTO request) {
         if (request == null) {
             throw new BizException("请求参数不能为空");
@@ -1572,7 +1573,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                         .propId(propId)
                         .propName(vo != null ? vo.getName() : ref)
                         .propType(vo != null ? vo.getPropType() : "KEY_PROP")
-                        .propPrompt(vo != null ? vo.getPropPrompt() : "")
+                        .propPrompt(vo != null ? vo.getPropPrompt() : null)
                         .build();
                 refList.add(dto);
             }
@@ -1684,20 +1685,20 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         if (currentResult.getScenes() != null) {
             StringBuilder sceneSb = new StringBuilder();
             for (DecomposedSceneVO sc : currentResult.getScenes()) {
-                sceneSb.append(String.format("- 场景编号: %s | 空间名称: %s | 场景生图描述: %s\n",
+                sceneSb.append(String.format("- 场景编号: %s | 空间名称: %s | 场景描述: %s\n",
                         StringUtils.defaultIfBlank(sc.getId(), "SC001"),
                         sc.getSceneName(),
-                        StringUtils.defaultIfBlank(sc.getScenePrompt(), "interior scene")));
+                        StringUtils.defaultIfBlank(sc.getDescription(), sc.getSceneName())));
             }
             globalContext.setSceneRegistryPromptText(sceneSb.toString());
         }
         if (currentResult.getProps() != null) {
             StringBuilder propSb = new StringBuilder();
             for (DecomposedPropVO pr : currentResult.getProps()) {
-                propSb.append(String.format("- 道具编号: %s | 名称: %s | 视觉生图词: %s\n",
+                propSb.append(String.format("- 道具编号: %s | 名称: %s | 特征与作用描述: %s\n",
                         StringUtils.defaultIfBlank(pr.getId(), "PR001"),
                         pr.getName(),
-                        StringUtils.defaultIfBlank(pr.getPropPrompt(), "key prop")));
+                        StringUtils.defaultIfBlank(pr.getDescription(), pr.getName())));
             }
             globalContext.setPropRegistryPromptText(propSb.toString());
         }

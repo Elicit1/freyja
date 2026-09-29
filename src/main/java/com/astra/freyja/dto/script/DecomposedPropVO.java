@@ -30,8 +30,9 @@ public class DecomposedPropVO implements Serializable {
 
     @JsonPropertyDescription("道具特征与上下文作用描述")
     private String description;
-
-    @JsonPropertyDescription("道具核心英文生图/视觉Prompt，例如: ornate antique brass desk clock with intricate engravings, ticking hands")
+    /**
+     * 道具生图提示词，剧本拆解阶段不生成
+     */
     private String propPrompt;
 
     @JsonPropertyDescription("若匹配到系统已有道具资产，回填对应已有道具ID，否则为null")

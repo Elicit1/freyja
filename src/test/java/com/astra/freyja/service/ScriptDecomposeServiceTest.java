@@ -275,7 +275,8 @@ class ScriptDecomposeServiceTest {
         assertEquals("AUTO", req.getPacingPreset());
         ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
         verify(mockChatModel, times(2)).call(promptCaptor.capture());
-        assertFalse(promptCaptor.getAllValues().get(1).toString().contains("剪辑节奏偏好:"));
+        assertTrue(promptCaptor.getAllValues().get(1).toString().contains("剪辑节奏偏好:"));
+        assertTrue(promptCaptor.getAllValues().get(1).toString().contains("请参考以下三个剪辑节奏挡位"));
 
         assertNotNull(result);
         assertEquals("都市风云", result.getDramaTitle());
