@@ -154,7 +154,7 @@
           <!-- 剪辑节奏与镜头粒度偏好 (防碎镜头) -->
           <el-form-item label="剪辑节奏与镜头粒度" class="!mb-2">
             <el-select v-model="form.pacingPreset" placeholder="选择镜头节奏" class="w-full" :disabled="isStreaming">
-              <el-option value="AUTO" label="自动 (默认 · 不指定镜头时长与剪辑节奏)" />
+              <el-option value="AUTO" label="自动 (默认 · AI 参考三个挡位选择节奏)" />
               <el-option value="STANDARD" label="⚡ 标准工业短剧 (5~8s/镜，动作单元聚合)">
                 <div class="flex items-center justify-between">
                   <span class="font-medium text-slate-800">⚡ 标准工业短剧</span>

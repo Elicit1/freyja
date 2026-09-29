@@ -348,7 +348,10 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
             case "CINEMATIC_LONG" -> "倾向保留完整的连续动作和空间关系，减少无必要的切镜；具体时长按镜头可行性决定";
             case "FAST_PACED" -> "节奏紧凑，优先保留关键动作与反应；不得为追求快节奏截断动作或对白";
             case "STANDARD" -> "标准工业短剧节奏，单镜以 5~8 秒为参考；按原文叙事节奏拆解，保持动作完整，避免无意义的碎镜头";
-            default -> null;
+            default -> "请参考以下三个剪辑节奏挡位，结合本段原文的动作、对白和叙事重点，自主选择适合的挡位；不同镜头可按剧情需要调整，不要机械套用时长，确保动作和对白完整："
+                    + "STANDARD 标准工业短剧（5~8 秒/镜，动作单元聚合）；"
+                    + "CINEMATIC_LONG 电影感长镜头（7~12 秒/镜，保留连续动作与空间关系，减少切镜）；"
+                    + "FAST_PACED 快节奏紧凑剪辑（2~4 秒/镜，聚焦关键动作与反应）";
         };
 
         StringBuilder taskInput = new StringBuilder();
@@ -382,9 +385,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                         ? String.join(", ", segment.getPropIds())
                         : segment.getImportantPropIds() != null && !segment.getImportantPropIds().isEmpty()
                                 ? String.join(", ", segment.getImportantPropIds()) : "未提供").append("\n");
-        if (pacingDesc != null) {
-            taskInput.append("剪辑节奏偏好: ").append(pacingDesc).append("\n");
-        }
+        taskInput.append("剪辑节奏偏好: ").append(pacingDesc).append("\n");
         taskInput.append("originalContent（最高事实来源）: \n")
                 .append(StringUtils.defaultString(segment.getRawText())).append("\n\n")
                 .append("normalizedContent（主要拆解执行输入；为空则使用 originalContent）: \n")

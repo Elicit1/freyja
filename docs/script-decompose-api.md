@@ -73,7 +73,7 @@ Worker 默认系统提示词与 `init.sql` 初始配置只规定原文忠实、�
   "pacingPreset": "AUTO"
 }
 ```
-- `pacingPreset` 默认 `AUTO`；省略或传空值时，Worker 不附加剪辑节奏与镜头时长偏好。可显式选择 `STANDARD`、`CINEMATIC_LONG` 或 `FAST_PACED`。
+- `pacingPreset` 默认 `AUTO`；省略或传空值时，Worker 会收到 `STANDARD`（5~8 秒/镜）、`CINEMATIC_LONG`（7~12 秒/镜）、`FAST_PACED`（2~4 秒/镜）三个参考挡位，并按原文剧情、动作与对白选择适合的节奏。挡位时长仅作参考，不强制每镜落入区间。也可显式选择其中一个挡位作为节奏偏好。
 - **返回结构 (`ScriptDecomposeResultVO`)**:
 ```json
 {
