@@ -851,12 +851,15 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             String jsonPayload = objectMapper.writeValueAsString(body);
             String cancelUrl = clean + "/v1/tasks/cancel";
 
-            HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create(cancelUrl))
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(5))
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
-                    .build();
+              HttpRequest.Builder cancelRequest = HttpRequest.newBuilder()
+                      .uri(URI.create(cancelUrl))
+                      .header("Content-Type", "application/json")
+                      .timeout(Duration.ofSeconds(5))
+                      .POST(HttpRequest.BodyPublishers.ofString(jsonPayload));
+              if (provider != null && StringUtils.isNotBlank(provider.getApiKey())) {
+                  cancelRequest.header("Authorization", "Bearer " + cryptoUtil.decrypt(provider.getApiKey()));
+              }
+              HttpRequest req = cancelRequest.build();
 
             log.info("[AiImageApi] 正在向远程网关发送取消指令: url={}, payload={}", cancelUrl, jsonPayload);
             HttpResponse<String> res = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
@@ -864,8 +867,8 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 log.warn("[AiImageApi] 远程任务取消返回非200状态: status={}, body={}", res.statusCode(), res.body());
                 return com.astra.freyja.dto.render.RemoteCancelResultVO.builder()
                         .success(false)
-                        .message("网关返回异常状态码: " + res.statusCode())
-                        .detailStatus("FAILED")
+                        .message("远程服务返回状态码: " + res.statusCode())
+                        .detailStatus(res.statusCode() == 404 || res.statusCode() == 405 ? "UNSUPPORTED" : "FAILED")
                         .build();
             }
 

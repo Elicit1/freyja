@@ -2,6 +2,7 @@ package com.astra.freyja.service;
 
 import com.astra.freyja.dto.task.TaskCenterHistoryVO;
 import com.astra.freyja.dto.task.TaskCenterItemVO;
+import com.astra.freyja.dto.task.TaskCancelResultVO;
 
 import java.util.List;
 
@@ -14,5 +15,5 @@ public interface TaskCenterService {
 
     TaskCenterItemVO getTask(String sourceType, String taskId);
 
-    boolean cancelTask(String sourceType, String taskId);
+    TaskCancelResultVO cancelTask(String sourceType, String taskId);
 }

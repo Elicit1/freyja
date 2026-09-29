@@ -67,8 +67,8 @@
                 <span class="inline-block h-2 w-2 rounded-full bg-[var(--brand)] animate-pulse"></span>
                 <span>{{ task.currentStage || '后台处理中...' }}</span>
               </div>
-              <div v-if="task.status === 'FAILED'" class="mt-4 text-xs text-rose-600 line-clamp-2">
-                {{ task.errorMessage || '任务执行失败' }}
+              <div v-if="task.status === 'FAILED' || task.status === 'CANCEL_UNCONFIRMED'" class="mt-4 text-xs text-rose-600 line-clamp-2">
+                {{ task.errorMessage || (task.status === 'CANCEL_UNCONFIRMED' ? '上游未确认停止' : '任务执行失败') }}
               </div>
               <div class="mt-5 pt-3 border-t border-[var(--border-default)] flex items-center justify-between text-xs text-[var(--text-muted)]">
                 <span>{{ formatDate(task.finishedAt || task.startedAt || task.createdAt) }}</span>
@@ -241,13 +241,15 @@ function cleanQuery(values: Record<string, string | undefined>) {
 }
 
 function canCancel(task: TaskCenterItem) {
-  return task.sourceType === 'RENDER_TASK' && isActive(task.status)
+  return (task.sourceType === 'RENDER_TASK' || task.sourceType === 'AI_TASK') && isActive(task.status)
 }
 
 async function cancelTask(task: TaskCenterItem) {
   try {
-    await taskCenterApi.cancelTask(task.sourceType, task.taskId)
-    ElMessage.success('任务已取消')
+    const result = await taskCenterApi.cancelTask(task.sourceType, task.taskId)
+    if (!result.cancelled) throw new Error(result.message || '取消任务失败')
+    if (result.upstreamStatus !== 'CONFIRMED') ElMessage.warning(result.message)
+    else ElMessage.success(result.message || '任务已取消')
     await store.refreshActive()
   } catch (error: any) {
     ElMessage.error(error?.message || '取消任务失败')
@@ -256,8 +258,8 @@ async function cancelTask(task: TaskCenterItem) {
 
 function isActive(status: string) { return ['QUEUED', 'PENDING', 'RUNNING', 'RETRYING'].includes(status) }
 function getCategoryLabel(category?: string) { return category === 'AI_ANALYSIS' ? 'AI 分析' : category === 'MEDIA_PROCESS' ? '视频处理' : '渲染' }
-function statusLabel(status: string) { return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '失败', CANCELLED: '已取消' } as Record<string, string>)[status] || status }
-function statusTone(status: string): string { return status === 'SUCCESS' ? 'success' : status === 'FAILED' ? 'danger' : isActive(status) ? 'processing' : 'disabled' }
+function statusLabel(status: string) { return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '失败', CANCELLED: '已取消', CANCEL_UNCONFIRMED: '请求已中断（上游未确认）' } as Record<string, string>)[status] || status }
+function statusTone(status: string): string { return status === 'SUCCESS' ? 'success' : status === 'FAILED' ? 'danger' : status === 'CANCEL_UNCONFIRMED' ? 'warning' : isActive(status) ? 'processing' : 'disabled' }
 function getContextLabel(task: TaskCenterItem) { return [task.dramaTitle, task.episodeName, task.sceneName, task.shotName || (task.shotNo ? `镜头 ${task.shotNo}` : undefined)].filter(Boolean).join(' / ') || `任务 ID ${task.taskId}` }
 function formatDate(value?: string) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '刚刚提交' }
 </script>

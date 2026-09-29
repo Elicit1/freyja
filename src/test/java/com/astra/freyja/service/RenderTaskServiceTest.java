@@ -4,11 +4,13 @@ import com.astra.freyja.dao.RenderTaskMapper;
 import com.astra.freyja.dto.render.RenderTaskVO;
 import com.astra.freyja.entity.RenderTask;
 import com.astra.freyja.service.impl.RenderTaskServiceImpl;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.astra.freyja.websocket.RenderTaskWebSocketHandler;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.HashOperations;
@@ -57,6 +59,7 @@ class RenderTaskServiceTest {
 
     @BeforeEach
     void setUp() {
+        TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), RenderTask.class);
         objectMapper = new ObjectMapper();
         lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
@@ -122,6 +125,7 @@ class RenderTaskServiceTest {
         dbEntity.setTaskId("TEST_TASK_002");
         dbEntity.setSubmitTime(existingVo.getSubmitTime());
         when(renderTaskMapper.selectOne(any())).thenReturn(dbEntity);
+        when(renderTaskMapper.update(isNull(), any())).thenReturn(1);
 
         renderTaskService.finishTask("TEST_TASK_002", "http://minio/output.mp4", "http://minio/last.png");
 
@@ -130,12 +134,9 @@ class RenderTaskServiceTest {
         verify(zSetOperations, times(1)).remove("freyja:render:active_queue", "TEST_TASK_002");
 
         // 验证更新 MySQL 终态
-        ArgumentCaptor<RenderTask> captor = ArgumentCaptor.forClass(RenderTask.class);
-        verify(renderTaskMapper, times(1)).updateById(captor.capture());
-        RenderTask updated = captor.getValue();
-        assertEquals("SUCCESS", updated.getStatus());
-        assertEquals("http://minio/output.mp4", updated.getOutputUrl());
-        assertEquals(100, updated.getProgress());
+        verify(renderTaskMapper, times(1)).update(isNull(), any());
+        assertEquals("SUCCESS", dbEntity.getStatus());
+        assertEquals("http://minio/output.mp4", dbEntity.getOutputUrl());
 
         // 验证 WebSocket 广播 TASK_SUCCESS
         verify(wsHandler, times(1)).broadcast(argThat(msg ->
@@ -171,6 +172,7 @@ class RenderTaskServiceTest {
         entity.setSubmitTime(LocalDateTime.now().minusSeconds(5));
 
         when(renderTaskMapper.selectOne(any())).thenReturn(entity);
+        when(renderTaskMapper.update(isNull(), any())).thenReturn(1);
 
         com.astra.freyja.entity.DramaShot shot = new com.astra.freyja.entity.DramaShot();
         shot.setId(88L);
@@ -191,7 +193,7 @@ class RenderTaskServiceTest {
         assertEquals("INIT", shot.getRenderStatus());
         assertNull(shot.getLatestTaskId());
         verify(dramaShotMapper, times(1)).updateById(shot);
-        verify(renderTaskMapper, times(1)).updateById(entity);
+        verify(renderTaskMapper, times(1)).update(isNull(), any());
         assertEquals("CANCELLED", entity.getStatus());
         verify(hashOperations, times(1)).delete("freyja:render:active_tasks", taskId);
         verify(zSetOperations, times(1)).remove("freyja:render:active_queue", taskId);
@@ -218,13 +220,14 @@ class RenderTaskServiceTest {
     }
 
     @Test
-    void testCancelTask_RemoteFailed_ThrowsBizException() {
+    void testCancelTask_RemoteFailed_StopsLocalWorkAndReportsFailure() {
         String taskId = "TEST_TASK_FAILED";
         RenderTask entity = new RenderTask();
         entity.setId(3005L);
         entity.setTaskId(taskId);
         entity.setStatus("RENDERING");
         when(renderTaskMapper.selectOne(any())).thenReturn(entity);
+        when(renderTaskMapper.update(isNull(), any())).thenReturn(1);
         when(aiImageApiService.cancelRemoteTask(any(), any(), any())).thenReturn(
                 com.astra.freyja.dto.render.RemoteCancelResultVO.builder()
                         .success(false)
@@ -233,7 +236,25 @@ class RenderTaskServiceTest {
                         .build()
         );
 
-        assertThrows(com.astra.freyja.common.BizException.class, () -> renderTaskService.cancelTask(taskId));
-        assertNotEquals("CANCELLED", entity.getStatus());
+        var result = renderTaskService.cancelTaskDetailed(taskId);
+        assertTrue(result.isCancelled());
+        assertEquals("FAILED", result.getUpstreamStatus());
+        assertEquals("CANCELLED", entity.getStatus());
+        verify(hashOperations).delete("freyja:render:active_tasks", taskId);
+    }
+
+    @Test
+    void testFinishTask_DoesNotOverwriteCancelledTask() {
+        RenderTask entity = new RenderTask();
+        entity.setId(99L);
+        entity.setTaskId("CANCELLED_TASK");
+        entity.setStatus("CANCELLED");
+        when(renderTaskMapper.selectOne(any())).thenReturn(entity);
+
+        renderTaskService.finishTask("CANCELLED_TASK", "late-output.mp4", null);
+
+        verify(renderTaskMapper).update(isNull(), any());
+        verify(hashOperations, never()).delete(anyString(), any());
+        verify(wsHandler, never()).broadcast(any());
     }
 }

@@ -236,6 +236,9 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
                 null
         );
         aiTaskService.markRunning(aiTask.getId());
+        if (Thread.currentThread().isInterrupted() || aiTaskService.isCancelled(aiTask.getId())) {
+            throw new java.util.concurrent.CancellationException("Planner 已取消");
+        }
 
         PlannerDecomposeResultVO result;
         StringBuilder fullOutput = new StringBuilder();
@@ -250,7 +253,8 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
                         }));
             } else {
             try {
-                chatModel.stream(prompt).toStream().forEach(chunk -> {
+                try (var stream = chatModel.stream(prompt).toStream()) { stream.forEach(chunk -> {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Planner 已取消");
                     if (chunk != null && chunk.getResult() != null && chunk.getResult().getOutput() != null) {
                         String token = chunk.getResult().getOutput().getText();
                         if (StringUtils.isNotEmpty(token)) {
@@ -261,8 +265,11 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
                             }
                         }
                     }
-                });
+                }); }
             } catch (Exception streamEx) {
+                if (Thread.currentThread().isInterrupted() || aiTaskService.isCancelled(aiTask.getId())) {
+                    throw new java.util.concurrent.CancellationException("Planner 已取消");
+                }
                 if (!fullOutput.isEmpty()) throw streamEx;
                 log.debug("[PlannerAI] 流式调用降级为同步调用: {}", streamEx.getMessage());
                 ChatResponse response = chatModel.call(prompt);
@@ -279,6 +286,9 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
             }
 
             long callDuration = System.currentTimeMillis() - startMs;
+            if (Thread.currentThread().isInterrupted() || aiTaskService.isCancelled(aiTask.getId())) {
+                throw new java.util.concurrent.CancellationException("Planner 已取消");
+            }
             if (fullOutput.isEmpty()) {
                 aiTaskService.markFailed(aiTask.getId(), "Planner AI 未返回有效响应");
                 throw new BizException("Planner AI 未返回有效响应");

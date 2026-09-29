@@ -30,4 +30,8 @@
 
 `POST /task-center/{sourceType}/{taskId}/cancel`
 
-当前支持取消 `RENDER_TASK`。AI 提示词分析暂不强制中断，关闭弹窗后继续执行并可从任务中心恢复结果。
+支持取消 `AI_TASK` 和 `RENDER_TASK`。AI 父任务取消时会停止派生子任务，并取消已关联的渲染任务。渲染与视频处理任务会调用网关 `POST /v1/tasks/cancel`，随后中断本地工作线程。
+
+返回 `cancelled`、`status`、`upstreamStatus`、`message`。`upstreamStatus` 为 `CONFIRMED`、`UNCONFIRMED` 或 `FAILED`。`CONFIRMED` 表示上游确认取消，`UNCONFIRMED` 表示已中断本地请求但上游没有提供确认，`FAILED` 表示上游取消调用失败且本地工作已停止。此时 AI 任务状态为 `CANCEL_UNCONFIRMED`，渲染任务在 `cancelUpstreamStatus` 保留上游状态。
+
+普通 OpenAI 兼容 Chat Completions 与 Ollama 同步请求没有通用的任务 ID 和取消端点。取消会中断本地请求线程；远端是否立即停止计算无法确认，因此界面显示“请求已中断（上游未确认）”。关闭弹窗或取消 WebSocket 订阅不会取消任务，需调用本接口。

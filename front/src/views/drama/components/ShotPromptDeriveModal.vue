@@ -1132,9 +1132,11 @@ async function restorePromptTask(shotId: string, explicitTaskId: string | undefi
       backgroundStatus.value = 'completed'
       restoredTaskRunning.value = false
       emit('task-finished', taskId)
-    } else if (task.status === 'FAILED' || task.status === 'CANCELLED') {
+    } else if (task.status === 'FAILED' || task.status === 'CANCELLED' || task.status === 'CANCEL_UNCONFIRMED') {
       backgroundStatus.value = 'failed'
-      backgroundError.value = task.errorMessage || (task.status === 'CANCELLED' ? '提示词任务已取消' : '提示词分析失败')
+      backgroundError.value = task.errorMessage || (task.status === 'CANCEL_UNCONFIRMED'
+        ? '本地请求已中断，上游未确认停止'
+        : task.status === 'CANCELLED' ? '提示词任务已取消' : '提示词分析失败')
       restoredTaskRunning.value = false
       emit('task-finished', taskId)
     } else {

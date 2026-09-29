@@ -81,6 +81,8 @@ docker compose up -d --build
 
 已有数据库启用 Story Normalizer 时，执行一次 `sh docker/mysql/migrations/apply-20260927-story-normalizer-prompt.sh`，将可编辑的标准化系统提示词加入系统配置。已有同键配置不会被覆盖。
 
+已有数据库启用 AI 任务关联渲染取消时，在更新后端容器前执行 `sh docker/mysql/migrations/apply-20260929-render-task-parent-ai-task.sh`。迁移为 `render_task` 增加父 AI 任务 ID 与上游取消状态；脚本可重复执行。全新数据库由初始化 SQL 直接建好这些字段。
+
 ### 4. 访问系统
 服务启动完成后，即可在浏览器打开：
 

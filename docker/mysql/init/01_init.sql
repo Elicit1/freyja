@@ -1540,6 +1540,8 @@ DROP TABLE IF EXISTS `render_task`;
 CREATE TABLE `render_task` (
     `id`                BIGINT UNSIGNED NOT NULL COMMENT '主键ID (雪花算法)',
     `task_id`           VARCHAR(64)     NOT NULL COMMENT '业务任务唯一标识 (如 RENDER_1710000000)',
+    `parent_ai_task_id` BIGINT UNSIGNED DEFAULT NULL COMMENT '创建此渲染的 AI 任务 ID',
+    `cancel_upstream_status` VARCHAR(32) DEFAULT NULL COMMENT '取消上游状态 CONFIRMED/UNCONFIRMED',
     `task_type`         VARCHAR(32)     NOT NULL COMMENT '任务类型: SHOT_FRAME(关键帧), SHOT_VIDEO(视频), GROUP_SERIAL(历史数据，仅用于兼容读取), ASSET_IMAGE(资产生图)',
     `task_name`         VARCHAR(255)    NOT NULL COMMENT '任务展示名称 (如: [第1集 S1 镜头名] 首帧渲染)',
     `drama_id`          BIGINT UNSIGNED DEFAULT 0 COMMENT '关联短剧ID',
@@ -1578,7 +1580,8 @@ CREATE TABLE `render_task` (
     KEY `idx_status_submit` (`status`, `submit_time`),
     KEY `idx_drama_episode` (`drama_id`, `episode_id`),
     KEY `idx_shot_id` (`shot_id`),
-    KEY `idx_task_type` (`task_type`)
+    KEY `idx_task_type` (`task_type`),
+    KEY `idx_render_parent_ai_task` (`parent_ai_task_id`, `status`)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '渲染任务与历史归档记录表';
 
 -- ==============================================================================

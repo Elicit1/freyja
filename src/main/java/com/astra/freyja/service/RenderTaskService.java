@@ -2,6 +2,7 @@ package com.astra.freyja.service;
 
 import com.astra.freyja.dto.render.RenderTaskQuery;
 import com.astra.freyja.dto.render.RenderTaskVO;
+import com.astra.freyja.dto.task.TaskCancelResultVO;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 
 import java.util.List;
@@ -36,6 +37,11 @@ public interface RenderTaskService {
      * 主动取消任务 (修改状态为 CANCELLED + 归档 MySQL + 移除 Redis + WebSocket 广播 TASK_CANCELLED)
      */
     boolean cancelTask(String taskId);
+
+    TaskCancelResultVO cancelTaskDetailed(String taskId);
+
+    /** Active render jobs created by one or more AI tasks. */
+    List<RenderTaskVO> getActiveTasksByParentAiTaskIds(List<Long> parentTaskIds);
 
     /**
      * 获取当前所有实时排队与渲染中的活跃任务列表 (直接从 Redis 读取)

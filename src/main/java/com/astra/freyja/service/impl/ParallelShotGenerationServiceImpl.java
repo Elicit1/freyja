@@ -144,11 +144,17 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
 
         List<SegmentShotResult> results = new ArrayList<>();
         try {
-            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).get();
             for (CompletableFuture<SegmentShotResult> f : futures) {
                 results.add(f.get());
             }
+        } catch (InterruptedException e) {
+            futures.forEach(future -> future.cancel(true));
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+            throw new java.util.concurrent.CancellationException("并行分镜解析已取消");
         } catch (Exception e) {
+            executor.shutdownNow();
             log.error("[ParallelShotGeneration] taskId={} parallel execution failed",
                     globalContext == null ? null : globalContext.getTaskId(), e);
             throw new BizException("并行分镜解析失败: " + e.getMessage());
@@ -246,6 +252,11 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
 
         Exception lastException = null;
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
+            if (Thread.currentThread().isInterrupted()
+                    || (globalContext != null && globalContext.getTaskId() != null
+                    && aiTaskService.isCancelled(globalContext.getTaskId()))) {
+                throw new java.util.concurrent.CancellationException("Worker 已取消");
+            }
             log.info("[Worker] taskId={} segment={} attempt={} started, model={}",
                     globalContext == null ? null : globalContext.getTaskId(), segId, attempt, request.getModelCode());
             if (attempt > 0) {
@@ -313,6 +324,11 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                 }
                 return shotResultVO;
             } catch (Exception e) {
+                if (Thread.currentThread().isInterrupted()
+                        || (globalContext != null && globalContext.getTaskId() != null
+                        && aiTaskService.isCancelled(globalContext.getTaskId()))) {
+                    throw new java.util.concurrent.CancellationException("Worker 已取消");
+                }
                 lastException = e;
                 log.warn("[Worker] taskId={} segment={} attempt={} failed",
                         globalContext == null ? null : globalContext.getTaskId(), segId, attempt, e);
@@ -422,6 +438,9 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                 null
         );
         aiTaskService.markRunning(aiTask.getId());
+        if (aiTaskService.isCancelled(aiTask.getId()) || Thread.currentThread().isInterrupted()) {
+            throw new java.util.concurrent.CancellationException("Worker 已取消");
+        }
 
         StringBuilder fullOutput = new StringBuilder();
         try {
@@ -431,7 +450,8 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                         }));
             } else {
             try {
-                chatModel.stream(prompt).toStream().forEach(chunk -> {
+                try (var stream = chatModel.stream(prompt).toStream()) { stream.forEach(chunk -> {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Worker 已取消");
                     if (chunk != null && chunk.getResult() != null && chunk.getResult().getOutput() != null) {
                         String token = chunk.getResult().getOutput().getText();
                         if (StringUtils.isNotEmpty(token)) {
@@ -441,8 +461,11 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                             }
                         }
                     }
-                });
+                }); }
             } catch (Exception streamEx) {
+                if (Thread.currentThread().isInterrupted() || aiTaskService.isCancelled(aiTask.getId())) {
+                    throw new java.util.concurrent.CancellationException("Worker 已取消");
+                }
                 if (!fullOutput.isEmpty()) throw streamEx;
                 log.debug("[Worker] segment={} 流式调用降级为同步调用: {}", segment.getId(), streamEx.getMessage());
                 ChatResponse response = chatModel.call(prompt);
@@ -458,6 +481,9 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
             }
 
             long callDuration = System.currentTimeMillis() - startMs;
+            if (Thread.currentThread().isInterrupted() || aiTaskService.isCancelled(aiTask.getId())) {
+                throw new java.util.concurrent.CancellationException("Worker 已取消");
+            }
             if (fullOutput.isEmpty()) {
                 aiTaskService.markFailed(aiTask.getId(), "Worker AI 未返回有效响应");
                 throw new BizException("Worker AI 未返回有效响应");

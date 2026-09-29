@@ -7,7 +7,7 @@ const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RE
 export interface PromptEvent {
   taskId: string
   seq: number
-  type: 'task_created' | 'stage' | 'chunk' | 'result' | 'error' | 'done' | 'segments_init' | 'assets_discovered' | 'channel_chunk' | 'worker_status' | 'normalizer_status' | 'skill_event' | 'channel_reset'
+  type: 'task_created' | 'stage' | 'chunk' | 'result' | 'error' | 'cancelled' | 'done' | 'segments_init' | 'assets_discovered' | 'channel_chunk' | 'worker_status' | 'normalizer_status' | 'skill_event' | 'channel_reset'
   data: string
 }
 
@@ -87,7 +87,7 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
         recentTasks.value.splice(recentIndex, 1)
       }
     } else {
-      // 任务进入终态 (SUCCESS / PARTIAL_SUCCESS / FAILED / CANCELLED)
+      // 任务进入终态 (SUCCESS / PARTIAL_SUCCESS / FAILED / CANCELLED / CANCEL_UNCONFIRMED)
       if (activeIndex >= 0) {
         activeTasks.value.splice(activeIndex, 1)
       }

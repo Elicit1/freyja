@@ -4,6 +4,7 @@ import com.astra.freyja.common.R;
 import com.astra.freyja.dto.render.RenderTaskQuery;
 import com.astra.freyja.dto.render.RenderTaskVO;
 import com.astra.freyja.service.RenderTaskService;
+import com.astra.freyja.service.TaskCenterService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +21,7 @@ import java.util.List;
 public class RenderTaskController {
 
     private final RenderTaskService renderTaskService;
+    private final TaskCenterService taskCenterService;
 
     /**
      * 获取当前实时排队与执行中的活跃渲染任务 (直接走 Redis 缓存)
@@ -58,6 +60,6 @@ public class RenderTaskController {
      */
     @PostMapping("/{taskId}/cancel")
     public R<Boolean> cancelTask(@PathVariable String taskId) {
-        return R.ok(renderTaskService.cancelTask(taskId));
+        return R.ok(taskCenterService.cancelTask("RENDER_TASK", taskId).isCancelled());
     }
 }

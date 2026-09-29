@@ -10,17 +10,21 @@ import com.astra.freyja.dto.script.AiTaskDTO;
 import com.astra.freyja.dto.script.AiTaskQueryDTO;
 import com.astra.freyja.dto.task.TaskCenterHistoryVO;
 import com.astra.freyja.dto.task.TaskCenterItemVO;
+import com.astra.freyja.dto.task.TaskCancelResultVO;
 import com.astra.freyja.entity.Drama;
 import com.astra.freyja.entity.DramaEpisode;
 import com.astra.freyja.entity.DramaScene;
 import com.astra.freyja.entity.DramaShot;
 import com.astra.freyja.service.AiTaskService;
+import com.astra.freyja.service.AiTaskExecutionRegistry;
 import com.astra.freyja.service.RenderTaskService;
+import com.astra.freyja.service.VideoProcessingService;
 import com.astra.freyja.service.TaskCenterService;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -48,6 +52,8 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     private final DramaEpisodeMapper episodeMapper;
     private final DramaSceneMapper sceneMapper;
     private final DramaShotMapper shotMapper;
+    @Autowired(required = false)
+    private VideoProcessingService videoProcessingService;
 
     @Override
     public List<TaskCenterItemVO> getActiveTasks() {
@@ -107,13 +113,103 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     }
 
     @Override
-    public boolean cancelTask(String sourceType, String taskId) {
-        if (StringUtils.isBlank(sourceType) || StringUtils.isBlank(taskId)) return false;
+    public synchronized TaskCancelResultVO cancelTask(String sourceType, String taskId) {
+        if (StringUtils.isBlank(sourceType) || StringUtils.isBlank(taskId)) return failedCancel("任务标识不能为空");
         if ("RENDER_TASK".equalsIgnoreCase(sourceType)) {
-            return renderTaskService.cancelTask(taskId);
+            RenderTaskVO render = renderTaskService.getTaskById(taskId);
+            if (render != null && videoProcessingService != null
+                    && ("VIDEO_UPSCALE".equals(render.getTaskType()) || "FRAME_INTERPOLATION".equals(render.getTaskType()))) {
+                if (!videoProcessingService.cancelTask(taskId)) return failedCancel("视频处理任务已结束或无法取消");
+                RenderTaskVO updated = renderTaskService.getTaskById(taskId);
+                String upstream = updated == null ? "UNCONFIRMED"
+                        : StringUtils.defaultIfBlank(updated.getCancelUpstreamStatus(), "UNCONFIRMED");
+                return TaskCancelResultVO.builder().cancelled(true)
+                        .status("CONFIRMED".equals(upstream) ? "CANCELLED" : "CANCEL_UNCONFIRMED")
+                    .upstreamStatus(upstream).message("CONFIRMED".equals(upstream)
+                            ? "上游视频任务已确认取消" : "FAILED".equals(upstream)
+                            ? "本地视频任务已中断；上游取消调用失败" : "本地视频任务已中断；上游未确认停止").build();
+            }
+            return renderTaskService.cancelTaskDetailed(taskId);
         }
-        // AI 分析任务当前没有安全的中断协议，保留后台执行并支持结果恢复。
-        return false;
+        if (!"AI_TASK".equalsIgnoreCase(sourceType)) return failedCancel("不支持的任务类型");
+        Long id = parseLong(taskId);
+        if (id == null) return failedCancel("AI 任务 ID 无效");
+        AiTaskDTO root = aiTaskService.getTaskById(id);
+        if (root == null) return failedCancel("AI 任务不存在");
+        if ("CANCELLED".equals(root.getStatus()) || "CANCEL_UNCONFIRMED".equals(root.getStatus())) {
+            return TaskCancelResultVO.builder().cancelled(true).status(root.getStatus())
+                    .upstreamStatus("CANCELLED".equals(root.getStatus()) ? "CONFIRMED" : "UNCONFIRMED")
+                    .message(root.getErrorMessage()).build();
+        }
+        if (!ACTIVE_AI_STATUSES.contains(root.getStatus())) return failedCancel("AI 任务已结束，无法取消");
+
+        // Seal the root first. createTask serializes this check with markCancelled, so no
+        // new direct child can start once the root has entered a cancelled state.
+        if (!aiTaskService.markCancelled(id, false)) return failedCancel("AI 任务在取消时已完成");
+        Set<Long> taskIds = new java.util.HashSet<>();
+        taskIds.add(id);
+        Set<String> handledRenders = new java.util.HashSet<>();
+        boolean remoteConfirmed = !isDirectModelRequest(root) || "PENDING".equals(root.getStatus());
+        boolean remoteFailed = false;
+        boolean changed;
+        do {
+            List<AiTaskDTO> allTasks = aiTaskService.listTasks(null);
+            changed = false;
+            boolean found;
+            do {
+                found = false;
+                for (AiTaskDTO task : allTasks) {
+                    if (task.getParentTaskId() != null && taskIds.contains(task.getParentTaskId())) {
+                        found |= taskIds.add(task.getId());
+                    }
+                }
+            } while (found);
+
+            for (AiTaskDTO task : allTasks) {
+                if (!id.equals(task.getId()) && taskIds.contains(task.getId())
+                        && ACTIVE_AI_STATUSES.contains(task.getStatus())) {
+                    if (isDirectModelRequest(task) && !"PENDING".equals(task.getStatus())) remoteConfirmed = false;
+                    changed |= aiTaskService.markCancelled(task.getId(), false);
+                }
+            }
+            for (RenderTaskVO render : renderTaskService.getActiveTasksByParentAiTaskIds(List.copyOf(taskIds))) {
+                if (!handledRenders.add(render.getTaskId())) continue;
+                changed = true;
+                try {
+                    TaskCancelResultVO result = renderTaskService.cancelTaskDetailed(render.getTaskId());
+                    if (!result.isCancelled() || !"CONFIRMED".equals(result.getUpstreamStatus())) remoteConfirmed = false;
+                    if ("FAILED".equals(result.getUpstreamStatus())) remoteFailed = true;
+                } catch (Exception e) {
+                    // A remote failure must not prevent cancellation of the other descendants.
+                    remoteConfirmed = false;
+                    remoteFailed = true;
+                    com.astra.freyja.service.RenderTaskThreadRegistry.interrupt(render.getTaskId());
+                }
+            }
+            for (Long childId : taskIds) AiTaskExecutionRegistry.interrupt(childId);
+        } while (changed);
+
+        if (remoteConfirmed) {
+            for (Long childId : taskIds) aiTaskService.markCancelled(childId, true);
+        }
+        String status = remoteConfirmed ? "CANCELLED" : "CANCEL_UNCONFIRMED";
+        return TaskCancelResultVO.builder().cancelled(true).status(status)
+                .upstreamStatus(remoteFailed ? "FAILED" : remoteConfirmed ? "CONFIRMED" : "UNCONFIRMED")
+                .message(remoteFailed ? "本地任务已中断；部分上游取消调用失败"
+                        : remoteConfirmed ? "任务及上游作业已取消" : "本地请求已中断；上游未提供取消确认")
+                .build();
+    }
+
+    private boolean isDirectModelRequest(AiTaskDTO task) {
+        if (task == null) return false;
+        return !"CHAPTER_DECOMPOSE".equals(task.getTaskType())
+                && !"SHOT_FRAME_GENERATE".equals(task.getTaskType())
+                && !"ASSET_IMAGE_GENERATE".equals(task.getTaskType());
+    }
+
+    private TaskCancelResultVO failedCancel(String message) {
+        return TaskCancelResultVO.builder().cancelled(false).status("FAILED")
+                .upstreamStatus("FAILED").message(message).build();
     }
 
     private TaskCenterItemVO fromAi(AiTaskDTO task) {
@@ -176,7 +272,9 @@ public class TaskCenterServiceImpl implements TaskCenterService {
                 .category("RENDER")
                 .taskType(task.getTaskType())
                 .title(StringUtils.defaultIfBlank(task.getTaskName(), "渲染任务"))
-                .status(normalizeRenderStatus(task.getStatus()))
+                .status("CANCELLED".equals(task.getStatus())
+                        && !"CONFIRMED".equals(task.getCancelUpstreamStatus())
+                        ? "CANCEL_UNCONFIRMED" : normalizeRenderStatus(task.getStatus()))
                 .progress(task.getProgress())
                 .currentStage(task.getCurrentNode())
                 .modelCode(task.getModelCode())

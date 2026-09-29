@@ -62,16 +62,23 @@ public class StoryNormalizerServiceImpl implements StoryNormalizerService {
                     AiTaskType.STORY_NORMALIZE, "NORMALIZER_" + segment.getId(), parentTaskId,
                     "Segment: " + segment.getId() + ", TextLen: " + segment.getRawText().length(), request.getModelCode(), null);
             aiTaskService.markRunning(task.getId());
+            if (Thread.currentThread().isInterrupted() || aiTaskService.isCancelled(task.getId())) {
+                throw new java.util.concurrent.CancellationException("Normalizer 已取消");
+            }
             StringBuilder fullOutput = new StringBuilder();
             try {
-                model.stream(prompt).toStream().forEach(chunk -> {
+                try (var stream = model.stream(prompt).toStream()) { stream.forEach(chunk -> {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("Normalizer 已取消");
                     if (chunk == null || chunk.getResult() == null || chunk.getResult().getOutput() == null) return;
                     String token = chunk.getResult().getOutput().getText();
                     if (StringUtils.isEmpty(token)) return;
                     fullOutput.append(token);
                     if (chunkConsumer != null) chunkConsumer.accept(token);
-                });
+                }); }
             } catch (Exception streamError) {
+                if (Thread.currentThread().isInterrupted() || aiTaskService.isCancelled(task.getId())) {
+                    throw new java.util.concurrent.CancellationException("Normalizer 已取消");
+                }
                 if (!fullOutput.isEmpty()) throw streamError;
                 log.debug("[StoryNormalizer] segment={} 流式调用降级为同步调用: {}", segment.getId(), streamError.getMessage());
                 ChatResponse response = model.call(prompt);
@@ -84,6 +91,9 @@ public class StoryNormalizerServiceImpl implements StoryNormalizerService {
                 }
             }
             String output = fullOutput.toString();
+            if (Thread.currentThread().isInterrupted() || aiTaskService.isCancelled(task.getId())) {
+                throw new java.util.concurrent.CancellationException("Normalizer 已取消");
+            }
             NormalizedSegment parsed = StringUtils.isBlank(output) ? null
                     : validationService.parseAndValidate(output, NormalizedSegment.class);
             if (parsed == null || StringUtils.isBlank(parsed.getNormalizedContent())) {
@@ -95,6 +105,10 @@ public class StoryNormalizerServiceImpl implements StoryNormalizerService {
                     parentTaskId, segment.getId(), System.currentTimeMillis() - started,
                     segment.getRawText().length(), segment.getNormalizedContent().length());
         } catch (Exception e) {
+            if (Thread.currentThread().isInterrupted()
+                    || (parentTaskId != null && aiTaskService.isCancelled(parentTaskId))) {
+                throw new java.util.concurrent.CancellationException("Normalizer 已取消");
+            }
             segment.setNormalizedContent(null);
             if (task != null) aiTaskService.markFailed(task.getId(), e.getMessage());
             log.warn("[StoryNormalizer] taskId={} segment={} failure, fallback=originalContent durationMs={}",

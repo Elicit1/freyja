@@ -136,13 +136,15 @@ function refresh() {
 }
 
 function canCancel(task: TaskCenterItem) {
-  return task.sourceType === 'RENDER_TASK' && isActive(task.status)
+  return (task.sourceType === 'RENDER_TASK' || task.sourceType === 'AI_TASK') && isActive(task.status)
 }
 
 async function cancelTask(task: TaskCenterItem) {
   try {
-    await taskCenterApi.cancelTask(task.sourceType, task.taskId)
-    ElMessage.success('任务已取消')
+    const result = await taskCenterApi.cancelTask(task.sourceType, task.taskId)
+    if (!result.cancelled) throw new Error(result.message || '取消任务失败')
+    if (result.upstreamStatus !== 'CONFIRMED') ElMessage.warning(result.message)
+    else ElMessage.success(result.message || '任务已取消')
     await store.refreshActive()
   } catch (error: any) {
     ElMessage.error(error?.message || '取消任务失败')
@@ -204,13 +206,14 @@ function isActive(status: string) {
 }
 
 function statusLabel(status: string) {
-  return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '失败', CANCELLED: '已取消' } as Record<string, string>)[status] || status
+  return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '失败', CANCELLED: '已取消', CANCEL_UNCONFIRMED: '请求已中断（上游未确认）' } as Record<string, string>)[status] || status
 }
 
 function statusTone(status: string): 'success' | 'warning' | 'danger' | 'processing' | 'pending' | 'disabled' {
   if (status === 'SUCCESS') return 'success'
   if (status === 'FAILED') return 'danger'
   if (status === 'CANCELLED') return 'disabled'
+  if (status === 'CANCEL_UNCONFIRMED') return 'warning'
   if (status === 'QUEUED' || status === 'PENDING') return 'pending'
   return 'processing'
 }

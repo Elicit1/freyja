@@ -1,6 +1,13 @@
 import { request } from './request'
 
-export type TaskCenterStatus = 'QUEUED' | 'PENDING' | 'RUNNING' | 'RETRYING' | 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED' | 'CANCELLED'
+export type TaskCenterStatus = 'QUEUED' | 'PENDING' | 'RUNNING' | 'RETRYING' | 'SUCCESS' | 'PARTIAL_SUCCESS' | 'FAILED' | 'CANCELLED' | 'CANCEL_UNCONFIRMED'
+
+export interface TaskCancelResult {
+  cancelled: boolean
+  status: string
+  upstreamStatus: 'CONFIRMED' | 'UNCONFIRMED' | 'FAILED'
+  message: string
+}
 
 export interface TaskCenterItem {
   sourceType: 'AI_TASK' | 'RENDER_TASK' | string
@@ -71,7 +78,7 @@ export const taskCenterApi = {
   },
 
   cancelTask(sourceType: string, taskId: string) {
-    return request<boolean>({
+    return request<TaskCancelResult>({
       url: `/task-center/${sourceType}/${taskId}/cancel`,
       method: 'post'
     })

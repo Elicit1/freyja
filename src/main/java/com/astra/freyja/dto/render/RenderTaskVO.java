@@ -22,6 +22,12 @@ public class RenderTaskVO implements Serializable {
     /** 业务任务唯一标识 */
     private String taskId;
 
+    /** AI task that started this render, when applicable. */
+    private Long parentAiTaskId;
+
+    /** CONFIRMED or UNCONFIRMED after cancellation. */
+    private String cancelUpstreamStatus;
+
     /** 任务类型: SHOT_FRAME(关键帧), SHOT_VIDEO(视频), GROUP_SERIAL(历史数据，仅用于兼容读取), ASSET_IMAGE(资产生图) */
     private String taskType;
 

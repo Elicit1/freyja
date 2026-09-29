@@ -10,7 +10,8 @@ public enum AiTaskStatus {
     PARTIAL_SUCCESS("部分成功(待补救)"),
     FAILED("已失败"),
     RETRYING("重试中"),
-    CANCELLED("已取消");
+    CANCELLED("上游已确认取消"),
+    CANCEL_UNCONFIRMED("请求已中断，上游未确认");
 
     private final String description;
 

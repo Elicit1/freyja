@@ -49,16 +49,23 @@ public class AiEventTaskService {
         Thread.ofVirtual().start(() -> {
             try {
                 taskService.markRunning(task.getId());
+                if (taskService.isCancelled(task.getId())) throw new java.util.concurrent.CancellationException("任务已取消");
                 append(id, "stage", "⚡ 正在执行 AI 推理...\n", scriptDraft);
                 Object result = work.call();
+                if (taskService.isCancelled(task.getId())) throw new java.util.concurrent.CancellationException("任务已取消");
                 String json = objectMapper.writeValueAsString(result);
                 if (type == AiTaskType.CHARACTER_PROMPT_DERIVE || type == AiTaskType.LOOK_PROMPT_DERIVE
                         || type == AiTaskType.SCENE_PROMPT_DERIVE || type == AiTaskType.PROP_PROMPT_DERIVE) {
                     append(id, "chunk", json, scriptDraft);
                 }
+                if (taskService.isCancelled(task.getId())) throw new java.util.concurrent.CancellationException("任务已取消");
                 append(id, "result", json, scriptDraft);
                 taskService.markSuccess(task.getId(), json, 0);
             } catch (Exception e) {
+                if (taskService.isCancelled(task.getId())) {
+                    try { append(id, "cancelled", "任务已取消", scriptDraft); } catch (Exception ignored) { }
+                    return;
+                }
                 log.error("[AiEventTask] 执行失败: taskId={}", id, e);
                 String message = e.getMessage() == null ? "AI 任务执行失败" : e.getMessage();
                 try { append(id, "error", message, scriptDraft); } catch (Exception ignored) { }

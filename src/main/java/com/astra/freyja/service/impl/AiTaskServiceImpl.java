@@ -13,10 +13,12 @@ import com.astra.freyja.entity.AiTask;
 import com.astra.freyja.entity.enums.AiTaskStatus;
 import com.astra.freyja.entity.enums.AiTaskType;
 import com.astra.freyja.service.AiTaskService;
+import com.astra.freyja.service.AiTaskExecutionRegistry;
 import com.astra.freyja.service.ScriptDecomposeDraftStore;
 import com.astra.freyja.service.ShotPromptEventStore;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.IdWorker;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +42,9 @@ import java.util.List;
 @Slf4j
 @Service
 public class AiTaskServiceImpl implements AiTaskService {
+
+    private static final List<String> ACTIVE_STATUSES = List.of("PENDING", "RUNNING", "RETRYING");
+    private static final List<String> FINISHABLE_STATUSES = List.of("PENDING", "RUNNING", "RETRYING", "PARTIAL_SUCCESS");
 
     private final AiTaskMapper aiTaskMapper;
     private final ObjectMapper objectMapper;
@@ -83,8 +88,11 @@ public class AiTaskServiceImpl implements AiTaskService {
     }
 
     @Override
-    public AiTask createTask(Long dramaId, Long episodeId, AiTaskType taskType, String targetId,
+    public synchronized AiTask createTask(Long dramaId, Long episodeId, AiTaskType taskType, String targetId,
                               Long parentTaskId, String inputPayload, String modelCode, Integer maxTokens) {
+        if (parentTaskId != null && isCancelled(parentTaskId)) {
+            throw new java.util.concurrent.CancellationException("父任务已取消");
+        }
         AiTask task = new AiTask();
         task.setDramaId(dramaId != null ? dramaId : 0L);
         task.setEpisodeId(episodeId);
@@ -122,22 +130,26 @@ public class AiTaskServiceImpl implements AiTaskService {
     }
 
     @Override
-    public void markRunning(Long taskId) {
+    public synchronized void markRunning(Long taskId) {
         if (taskId == null) return;
         AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
         if (draftTask != null) {
+            if (!ACTIVE_STATUSES.contains(draftTask.getStatus())) return;
             draftTask.setStatus(AiTaskStatus.RUNNING.name());
             draftTask.setStartedAt(LocalDateTime.now());
             draftStore.saveTask(draftTask);
+            AiTaskExecutionRegistry.register(taskId);
             publishTaskStatusChanged(taskId, draftTask.getStatus());
             return;
         }
         try {
-            AiTask task = aiTaskMapper.selectById(taskId);
-            if (task != null) {
-                task.setStatus(AiTaskStatus.RUNNING.name());
-                task.setStartedAt(LocalDateTime.now());
-                aiTaskMapper.updateById(task);
+            int changed = aiTaskMapper.update(null, new LambdaUpdateWrapper<AiTask>()
+                    .eq(AiTask::getId, taskId)
+                    .in(AiTask::getStatus, ACTIVE_STATUSES)
+                    .set(AiTask::getStatus, AiTaskStatus.RUNNING.name())
+                    .set(AiTask::getStartedAt, LocalDateTime.now()));
+            if (changed > 0) {
+                AiTaskExecutionRegistry.register(taskId);
                 publishTaskStatusChanged(taskId, AiTaskStatus.RUNNING.name());
             }
         } catch (Exception e) {
@@ -146,10 +158,12 @@ public class AiTaskServiceImpl implements AiTaskService {
     }
 
     @Override
-    public void markSuccess(Long taskId, String outputPayload, Integer consumedTokens) {
+    public synchronized void markSuccess(Long taskId, String outputPayload, Integer consumedTokens) {
         if (taskId == null) return;
+        AiTaskExecutionRegistry.unregister(taskId);
         AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
         if (draftTask != null) {
+            if (!FINISHABLE_STATUSES.contains(draftTask.getStatus())) return;
             draftTask.setStatus(AiTaskStatus.SUCCESS.name());
             draftTask.setOutputPayload(outputPayload);
             draftTask.setConsumedTokens(consumedTokens != null ? consumedTokens : 0);
@@ -160,15 +174,16 @@ public class AiTaskServiceImpl implements AiTaskService {
             return;
         }
         try {
-            AiTask task = aiTaskMapper.selectById(taskId);
-            if (task != null) {
-                task.setStatus(AiTaskStatus.SUCCESS.name());
-                task.setOutputPayload(outputPayload);
-                task.setConsumedTokens(consumedTokens != null ? consumedTokens : 0);
-                task.setFinishedAt(LocalDateTime.now());
-                task.setErrorMessage(null);
-                aiTaskMapper.updateById(task);
-                log.info("[AiTaskService] 任务执行成功: id={}, type={}", taskId, task.getTaskType());
+            int changed = aiTaskMapper.update(null, new LambdaUpdateWrapper<AiTask>()
+                    .eq(AiTask::getId, taskId)
+                    .in(AiTask::getStatus, FINISHABLE_STATUSES)
+                    .set(AiTask::getStatus, AiTaskStatus.SUCCESS.name())
+                    .set(AiTask::getOutputPayload, outputPayload)
+                    .set(AiTask::getConsumedTokens, consumedTokens != null ? consumedTokens : 0)
+                    .set(AiTask::getFinishedAt, LocalDateTime.now())
+                    .set(AiTask::getErrorMessage, null));
+            if (changed > 0) {
+                log.info("[AiTaskService] 任务执行成功: id={}", taskId);
                 publishTaskStatusChanged(taskId, AiTaskStatus.SUCCESS.name());
             }
         } catch (Exception e) {
@@ -177,10 +192,12 @@ public class AiTaskServiceImpl implements AiTaskService {
     }
 
     @Override
-    public void markFailed(Long taskId, String errorMessage) {
+    public synchronized void markFailed(Long taskId, String errorMessage) {
         if (taskId == null) return;
+        AiTaskExecutionRegistry.unregister(taskId);
         AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
         if (draftTask != null) {
+            if (!ACTIVE_STATUSES.contains(draftTask.getStatus())) return;
             draftTask.setStatus(AiTaskStatus.FAILED.name());
             draftTask.setErrorMessage(errorMessage);
             draftTask.setFinishedAt(LocalDateTime.now());
@@ -189,18 +206,64 @@ public class AiTaskServiceImpl implements AiTaskService {
             return;
         }
         try {
-            AiTask task = aiTaskMapper.selectById(taskId);
-            if (task != null) {
-                task.setStatus(AiTaskStatus.FAILED.name());
-                task.setErrorMessage(errorMessage);
-                task.setFinishedAt(LocalDateTime.now());
-                aiTaskMapper.updateById(task);
+            int changed = aiTaskMapper.update(null, new LambdaUpdateWrapper<AiTask>()
+                    .eq(AiTask::getId, taskId)
+                    .in(AiTask::getStatus, ACTIVE_STATUSES)
+                    .set(AiTask::getStatus, AiTaskStatus.FAILED.name())
+                    .set(AiTask::getErrorMessage, errorMessage)
+                    .set(AiTask::getFinishedAt, LocalDateTime.now()));
+            if (changed > 0) {
                 log.warn("[AiTaskService] 任务标记失败: id={}, error={}", taskId, errorMessage);
                 publishTaskStatusChanged(taskId, AiTaskStatus.FAILED.name());
             }
         } catch (Exception e) {
             log.debug("[AiTaskService] 更新任务状态为 FAILED 失败: taskId={}, msg={}", taskId, e.getMessage());
         }
+    }
+
+    @Override
+    public synchronized boolean markCancelled(Long taskId, boolean upstreamConfirmed) {
+        if (taskId == null) return false;
+        String status = upstreamConfirmed ? AiTaskStatus.CANCELLED.name() : AiTaskStatus.CANCEL_UNCONFIRMED.name();
+        String message = upstreamConfirmed ? "用户取消任务，上游已确认" : "本地请求已中断；上游未提供取消确认";
+        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        if (draftTask != null) {
+            if (isCancelledStatus(draftTask.getStatus())) {
+                if (upstreamConfirmed && AiTaskStatus.CANCEL_UNCONFIRMED.name().equals(draftTask.getStatus())) {
+                    draftTask.setStatus(AiTaskStatus.CANCELLED.name());
+                    draftTask.setErrorMessage(message);
+                    draftStore.saveTask(draftTask);
+                    publishTaskStatusChanged(taskId, status);
+                }
+                return true;
+            }
+            if (!ACTIVE_STATUSES.contains(draftTask.getStatus())) return false;
+            draftTask.setStatus(status);
+            draftTask.setErrorMessage(message);
+            draftTask.setFinishedAt(LocalDateTime.now());
+            draftStore.saveTask(draftTask);
+            publishTaskStatusChanged(taskId, status);
+            return true;
+        }
+        int changed = aiTaskMapper.update(null, new LambdaUpdateWrapper<AiTask>()
+                .eq(AiTask::getId, taskId)
+                .in(AiTask::getStatus, upstreamConfirmed
+                        ? List.of("PENDING", "RUNNING", "RETRYING", "CANCEL_UNCONFIRMED") : ACTIVE_STATUSES)
+                .set(AiTask::getStatus, status)
+                .set(AiTask::getErrorMessage, message)
+                .set(AiTask::getFinishedAt, LocalDateTime.now()));
+        if (changed > 0) publishTaskStatusChanged(taskId, status);
+        return changed > 0 || isCancelled(taskId);
+    }
+
+    @Override
+    public boolean isCancelled(Long taskId) {
+        AiTaskDTO task = getTaskById(taskId);
+        return task != null && isCancelledStatus(task.getStatus());
+    }
+
+    private boolean isCancelledStatus(String status) {
+        return AiTaskStatus.CANCELLED.name().equals(status) || AiTaskStatus.CANCEL_UNCONFIRMED.name().equals(status);
     }
 
     @Override
@@ -215,6 +278,9 @@ public class AiTaskServiceImpl implements AiTaskService {
         try {
             AiTask task = aiTaskMapper.selectById(taskId);
             if (task != null) {
+                if (isCancelledStatus(task.getStatus())) {
+                    throw new BizException("已取消任务不能直接重试，请重新创建任务");
+                }
                 task.setStatus(AiTaskStatus.RETRYING.name());
                 task.setRetryCount((task.getRetryCount() != null ? task.getRetryCount() : 0) + 1);
                 task.setStartedAt(LocalDateTime.now());
@@ -224,6 +290,8 @@ public class AiTaskServiceImpl implements AiTaskService {
                 publishTaskStatusChanged(taskId, AiTaskStatus.RETRYING.name());
                 return task;
             }
+        } catch (BizException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("[AiTaskService] 重试查询任务失败: taskId={}, msg={}", taskId, e.getMessage());
         }
@@ -290,10 +358,12 @@ public class AiTaskServiceImpl implements AiTaskService {
     }
 
     @Override
-    public void markPartialSuccess(Long taskId, String outputPayload, String errorMessage) {
+    public synchronized void markPartialSuccess(Long taskId, String outputPayload, String errorMessage) {
         if (taskId == null) return;
+        AiTaskExecutionRegistry.unregister(taskId);
         AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
         if (draftTask != null) {
+            if (!FINISHABLE_STATUSES.contains(draftTask.getStatus())) return;
             draftTask.setStatus(AiTaskStatus.PARTIAL_SUCCESS.name());
             draftTask.setOutputPayload(outputPayload);
             draftTask.setErrorMessage(errorMessage);
@@ -303,13 +373,14 @@ public class AiTaskServiceImpl implements AiTaskService {
             return;
         }
         try {
-            AiTask task = aiTaskMapper.selectById(taskId);
-            if (task != null) {
-                task.setStatus(AiTaskStatus.PARTIAL_SUCCESS.name());
-                task.setOutputPayload(outputPayload);
-                task.setErrorMessage(errorMessage);
-                task.setFinishedAt(LocalDateTime.now());
-                aiTaskMapper.updateById(task);
+            int changed = aiTaskMapper.update(null, new LambdaUpdateWrapper<AiTask>()
+                    .eq(AiTask::getId, taskId)
+                    .in(AiTask::getStatus, FINISHABLE_STATUSES)
+                    .set(AiTask::getStatus, AiTaskStatus.PARTIAL_SUCCESS.name())
+                    .set(AiTask::getOutputPayload, outputPayload)
+                    .set(AiTask::getErrorMessage, errorMessage)
+                    .set(AiTask::getFinishedAt, LocalDateTime.now()));
+            if (changed > 0) {
                 log.info("[AiTaskService] 任务标记为 PARTIAL_SUCCESS: id={}", taskId);
                 publishTaskStatusChanged(taskId, AiTaskStatus.PARTIAL_SUCCESS.name());
             }
@@ -319,10 +390,11 @@ public class AiTaskServiceImpl implements AiTaskService {
     }
 
     @Override
-    public void updateTaskPayload(Long taskId, String status, String outputPayload, String errorMessage) {
+    public synchronized void updateTaskPayload(Long taskId, String status, String outputPayload, String errorMessage) {
         if (taskId == null) return;
         AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
         if (draftTask != null) {
+            if (isCancelledStatus(draftTask.getStatus())) return;
             if (StringUtils.isNotBlank(status)) draftTask.setStatus(status);
             if (outputPayload != null) draftTask.setOutputPayload(outputPayload);
             draftTask.setErrorMessage(errorMessage);
@@ -332,7 +404,7 @@ public class AiTaskServiceImpl implements AiTaskService {
         }
         try {
             AiTask task = aiTaskMapper.selectById(taskId);
-            if (task != null) {
+            if (task != null && !isCancelledStatus(task.getStatus())) {
                 if (StringUtils.isNotBlank(status)) {
                     task.setStatus(status);
                 }

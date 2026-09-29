@@ -225,11 +225,17 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 log.info("[ScriptDecomposeTask] taskId={} started", id);
                 logger.accept("🚀 正在启动 AI 短剧并行分段分镜解析流水线...");
                 ScriptDecomposeResultVO result = executePipeline(request, channel, logger, bridge, task);
+                ensureTaskNotCancelled(task.getId());
                 bridge.sendResult(objectMapper.writeValueAsString(result));
                 bridge.complete();
                 log.info("[ScriptDecomposeTask] taskId={} finished, status={}, skillEvents={}",
                         id, result.getStatus(), result.getSkillEvents() == null ? 0 : result.getSkillEvents().size());
             } catch (Exception e) {
+                if (aiTaskService.isCancelled(task.getId())) {
+                    aiEvents.appendScript(id, "cancelled", "剧本拆解已取消");
+                    bridge.complete();
+                    return;
+                }
                 log.error("[ScriptDecomposeTask] 拆解失败: taskId={}", id, e);
                 aiTaskService.markFailed(task.getId(), e.getMessage());
                 bridge.sendError(e.getMessage());
@@ -260,7 +266,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                     request.getEpisodeId(),
                     AiTaskType.CHAPTER_DECOMPOSE,
                     "CHAPTER_" + System.currentTimeMillis() % 100000,
-                    null,
+                    com.astra.freyja.service.AiTaskExecutionRegistry.currentTaskId(),
                     draftStore == null ? objectMapper.writeValueAsString(request) : null,
                     request.getModelCode(),
                     16384
@@ -270,6 +276,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         if (aiTaskService != null && parentTask != null) aiTaskService.markRunning(parentTask.getId());
 
         Long taskId = parentTask != null ? parentTask.getId() : null;
+        ensureTaskNotCancelled(taskId);
         if (draftStore != null && taskId != null) draftStore.saveRequest(taskId, request);
 
         // 0. 加载并缓存 GlobalStoryContext (一次性加载，0 次重复查库)
@@ -325,6 +332,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         PlannerDecomposeResultVO plannerResult = chapterDecompositionService.decomposeChapter(
                 request.getRawText(), request, globalContext, channelChunkConsumer, stepLogger
         );
+        ensureTaskNotCancelled(taskId);
 
         if (plannerResult == null || plannerResult.getSegments() == null || plannerResult.getSegments().isEmpty()) {
             throw new BizException("Planner AI 章节分段未产生有效数据");
@@ -426,6 +434,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 stepLogger,
                 progressCallback
         );
+        ensureTaskNotCancelled(taskId);
 
         // 4. Java Merge Engine: 按 segment.sequence 排序、合并 Scene 与 ShotGroup、全局重编 Shot ID
         stepLogger.accept("\n[5/6] 🧩 Java Merge Engine 确定性合并与连续性体检 (ShotDurationRule) (0 次额外 AI 调用)...");
@@ -480,6 +489,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             mergedResult.setStatus("SUCCESS");
         }
 
+        ensureTaskNotCancelled(taskId);
         if (draftStore != null && taskId != null) draftStore.saveResult(taskId, mergedResult);
         if (aiTaskService != null && taskId != null) {
             String outputJson = draftStore == null ? objectMapper.writeValueAsString(mergedResult) : null;
@@ -492,10 +502,17 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
 
         return mergedResult;
         } catch (Exception e) {
-            if (aiTaskService != null && taskId != null) {
+            if (aiTaskService != null && taskId != null && !aiTaskService.isCancelled(taskId)) {
                 aiTaskService.markFailed(taskId, e.getMessage());
             }
             throw e;
+        }
+    }
+
+    private void ensureTaskNotCancelled(Long taskId) {
+        if (Thread.currentThread().isInterrupted()
+                || (taskId != null && aiTaskService != null && aiTaskService.isCancelled(taskId))) {
+            throw new java.util.concurrent.CancellationException("剧本拆解已取消");
         }
     }
 

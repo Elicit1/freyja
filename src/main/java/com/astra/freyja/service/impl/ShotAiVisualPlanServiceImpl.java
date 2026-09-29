@@ -1513,6 +1513,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             Long taskId = task != null ? task.getId() : null;
             try {
                 markPromptTaskRunning(taskId);
+                ensurePromptTaskNotCancelled(taskId);
                 // 1. 模型校验与提供商选择
                 Long providerId = dto.getProviderId();
                 String modelCode = dto.getModelCode();
@@ -1559,6 +1560,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                             streamed.set(true);
                             publishPromptEvent(taskId, sseBridge, "chunk", chunk);
                         });
+                ensurePromptTaskNotCancelled(taskId);
                 if (!streamed.get() && StringUtils.isNotBlank(rawText)) {
                     publishPromptEvent(taskId, sseBridge, "chunk", rawText);
                 }
@@ -1587,6 +1589,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
                 // 若指定了 shotId，将 DirectorPlan 合并更新回分镜实体
                 if (dto.getShotId() != null && dto.getShotId() > 0 && directorPlan != null) {
+                    ensurePromptTaskNotCancelled(taskId);
                     try {
                         DramaShot shot = shotMapper.selectById(dto.getShotId());
                         if (shot != null) {
@@ -1599,10 +1602,16 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 }
 
                 String resultJson = objectMapper.writeValueAsString(validationResult.getResult());
+                ensurePromptTaskNotCancelled(taskId);
                 markPromptTaskSuccess(taskId, resultJson);
                 publishPromptEvent(taskId, sseBridge, "result", resultJson);
                 publishPromptEvent(taskId, sseBridge, "done", "[DONE]");
             } catch (Exception e) {
+                if (taskId != null && aiTaskService != null && aiTaskService.isCancelled(taskId)) {
+                    publishPromptEvent(taskId, sseBridge, "cancelled", "任务已取消");
+                    publishPromptEvent(taskId, sseBridge, "done", "[DONE]");
+                    return;
+                }
                 log.error("[ShotPromptDeriveStream] 流式衍生分镜提示词异常: {}", e.getMessage(), e);
                 markPromptTaskFailed(taskId, "流式生成分镜提示词异常: " + e.getMessage());
                 try { publishPromptEvent(taskId, sseBridge, "error", "流式生成分镜提示词异常: " + e.getMessage()); }
@@ -1639,6 +1648,13 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     private void markPromptTaskRunning(Long taskId) {
         if (taskId != null && aiTaskService != null) aiTaskService.markRunning(taskId);
+    }
+
+    private void ensurePromptTaskNotCancelled(Long taskId) {
+        if (Thread.currentThread().isInterrupted()
+                || (taskId != null && aiTaskService != null && aiTaskService.isCancelled(taskId))) {
+            throw new java.util.concurrent.CancellationException("提示词任务已取消");
+        }
     }
 
     private void markPromptTaskSuccess(Long taskId, String resultJson) {

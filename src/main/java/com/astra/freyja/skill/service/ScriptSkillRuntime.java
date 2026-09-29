@@ -184,12 +184,13 @@ public class ScriptSkillRuntime {
         StringBuilder answer = new StringBuilder();
         var requestSpec = builder.build().prompt().system(invocation.systemPrompt());
         if (userPrompt != null) requestSpec = requestSpec.user(userPrompt);
-        requestSpec.tools(invocation.tools()).stream().content().toStream().forEach(chunk -> {
+        try (var stream = requestSpec.tools(invocation.tools()).stream().content().toStream()) { stream.forEach(chunk -> {
+                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("AI Skill 调用已取消");
                     if (StringUtils.isNotEmpty(chunk)) {
                         answer.append(chunk);
                         if (finalTextChunk != null) finalTextChunk.accept(chunk);
                     }
-                });
+                }); }
         log.info("[ScriptSkill] taskId={} stage={} segment={} attempt={} model completed, loaded={}, loadedReferenceFiles={}, toolCalls={}",
                 invocation.taskId(), invocation.stage(), invocation.segmentId(), invocation.attempt(),
                 invocation.session().getLoadedSkillNames(), invocation.session().getLoadedReferenceFiles(),

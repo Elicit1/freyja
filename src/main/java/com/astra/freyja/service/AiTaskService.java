@@ -35,6 +35,12 @@ public interface AiTaskService {
      */
     void markFailed(Long taskId, String errorMessage);
 
+    /** Mark an active task cancelled after its remote cancellation attempt. */
+    boolean markCancelled(Long taskId, boolean upstreamConfirmed);
+
+    /** Whether this task or its parent was cancelled. */
+    boolean isCancelled(Long taskId);
+
     /**
      * 对单个失败任务触发局部重新执行。
      *

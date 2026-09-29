@@ -6,9 +6,9 @@
 
 客户端发送 `{"event":"AI_SUBSCRIBE","taskId":"<字符串 ID>","afterSeq":0}` 订阅任务。服务端先从 Redis 按序补发 `afterSeq` 之后的事件，再推送实时事件。客户端重连时发送每位监听者最后处理的序号；新增监听者可以从 0 回放。取消监听发送 `AI_UNSUBSCRIBE`。原分镜提示词的 `PROMPT_SUBSCRIBE`、`PROMPT_UNSUBSCRIBE` 入站协议继续兼容。
 
-事件格式为 `{"event":"AI_EVENT","data":{"taskId":"...","seq":1,"type":"...","data":"..."}}`。事件类型包括 `task_created`、`stage`、`chunk`、`result`、`error`、`done`，剧本拆解另有 `segments_init`、`assets_discovered`、`channel_chunk`、`worker_status`。同一任务的事件在服务端串行写入 Redis 并广播；前端按监听者独立游标和序号交付，避免 Planner 与并发 Worker 片元乱序或重复。
+事件格式为 `{"event":"AI_EVENT","data":{"taskId":"...","seq":1,"type":"...","data":"..."}}`。事件类型包括 `task_created`、`stage`、`chunk`、`result`、`error`、`cancelled`、`done`，剧本拆解另有 `segments_init`、`assets_discovered`、`channel_chunk`、`worker_status`。同一任务的事件在服务端串行写入 Redis 并广播；前端按监听者独立游标和序号交付，避免 Planner 与并发 Worker 片元乱序或重复。
 
-事件日志保留 24 小时，用于短期重连和回放。任务的最终输出另存于 `ai_task.output_payload`，可通过 `GET /ai/tasks/{taskId}` 查询；任务中心可查看实时事件和持久化结果。关闭页面或中断监听不会停止后台任务。
+事件日志保留 24 小时，用于短期重连和回放。任务的最终输出另存于 `ai_task.output_payload`，可通过 `GET /ai/tasks/{taskId}` 查询；任务中心可查看实时事件和持久化结果。关闭页面或中断监听不会停止后台任务。主动停止请调用 `POST /task-center/AI_TASK/{taskId}/cancel`；运行中的同步聊天请求会中断本地连接，并标记上游取消未确认。
 
 ## 接入范围
 

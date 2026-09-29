@@ -10,6 +10,7 @@ import com.astra.freyja.entity.*;
 import com.astra.freyja.service.*;
 import com.astra.freyja.util.CryptoUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -67,6 +68,7 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
     private final DramaMapper dramaMapper;
     private final DramaEpisodeMapper episodeMapper;
     private final DramaSceneMapper sceneMapper;
+    private final Object[] taskStateLocks = new Object[64];
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -111,6 +113,11 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
         this.dramaMapper = dramaMapper;
         this.episodeMapper = episodeMapper;
         this.sceneMapper = sceneMapper;
+        Arrays.setAll(taskStateLocks, ignored -> new Object());
+    }
+
+    private Object taskStateLock(String taskId) {
+        return taskStateLocks[Math.floorMod(taskId.hashCode(), taskStateLocks.length)];
     }
 
     @Override
@@ -274,11 +281,9 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
         long startMs = System.currentTimeMillis();
         boolean isUpscale = "VIDEO_UPSCALE".equals(operation);
         log.info("[VideoProcessing] 开始异步执行视频处理任务: taskId={}, op={}, model={}", taskId, operation, modelCode);
-
-        // 更新状态为 PROCESSING
-        updateTaskProgress(entityId, taskId, "PROCESSING", 10, "正在连接网关并提交工作流...", null, null);
-
+        RenderTaskThreadRegistry.register(taskId, Thread.currentThread());
         try {
+            updateTaskProgress(entityId, taskId, "PROCESSING", 10, "正在连接网关并提交工作流...", null, null);
             // 1. 构造发往 FastAPI /v1/videos/generations 的 Payload
             Map<String, Object> payload = new HashMap<>();
             payload.put("model", modelCode);
@@ -305,6 +310,7 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
                     .build();
 
             HttpResponse<String> resp = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
+            ensureTaskNotCancelled(entityId);
             if (resp.statusCode() >= 300) {
                 throw new BizException(500, "FastAPI 网关返回错误 (" + resp.statusCode() + "): " + resp.body());
             }
@@ -331,6 +337,7 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             }
 
             // 2. 归档视频至 MinIO: video-processing/{taskId}/output.mp4
+            ensureTaskNotCancelled(entityId);
             updateTaskProgress(entityId, taskId, "PROCESSING", 85, "正在持久化归档至对象存储...", null, null);
             String outputVideoUrl = uploadToMinio("video-processing/" + taskId + "/output.mp4", videoBytes, "video/mp4");
 
@@ -362,8 +369,10 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
 
             // 5. 任务标记成功
             long costMs = System.currentTimeMillis() - startMs;
+            synchronized (taskStateLock(taskId)) {
             MediaProcessTask task = taskMapper.selectById(entityId);
             if (task != null) {
+                ensureTaskNotCancelled(entityId);
                 task.setStatus("SUCCESS");
                 task.setProgress(100);
                 task.setCurrentNode("处理完成");
@@ -374,7 +383,10 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
                 task.setDuration(duration);
                 task.setCostMs(costMs);
                 task.setFinishTime(LocalDateTime.now());
-                taskMapper.updateById(task);
+                int changed = taskMapper.update(task, new LambdaUpdateWrapper<MediaProcessTask>()
+                        .eq(MediaProcessTask::getId, entityId)
+                        .in(MediaProcessTask::getStatus, "QUEUED", "PENDING", "PROCESSING", "RUNNING"));
+                if (changed == 0) return;
 
                 // 🌟 若来源为分镜且开启了自动保存
                 if (task.getSourceShotId() != null && shouldAutoSave(task)) {
@@ -391,9 +403,15 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             }
 
             renderTaskService.finishTask(taskId, outputVideoUrl, coverImageUrl);
+            }
             log.info("[VideoProcessing] 视频处理任务成功完成: taskId={}, costMs={}ms, outputUrl={}", taskId, costMs, outputVideoUrl);
 
         } catch (Exception e) {
+            MediaProcessTask current = taskMapper.selectById(entityId);
+            if (current != null && "CANCELLED".equals(current.getStatus())) {
+                log.info("[VideoProcessing] 任务已取消，停止后续归档: taskId={}", taskId);
+                return;
+            }
             long costMs = System.currentTimeMillis() - startMs;
             log.error("[VideoProcessing] 视频后处理任务执行失败: taskId={}, err={}", taskId, e.getMessage(), e);
 
@@ -401,7 +419,7 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             e.printStackTrace(new PrintWriter(sw));
             String errorDetail = sw.toString();
 
-            MediaProcessTask task = taskMapper.selectById(entityId);
+            MediaProcessTask task = current;
             if (task != null) {
                 task.setStatus("FAILED");
                 task.setProgress(0);
@@ -410,10 +428,21 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
                 task.setErrorDetail(errorDetail);
                 task.setCostMs(costMs);
                 task.setFinishTime(LocalDateTime.now());
-                taskMapper.updateById(task);
+                taskMapper.update(task, new LambdaUpdateWrapper<MediaProcessTask>()
+                        .eq(MediaProcessTask::getId, entityId)
+                        .in(MediaProcessTask::getStatus, "QUEUED", "PENDING", "PROCESSING", "RUNNING"));
             }
 
             renderTaskService.failTask(taskId, e.getMessage(), errorDetail);
+        } finally {
+            RenderTaskThreadRegistry.unregister(taskId);
+        }
+    }
+
+    private void ensureTaskNotCancelled(Long entityId) {
+        MediaProcessTask task = taskMapper.selectById(entityId);
+        if (Thread.currentThread().isInterrupted() || (task != null && "CANCELLED".equals(task.getStatus()))) {
+            throw new java.util.concurrent.CancellationException("视频处理任务已取消");
         }
     }
 
@@ -428,6 +457,7 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
 
         MediaProcessTask task = taskMapper.selectById(entityId);
         if (task != null) {
+            if ("CANCELLED".equals(task.getStatus())) throw new java.util.concurrent.CancellationException("视频处理任务已取消");
             task.setStatus(status);
             task.setProgress(progress);
             task.setCurrentNode(currentNode);
@@ -440,7 +470,9 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             if (coverUrl != null) {
                 task.setCoverImageUrl(coverUrl);
             }
-            taskMapper.updateById(task);
+            taskMapper.update(task, new LambdaUpdateWrapper<MediaProcessTask>()
+                    .eq(MediaProcessTask::getId, entityId)
+                    .in(MediaProcessTask::getStatus, "QUEUED", "PENDING", "PROCESSING", "RUNNING"));
         }
         renderTaskService.updateProgress(taskId, progress, currentNode);
     }
@@ -546,11 +578,11 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public boolean cancelTask(String taskId) {
         if (StringUtils.isBlank(taskId)) {
             throw new BizException(400, "taskId 不能为空");
         }
+        synchronized (taskStateLock(taskId.trim())) {
         MediaProcessTask task = taskMapper.selectOne(new LambdaQueryWrapper<MediaProcessTask>()
                 .eq(MediaProcessTask::getTaskId, taskId.trim())
                 .last("LIMIT 1"));
@@ -558,20 +590,19 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             throw new BizException(404, "任务不存在: " + taskId);
         }
 
-        // 调用网关中断
-        try {
-            aiImageApiService.cancelRemoteTask(task.getProviderId(), taskId.trim(), null);
-        } catch (Exception e) {
-            log.warn("[VideoProcessing] 远程中断任务异常 (继续更新本地状态): {}", e.getMessage());
-        }
+        if ("CANCELLED".equals(task.getStatus())) return true;
+        if ("SUCCESS".equals(task.getStatus()) || "FAILED".equals(task.getStatus())) return false;
+        // RenderTask owns the precise gateway cancellation and local HTTP-thread interrupt.
+        var result = renderTaskService.cancelTaskDetailed(taskId.trim());
+        if (!result.isCancelled()) return false;
 
         task.setStatus("CANCELLED");
-        task.setCurrentNode("已手动取消");
+        task.setCurrentNode("CONFIRMED".equals(result.getUpstreamStatus()) ? "上游已确认取消" : "本地已中断，上游未确认");
         task.setFinishTime(LocalDateTime.now());
-        taskMapper.updateById(task);
-
-        renderTaskService.cancelTask(taskId);
-        return true;
+        return taskMapper.update(task, new LambdaUpdateWrapper<MediaProcessTask>()
+                .eq(MediaProcessTask::getId, task.getId())
+                .in(MediaProcessTask::getStatus, "QUEUED", "PENDING", "PROCESSING", "RUNNING")) > 0;
+        }
     }
 
     @Override

@@ -3,6 +3,7 @@ package com.astra.freyja.controller;
 import com.astra.freyja.common.R;
 import com.astra.freyja.dto.task.TaskCenterHistoryVO;
 import com.astra.freyja.dto.task.TaskCenterItemVO;
+import com.astra.freyja.dto.task.TaskCancelResultVO;
 import com.astra.freyja.service.TaskCenterService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,7 +41,7 @@ public class TaskCenterController {
     }
 
     @PostMapping("/{sourceType}/{taskId}/cancel")
-    public R<Boolean> cancelTask(@PathVariable String sourceType,
+    public R<TaskCancelResultVO> cancelTask(@PathVariable String sourceType,
                                  @PathVariable String taskId) {
         return R.ok(taskCenterService.cancelTask(sourceType, taskId));
     }
