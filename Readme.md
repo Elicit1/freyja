@@ -32,36 +32,54 @@
 
 ---
 
-## 🚀 极速开始 (Docker 一键部署)
+## 🚀 三步极速上手部署全流程 (Quickstart)
 
-> 💡 **开箱即用**：本项目全链路核心服务已容器化编排。您**无需**在宿主机安装配置 JDK 26、Node.js、FFmpeg、MySQL 或 Redis，只需安装 **Docker Desktop**（或 Docker + Docker Compose）即可一键拉起！
+> 💡 **架构解耦设计**：本项目采用 **“Freyja 核心业务容器化 + 外部 ComfyUI 算力即插即用”** 的解耦架构。您只需按以下 **三步** 即可快速拉起完整短剧创作环境：
+> - **第一步**：部署 Freyja 核心服务（通过 Docker / Docker Hub 一键启动，免去配置复杂开发环境）；
+> - **第二步**：部署 ComfyUI 算力端（Windows 秋叶整合包 / Linux GPU 服务器，开启网络监听）；
+> - **第三步**：下载模型权重并放置到指定目录（FLUX.2 生图与 MiniMax H3 影视级生视频模型）。
 
-### 方式 1：Windows 用户（Docker Desktop 双击即跑 ⭐️ 推荐）
-1. 确保机器上已安装并启动 **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**（状态为绿色 Running）；
-2. **直接双击项目根目录下的 [`docker-start.bat`](./docker-start.bat)**；
-3. 脚本将自动检测环境、创建默认配置文件 `.env`、构建并启动所有服务，并在成功后**自动在浏览器中打开创作工作台**！
-> 停止服务只需双击 [`docker-stop.bat`](./docker-stop.bat) 即可。
+---
 
-### 方式 2：Linux / macOS 用户（一键脚本）
+### 🌟 第一步：部署 Freyja 核心服务 (Docker / Docker Hub)
+
+#### 1. 明确配置文件 (`.env`)
+克隆本项目后，在根目录下复制配置模板：
 ```bash
-# 添加执行权限并一键启动
-chmod +x docker-start.sh docker-stop.sh
-./docker-start.sh
-```
-> 停止服务执行 `./docker-stop.sh` 即可。
-
-### 方式 3：标准 Docker Compose 命令行
-```bash
-# 1. 复制配置文件模板（已有则跳过）
 cp .env.example .env
-
-# 2. 一键构建并后台启动
-docker compose up -d --build
 ```
+`.env` 配置文件核心字段详细说明如下：
 
-### 🌐 核心服务访问入口
+| 配置项 | 默认值 | 作用与配置说明 |
+| :--- | :--- | :--- |
+| `IMAGE_PREFIX` | `astrag1/` | **Docker Hub 镜像命名空间**。默认直接拉取官方预编译镜像，免去本地漫长编译。 |
+| `FREYJA_VERSION` | `1.0.0` | **镜像发布版本号**（支持 `1.0.0` 或 `latest`）。 |
+| `COMFYUI_HTTP_URL` | `http://host.docker.internal:8188` | **外部 ComfyUI HTTP 地址**。<br>• 若 ComfyUI 运行在**本机**（Windows 秋叶包/本机 Linux）：保持默认 `http://host.docker.internal:8188`；<br>• 若运行在**独立局域网或云端 GPU 服务器**：修改为真实 IP，如 `http://192.168.1.100:8188`。 |
+| `COMFYUI_WS_URL` | `ws://host.docker.internal:8188/ws` | **外部 ComfyUI WebSocket 地址**（规则同上，端口 `8188/ws`）。 |
+| `FRONTEND_PORT` | `80` | 前端 Web 创作工作台访问端口。 |
+| `BACKEND_PORT` | `8080` | Spring Boot 后端 API 接口端口。 |
+| `GATEWAY_PORT` | `8000` | FastAPI 算力调度网关端口（OpenAPI 在 `/docs`）。 |
+| `MINIO_EXTERNAL_ENDPOINT` | `http://localhost:9000` | **浏览器访问 MinIO 预览下载图片的地址**。公网部署请改为您的服务器公网 IP 或域名。 |
+| `MYSQL_ROOT_PASSWORD` | `root` | 数据库密码（初次启动由 Docker 自动建库建表与插入基础字典）。 |
+| `REDIS_PASSWORD` | `123456` | Redis 缓存密码。 |
+| `FREYJA_CRYPTO_KEY` | `32位密钥` | 后端 API Key 加密存储 AES 秘钥，生产环境建议更换。 |
 
-服务启动后，在浏览器访问以下地址即可进入系统：
+#### 2. 启动服务集群 (二选一)
+- **方案 A：直接拉取 Docker Hub 预编译镜像 (⭐️ 强烈推荐，秒级部署，免本地编译)**：
+  ```bash
+  # 一键拉取最新镜像并后台启动
+  docker compose pull
+  docker compose up -d
+  ```
+  > 几秒内即可下载完成并启动，无需在宿主机安装任何 JDK 26、Node.js、MySQL 等环境！
+
+- **方案 B：本地一键自动化脚本或源码构建**：
+  - Windows 用户：直接双击根目录下的 **[`docker-start.bat`](./docker-start.bat)**；
+  - Linux / macOS 用户：执行 `chmod +x docker-start.sh && ./docker-start.sh`；
+  - 或执行源码编译：`docker compose up -d --build`。
+
+#### 3. 核心服务访问入口
+容器启动成功后，浏览器直接打开：
 
 | 服务名称 | 访问地址 | 默认账号 / 密码 / 说明 |
 | :--- | :--- | :--- |
@@ -72,10 +90,53 @@ docker compose up -d --build
 | **🗄️ MySQL 数据库** | `localhost:3306` | 用户名: `root` ｜ 密码: `root`（库名: `freyja`） |
 | **⚡ Redis 缓存** | `localhost:6379` | 密码: `123456` |
 
-> 📌 **连接外部 ComfyUI（生图/生视频）**：
-> - 若使用 Windows 本地秋叶整合包或官方 ComfyUI，启动时需允许外部访问（添加 `--listen 0.0.0.0 --enable-cors-header`）；
-> - 容器内部网络访问本机 ComfyUI，默认已通过 `http://host.docker.internal:8188` 无缝穿透对接！
-> - 进阶运维配置与注意事项请参见下文 [Docker 进阶配置与部署指南](#-docker-进阶配置与部署指南) 或完整文档 [docker-deployment.md](docs/docker-deployment.md)。
+---
+
+### 🌟 第二步：部署 ComfyUI 外部算力机 (Windows 秋叶包 / Linux GPU)
+
+ComfyUI 作为独立的图像与视频生成算力节点，运行在配备 NVIDIA 独立显卡（建议 $\ge 16\text{ GB}$ 显存）的机器上：
+
+#### 1. 开启外部网络访问监听 (必须)
+为了让 Docker 容器内的网关能向 ComfyUI 下发生成任务与读取进度，ComfyUI 必须允许跨机器/跨容器访问：
+- **Windows 秋叶启动器用户**：
+  打开秋叶启动器界面 -> 点击左侧【高级设置】 -> 勾选 **“允许局域网访问 (0.0.0.0)”** 以及 **“开启 CORS 跨域”**，默认监听端口为 `8188`；
+- **官方便携版 / 命令行启动用户**：
+  启动命令追加参数：
+  ```bash
+  python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header
+  ```
+
+#### 2. 安装必要插件与显存优化加速包
+- **安装节点管理器**：安装常用 `ComfyUI-Manager` 便于缺失节点一键排查；
+- **安装 H3 显存优化加速插件 (强烈推荐)**：
+  前往 ModelScope 页面下载 **[ComfyUI-sol-attn-main.zip](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/files)**，解压至 `ComfyUI/custom_nodes/ComfyUI-sol-attn`。该插件针对 MiniMax H3 注意力算子显存进行了专门优化，可显著降低显存峰值并加快视频生成速度。
+
+#### 3. 验证网络通信
+在运行 Freyja 的机器上，浏览器或命令行访问 `http://<ComfyUI所在IP>:8188`，若能正常打开 ComfyUI 界面即代表通信打通。
+
+---
+
+### 🌟 第三步：下载模型权重并放入对应目录 (Model Downloads)
+
+将生图与影视级生视频所需的预训练模型权重下载并放置到 **ComfyUI 根目录下的对应文件夹** 中：
+
+#### 1. 核心模型存放路径清单
+
+| 类别 | 推荐/默认文件名 | 存放路径 (ComfyUI目录下) | 官方/开源下载来源 | 用途说明 |
+| :--- | :--- | :--- | :--- | :--- |
+| **生图主干** | `flux-2-klein-9b.safetensors` | `models/unet/` | HuggingFace / 镜像站 | FLUX.2 Klein 9B 角色设定图、造型设计图生成 |
+| **生图编码器** | `qwen_3_8b_fp8mixed.safetensors` | `models/clip/` | HuggingFace / 镜像站 | FLUX.2 文本提示词特征提取编码器 |
+| **生图 VAE** | `flux2-vae.safetensors` | `models/vae/` | HuggingFace / 镜像站 | FLUX.2 图像潜空间编解码器 |
+| **视频主干 (首尾帧)** | `minimax_h3_fl2va_dit_16g.safetensors` | `models/unet/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 首尾帧驱动影视镜头生成 (带音效) |
+| **视频主干 (参考图)** | `minimax_h3_ref2va_dit_16g.safetensors` | `models/unet/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 多参考图+台词配音驱动角色演播生成 |
+| **视频文本编码** | `qwen3vl_text_encoder.safetensors` | `models/clip/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 视频生成提示词与多模态特征编码 |
+| **视频视觉 VAE** | `minimax_h3_video_vae_fp16.safetensors` | `models/vae/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 视频潜空间编解码器 |
+| **伴生音频 VAE** | `minimax_h3_audio_vae_fp32.safetensors` | `models/vae/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 原生伴生音频潜空间编解码器 |
+
+#### 2. 进入 Web 工作台配置大模型 API Key
+模型就绪后，打开创作工作台 **[http://localhost](http://localhost)**：
+1. **配置大模型提供商**：进入【系统管理 -> AI 提供商管理】，录入你的大语言模型 API Key（用于剧本拆解 Planner / Worker，兼容 OpenAI 规范、DeepSeek、MiMo、硅基流动等各大服务商或本地 Ollama）；
+2. **确认视听技能包 (Skills)**：进入【系统管理 -> AI 技能管理】，系统已自动扫描并装载了预置的 4 个视听/导演 Skill 包（`character-disambiguation`、`camera-direction`、`cinematography`、`h3-prompt-writing`），开箱即用！
 
 ---
 
@@ -271,6 +332,21 @@ docker compose down -v
 >
 > 3. **系统内置智能防呆容错机制**：
 >    后端 `AiImageApiService` 服务现已内置环境自适应感知逻辑：若检测到系统当前运行于 Docker 容器中且检测到用户误配了 `127.0.0.1:8000` 或 `localhost:8000`，系统将自动智能重定向至 `http://comfy-gateway:8000` 进行通信，防止任务意外中断。但生产环境仍建议在控制台规范录入。
+
+### 3. Docker Hub 镜像中心与 GitHub Actions 自动云构建
+
+本项目已接入 **GitHub Actions CI/CD 云端自动化构建与发布流水线**，构建产物托管在官方 Docker Hub 仓库：
+
+| 组件名称 | Docker Hub 镜像地址 | 默认版本 Tag |
+| :--- | :--- | :--- |
+| **前端 Web 工作台** | `astrag1/freyja-frontend` | `1.0.0` / `latest` |
+| **后端核心服务** | `astrag1/freyja-backend` | `1.0.0` / `latest` |
+| **ComfyUI 调度网关** | `astrag1/freyja-comfy-gateway` | `1.0.0` / `latest` |
+
+- **多主机/生产服务器极速更新**：
+  在任意部署服务器上，只需通过 `.env` 指定镜像版本，执行 `docker compose pull && docker compose up -d` 即可在几秒内拉取最新镜像平滑热更，彻底免除在生产端安装编译环境；
+- **自定义发布流水线**：
+  开发者 Fork 本仓库后，只需在 GitHub 仓库 `Settings -> Secrets and variables -> Actions` 中配置个人 `DOCKERHUB_USERNAME` 与 `DOCKERHUB_TOKEN`，每次向 `master` 分支推送代码或手动点击 `Run workflow` 即可一键自动化多阶段交叉构建并推送到自己的 Docker Hub 命名空间。
 
 > 详细配置与运维说明请参阅 [Docker 容器化部署指南](docs/docker-deployment.md)。
 
