@@ -21,6 +21,8 @@ RUN npm run build
 # 阶段二：使用轻量级 Nginx Alpine 镜像托管静态资源并反向代理
 FROM nginx:alpine
 WORKDIR /usr/share/nginx/html
+LABEL org.opencontainers.image.title="Freyja Frontend" \
+      org.opencontainers.image.version="1.0.0"
 
 # 清理默认静态网页
 RUN rm -rf ./*

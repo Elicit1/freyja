@@ -6,6 +6,8 @@ FROM python:3.11-slim
 ARG MAINLAND=false
 
 WORKDIR /app
+LABEL org.opencontainers.image.title="Freyja Comfy Gateway" \
+      org.opencontainers.image.version="1.0.0"
 
 # 安装必要的系统网络工具 (若处于大陆则静默使用阿里源加速)
 RUN if [ "$MAINLAND" = "true" ]; then \

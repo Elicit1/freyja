@@ -29,6 +29,8 @@ RUN if [ "$MAINLAND" = "true" ]; then \
 FROM eclipse-temurin:26-jre
 ARG MAINLAND=false
 WORKDIR /app
+LABEL org.opencontainers.image.title="Freyja Backend" \
+      org.opencontainers.image.version="1.0.0"
 
 # 安装 ffmpeg、ffprobe 与健康检查 curl 工具 (若处于大陆则静默使用阿里源加速)
 RUN if [ "$MAINLAND" = "true" ]; then \
