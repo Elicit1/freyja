@@ -12,6 +12,7 @@ import com.astra.freyja.entity.AiProvider;
 import com.astra.freyja.entity.ResKeyframe;
 import com.astra.freyja.service.AiImageApiService;
 import com.astra.freyja.util.CryptoUtil;
+import com.astra.freyja.util.ShotRenderPromptUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -494,8 +495,9 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", modelCode);
 
-        // 优先使用运镜提示词，若无则使用正向提示词
-        String prompt = StringUtils.firstNonBlank(shot.getVideoPrompt(), shot.getPrompt());
+        // 参考图模式以主 Prompt 为准；本次请求中的编辑值优先于分镜快照。
+        String prompt = ShotRenderPromptUtil.resolve(
+                shot.getGenerationMode(), shot.getPrompt(), shot.getVideoPrompt(), dto != null ? dto.getPrompt() : null);
         if (StringUtils.isBlank(prompt)) {
             throw new BizException(400, "分镜正向提示词或视频运镜提示词不能为空");
         }

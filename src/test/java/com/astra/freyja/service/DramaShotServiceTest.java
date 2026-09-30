@@ -374,6 +374,49 @@ class DramaShotServiceTest {
     }
 
     @Test
+    void testSubmitShotRenderPersistsAndFreezesEditedReferencePrompt() {
+        DramaShot shot = new DramaShot();
+        shot.setId(1000L);
+        shot.setDramaId(1L);
+        shot.setGenerationMode("REFERENCE_MODE");
+        shot.setPrompt("old image prompt");
+        shot.setVideoPrompt("stale motion prompt");
+        shot.setSeed(1234L);
+        when(shotMapper.selectById(1000L)).thenReturn(shot);
+
+        DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
+        request.setPrompt(" edited reference prompt ");
+        shotService.submitShotRender(1000L, request);
+
+        assertEquals("edited reference prompt", request.getPrompt());
+        assertEquals("edited reference prompt", shot.getPrompt());
+        assertEquals("stale motion prompt", shot.getVideoPrompt());
+        verify(shotMapper).updateById(argThat((DramaShot queued) ->
+                "QUEUED".equals(queued.getRenderStatus())
+                        && "edited reference prompt".equals(queued.getPrompt())));
+    }
+
+    @Test
+    void testGenerateFirstFramePersistsSubmittedPromptForNextOpen() {
+        DramaShot shot = new DramaShot();
+        shot.setId(1000L);
+        shot.setDramaId(1L);
+        shot.setPrompt("old prompt");
+        when(shotMapper.selectById(1000L)).thenReturn(shot);
+        when(aiImageApiService.generateAndArchiveImage(eq(1000L), eq(1L), eq("edited frame prompt"), any()))
+                .thenReturn("http://minio/frame.png");
+
+        DramaShotFirstFrameDTO request = new DramaShotFirstFrameDTO();
+        request.setCustomPrompt("edited frame prompt");
+        request.setSize("720x1280");
+        shotService.generateFirstFrame(1000L, request);
+
+        verify(shotMapper).updateById(argThat((DramaShot saved) ->
+                "edited frame prompt".equals(saved.getFirstFramePrompt())
+                        && "http://minio/frame.png".equals(saved.getPreviewImageUrl())));
+    }
+
+    @Test
     void testExecuteShotVideoRenderAsync_success() {
         DramaShot shot = new DramaShot();
         shot.setId(1000L);

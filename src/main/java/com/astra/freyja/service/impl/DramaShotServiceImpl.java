@@ -44,6 +44,7 @@ import com.astra.freyja.entity.RenderTask;
 import com.astra.freyja.service.ShotVideoTakeService;
 import com.astra.freyja.util.AspectRatioUtil;
 import com.astra.freyja.util.ShotSeedUtil;
+import com.astra.freyja.util.ShotRenderPromptUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -754,6 +755,9 @@ public class DramaShotServiceImpl implements DramaShotService {
         if (isEndFrame) {
             shot.setEndFrameImageUrl(outputUrl);
         } else {
+            if (StringUtils.isNotBlank(dto.getCustomPrompt())) {
+                shot.setFirstFramePrompt(prompt);
+            }
             shot.setPreviewImageUrl(outputUrl);
             shot.setFirstFrameSourceType("AI_GENERATED");
             shot.setFirstFrameSourceShotId(null);
@@ -813,7 +817,9 @@ public class DramaShotServiceImpl implements DramaShotService {
             throw new BizException(404, "分镜不存在: " + id);
         }
 
-        if (StringUtils.isBlank(shot.getPrompt())) {
+        if (StringUtils.isBlank(ShotRenderPromptUtil.resolve(
+                shot.getGenerationMode(), shot.getPrompt(), shot.getVideoPrompt(),
+                requestDTO != null ? requestDTO.getPrompt() : null))) {
             assembleShotPrompt(id);
             shot = shotMapper.selectById(id);
         }
@@ -825,6 +831,20 @@ public class DramaShotServiceImpl implements DramaShotService {
         if (requestDTO == null) {
             requestDTO = new DramaShotRenderRequestDTO();
         }
+        String renderPrompt = ShotRenderPromptUtil.resolve(
+                shot.getGenerationMode(), shot.getPrompt(), shot.getVideoPrompt(), requestDTO.getPrompt());
+        if (StringUtils.isBlank(renderPrompt)) {
+            throw new BizException(400, "视频渲染提示词不能为空");
+        }
+        if (StringUtils.isNotBlank(requestDTO.getPrompt())) {
+            if ("REFERENCE_MODE".equalsIgnoreCase(shot.getGenerationMode())) {
+                shot.setPrompt(renderPrompt);
+            } else {
+                shot.setVideoPrompt(renderPrompt);
+            }
+        }
+        // 冻结本次请求，异步执行时不再受到后续分镜编辑的影响。
+        requestDTO.setPrompt(renderPrompt);
         requestDTO.setSeed(shot.getSeed());
 
         String taskId = "RENDER_" + System.currentTimeMillis();
@@ -857,7 +877,7 @@ public class DramaShotServiceImpl implements DramaShotService {
                 .shotId(id)
                 .shotNo(shot.getShotNo())
                 .shotGroupId(shot.getShotGroupId())
-                .prompt(shot.getPrompt())
+                .prompt(renderPrompt)
                 .negativePrompt(shot.getNegativePrompt())
                 .providerId(actualProvider != null ? actualProvider.getId() : (requestDTO != null ? requestDTO.getProviderId() : null))
                 .providerName(actualProvider != null ? actualProvider.getProviderName() : null)

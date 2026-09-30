@@ -573,6 +573,7 @@ export interface DramaShotFirstFrame {
 export interface DramaShotRenderRequest {
   providerId?: number | string
   workflowTemplateId?: string
+  prompt?: string
   seed?: number
   size?: string
 }

@@ -15,6 +15,7 @@ import com.astra.freyja.entity.DramaShotVideoTake;
 import com.astra.freyja.entity.MediaProcessTask;
 import com.astra.freyja.entity.RenderTask;
 import com.astra.freyja.service.ShotVideoTakeService;
+import com.astra.freyja.util.ShotRenderPromptUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -163,9 +164,11 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
             take.setSize(requestSnapshot != null ? requestSnapshot.getSize() : null);
             take.setDuration(shotSnapshot.getDuration());
 
-            String prompt = StringUtils.defaultIfBlank(shotSnapshot.getVideoPrompt(), shotSnapshot.getPrompt());
-            if (StringUtils.isBlank(prompt) && renderTask != null) {
-                prompt = renderTask.getPrompt();
+            String prompt = renderTask != null ? renderTask.getPrompt() : null;
+            if (StringUtils.isBlank(prompt)) {
+                prompt = ShotRenderPromptUtil.resolve(
+                        shotSnapshot.getGenerationMode(), shotSnapshot.getPrompt(), shotSnapshot.getVideoPrompt(),
+                        requestSnapshot != null ? requestSnapshot.getPrompt() : null);
             }
             take.setPromptSnapshot(prompt);
 

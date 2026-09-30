@@ -17,6 +17,9 @@ public class DramaShotRenderRequestDTO {
     /** 自定义完整 ComfyUI API 格式工作流 JSON (若未指定模板则必传) */
     private String workflowJson;
 
+    /** 本次视频渲染使用的提示词；为空时按生成模式读取分镜已保存的提示词。 */
+    private String prompt;
+
     /** 服务端在提交渲染时固定的镜头种子快照。 */
     private Long seed;
 

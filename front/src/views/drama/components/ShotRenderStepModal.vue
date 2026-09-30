@@ -233,7 +233,7 @@
 
         <div>
           <label class="text-xs font-bold text-slate-700 mb-1.5 block">
-            🎥 视频动态运镜提示词 (Video Motion Prompt)
+            {{ videoModelType === 'TXT2VIDEO_REF' ? '🎥 视频生成提示词 (Prompt)' : '🎥 视频动态运镜提示词 (Video Motion Prompt)' }}
           </label>
           <el-input
             v-model="step2Form.videoPrompt"
@@ -498,7 +498,10 @@ async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
 
   step1Form.prompt = shot.firstFramePrompt || shot.prompt || ''
   step1Form.negativePrompt = shot.negativePrompt || ''
-  step2Form.videoPrompt = shot.videoPrompt || shot.prompt || ''
+  step1Form.seed = undefined
+  step2Form.videoPrompt = shot.generationMode === 'REFERENCE_MODE'
+    ? shot.prompt || shot.videoPrompt || ''
+    : shot.videoPrompt || shot.prompt || ''
   videoModelType.value = shot.generationMode === 'REFERENCE_MODE' ? 'TXT2VIDEO_REF' : 'TXT2VIDEO_FIRST_LAST'
 
   visible.value = true
@@ -582,7 +585,7 @@ async function handleGenerateFirstFrame() {
       emit('success', currentShotId.value)
     } else if (res && res.taskId) {
       // 轮询等待任务完成
-      await pollTask(res.taskId, (status, output) => {
+      await pollTask(res.taskId, 'image', (status, output) => {
         generatingStatusText.value = `渲染中: ${status}`
         if (output) {
           currentPreviewUrl.value = output
@@ -636,6 +639,11 @@ async function handleSaveFirstFrame() {
 // 步骤 2：启动视频渲染
 async function handleRenderVideo() {
   if (!currentShotId.value) return
+  const renderPrompt = step2Form.videoPrompt.trim()
+  if (!renderPrompt) {
+    ElMessage.warning('请先填写视频渲染提示词')
+    return
+  }
   if (!step2Form.providerId || !videoModels.value.some(m => m.modelCode === step2Form.modelCode)) {
     ElMessage.warning('请选择当前模式支持的视频模型')
     return
@@ -652,11 +660,12 @@ async function handleRenderVideo() {
   try {
     const res = await shotApi.submitRender(currentShotId.value, {
       providerId: step2Form.providerId,
-      workflowTemplateId: step2Form.modelCode
+      workflowTemplateId: step2Form.modelCode,
+      prompt: renderPrompt
     })
 
     if (res && res.taskId) {
-      await pollTask(res.taskId, (status, output, lastFrame) => {
+      await pollTask(res.taskId, 'video', (status, output, lastFrame) => {
         videoStatusText.value = `视频渲染中 (${status})...`
         if (output) currentVideoUrl.value = output
         if (lastFrame) currentLastFrameUrl.value = lastFrame
@@ -672,14 +681,15 @@ async function handleRenderVideo() {
 }
 
 // 简易轮询工具
-async function pollTask(_taskId: string, onProgress: (status: string, outputUrl?: string, lastFrameUrl?: string) => void) {
+async function pollTask(_taskId: string, outputType: 'image' | 'video', onProgress: (status: string, outputUrl?: string, lastFrameUrl?: string) => void) {
   const maxAttempts = 300
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(resolve => setTimeout(resolve, 2000))
     if (!currentShotId.value) break
     const fresh = await shotApi.getById(currentShotId.value)
     if (fresh) {
-      onProgress(fresh.renderStatus || 'RUNNING', fresh.previewImageUrl || fresh.videoUrl, fresh.lastFrameUrl)
+      const outputUrl = outputType === 'image' ? fresh.previewImageUrl : fresh.videoUrl
+      onProgress(fresh.renderStatus || 'RUNNING', outputUrl, fresh.lastFrameUrl)
       if (fresh.renderStatus === 'SUCCESS') {
         if (fresh.videoUrl) currentVideoUrl.value = fresh.videoUrl
         if (fresh.previewImageUrl) currentPreviewUrl.value = fresh.previewImageUrl
