@@ -86,6 +86,8 @@ services:
     build:
       context: ./comfy_gateway
       dockerfile: Dockerfile
+      args:
+        MAINLAND: ${MAINLAND:-false}
     container_name: freyja-comfy-gateway
     environment:
       GATEWAY_HOST: 0.0.0.0
@@ -114,6 +116,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        MAINLAND: ${MAINLAND:-false}
     container_name: freyja-backend
     depends_on:
       mysql:
@@ -157,6 +161,8 @@ services:
     build:
       context: ./front
       dockerfile: Dockerfile
+      args:
+        MAINLAND: ${MAINLAND:-false}
     container_name: freyja-frontend
     depends_on:
       backend:

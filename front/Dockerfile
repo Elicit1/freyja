@@ -4,11 +4,15 @@
 
 # 阶段一：构建前端 SPA 静态产物
 FROM node:22-alpine AS builder
+ARG MAINLAND=false
 WORKDIR /app
 
 # 优先安装依赖包以复用缓存
 COPY package*.json ./
-RUN npm install
+RUN if [ "$MAINLAND" = "true" ]; then \
+        npm config set registry https://registry.npmmirror.com; \
+    fi && \
+    npm install
 
 # 复制源码并执行打包构建
 COPY . .

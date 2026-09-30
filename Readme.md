@@ -32,6 +32,53 @@
 
 ---
 
+## 🚀 极速开始 (Docker 一键部署)
+
+> 💡 **开箱即用**：本项目全链路核心服务已容器化编排。您**无需**在宿主机安装配置 JDK 26、Node.js、FFmpeg、MySQL 或 Redis，只需安装 **Docker Desktop**（或 Docker + Docker Compose）即可一键拉起！
+
+### 方式 1：Windows 用户（Docker Desktop 双击即跑 ⭐️ 推荐）
+1. 确保机器上已安装并启动 **[Docker Desktop](https://www.docker.com/products/docker-desktop/)**（状态为绿色 Running）；
+2. **直接双击项目根目录下的 [`docker-start.bat`](./docker-start.bat)**；
+3. 脚本将自动检测环境、创建默认配置文件 `.env`、构建并启动所有服务，并在成功后**自动在浏览器中打开创作工作台**！
+> 停止服务只需双击 [`docker-stop.bat`](./docker-stop.bat) 即可。
+
+### 方式 2：Linux / macOS 用户（一键脚本）
+```bash
+# 添加执行权限并一键启动
+chmod +x docker-start.sh docker-stop.sh
+./docker-start.sh
+```
+> 停止服务执行 `./docker-stop.sh` 即可。
+
+### 方式 3：标准 Docker Compose 命令行
+```bash
+# 1. 复制配置文件模板（已有则跳过）
+cp .env.example .env
+
+# 2. 一键构建并后台启动
+docker compose up -d --build
+```
+
+### 🌐 核心服务访问入口
+
+服务启动后，在浏览器访问以下地址即可进入系统：
+
+| 服务名称 | 访问地址 | 默认账号 / 密码 / 说明 |
+| :--- | :--- | :--- |
+| **🎬 Freyja 创作工作台** | **[http://localhost](http://localhost)** | 前端主界面（剧本拆解 / 镜头组 / 资产库） |
+| **⚙️ 后端 RESTful 接口** | [http://localhost:8080](http://localhost:8080) | Spring Boot 业务端点 |
+| **⚡ FastAPI 调度网关** | [http://localhost:8000/docs](http://localhost:8000/docs) | OpenAPI 交互文档与工作流映射看板 |
+| **📦 MinIO 对象存储** | [http://localhost:9001](http://localhost:9001) | 用户名: `minioadmin` ｜ 密码: `minioadmin123` |
+| **🗄️ MySQL 数据库** | `localhost:3306` | 用户名: `root` ｜ 密码: `root`（库名: `freyja`） |
+| **⚡ Redis 缓存** | `localhost:6379` | 密码: `123456` |
+
+> 📌 **连接外部 ComfyUI（生图/生视频）**：
+> - 若使用 Windows 本地秋叶整合包或官方 ComfyUI，启动时需允许外部访问（添加 `--listen 0.0.0.0 --enable-cors-header`）；
+> - 容器内部网络访问本机 ComfyUI，默认已通过 `http://host.docker.internal:8188` 无缝穿透对接！
+> - 进阶运维配置与注意事项请参见下文 [Docker 进阶配置与部署指南](#-docker-进阶配置与部署指南) 或完整文档 [docker-deployment.md](docs/docker-deployment.md)。
+
+---
+
 ## 🛠️ 功能模块
 
 ### 1. 四层剧作大纲与连续镜头组 (Drama Structure & ShotGroup)
@@ -176,37 +223,33 @@ ComfyUI 算力节点预置工作流所依赖的专用模型权重清单（存放
 
 ---
 
-## ⚡ 快速上手 (Docker Compose)
+## ⚙️ Docker 进阶配置与部署指南
 
-### 1. 前置依赖
-- 安装 [Docker](https://www.docker.com/) 与 [Docker Compose](https://docs.docker.com/compose/) (v2.x+)
-- 外部 ComfyUI 环境（运行在 Windows 宿主机或局域网/云端 Linux GPU 机器）
+### 1. 常用运维管理命令
 
-### 2. 启动服务
+可在项目根目录下通过命令行或提供的脚本管理容器服务集群：
+
 ```bash
-# 1. 克隆代码仓库
-git clone https://github.com/Elicit1/freyja.git
-cd freyja
+# 查看所有容器运行状态与健康检查
+docker compose ps
 
-# 2. 复制环境变量配置文件并修改密钥
-cp .env.example .env
-# 提示：请使用文本编辑器打开 .env，修改 FREYJA_CRYPTO_KEY 与各项默认密码
+# 查看后端实时日志
+docker compose logs -f backend
 
-# 3. 启动容器集群
-docker compose up -d --build
+# 查看网关调度日志
+docker compose logs -f comfy-gateway
+
+# 安全停止全部服务 (保留数据卷与资产)
+docker compose stop   # 或 Windows 双击 docker-stop.bat / Linux 执行 ./docker-stop.sh
+
+# 重新拉起已有容器
+docker compose start
+
+# 彻底清理并重置系统与数据库 (⚠️ 会删除物理数据卷，谨慎使用)
+docker compose down -v
 ```
 
-> [!IMPORTANT]
-> **安全提醒（记得修改密钥）**：
-> 系统采用 AES-GCM 算法对 AI 提供商的 API Key 进行落库加密保护。在正式部署前，**请务必打开 `.env` 文件，将 `FREYJA_CRYPTO_KEY` 修改为您专属的高强度随机字符串（建议 32 字节以上）**，并修改 MySQL、Redis 与 MinIO 的默认账号密码。请切勿在生产环境使用开源预置的默认密钥！
-
-### 3. 访问入口
-- **Web 创作工作台**：[http://localhost](http://localhost)
-- **后端 API 接口**：`http://localhost:8080`
-- **FastAPI 调度网关**：`http://localhost:8000/docs`
-- **MinIO 资产管理**：`http://localhost:9001`（账号：`minioadmin` / 密码：`minioadmin123`）
-
-### 4. 核心网络与 AI 提供商 Base URL 配置注意事项 (⚠️ 必读)
+### 2. 生产环境安全与密钥重置
 
 > [!WARNING]
 > **在 Docker 部署环境下，AI 提供商的 Base URL 切勿直接填写 `127.0.0.1` 或 `localhost`！**
