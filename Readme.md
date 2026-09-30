@@ -26,9 +26,31 @@
 
 ## 📖 简介
 
-**Freyja** 是一个面向 AI 短剧分镜制作的开源管理与调度系统。
+**Freyja** 是一个面向 AI 短剧影视级分镜工业化制作的开源管理与算力调度系统。
 
-系统围绕短剧制作流程，提供“**四层剧作大纲管理 + 角色/场景资产库 + 大模型剧本自动拆解 + ComfyUI 异步任务调度 + 媒体资产本地归档**”功能。
+系统围绕短剧创作的全链路视听需求，深度融合大模型与影视级开源生成模型，提供以下 **核心创作功能**：
+
+- 🎬 **首尾帧驱动影视镜头生成 (First-Last Frame Generation)**：支持为分镜精准指定起始首帧与结束尾帧，调用 MiniMax H3 FL2VA 模型生成具备高物理连贯性、自然运镜轨迹与逼真动效的镜头视频；在镜头组（ShotGroup）内支持自动抽取上一镜尾帧作为下一镜首帧，实现分镜间的丝滑连贯过渡；
+- 🖼️ **多参考图+台词配音驱动演播 (Reference Image Generation)**：支持基于角色设定立绘、特定造型与场景环境多张参考图，联动角色克隆音色台词，调用 MiniMax H3 Ref2VA 模型驱动角色的生动演播、表情变化与动作呈现；
+- 👥 **全流程人物视觉一致性维护 (Character Consistency)**：采用“角色身份层 (`ResCharacter`) + 造型层 (`ResCharacterLook`)”双层资产架构，配合跨集实体消歧流水线与 Character Blackboard 看板，确保角色在不同集数、多场景变换中面部外观、服装发型与设定的高保真视觉一致；
+- ✍️ **构建符合 MiniMax H3 规范的专业提示词 (H3 Prompt Architecture)**：基于视听导演语言体系，将镜头剧本、角色动作与机位调度自动智能转译为标准的 MiniMax H3 双轨提示词（包含机位运镜、主体动作、环境光影、伴生声效与音乐的三段式/六段式结构），彻底告别传统生硬的关键字正则猜谜；
+- 🧩 **Agent Skill 领域知识按需迭代与装载 (Iterative Agent Skills)**：内置标准化 Agent Skill 知识包（电影摄影构图、运镜机位、角色消歧与 H3 提示词编写规范），创作者可根据短剧题材与风格需要自由发布新版本、持续迭代优化正文规约，驱动大模型根据需要动态加载与进化。
+
+## 💻 运行环境与硬件配置要求 (System Requirements)
+
+在部署系统前，请根据您的使用场景评估机器配置：
+
+| 配置项 | 最低要求 (Minimum) | 推荐配置 (Recommended) | 说明 |
+| :--- | :--- | :--- | :--- |
+| **GPU 独立显卡** | **16 GB 显存**（如 RTX 4080 16G / RTX 3090 24G 等） | **16 GB 以上显存**（如 RTX 4090 24G 或专业级工作站显卡） | FLUX.2 Klein 与 MiniMax H3 影视级视频 DiT 大权重加载与推理的硬性基准 |
+| **宿主机内存 (RAM)** | **32 GB** | **64 GB 及以上** | 视频模型大权重加载与多阶段合流在 32G 下容易触碰虚拟内存交换上限，推荐 64G 获得最佳流水线流畅度 |
+| **磁盘存储** | 预留 **100 GB** 以上（SSD 固态硬盘） | 预留 **200 GB** 以上（NVMe M.2 高速固态） | 存放基础模型权重（FLUX.2/H3/CLIP/VAE）、本地缓存与高清视频渲染资产 |
+| **操作系统** | Windows 10/11 64位 或 Linux (Ubuntu 20.04/22.04 LTS) | Windows 11 / Linux (Ubuntu 22.04+ LTS) | 支持 NVIDIA 专有驱动、CUDA 环境与 Docker 编排 |
+| **基础软件** | **Docker**（或 Docker Desktop） | **Docker Compose v2** | 用于 Freyja 核心服务集群的一键拉起与管理 |
+
+> 💡 **轻量化/云端分工方案（强烈推荐）**：
+> - **轻量主机 / 笔记本**：可以只运行 **Freyja 核心服务**（仅需 2~4GB 内存即可流畅运行短剧剧本大纲、资产管理与大模型拆解）；
+> - **GPU 算力主机**：将配备 16G+ 显存的独显电脑或云端 GPU 服务器仅作为 **ComfyUI 外部算力机**，Freyja 通过局域网或公网远程调度调用！两者彻底解耦、互不挤占资源。
 
 ---
 
@@ -354,14 +376,9 @@ docker compose down -v
 
 ## 🎨 配套 ComfyUI 算力机配置与工作流机制
 
-### 1. 硬件配置要求与视频模型
+### 1. 硬件配置要求与视频模型说明
 
-| 配置项 | 最低要求 (Minimum) | 推荐配置 (Recommended) | 说明 |
-| :--- | :--- | :--- | :--- |
-| **GPU 独立显卡** | **16 GB 显存**（如 RTX 4080 16G / RTX 3090 24G 等） | **16 GB 以上显存**（如 RTX 4090 24G 或专业级工作站显卡） | FLUX.2 Klein 与 MiniMax H3 视频 DiT 大权重加载与推理的硬性基准 |
-| **宿主机内存 (RAM)** | **32 GB** | **64 GB 及以上** | 视频模型大权重加载与多阶段合流在 32G 下容易触碰虚拟内存交换上限，推荐 64G 获得最佳流水线流畅度 |
-| **磁盘存储** | 预留 **100 GB** 以上（SSD 固态硬盘） | 预留 **200 GB** 以上（NVMe M.2 高速固态） | 存放基础模型权重（FLUX.2/H3/CLIP/VAE）、缓存与高清视频渲染资产 |
-| **操作系统** | Windows 10/11 64位 或 Linux (Ubuntu 20.04/22.04 LTS) | Windows 11 / Linux (Ubuntu 22.04+ LTS) | 支持 NVIDIA 专有驱动、CUDA 环境与 Docker 编排 |
+硬件配置要求详情请参阅文档开篇的 [💻 运行环境与硬件配置要求](#-运行环境与硬件配置要求-system-requirements)。
 
 - **视频生成模型**：系统视频生成工作流配套采用 ModelScope 开源的 **[MiniMax H3 混合高精度量化 (16G显存优化版)](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi)**；
 - **推理加速包**：强烈建议配合下载 ModelScope 文件列表中的 **[ComfyUI-sol-attn-main.zip](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/files)** 加速插件（解压至 `ComfyUI/custom_nodes/ComfyUI-sol-attn`），专用于优化注意力算子显存占用并提升生成速度。
