@@ -5,7 +5,7 @@ import type { ThemeId, ColorMode, Density, AppearanceState } from '@/theme/types
 const STORAGE_KEY = 'freyja:appearance:v1'
 
 const DEFAULT_STATE: AppearanceState = {
-  themeId: 'obsidian',
+  themeId: 'starlight',
   colorMode: 'light',
   density: 'comfortable',
   isCollapse: false,
@@ -19,7 +19,9 @@ function loadInitialState(): AppearanceState {
       const parsed = JSON.parse(raw)
       const validMode: ColorMode = ['light', 'dark', 'system'].includes(parsed.colorMode) ? parsed.colorMode : 'light'
       return {
-        themeId: parsed.themeId === 'studio' ? 'studio' : 'obsidian',
+        themeId: ['obsidian', 'studio', 'starlight', 'amber'].includes(parsed.themeId)
+          ? parsed.themeId as ThemeId
+          : DEFAULT_STATE.themeId,
         colorMode: validMode,
         density: parsed.density === 'compact' ? 'compact' : 'comfortable',
         isCollapse: Boolean(parsed.isCollapse),

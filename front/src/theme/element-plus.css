@@ -1,5 +1,5 @@
 /* Element Plus 桥接与设计令牌融合 */
-:root {
+html[data-theme] {
   --el-color-primary: var(--brand);
   --el-color-primary-hover: var(--brand-hover);
   --el-color-primary-light-3: color-mix(in srgb, var(--brand) 70%, white);

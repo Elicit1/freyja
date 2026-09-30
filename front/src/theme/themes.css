@@ -83,11 +83,99 @@ html[data-theme="studio"] {
   --header-border: #e7eaf0;
 }
 
+/* Freyja：与浅紫银白插画搭配的轻透工作台 */
+html[data-theme="starlight"] {
+  --app-bg: #f8f5ff;
+  --surface: rgba(255, 255, 255, 0.82);
+  --surface-raised: rgba(255, 255, 255, 0.92);
+  --surface-muted: rgba(244, 239, 255, 0.78);
+  --surface-hover: rgba(232, 222, 249, 0.82);
+
+  --text-primary: #302645;
+  --text-secondary: #625878;
+  --text-muted: #786d8d;
+
+  --border-default: rgba(103, 78, 151, 0.2);
+  --border-strong: rgba(103, 78, 151, 0.34);
+
+  --brand: #7250ac;
+  --brand-hover: #5b3c94;
+  --brand-soft: rgba(114, 80, 172, 0.13);
+  --brand-rgb: 114, 80, 172;
+
+  --accent: #aa6a92;
+  --success: #26816f;
+  --warning: #a86d28;
+  --danger: #c34e6f;
+
+  --sidebar-bg: #2c2442;
+  --sidebar-header-bg: #241d38;
+  --sidebar-text: #d9cfe8;
+  --sidebar-text-muted: #af9fc5;
+  --sidebar-hover-bg: rgba(225, 205, 255, 0.1);
+  --sidebar-active-bg: rgba(201, 173, 244, 0.23);
+  --sidebar-active-text: #ffffff;
+  --sidebar-active-bar: #e6c6f5;
+  --sidebar-border: rgba(237, 221, 255, 0.15);
+
+  --header-bg: rgba(255, 252, 255, 0.72);
+  --header-border: rgba(103, 78, 151, 0.18);
+
+  --shadow-card: 0 8px 28px rgba(88, 64, 137, 0.09);
+  --shadow-hover: 0 12px 32px rgba(88, 64, 137, 0.15);
+  --shadow-floating: 0 22px 55px rgba(65, 43, 109, 0.2);
+
+  --el-table-bg-color: var(--surface);
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: var(--surface-muted);
+  --el-table-row-hover-bg-color: var(--surface-hover);
+  --el-dialog-bg-color: var(--surface-raised);
+}
+
+/* 琥珀映像：暖纸色工作区与深咖导航 */
+html[data-theme="amber"] {
+  --app-bg: #f8f4ec;
+  --surface: #fffdf8;
+  --surface-raised: #fffefa;
+  --surface-muted: #f3ebdf;
+  --surface-hover: #efe2d0;
+
+  --text-primary: #342a24;
+  --text-secondary: #69594c;
+  --text-muted: #817166;
+
+  --border-default: #e5d7c5;
+  --border-strong: #cfbda8;
+
+  --brand: #a65a32;
+  --brand-hover: #87451f;
+  --brand-soft: rgba(166, 90, 50, 0.12);
+  --brand-rgb: 166, 90, 50;
+
+  --accent: #b07b32;
+  --success: #26765d;
+  --warning: #ad741f;
+  --danger: #b64e49;
+
+  --sidebar-bg: #302820;
+  --sidebar-header-bg: #251e19;
+  --sidebar-text: #eadfce;
+  --sidebar-text-muted: #b8a792;
+  --sidebar-hover-bg: rgba(255, 228, 191, 0.08);
+  --sidebar-active-bg: rgba(214, 164, 107, 0.2);
+  --sidebar-active-text: #fff8ec;
+  --sidebar-active-bar: #d6a46b;
+  --sidebar-border: rgba(255, 232, 204, 0.11);
+
+  --header-bg: rgba(255, 253, 248, 0.9);
+  --header-border: #e5d7c5;
+}
+
 /* ========================================================================= */
 /* 暗色模式全局语义令牌 (Dark Mode)                                          */
 /* ========================================================================= */
-[data-color-mode='dark'],
-.dark {
+html[data-color-mode='dark'],
+html.dark {
   --app-bg: #0d1017;
   --surface: #141821;
   --surface-raised: #1a1f2b;
@@ -143,4 +231,128 @@ html[data-theme="studio"] {
   --sidebar-border: rgba(255, 255, 255, 0.06);
   --header-bg: rgba(20, 24, 33, 0.85);
   --header-border: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="starlight"][data-color-mode="dark"] {
+  --app-bg: #191429;
+  --surface: rgba(38, 30, 59, 0.88);
+  --surface-raised: rgba(45, 35, 68, 0.96);
+  --surface-muted: rgba(53, 42, 78, 0.84);
+  --surface-hover: rgba(72, 56, 103, 0.9);
+
+  --text-primary: #f7f0ff;
+  --text-secondary: #d4c6e8;
+  --text-muted: #ad9dc6;
+
+  --border-default: rgba(225, 203, 255, 0.17);
+  --border-strong: rgba(225, 203, 255, 0.3);
+
+  --brand: #c5a4f2;
+  --brand-hover: #dec4ff;
+  --brand-soft: rgba(197, 164, 242, 0.18);
+  --brand-rgb: 197, 164, 242;
+  --accent: #e4a4cc;
+
+  --sidebar-bg: #211a34;
+  --sidebar-header-bg: #1b152c;
+  --sidebar-active-bg: rgba(201, 173, 244, 0.2);
+  --sidebar-active-bar: #c5a4f2;
+  --header-bg: rgba(35, 27, 54, 0.81);
+  --header-border: rgba(225, 203, 255, 0.15);
+
+  --el-bg-color: var(--surface);
+  --el-bg-color-page: var(--app-bg);
+  --el-bg-color-overlay: var(--surface-raised);
+  --el-fill-color-light: var(--surface-muted);
+  --el-fill-color-blank: var(--surface);
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-muted);
+  --el-border-color: var(--border-default);
+  --el-dialog-bg-color: var(--surface-raised);
+  --el-color-primary-light-3: color-mix(in srgb, var(--brand) 70%, var(--surface));
+  --el-color-primary-light-5: color-mix(in srgb, var(--brand) 50%, var(--surface));
+  --el-color-primary-light-7: color-mix(in srgb, var(--brand) 30%, var(--surface));
+  --el-color-primary-light-8: color-mix(in srgb, var(--brand) 20%, var(--surface));
+  --el-color-primary-light-9: color-mix(in srgb, var(--brand) 10%, var(--surface));
+}
+
+html[data-theme="starlight"][data-color-mode="dark"] .el-button--primary {
+  --el-button-text-color: #241d38;
+  --el-button-hover-text-color: #241d38;
+}
+
+html[data-theme="amber"][data-color-mode="dark"] {
+  --app-bg: #191511;
+  --surface: #252019;
+  --surface-raised: #2d251e;
+  --surface-muted: #211b16;
+  --surface-hover: #3a2e23;
+
+  --text-primary: #f5eadb;
+  --text-secondary: #d1c0ac;
+  --text-muted: #aa9580;
+
+  --border-default: rgba(255, 231, 201, 0.12);
+  --border-strong: rgba(255, 231, 201, 0.24);
+
+  --brand: #e2ad73;
+  --brand-hover: #f0c38f;
+  --brand-soft: rgba(226, 173, 115, 0.18);
+  --brand-rgb: 226, 173, 115;
+  --accent: #dfb374;
+
+  --sidebar-bg: #211a15;
+  --sidebar-header-bg: #18130f;
+  --sidebar-text: #eadfce;
+  --sidebar-text-muted: #b8a792;
+  --sidebar-hover-bg: rgba(255, 228, 191, 0.08);
+  --sidebar-active-bg: rgba(226, 173, 115, 0.2);
+  --sidebar-active-text: #fff8ec;
+  --sidebar-active-bar: #e2ad73;
+  --sidebar-border: rgba(255, 232, 204, 0.11);
+  --header-bg: rgba(37, 31, 25, 0.88);
+  --header-border: rgba(255, 231, 201, 0.12);
+
+  --el-bg-color: var(--surface);
+  --el-bg-color-page: var(--app-bg);
+  --el-bg-color-overlay: var(--surface-raised);
+  --el-fill-color-light: var(--surface-muted);
+  --el-fill-color-blank: var(--surface);
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-muted);
+  --el-border-color: var(--border-default);
+  --el-color-primary-light-3: color-mix(in srgb, var(--brand) 70%, var(--surface));
+  --el-color-primary-light-5: color-mix(in srgb, var(--brand) 50%, var(--surface));
+  --el-color-primary-light-7: color-mix(in srgb, var(--brand) 30%, var(--surface));
+  --el-color-primary-light-8: color-mix(in srgb, var(--brand) 20%, var(--surface));
+  --el-color-primary-light-9: color-mix(in srgb, var(--brand) 10%, var(--surface));
+}
+
+html[data-theme="amber"][data-color-mode="dark"] .el-button--primary {
+  --el-button-text-color: #302820;
+  --el-button-hover-text-color: #302820;
+}
+
+/* 插画只出现在侧边栏右侧的工作区，随容器固定而不随页面内容滚动。 */
+html[data-theme="starlight"] #main-layout-container {
+  background-color: var(--app-bg);
+  background-image: linear-gradient(90deg, rgba(249, 245, 255, 0.08), rgba(249, 245, 255, 0.15)), url('/bg/bg.png');
+  background-position: left center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+html[data-theme="starlight"][data-color-mode="dark"] #main-layout-container {
+  background-image: linear-gradient(90deg, rgba(22, 16, 39, 0.58), rgba(22, 16, 39, 0.68)), url('/bg/bg.png');
+}
+
+html[data-theme="starlight"] .studio-card,
+html[data-theme="starlight"] .el-card,
+html[data-theme="starlight"] .el-table,
+html[data-theme="starlight"] .el-dialog,
+html[data-theme="starlight"] .el-drawer {
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }

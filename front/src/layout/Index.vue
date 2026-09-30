@@ -13,7 +13,7 @@
       </el-header>
 
       <!-- Main Content View -->
-      <el-main class="!p-6 overflow-y-auto bg-[var(--app-bg)] flex-1">
+      <el-main class="!p-6 overflow-y-auto flex-1">
         <router-view v-slot="{ Component, route }">
           <transition name="fade-transform" mode="out-in">
             <component :is="Component" :key="route.name === 'Drama' || route.name === 'RenderTasks' ? route.path : route.fullPath" />

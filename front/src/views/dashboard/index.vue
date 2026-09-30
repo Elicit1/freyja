@@ -41,7 +41,7 @@
         :value="stats.dramaCount || 0"
         unit="部"
         :icon="Film"
-        icon-bg-class="bg-blue-50 text-blue-600"
+        icon-bg-class="bg-[var(--brand-soft)] text-[var(--brand)]"
         :sub-text="`共 ${stats.episodeCount || 0} 集 · ${stats.sceneCount || 0} 场次大纲`"
       />
 

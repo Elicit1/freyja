@@ -1,4 +1,4 @@
-export type ThemeId = 'obsidian' | 'studio'
+export type ThemeId = 'obsidian' | 'studio' | 'starlight' | 'amber'
 
 export type ColorMode = 'light' | 'dark' | 'system'
 

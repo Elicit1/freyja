@@ -21,5 +21,21 @@ export const THEMES = [
     sidebarBg: '#F8F9FC',
     surfaceBg: '#FFFFFF',
     brandColor: '#4461F2'
+  },
+  {
+    id: 'starlight',
+    name: 'Freyja',
+    subtitle: '浅紫星光背景 · 轻透玻璃工作台',
+    sidebarBg: '#2C2442',
+    surfaceBg: '#F8F5FF',
+    brandColor: '#7250AC'
+  },
+  {
+    id: 'amber',
+    name: '琥珀映像',
+    subtitle: '暖纸工作区 · 陶土橙与深咖导航',
+    sidebarBg: '#302820',
+    surfaceBg: '#F8F4EC',
+    brandColor: '#A65A32'
   }
 ] as const

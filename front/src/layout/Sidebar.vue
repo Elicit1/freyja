@@ -111,7 +111,7 @@
           <span class="font-medium">片场外观设置</span>
         </div>
         <span class="text-[10px] px-1.5 py-0.5 rounded bg-[var(--brand-soft)] text-[var(--brand)] font-semibold uppercase">
-          {{ appStore.themeId }}
+          {{ currentThemeName }}
         </span>
       </button>
     </div>
@@ -122,6 +122,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/store/app'
+import { THEMES } from '@/theme'
 import {
   Odometer,
   Film,
@@ -138,6 +139,8 @@ import {
 
 const route = useRoute()
 const appStore = useAppStore()
+
+const currentThemeName = computed(() => THEMES.find((theme) => theme.id === appStore.themeId)?.name ?? appStore.themeId)
 
 const activeMenu = computed(() => {
   const { path } = route

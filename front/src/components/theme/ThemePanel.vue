@@ -72,6 +72,62 @@
               <el-icon v-if="isStudio" class="text-[var(--brand)] text-base font-bold"><Check /></el-icon>
             </div>
           </div>
+
+          <!-- Freyja 插画主题 -->
+          <button
+            type="button"
+            class="group text-left rounded-xl border-2 p-2.5 transition-all relative overflow-hidden"
+            :class="themeId === 'starlight' ? 'border-[var(--brand)] bg-[var(--brand-soft)] shadow-sm' : 'border-[var(--border-default)] hover:border-[var(--border-strong)] bg-[var(--surface-muted)]'"
+            :aria-pressed="themeId === 'starlight'"
+            @click="changeTheme('starlight')"
+          >
+            <div class="h-16 rounded-lg overflow-hidden flex border border-black/10 shadow-xs mb-2 bg-[url('/bg/bg.png')] bg-cover bg-left">
+              <div class="w-1/3 bg-[#2C2442] flex flex-col justify-center items-center gap-1 p-1">
+                <div class="w-3 h-1 bg-[#C5A4F2] rounded-full"></div>
+                <div class="w-2.5 h-0.5 bg-white/30 rounded-full"></div>
+                <div class="w-2.5 h-0.5 bg-white/30 rounded-full"></div>
+              </div>
+              <div class="w-2/3 p-1.5 flex flex-col justify-between bg-white/25">
+                <div class="h-2 bg-white/85 rounded shadow-xs w-3/4"></div>
+                <div class="h-3 bg-white/85 rounded shadow-xs w-full"></div>
+              </div>
+            </div>
+            <div class="flex items-start justify-between gap-1">
+              <div>
+                <div class="font-bold text-xs">Freyja</div>
+                <div class="text-[10px] text-[var(--text-muted)] leading-snug mt-0.5">浅紫星光 · 轻透工作台</div>
+              </div>
+              <el-icon v-if="themeId === 'starlight'" class="text-[var(--brand)] text-base shrink-0"><Check /></el-icon>
+            </div>
+          </button>
+
+          <!-- 琥珀映像 -->
+          <button
+            type="button"
+            class="group text-left rounded-xl border-2 p-2.5 transition-all relative overflow-hidden"
+            :class="themeId === 'amber' ? 'border-[var(--brand)] bg-[var(--brand-soft)] shadow-sm' : 'border-[var(--border-default)] hover:border-[var(--border-strong)] bg-[var(--surface-muted)]'"
+            :aria-pressed="themeId === 'amber'"
+            @click="changeTheme('amber')"
+          >
+            <div class="h-16 rounded-lg overflow-hidden flex border border-[#DCCDB9] shadow-xs mb-2">
+              <div class="w-1/3 bg-[#302820] flex flex-col justify-center items-center gap-1 p-1">
+                <div class="w-3 h-1 bg-[#D6A46B] rounded-full"></div>
+                <div class="w-2.5 h-0.5 bg-white/30 rounded-full"></div>
+                <div class="w-2.5 h-0.5 bg-white/30 rounded-full"></div>
+              </div>
+              <div class="w-2/3 bg-[#F8F4EC] p-1.5 flex flex-col justify-between">
+                <div class="h-2 bg-[#FFFDF8] rounded border border-[#E8DED0] w-3/4"></div>
+                <div class="h-3 bg-[#FFFDF8] rounded border border-[#E8DED0] w-full"></div>
+              </div>
+            </div>
+            <div class="flex items-start justify-between gap-1">
+              <div>
+                <div class="font-bold text-xs">琥珀映像</div>
+                <div class="text-[10px] text-[var(--text-muted)] leading-snug mt-0.5">暖纸色 · 陶土橙</div>
+              </div>
+              <el-icon v-if="themeId === 'amber'" class="text-[var(--brand)] text-base shrink-0"><Check /></el-icon>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -180,6 +236,7 @@ const {
   colorMode,
   density,
   reduceMotion,
+  themeId,
   isObsidian,
   isStudio,
   changeTheme,
