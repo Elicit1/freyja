@@ -198,10 +198,10 @@ public class CharacterVisualAssetResolverImpl implements CharacterVisualAssetRes
                 throw new BizException(400, "所选造型不属于指定人物: lookId=" + lookId + ", characterId=" + characterId);
             }
 
-            // 字段合并优先级: 请求中的字段 > lookId 对应数据库造型字段
-            String finalDesignDesc = StringUtils.isNotBlank(designDesc) ? designDesc.trim() : StringUtils.trimToNull(look.getDesignDesc());
-            String finalAppearancePrompt = StringUtils.isNotBlank(appearancePrompt) ? appearancePrompt.trim() : StringUtils.trimToNull(look.getAppearancePrompt());
-            String finalOutfitPrompt = StringUtils.isNotBlank(outfitPrompt) ? outfitPrompt.trim() : StringUtils.trimToNull(look.getOutfitPrompt());
+            // 指定造型后以资产库为唯一来源。分镜和历史任务中的描述可能是修改造型前的旧快照。
+            String finalDesignDesc = StringUtils.trimToNull(look.getDesignDesc());
+            String finalAppearancePrompt = StringUtils.trimToNull(look.getAppearancePrompt());
+            String finalOutfitPrompt = StringUtils.trimToNull(look.getOutfitPrompt());
 
             return ResolvedCharacterPromptContext.builder()
                     .character(character)

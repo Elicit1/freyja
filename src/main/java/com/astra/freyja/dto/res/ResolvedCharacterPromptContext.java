@@ -11,7 +11,7 @@ import org.apache.commons.lang3.StringUtils;
 /**
  * 角色与造型提示词上下文解析结果。
  * 遵循严格的造型选择优先级与 SSOT 隔离：
- * 1. 有 lookId：请求字段优先，缺失由造型库补充，严禁使用 appearanceDesc，严禁查询默认造型；
+ * 1. 有 lookId：造型库字段为唯一来源，忽略请求中的旧造型快照，严禁使用 appearanceDesc，严禁查询默认造型；
  * 2. 无 lookId 但传了造型字段：视为显式造型，仅使用请求中的造型描述，严禁使用 appearanceDesc；
  * 3. 完全无造型信息：使用角色 appearanceDesc 兜底，严禁自动装配默认造型；
  * 4. lookId 无效或不属于该角色：直接抛出异常，不静默回退。

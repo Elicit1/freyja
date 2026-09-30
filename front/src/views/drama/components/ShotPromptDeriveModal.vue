@@ -1260,40 +1260,17 @@ function cleanupTimer() {
   }
 }
 
-function getCharacterDesignDesc(characterId?: string | number, lookId?: string | number): string | undefined {
-  if (!characterId) return undefined
-  const char = characterOptions.value.find(c => String(c.id) === String(characterId))
-  if (!char) return undefined
-  if (lookId) {
-    const look = char.outfits?.find(o => String(o.id) === String(lookId))
-    if (look?.designDesc) return look.designDesc
-  }
-  const defaultLook = char.outfits?.find(o => o.isDefault === 1)
-  return defaultLook?.designDesc
-}
-
-function getCharacterOutfitPrompt(characterId?: string | number, lookId?: string | number): string | undefined {
-  if (!characterId) return undefined
-  const char = characterOptions.value.find(c => String(c.id) === String(characterId))
-  if (!char) return undefined
-  if (lookId) {
-    const look = char.outfits?.find(o => String(o.id) === String(lookId))
-    if (look?.outfitPrompt) return look.outfitPrompt
-  }
-  const defaultLook = char.outfits?.find(o => o.isDefault === 1)
-  return defaultLook?.outfitPrompt
-}
-
-function getCharacterAppearancePrompt(characterId?: string | number, lookId?: string | number): string | undefined {
-  if (!characterId) return undefined
-  const char = characterOptions.value.find(c => String(c.id) === String(characterId))
-  if (!char) return undefined
-  if (lookId) {
-    const look = char.outfits?.find(o => String(o.id) === String(lookId))
-    if (look?.appearancePrompt) return look.appearancePrompt
-  }
-  const defaultLook = char.outfits?.find(o => o.isDefault === 1)
-  return defaultLook?.appearancePrompt
+function buildPromptCharacterRefs(): CharacterShotRefInfo[] {
+  return draft.value.characterRefs.map(c => ({
+    ...c,
+    // 有造型 ID 时由后端读取最新资产；旧分镜及历史任务中的描述只是快照。
+    designDesc: c.lookId ? undefined : c.designDesc?.trim() || undefined,
+    outfitPrompt: c.lookId ? undefined : c.outfitPrompt?.trim() || undefined,
+    appearancePrompt: c.lookId ? undefined : c.appearancePrompt?.trim() || undefined,
+    actionPrompt: c.actionPrompt?.trim() || undefined,
+    emotionPrompt: c.emotionPrompt?.trim() || undefined,
+    positionTag: c.positionTag?.trim() || undefined
+  }))
 }
 
 function buildDerivePayload(): ShotPromptDeriveDTO {
@@ -1321,15 +1298,7 @@ function buildDerivePayload(): ShotPromptDeriveDTO {
     resSceneId: draft.value.resSceneId,
     resKeyframeId: draft.value.resKeyframeId,
     customScenePrompt: optionalText(currentShotContext.value?.customScenePrompt),
-    characterRefs: draft.value.characterRefs.map(c => ({
-      ...c,
-      designDesc: c.designDesc || getCharacterDesignDesc(c.characterId, c.lookId),
-      outfitPrompt: c.outfitPrompt || getCharacterOutfitPrompt(c.characterId, c.lookId),
-      appearancePrompt: c.appearancePrompt || getCharacterAppearancePrompt(c.characterId, c.lookId),
-      actionPrompt: optionalText(c.actionPrompt),
-      emotionPrompt: optionalText(c.emotionPrompt),
-      positionTag: optionalText(c.positionTag)
-    })),
+    characterRefs: buildPromptCharacterRefs(),
     propRefs: draft.value.propRefs.length > 0 ? draft.value.propRefs : undefined,
     episodeSummary: optionalText(episodeSummary.value),
     stylePreset: optionalText(stylePreset.value),
@@ -1442,7 +1411,7 @@ async function handleParseManualResponse() {
       rawResponse: rawManualResponse.value,
       contextFingerprint: promptPackage.value?.contextFingerprint,
       dialogue: currentShotContext.value?.dialogue,
-      characterRefs: draft.value.characterRefs,
+      characterRefs: buildPromptCharacterRefs(),
       propRefs: draft.value.propRefs.length > 0 ? draft.value.propRefs : undefined,
       refImages: draft.value.refImages.length > 0 ? draft.value.refImages : undefined,
       refAudios: draft.value.refAudios.length > 0 ? draft.value.refAudios : undefined,
@@ -1611,7 +1580,7 @@ async function doApply() {
           videoPrompt: previewResult.value.videoPrompt || '' }),
     directorPlan: previewResult.value.directorPlan,
     directorPlanJson: previewResult.value.directorPlan ? JSON.stringify(previewResult.value.directorPlan) : undefined,
-    characterRefs: draft.value.characterRefs.map(item => ({ ...item })),
+    characterRefs: buildPromptCharacterRefs(),
     propRefs: draft.value.propRefs.map(item => ({ ...item })),
     resSceneId: draft.value.resSceneId,
     resKeyframeId: draft.value.resKeyframeId,

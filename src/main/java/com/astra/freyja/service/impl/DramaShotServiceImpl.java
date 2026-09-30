@@ -269,7 +269,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         // 序列化角色引用列表
         if (dto.getCharacterRefs() != null && !dto.getCharacterRefs().isEmpty()) {
             try {
-                shot.setCharacterRefsJson(objectMapper.writeValueAsString(dto.getCharacterRefs()));
+                shot.setCharacterRefsJson(objectMapper.writeValueAsString(normalizeCharacterRefs(dto.getCharacterRefs())));
             } catch (Exception e) {
                 log.warn("[DramaShotService] 序列化 characterRefs 异常: {}", e.getMessage());
             }
@@ -366,7 +366,7 @@ public class DramaShotServiceImpl implements DramaShotService {
 
         if (dto.getCharacterRefs() != null) {
             try {
-                shot.setCharacterRefsJson(objectMapper.writeValueAsString(dto.getCharacterRefs()));
+                shot.setCharacterRefsJson(objectMapper.writeValueAsString(normalizeCharacterRefs(dto.getCharacterRefs())));
             } catch (Exception e) {
                 log.warn("[DramaShotService] 序列化 characterRefs 异常: {}", e.getMessage());
             }
@@ -1050,14 +1050,12 @@ public class DramaShotServiceImpl implements DramaShotService {
                         info.setOutfitName(outfit.getLookName());
                         info.setOutfitReferenceImageUrl(outfit.getReferenceImageUrl());
                         info.setCharacterReferenceImageUrl(outfit.getReferenceImageUrl());
-                        info.setDesignDesc(StringUtils.defaultIfBlank(ref.getDesignDesc(), outfit.getDesignDesc()));
+                        info.setDesignDesc(outfit.getDesignDesc());
                         info.setOutfitPrompt(outfit.getOutfitPrompt());
                         info.setAppearancePrompt(outfit.getAppearancePrompt());
-                    } else if (StringUtils.isNotBlank(ref.getDesignDesc())) {
-                        info.setDesignDesc(ref.getDesignDesc());
                     }
                 } else if (ref.getCharacterId() != null) {
-                    // 未明确指定造型时，尝试查询启用中的默认造型
+                    // 未明确指定造型时，保留现有分镜展示的默认造型兼容行为。
                     ResCharacterOutfit defaultOutfit = outfitMapper.selectOne(new LambdaQueryWrapper<ResCharacterOutfit>()
                             .eq(ResCharacterOutfit::getCharacterId, ref.getCharacterId())
                             .eq(ResCharacterOutfit::getIsDefault, 1)
@@ -1167,6 +1165,20 @@ public class DramaShotServiceImpl implements DramaShotService {
             shot.setCameraMovement(normalizedRequested);
             shot.setCameraMovementLocked(isExplicitCameraConstraint(requestedLock, normalizedRequested));
         }
+    }
+
+    private List<CharacterShotRefDTO> normalizeCharacterRefs(List<CharacterShotRefDTO> refs) {
+        List<CharacterShotRefDTO> normalized = new ArrayList<>(refs.size());
+        for (CharacterShotRefDTO ref : refs) {
+            if (ref == null) continue;
+            CharacterShotRefDTO copy = new CharacterShotRefDTO();
+            BeanUtils.copyProperties(ref, copy);
+            if (copy.getLookId() != null && copy.getLookId() > 0) {
+                copy.setDesignDesc(null);
+            }
+            normalized.add(copy);
+        }
+        return normalized;
     }
 
     private List<CharacterShotRefDTO> parseCharacterRefs(String json) {
