@@ -29,15 +29,15 @@ jobs:
           - service: backend
             context: .
             dockerfile: Dockerfile
-            image_name: backend
+            image_name: freyja-backend
           - service: frontend
             context: ./front
             dockerfile: ./front/Dockerfile
-            image_name: frontend
+            image_name: freyja-frontend
           - service: comfy-gateway
             context: ./comfy_gateway
             dockerfile: ./comfy_gateway/Dockerfile
-            image_name: comfy-gateway
+            image_name: freyja-comfy-gateway
 
     steps:
       - name: Checkout repository
@@ -64,9 +64,10 @@ jobs:
             type=raw,value=${{ github.event.inputs.version_tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=1.0.0,enable=${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
             type=ref,event=branch
             type=sha,format=short
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main' }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v6

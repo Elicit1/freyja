@@ -83,7 +83,7 @@ services:
   # 4. ComfyUI 网关：FastAPI 兼容层 (解耦生图/生视频模型与外部宿主 ComfyUI)
   # ============================================================================
   comfy-gateway:
-    image: ${IMAGE_PREFIX:-freyja/}comfy-gateway:${FREYJA_VERSION:-1.0.0}
+    image: ${IMAGE_PREFIX:-astrag1/}freyja-comfy-gateway:${FREYJA_VERSION:-1.0.0}
     build:
       context: ./comfy_gateway
       dockerfile: Dockerfile
@@ -114,7 +114,7 @@ services:
   # 5. 后端核心服务：Spring Boot 4 (JDK 26 + 内置 FFmpeg)
   # ============================================================================
   backend:
-    image: ${IMAGE_PREFIX:-freyja/}backend:${FREYJA_VERSION:-1.0.0}
+    image: ${IMAGE_PREFIX:-astrag1/}freyja-backend:${FREYJA_VERSION:-1.0.0}
     build:
       context: .
       dockerfile: Dockerfile
@@ -160,7 +160,7 @@ services:
   # 6. 前端 Web 工作台：Vue 3 + Vite + Element Plus (由 Nginx 托管)
   # ============================================================================
   frontend:
-    image: ${IMAGE_PREFIX:-freyja/}frontend:${FREYJA_VERSION:-1.0.0}
+    image: ${IMAGE_PREFIX:-astrag1/}freyja-frontend:${FREYJA_VERSION:-1.0.0}
     build:
       context: ./front
       dockerfile: Dockerfile
