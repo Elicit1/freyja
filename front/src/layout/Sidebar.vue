@@ -1,12 +1,13 @@
 <template>
   <div class="h-full flex flex-col studio-sidebar select-none">
     <!-- Logo & Title -->
-    <div
-      class="h-16 flex items-center px-4 overflow-hidden border-b border-[var(--sidebar-border)] shrink-0 gap-3"
+    <router-link
+      to="/dashboard"
+      class="h-16 flex items-center px-4 overflow-hidden border-b border-[var(--sidebar-border)] shrink-0 gap-3 no-underline cursor-pointer group"
       :class="appStore.isCollapse ? 'justify-center !px-0' : 'justify-start'"
     >
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-[var(--brand)] to-[var(--accent)] flex items-center justify-center text-white shrink-0 shadow-sm">
-        <el-icon class="text-xl"><Film /></el-icon>
+      <div class="w-9 h-9 rounded-xl overflow-hidden flex items-center justify-center shrink-0 shadow-sm transition-transform duration-200 group-hover:scale-105">
+        <img src="/logo/logo.png" alt="FREYJA Logo" class="w-full h-full object-contain" />
       </div>
 
       <div v-show="!appStore.isCollapse" class="flex flex-col overflow-hidden transition-opacity duration-200">
@@ -17,7 +18,7 @@
           AI DIGITAL STUDIO
         </span>
       </div>
-    </div>
+    </router-link>
 
     <!-- Grouped Menus -->
     <el-scrollbar class="flex-1 py-2">
