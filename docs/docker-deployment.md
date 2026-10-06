@@ -59,6 +59,7 @@ cp .env.example .env
 根据您的实际情况微调 `.env` 中的核心配置项：
 - 若您的 ComfyUI 运行在**当前 Docker 宿主机电脑（Windows/Linux 本机）**：保持默认 `COMFYUI_HTTP_URL=http://host.docker.internal:8188` 即可；
 - 若您的 ComfyUI 运行在**局域网其他主机或独立 GPU 云服务器**：修改为该机器的 IP 和端口，如 `COMFYUI_HTTP_URL=http://192.168.1.120:8188`。
+- 本机部署的 MinIO 媒体地址使用 `MINIO_EXTERNAL_ENDPOINT=http://minio.localhost:9000`。浏览器将其解析到本机；`comfy-gateway` 和 `backend` 容器通过 Compose 的 `extra_hosts` 解析到 Docker 宿主网关。容器内部直接访问 MinIO 时使用 `http://minio:9000`。远程部署请改为浏览器与网关容器都可访问的域名。
 
 ### 3. 一键构建并启动
 在项目根目录执行：
@@ -66,6 +67,8 @@ cp .env.example .env
 ```bash
 docker compose up -d --build
 ```
+
+建议使用 `docker-start.sh` / `docker-start.bat` 一键启动；脚本会升级旧版 `localhost:9000` 本地配置，并检查网关能否访问内部 MinIO 与实际写入资产的媒体地址。直接执行 `docker compose up` 时应自行检查这两个地址。
 
 > **首次启动说明**：
 > 1. Docker 会自动编译构建前端与后端镜像（后端内置 JDK 26 与 FFmpeg 工具链）；

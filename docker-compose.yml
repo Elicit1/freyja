@@ -90,6 +90,9 @@ services:
       args:
         MAINLAND: ${MAINLAND:-false}
     container_name: freyja-comfy-gateway
+    depends_on:
+      minio:
+        condition: service_healthy
     environment:
       GATEWAY_HOST: 0.0.0.0
       GATEWAY_PORT: 8000
@@ -102,6 +105,7 @@ services:
       TZ: Asia/Shanghai
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "minio.localhost:host-gateway"
     ports:
       - "${GATEWAY_PORT:-8000}:8000"
     volumes:
@@ -137,7 +141,7 @@ services:
       SPRING_DATA_REDIS_PORT: 6379
       SPRING_DATA_REDIS_PASSWORD: ${REDIS_PASSWORD:-123456}
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_EXTERNAL_ENDPOINT: ${MINIO_EXTERNAL_ENDPOINT:-http://localhost:9000}
+      MINIO_EXTERNAL_ENDPOINT: ${MINIO_EXTERNAL_ENDPOINT:-http://minio.localhost:9000}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       MINIO_BUCKET_NAME: video-assets
@@ -147,6 +151,7 @@ services:
       JAVA_OPTS: ${BACKEND_JAVA_OPTS:--Xms512m -Xmx2048m -XX:+UseG1GC}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+      - "minio.localhost:host-gateway"
     ports:
       - "${BACKEND_PORT:-8080}:8080"
     volumes:

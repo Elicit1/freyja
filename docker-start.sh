@@ -37,6 +37,12 @@ if [ ! -f .env ]; then
 else
     echo "[√] 已存在 .env 配置文件。"
 fi
+
+# 升级旧版本地配置；自定义域名保持不变。
+if grep -Eq '^MINIO_EXTERNAL_ENDPOINT=http://(localhost|127\.0\.0\.1):9000/?[[:space:]]*$' .env; then
+    sed -i -E 's#^MINIO_EXTERNAL_ENDPOINT=http://(localhost|127\.0\.0\.1):9000/?[[:space:]]*$#MINIO_EXTERNAL_ENDPOINT=http://minio.localhost:9000#' .env
+    echo "[√] 已将旧版 MinIO localhost 地址升级为 minio.localhost。"
+fi
 echo ""
 
 # 4. 一键构建并启动服务栈
@@ -45,6 +51,19 @@ echo "    (首次启动需要拉取镜像并编译构建前端与后端，耗时
 echo ""
 
 docker compose up -d --build
+
+# 浏览器地址也会写入分镜资产；确保网关容器能够直接读取该地址。
+if ! docker compose exec -T comfy-gateway curl -fsS --max-time 10 "http://minio:9000/minio/health/live" > /dev/null; then
+    echo "[x] comfy-gateway 无法通过容器名称访问 MinIO (minio:9000)。"
+    exit 1
+fi
+MINIO_MEDIA_URL="$(docker compose exec -T backend printenv MINIO_EXTERNAL_ENDPOINT)"
+if ! docker compose exec -T comfy-gateway python -c 'import httpx, sys; httpx.get(sys.argv[1], timeout=10).raise_for_status()' "${MINIO_MEDIA_URL}/minio/health/live"; then
+    echo "[x] MinIO 媒体地址无法从 comfy-gateway 容器访问: ${MINIO_MEDIA_URL}"
+    echo "    请将 MINIO_EXTERNAL_ENDPOINT 设置为浏览器和网关容器都能访问的地址。"
+    exit 1
+fi
+echo "[√] MinIO 媒体地址从网关容器访问正常: ${MINIO_MEDIA_URL}"
 
 echo ""
 echo "================================================================"

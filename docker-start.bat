@@ -17,6 +17,7 @@ if %errorlevel% neq 0 (
     pause
     exit /b 1
 )
+
 echo [√] Docker 环境检测正常。
 echo.
 
@@ -38,6 +39,9 @@ if not exist .env (
 ) else (
     echo [√] 已存在 .env 配置文件。
 )
+:: 升级旧版本地配置；自定义域名保持不变。
+powershell -NoProfile -Command "$p='.env'; $s=[System.IO.File]::ReadAllText($p); $n=[regex]::Replace($s,'(?m)^MINIO_EXTERNAL_ENDPOINT=http://(?:localhost|127\.0\.0\.1):9000/?\r?$','MINIO_EXTERNAL_ENDPOINT=http://minio.localhost:9000'); if($n -ne $s){[System.IO.File]::WriteAllText($p,$n); Write-Host '[√] 已将旧版 MinIO localhost 地址升级为 minio.localhost。'}"
+if %errorlevel% neq 0 exit /b 1
 echo.
 
 :: 4. 一键构建并启动服务栈
@@ -55,6 +59,21 @@ if %errorlevel% neq 0 (
     pause
     exit /b %errorlevel%
 )
+
+:: 媒体 URL 会保存到分镜资产，部署时检查网关能否读取该地址。
+docker compose exec -T comfy-gateway curl -fsS --max-time 10 "http://minio:9000/minio/health/live" >nul
+if !errorlevel! neq 0 (
+    echo [x] comfy-gateway 无法通过容器名称访问 MinIO (minio:9000)。
+    exit /b 1
+)
+for /f "delims=" %%i in ('docker compose exec -T backend printenv MINIO_EXTERNAL_ENDPOINT') do set "MINIO_MEDIA_URL=%%i"
+docker compose exec -T comfy-gateway python -c "import httpx, sys; httpx.get(sys.argv[1], timeout=10).raise_for_status()" "!MINIO_MEDIA_URL!/minio/health/live"
+if !errorlevel! neq 0 (
+    echo [x] MinIO 媒体地址无法从 comfy-gateway 容器访问: !MINIO_MEDIA_URL!
+    echo     请将 MINIO_EXTERNAL_ENDPOINT 设置为浏览器和网关容器都能访问的地址。
+    exit /b 1
+)
+echo [√] MinIO 媒体地址从网关容器访问正常: !MINIO_MEDIA_URL!
 
 echo.
 echo ================================================================
