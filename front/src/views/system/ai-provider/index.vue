@@ -328,7 +328,10 @@
                     <div class="text-[11px] font-mono text-[var(--text-muted)]">
                       <span v-if="row.maxTokens">Max: {{ row.maxTokens }}</span>
                       <span v-if="row.temperature !== undefined" class="ml-2">Temp: {{ row.temperature }}</span>
-                      <span v-if="!row.maxTokens && row.temperature === undefined">-</span>
+                      <span v-if="row.maxImages != null" class="ml-2">参考图: {{ row.maxImages }}</span>
+                      <span v-if="row.maxAudios != null" class="ml-2">参考音频: {{ row.maxAudios }}</span>
+                      <span v-if="row.maxVideos != null" class="ml-2">参考视频: {{ row.maxVideos }}</span>
+                      <span v-if="!row.maxTokens && row.temperature === undefined && row.maxImages == null && row.maxAudios == null && row.maxVideos == null">-</span>
                     </div>
                   </template>
                 </el-table-column>
@@ -549,6 +552,27 @@
             <el-option label="EMBEDDING (向量嵌入)" value="EMBEDDING" />
           </el-select>
         </el-form-item>
+
+        <div v-if="isImageRefType" class="p-3 rounded-lg border border-[var(--border-default)] bg-[var(--surface-muted)] space-y-2 mb-3">
+          <div class="text-xs font-bold text-[var(--text-primary)]">参考素材数量上限</div>
+          <el-row :gutter="12">
+            <el-col :span="isVideoGenerationType ? 12 : 24">
+              <el-form-item label="最大参考图数" label-width="100px" prop="maxImages">
+                <el-input-number v-model="modelForm.maxImages" :min="0" :step="1" :precision="0" class="!w-full" />
+              </el-form-item>
+            </el-col>
+            <el-col v-if="isVideoGenerationType" :span="12">
+              <el-form-item label="最大参考音频数" label-width="110px" prop="maxAudios">
+                <el-input-number v-model="modelForm.maxAudios" :min="0" :step="1" :precision="0" class="!w-full" />
+              </el-form-item>
+            </el-col>
+            <el-col v-if="isVideoGenerationType" :span="12">
+              <el-form-item label="最大参考视频数" label-width="110px" prop="maxVideos">
+                <el-input-number v-model="modelForm.maxVideos" :min="0" :step="1" :precision="0" class="!w-full" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </div>
 
         <!-- 视频后处理专属结构化配置 -->
         <div v-if="isVideoProcessingType" class="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-2.5 mb-3">
@@ -973,6 +997,28 @@ const modelForm = reactive<AiModelDTO>({
 const isVideoProcessingType = computed(() => {
   return modelForm.modelType === 'VIDEO_UPSCALE' || modelForm.modelType === 'FRAME_INTERPOLATION'
 })
+const isVideoGenerationType = computed(() =>
+  modelForm.modelType === 'TXT2VIDEO_FIRST_LAST' || modelForm.modelType === 'TXT2VIDEO_REF'
+)
+const isImageRefType = computed(() =>
+  modelForm.modelType === 'IMG2IMG' || modelForm.modelType === 'TXT_IMG2IMG' || isVideoGenerationType.value
+)
+
+const normalizeReferenceLimits = () => {
+  if (isImageRefType.value) {
+    modelForm.maxImages ??= modelForm.modelType === 'TXT2VIDEO_REF' ? 5
+      : modelForm.modelType === 'TXT2VIDEO_FIRST_LAST' ? 2 : 1
+  } else {
+    modelForm.maxImages = undefined
+  }
+  if (isVideoGenerationType.value) {
+    modelForm.maxAudios ??= modelForm.modelType === 'TXT2VIDEO_REF' ? 3 : 0
+    modelForm.maxVideos ??= 0
+  } else {
+    modelForm.maxAudios = undefined
+    modelForm.maxVideos = undefined
+  }
+}
 
 const vpForm = reactive({
   engineModel: '',
@@ -992,6 +1038,7 @@ const vpFormAllowedScalesStr = ref('2, 4')
 const vpFormAllowedMultipliersStr = ref('2, 4')
 
 const handleModelTypeChange = (type?: string) => {
+  normalizeReferenceLimits()
   if (type === 'VIDEO_UPSCALE') {
     if (!vpForm.engineModel) vpForm.engineModel = 'RealESRGAN_x2plus.pth'
     if (!vpForm.filenamePrefix) vpForm.filenamePrefix = 'video_upscale/realesrgan_x2'
@@ -1052,6 +1099,9 @@ const modelRules: FormRules = {
     { max: 100, message: '长度不可超过 100 个字符', trigger: 'blur' }
   ],
   modelType: [{ required: true, message: '请选择模型能力类型', trigger: 'change' }],
+  maxImages: [{ required: true, type: 'integer', min: 0, message: '请输入大于等于 0 的整数', trigger: 'change' }],
+  maxAudios: [{ type: 'integer', min: 0, message: '请输入大于等于 0 的整数', trigger: 'change' }],
+  maxVideos: [{ type: 'integer', min: 0, message: '请输入大于等于 0 的整数', trigger: 'change' }],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }]
 }
 
@@ -1109,6 +1159,7 @@ const handleOpenModelDialog = async (row?: AiModel) => {
     modelForm.status = 1
     modelForm.remark = ''
   }
+  normalizeReferenceLimits()
   initVpFormFromParamsJson(modelForm.paramsJson)
   modelDialogVisible.value = true
 }
