@@ -156,16 +156,6 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
                 dto.getBatchSize()
         );
 
-        String upscaleMode = null;
-        if (isUpscale) {
-            var params = resolvedModel.getParams();
-            upscaleMode = dto.getUpscaleMode() != null ? dto.getUpscaleMode() : params.getDefaultMode();
-            if (upscaleMode != null &&
-                    (params.getAllowedModes() == null || !params.getAllowedModes().contains(upscaleMode))) {
-                throw new BizException(400, "超分推理模式不在模型允许范围内: " + upscaleMode);
-            }
-        }
-
         // 3. 解析 AI 提供商
         AiProvider provider = aiImageApiService.resolveProvider(resolvedModel.getModel().getProviderId());
 
@@ -260,9 +250,6 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
         final String finalModelCode = resolvedModel.getModelCode();
         final Map<String, Object> finalExtraBody = new HashMap<>(resolvedModel.getExtraBody());
         finalExtraBody.put("preserve_audio", preserveAudio == 1);
-        if (upscaleMode != null) {
-            finalExtraBody.put("upscale_mode", upscaleMode);
-        }
 
         renderAsyncExecutor.execute(() -> executeVideoProcessAsync(
                 task.getId(),
@@ -310,7 +297,7 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             String requestUrl = buildVideoEndpointUrl(provider.getBaseUrl());
             String apiKey = cryptoUtil.decrypt(provider.getApiKey());
             int timeoutSec = provider.getTimeout() != null && provider.getTimeout() > 0 ? provider.getTimeout() : 3600;
-            if ("seedvr2-3b-int8-video".equals(modelCode) || "flashvsr-video".equals(modelCode)) {
+            if ("seedvr2-3b-int8-video".equals(modelCode)) {
                 timeoutSec = Math.max(timeoutSec, 7200);
             }
 
