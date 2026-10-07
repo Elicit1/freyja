@@ -44,6 +44,9 @@ public class VideoProcessingModelOptionVO {
     public static class SafeModelConfig {
         private Integer defaultScale;
         private List<Integer> allowedScales;
+        private String defaultMode;
+        private List<String> allowedModes;
+        private String usageHint;
         private Integer defaultMultiplier;
         private List<Integer> allowedMultipliers;
         private Integer defaultCrf;

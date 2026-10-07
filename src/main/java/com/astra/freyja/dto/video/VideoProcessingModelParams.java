@@ -19,6 +19,13 @@ public class VideoProcessingModelParams {
     /** 超分允许倍率列表 (如 [2, 4]) */
     private List<Integer> allowedScales;
 
+    /** 可选推理模式，例如 FlashVSR 的 tiny-long/full */
+    private String defaultMode;
+    private List<String> allowedModes;
+
+    /** 工作台显示的模型使用提示 */
+    private String usageHint;
+
     /** 补帧默认倍率 (如 2) */
     private Integer defaultMultiplier;
 

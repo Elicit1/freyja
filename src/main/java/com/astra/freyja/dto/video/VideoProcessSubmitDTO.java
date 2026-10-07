@@ -41,6 +41,9 @@ public class VideoProcessSubmitDTO {
     /** 超分放大倍率 (如 2) */
     private Integer scale;
 
+    /** 仅在模型配置允许时使用的超分推理模式 */
+    private String upscaleMode;
+
     /** 补帧倍率 (如 2) */
     private Integer multiplier;
 

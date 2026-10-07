@@ -167,3 +167,30 @@ models:
       filename_prefix: ["4", "inputs", "filename_prefix"]
       pix_fmt: ["4", "inputs", "pix_fmt"]
 
+  - model_name: "seedvr2-3b-int8-video"
+    description: "SeedVR2 3B INT8 native ComfyUI upscale with automatic temporal chunks"
+    template_file: "comfyUIApi/utility_seedvr2_3b_int8_upscale_video_api.json"
+    handler: "standard"
+    timeout_seconds: 7200
+    mappings:
+      video: ["73", "inputs", "file"]
+      scale: ["57", "inputs", "resize_type.multiplier"]
+      temporal_overlap: ["99", "inputs", "temporal_overlap"]
+      crf: ["76", "inputs", "format.codec.encoding.crf"]
+      filename_prefix: ["76", "inputs", "filename_prefix"]
+      output_audio: ["75", "inputs", "audio"]
+
+  - model_name: "flashvsr-video"
+    description: "Local FlashVSR v1.1 tiny-long stateful video upscale"
+    template_file: "comfyUIApi/utility_flashvsr_upscale_video_api.json"
+    handler: "standard"
+    timeout_seconds: 7200
+    mappings:
+      video: ["1", "inputs", "video"]
+      force_rate: ["1", "inputs", "force_rate"]
+      scale: ["2", "inputs", "scale"]
+      upscale_mode: ["2", "inputs", "mode"]
+      frame_rate: ["4", "inputs", "frame_rate"]
+      crf: ["4", "inputs", "crf"]
+      filename_prefix: ["4", "inputs", "filename_prefix"]
+      output_audio: ["4", "inputs", "audio"]

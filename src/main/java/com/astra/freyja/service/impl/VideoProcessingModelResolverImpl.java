@@ -171,7 +171,9 @@ public class VideoProcessingModelResolverImpl implements VideoProcessingModelRes
         Map<String, Object> extraBody = new HashMap<>();
         if (isUpscale) {
             extraBody.put("upscale_model", params.getEngineModel());
-            extraBody.put("force_rate", sourceFps);
+            extraBody.put("scale", scale);
+            // 超分保留源帧序列，避免对输入做额外的补帧/抽帧。
+            extraBody.put("force_rate", 0);
             extraBody.put("frame_rate", targetFps);
             extraBody.put("crf", crf);
             extraBody.put("filename_prefix", params.getFilenamePrefix());
@@ -230,6 +232,9 @@ public class VideoProcessingModelResolverImpl implements VideoProcessingModelRes
             VideoProcessingModelOptionVO.SafeModelConfig config = VideoProcessingModelOptionVO.SafeModelConfig.builder()
                     .defaultScale(p.getDefaultScale())
                     .allowedScales(p.getAllowedScales() != null ? p.getAllowedScales() : ("VIDEO_UPSCALE".equals(op) ? List.of(2, 4) : null))
+                    .defaultMode(p.getDefaultMode())
+                    .allowedModes(p.getAllowedModes())
+                    .usageHint(p.getUsageHint())
                     .defaultMultiplier(p.getDefaultMultiplier())
                     .allowedMultipliers(p.getAllowedMultipliers() != null ? p.getAllowedMultipliers() : ("FRAME_INTERPOLATION".equals(op) ? List.of(2, 4) : null))
                     .defaultCrf(p.getDefaultCrf() != null ? p.getDefaultCrf() : ("VIDEO_UPSCALE".equals(op) ? 16 : 19))

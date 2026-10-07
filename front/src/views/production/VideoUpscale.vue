@@ -17,7 +17,7 @@
             </span>
           </div>
           <p class="text-xs text-[var(--text-secondary)] mt-0.5">
-            基于深度学习重建视频细节，无损超分辨率放大，保留原片帧率与音频轨道
+            基于深度学习重建视频细节，按所选模型放大画面，并可保留原片音轨
           </p>
         </div>
       </div>
@@ -290,6 +290,19 @@
               <el-form-item label="输出视频帧率 (FPS)">
                 <el-input-number v-model="formData.sourceFps" :min="1" :max="60" class="!w-full" />
               </el-form-item>
+            </div>
+
+            <el-form-item v-if="selectedModel?.config?.allowedModes?.length" label="推理模式">
+              <el-select v-model="formData.upscaleMode" class="w-full">
+                <el-option v-for="mode in selectedModel.config.allowedModes" :key="mode" :label="mode" :value="mode" />
+              </el-select>
+            </el-form-item>
+            <div v-if="selectedModel?.config?.usageHint" class="text-xs text-amber-500 mb-3">
+              {{ selectedModel.config.usageHint }}
+            </div>
+            <div v-if="videoProbe?.width && videoProbe?.height && videoProbe.width * videoProbe.height * formData.scale * formData.scale > 1920 * 1080"
+              class="text-xs text-amber-500 mb-3">
+              预计输出 {{ videoProbe.width * formData.scale }}×{{ videoProbe.height * formData.scale }}。RTX 4080 处理 2K 及长视频可能显存不足，建议先用短片段测试。
             </div>
 
             <!-- CRF Slider -->
@@ -658,6 +671,7 @@ const formData = reactive({
   providerId: '',
   modelId: '',
   scale: 2,
+  upscaleMode: '',
   sourceFps: 24,
   targetFps: 24,
   crf: 16,
@@ -877,6 +891,7 @@ function applyModelDefaults(model: VideoProcessingModelOption) {
     } else if (model.config.allowedScales && model.config.allowedScales.length > 0) {
       formData.scale = model.config.allowedScales[0]
     }
+    formData.upscaleMode = model.config.defaultMode || model.config.allowedModes?.[0] || ''
     if (model.config.defaultCrf !== undefined) {
       formData.crf = model.config.defaultCrf
     }
@@ -962,6 +977,7 @@ async function handleSubmit() {
       sourceFps: formData.sourceFps,
       targetFps: formData.sourceFps,
       scale: formData.scale,
+      upscaleMode: formData.upscaleMode || undefined,
       crf: formData.crf,
       preserveAudio: formData.preserveAudio,
       autoSaveToShot: formData.sourceType !== 'DIRECT_URL' ? formData.autoSaveToShot : false,

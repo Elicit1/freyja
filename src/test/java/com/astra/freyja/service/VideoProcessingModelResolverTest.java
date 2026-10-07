@@ -143,6 +143,8 @@ public class VideoProcessingModelResolverTest {
         assertEquals("RealESRGAN 2x", result.getModelName());
         assertNotNull(result.getExtraBody());
         assertEquals("RealESRGAN_x2plus.pth", result.getExtraBody().get("upscale_model"));
+        assertEquals(4, result.getExtraBody().get("scale"));
+        assertEquals(0, result.getExtraBody().get("force_rate"));
         assertEquals("video_upscale/realesrgan_x2", result.getExtraBody().get("filename_prefix"));
         assertEquals(18, result.getExtraBody().get("crf"));
     }

@@ -12,6 +12,7 @@ export interface VideoProcessSubmitDTO {
   sourceFps?: number
   targetFps?: number
   scale?: number
+  upscaleMode?: string
   multiplier?: number
   crf?: number
   preserveAudio?: boolean
@@ -100,6 +101,9 @@ export interface VideoProcessingModelOption {
   config: {
     defaultScale?: number
     allowedScales?: number[]
+    defaultMode?: string
+    allowedModes?: string[]
+    usageHint?: string
     defaultMultiplier?: number
     allowedMultipliers?: number[]
     defaultCrf: number

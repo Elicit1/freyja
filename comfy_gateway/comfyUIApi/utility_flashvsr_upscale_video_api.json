@@ -1,0 +1,62 @@
+{
+  "1": {
+    "class_type": "VHS_LoadVideo",
+    "inputs": {
+      "video": "Ref2VA-Fast_00023_.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 0,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    }
+  },
+  "2": {
+    "class_type": "FlashVSRNode",
+    "inputs": {
+      "frames": [
+        "1",
+        0
+      ],
+      "model": "FlashVSR-v1.1",
+      "mode": "tiny-long",
+      "vae_model": "LightVAE_W2.1",
+      "scale": 2,
+      "tiled_vae": false,
+      "tiled_dit": false,
+      "unload_dit": true,
+      "seed": 0,
+      "frame_chunk_size": 0,
+      "attention_mode": "auto",
+      "enable_debug": false,
+      "keep_models_on_cpu": true,
+      "resize_factor": 1.0,
+      "color_fix": true,
+      "fix_method": "wavelet"
+    }
+  },
+  "4": {
+    "class_type": "VHS_VideoCombine",
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "audio": [
+        "1",
+        2
+      ],
+      "frame_rate": 24,
+      "loop_count": 0,
+      "filename_prefix": "video_upscale/flashvsr",
+      "format": "video/h264-mp4",
+      "pix_fmt": "yuv420p",
+      "crf": 16,
+      "save_metadata": true,
+      "trim_to_audio": false,
+      "pingpong": false,
+      "save_output": true
+    }
+  }
+}

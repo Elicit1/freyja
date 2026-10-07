@@ -155,6 +155,12 @@ class WorkflowEngine:
                     _set_nested_value(workflow, mappings[extra_key], extra_val)
                     logger.info(f"Dynamically mapped extra_body parameter: {extra_key} = '{extra_val}'")
 
+            if request.extra_body.get("preserve_audio") is False and "output_audio" in mappings:
+                audio_path = mappings["output_audio"]
+                output_node = workflow.get(audio_path[0], {})
+                if len(audio_path) == 3 and audio_path[1] == "inputs":
+                    output_node.get("inputs", {}).pop(audio_path[2], None)
+
         # 7. Dispatch to specific handler for custom node graph modifications
         ref_images = uploaded_ref_images or []
         handler_name = model_cfg.handler.lower().strip()
