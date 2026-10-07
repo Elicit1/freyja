@@ -261,7 +261,13 @@ class ComfyAsyncClient:
                     elif msg_type == "executed":
                         curr_prompt_id = msg_data.get("prompt_id")
                         if curr_prompt_id == prompt_id:
-                            output = msg_data.get("output", {})
+                            output = msg_data.get("output")
+                            if not isinstance(output, dict):
+                                logger.debug(
+                                    "[%s] Ignoring executed event without asset output for prompt %s",
+                                    self.http_base, prompt_id
+                                )
+                                continue
                             for asset_key in ("videos", "gifs", "images", "video"):
                                 if asset_key in output and isinstance(output[asset_key], list):
                                     captured = output[asset_key]

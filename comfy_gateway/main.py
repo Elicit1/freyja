@@ -277,6 +277,11 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     is_minimax = "minimax" in model_cfg.model_name.lower() or "minimax" in model_cfg.handler.lower()
     if is_minimax:
         request.validate_minimax_h3_limits()
+        if model_cfg.model_name in {
+            "minimax-h3-face-refine", "minimax-h3-ref", "minimax-h3-ref-turbo4-face-refine"
+        }:
+            if len(request.get_all_ref_images()) > 5:
+                raise ValueError("This MiniMax H3 workflow supports at most 5 reference images.")
 
     # 3. Process and upload media assets to target compute node
     uploaded_ref_names: List[str] = []

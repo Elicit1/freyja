@@ -68,6 +68,62 @@ models:
       video_vae_name: ["119", "inputs", "vae_name"]
       audio_vae_name: ["120", "inputs", "vae_name"]
 
+
+  - model_name: "minimax-h3-face-refine"
+    description: "MiniMax H3 Ref2VA with H3 FaceRefine second pass"
+    template_file: "comfyUIApi/minimax_h3_face_refine.json"
+    handler: "minimax_h3_face_refine"
+    default_steps: 20
+    default_cfg: 1.0
+    timeout_seconds: 3600
+    mappings:
+      prompt: ["136", "inputs", "prompt"]
+      width: ["136", "inputs", "width"]
+      height: ["136", "inputs", "height"]
+      length: ["136", "inputs", "length"]
+      seed: ["129", "inputs", "noise_seed"]
+      steps: ["124", "inputs", "steps"]
+      unet_name: ["127", "inputs", "unet_name"]
+      clip_name: ["128", "inputs", "clip_name"]
+      video_vae_name: ["119", "inputs", "vae_name"]
+      audio_vae_name: ["120", "inputs", "vae_name"]
+
+  - model_name: "minimax-h3-ref"
+    description: "Official MiniMax H3 Ref2VA INT8 with Turbo LoRA 4 steps"
+    template_file: "comfyUIApi/minimax_h3_ref2va_official_turbo4.json"
+    handler: "minimax_h3_ref2va"
+    default_steps: 4
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    mappings:
+      prompt: ["136", "inputs", "prompt"]
+      width: ["136", "inputs", "width"]
+      height: ["136", "inputs", "height"]
+      length: ["136", "inputs", "length"]
+      seed: ["129", "inputs", "noise_seed"]
+      unet_name: ["127", "inputs", "unet_name"]
+      clip_name: ["128", "inputs", "clip_name"]
+      video_vae_name: ["119", "inputs", "vae_name"]
+      audio_vae_name: ["120", "inputs", "vae_name"]
+
+  - model_name: "minimax-h3-ref-turbo4-face-refine"
+    description: "Official MiniMax H3 Ref2VA INT8 Turbo4 with H3 FaceRefine 4-step second pass"
+    template_file: "comfyUIApi/minimax_h3_ref2va_turbo4_face_refine.json"
+    handler: "minimax_h3_face_refine"
+    default_steps: 4
+    default_cfg: 1.0
+    timeout_seconds: 3600
+    mappings:
+      prompt: ["136", "inputs", "prompt"]
+      width: ["136", "inputs", "width"]
+      height: ["136", "inputs", "height"]
+      length: ["136", "inputs", "length"]
+      seed: ["129", "inputs", "noise_seed"]
+      unet_name: ["127", "inputs", "unet_name"]
+      clip_name: ["128", "inputs", "clip_name"]
+      video_vae_name: ["119", "inputs", "vae_name"]
+      audio_vae_name: ["120", "inputs", "vae_name"]
+
   - model_name: "rife49-video-48fps"
     description: "RIFE 4.9 视频补帧，24 FPS 标准化后输出 48 FPS"
     template_file: "comfyUIApi/h3_rife49_48fps_api.json"

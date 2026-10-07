@@ -248,7 +248,7 @@ class ImageGenerationRequest(BaseModel):
         return images
 
     def get_all_ref_audios(self) -> List[str]:
-        """Return non-empty list of reference audio paths/URLs (up to 3 for MiniMax H3)"""
+        """Return all non-empty reference audios; validation enforces the MiniMax H3 limit."""
         audios: List[str] = []
         if self.references:
             for b in self.references:
@@ -260,7 +260,7 @@ class ImageGenerationRequest(BaseModel):
             a = self.audio_url.strip()
             if a and a not in audios:
                 audios.append(a)
-        return audios[:3]
+        return audios
 
     def validate_minimax_h3_limits(self) -> None:
         """Validate input parameters against MiniMax H3 official constraints"""
