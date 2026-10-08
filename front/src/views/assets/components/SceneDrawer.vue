@@ -285,7 +285,7 @@ import AssetImageGenerator from './AssetImageGenerator.vue'
 import ScenePromptDeriveModal from './ScenePromptDeriveModal.vue'
 
 const emit = defineEmits<{
-  (e: 'success', sceneId?: string | number): void
+  (e: 'success', sceneId?: string | number, createdScene?: Partial<ResScene>): void
   (e: 'cancel'): void
   (e: 'visible-change', val: boolean): void
 }>()
@@ -480,7 +480,7 @@ async function handleSubmit() {
       } else {
         const newId = await sceneApi.create(formData)
         ElMessage.success('场景环境创建成功')
-        emit('success', newId)
+        emit('success', newId, { ...formData, id: newId })
         visible.value = false
         return
       }

@@ -35,12 +35,12 @@
 
         <el-form-item label="所属库">
           <el-select v-model="queryParams.dramaId" placeholder="全部所属库" clearable class="!w-40" filterable>
-            <el-option label="🌐 全局公共库" :value="0" />
+            <el-option label="🌐 全局公共库" value="0" />
             <el-option
               v-for="d in dramaOptions"
               :key="String(d.id)"
               :label="`🎬 ${d.title}`"
-              :value="d.id"
+              :value="String(d.id)"
             />
           </el-select>
         </el-form-item>
@@ -386,10 +386,21 @@ function handleReset() {
 }
 
 function handleCreate(dramaId?: string | number, referenceImageUrl?: string) {
-  sceneDrawerRef.value?.open(undefined, dramaId, referenceImageUrl)
+  // 列表所属库是新建场景的默认归属，避免筛选本剧时误建到公共库。
+  sceneDrawerRef.value?.open(undefined, dramaId ?? queryParams.dramaId, referenceImageUrl)
 }
 
-function handleDrawerSuccess(assetId?: string | number) {
+function handleDrawerSuccess(assetId?: string | number, createdScene?: Partial<ResScene>) {
+  if (createdScene) {
+    // 新建后定位到已保存场景；旧名称、类型、状态或分页不能继续把它排除。
+    queryParams.current = 1
+    queryParams.name = createdScene.name || ''
+    queryParams.dramaId = isGlobalDrama(createdScene.dramaId) ? '0' : String(createdScene.dramaId)
+    queryParams.sceneType = ''
+    queryParams.timeOfDay = ''
+    queryParams.weatherAtmosphere = ''
+    queryParams.status = undefined
+  }
   fetchData()
   if (assetId !== undefined && assetId !== null && assetId !== '') {
     emit('asset-created', assetId)

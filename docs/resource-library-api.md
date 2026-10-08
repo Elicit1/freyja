@@ -183,6 +183,7 @@
 #### 1) 分页查询场景列表
 - **URL**: `GET /res/scene/page`
 - **Query 参数**: `current`, `size`, `dramaId`, `name`, `sceneType`, `timeOfDay`, `weatherAtmosphere`, `status`
+- **所属库筛选**: 省略 `dramaId` 查询全部所属库，`dramaId=0` 仅查询公共库，指定短剧 ID 仅查询该短剧；与分镜场景下拉选项包含公共库的规则不同。列表中新建场景默认继承当前所属库，创建后查询条件定位到实际保存的场景名称与所属库，并清除旧类型、时段、天气、状态及页码筛选。
 
 #### 2) 获取场景详情
 - **URL**: `GET /res/scene/{id}`
