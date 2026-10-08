@@ -2,6 +2,8 @@
 
 前端通过 `POST /drama/shot/derive-prompt-task` 提交 `ShotPromptDeriveDTO`，响应 `R<String>` 中的字符串为持久化 `ai_task.id`。模型推理在后台继续运行；HTTP 响应、页面或 WebSocket 断开不会取消任务。
 
+提示词含中文时仅提醒，不视为阻塞错误，也不删除或自动替换原文。自动生成、外部 AI 结果解析（`POST /drama/shot/parse-derived-prompt`）均允许继续使用；解析接口将语言提醒放在 `warnings` 中，预览区显示提醒并保留采纳按钮。JSON 格式、必填字段、素材引用边界及首尾帧时间对齐等结构校验仍按原规则执行。
+
 浏览器复用任务中心唯一的 `ws(s)://<host>/ws/task-center` 连接。订阅消息：
 
 ```json

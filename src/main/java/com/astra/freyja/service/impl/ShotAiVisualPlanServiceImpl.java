@@ -1214,13 +1214,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             } else {
                 validateH3Fl2VaPrompt(vo.getVideoPrompt(), Boolean.TRUE.equals(includeBgm), duration, errors);
             }
-            for (String framePrompt : List.of(StringUtils.defaultString(vo.getFirstFramePrompt()),
-                    StringUtils.defaultString(vo.getEndFramePrompt()))) {
-                if (Pattern.compile("\\p{IsHan}").matcher(framePrompt).find()) {
-                    errors.add("首尾帧生图提示词必须使用英文，不得混入中文");
-                    break;
-                }
-            }
             // 本模式只有三个 AI 回填字段。负向词与旧版主提示词由其他流程独立维护。
             vo.setPrompt(null);
             vo.setNegativePrompt(null);
@@ -1247,6 +1240,19 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 vo.setVideoPrompt(vo.getPrompt());
             } else if (StringUtils.isNotBlank(vo.getVideoPrompt())) {
                 vo.setPrompt(vo.getVideoPrompt());
+            }
+        }
+
+        // 语言仅作提醒，保留创作者可用的原文，不阻止生成或采纳。
+        Pattern han = Pattern.compile("\\p{IsHan}");
+        for (String prompt : List.of(StringUtils.defaultString(vo.getPrompt()),
+                StringUtils.defaultString(vo.getFirstFramePrompt()),
+                StringUtils.defaultString(vo.getEndFramePrompt()),
+                StringUtils.defaultString(vo.getVideoPrompt()),
+                StringUtils.defaultString(vo.getNegativePrompt()))) {
+            if (han.matcher(prompt).find()) {
+                warnings.add("提示词包含中文，请留意所选模型的语言支持；仍可直接采纳和使用，也可自行修改。");
+                break;
             }
         }
 
@@ -2209,9 +2215,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         }
         if (duration != null && !alignment.contains(String.format(Locale.ROOT, "%.2f-second mark", duration))) {
             errors.add("MiniMax H3 FL2VA 尾帧时间必须与当前镜头时长一致");
-        }
-        if (Pattern.compile("\\p{IsHan}").matcher(text).find()) {
-            errors.add("MiniMax H3 FL2VA 视频提示词必须使用英文，不得混入中文");
         }
     }
 }

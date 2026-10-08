@@ -447,6 +447,13 @@
 
       <!-- 4. 结构化结果预览卡片 (Preview Panels) -->
       <div v-if="previewResult" class="space-y-3 pt-1">
+        <el-alert
+          v-if="hasChinesePrompt"
+          type="warning"
+          show-icon
+          :closable="false"
+          title="提示词包含中文，请留意所选模型的语言支持；仍可直接采纳和使用，也可自行修改。"
+        />
         <!-- 素材变更失效警告横幅 (Staleness Guard) -->
         <el-alert
           v-if="isResultStale"
@@ -889,6 +896,14 @@ const providerId = ref<string | number | undefined>()
 const modelCode = ref<string | undefined>()
 
 const previewResult = ref<ShotPromptDeriveVO | null>(null)
+const hasChinesePrompt = computed(() => {
+  const result = previewResult.value
+  if (!result) return false
+  const prompts = generationMode.value === 'REFERENCE_MODE'
+    ? [result.prompt, result.videoPrompt, result.negativePrompt]
+    : [result.firstFramePrompt, result.endFramePrompt, result.videoPrompt]
+  return prompts.some(prompt => /\p{Script=Han}/u.test(prompt || ''))
+})
 const promptTaskStore = usePromptTaskStore()
 const taskCenterStore = useTaskCenterStore()
 const currentPromptTaskId = ref<string>()

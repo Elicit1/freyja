@@ -268,6 +268,12 @@ class ShotPromptDeriveH3Test {
 
         // Should not throw exceptions
         assertDoesNotThrow(() -> service.validateH3Ref2VaOutput(vo, manifest, dto));
+        ShotPromptValidationResult result = service.validateAndNormalize(
+                vo, "REFERENCE_MODE", manifest, dto.getDialogue(), true, false);
+        assertFalse(result.hasErrors());
+        assertTrue(result.getWarnings().stream().anyMatch(warning -> warning.contains("中文")));
+        assertEquals(validPrompt, result.getResult().getPrompt());
+        assertEquals(validPrompt, result.getResult().getVideoPrompt());
     }
 
     @Test
@@ -474,9 +480,42 @@ class ShotPromptDeriveH3Test {
                 vo, "FIRST_LAST_FRAME", null, null, true, false);
 
         assertFalse(result.hasErrors());
+        assertTrue(result.getWarnings().isEmpty());
         assertEquals(h3Prompt, result.getResult().getVideoPrompt());
         assertNull(result.getResult().getPrompt());
         assertNull(result.getResult().getNegativePrompt());
+    }
+
+    @Test
+    @DisplayName("首帧、尾帧或 FL2VA 视频提示词含中文时仅提醒并保留原文")
+    void testFl2VaChinesePromptsAreWarningsOnly() {
+        String englishVideoPrompt = """
+                How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark of the target video; Picture 2 aligns with the 5.00-second mark of the target video.
+                integrated_multimodal_description: The subject walks through the doorway.
+                overall_soundscape: N/A
+                non_diegetic_music: N/A
+                """;
+        for (int field = 0; field < 3; field++) {
+            String first = field == 0 ? "人物站在门口。" : "The subject stands at the doorway.";
+            String end = field == 1 ? "人物站在房间内。" : "The subject stands inside the room.";
+            String video = field == 2
+                    ? englishVideoPrompt.replace("The subject walks through the doorway.", "人物穿过门口。")
+                    : englishVideoPrompt;
+            ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+                    .firstFramePrompt(first).endFramePrompt(end).videoPrompt(video).build();
+
+            ShotPromptValidationResult result = service.validateAndNormalize(
+                    vo, "FIRST_LAST_FRAME", null, null, true, false, 5.0);
+
+            assertFalse(result.hasErrors(), "含中文字段 " + field + " 不应阻止使用");
+            assertEquals(1, result.getWarnings().size());
+            assertTrue(result.getWarnings().getFirst().contains("仍可直接采纳和使用"));
+            assertEquals(first, result.getResult().getFirstFramePrompt());
+            assertEquals(end, result.getResult().getEndFramePrompt());
+            assertEquals(video, result.getResult().getVideoPrompt());
+            assertDoesNotThrow(() -> service.validateH3Fl2VaOutput(vo,
+                    ShotPromptDeriveDTO.builder().duration(5.0).includeBgm(false).build()));
+        }
     }
 
     @Test
