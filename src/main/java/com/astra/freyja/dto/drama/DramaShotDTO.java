@@ -1,7 +1,11 @@
 package com.astra.freyja.dto.drama;
 
 import com.astra.freyja.dto.res.CharacterShotRefDTO;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.AccessLevel;
 import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -73,6 +77,49 @@ public class DramaShotDTO {
 
     /** 自定义场景提示词覆盖 */
     private String customScenePrompt;
+
+    // 区分局部更新未提交字段与显式 null（主动清空）；标记不属于请求 JSON。
+    @JsonIgnore
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private boolean resSceneIdProvided;
+
+    @JsonIgnore
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private boolean resKeyframeIdProvided;
+
+    @JsonIgnore
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private boolean customScenePromptProvided;
+
+    public void setResSceneId(Long resSceneId) {
+        this.resSceneId = resSceneId;
+        this.resSceneIdProvided = true;
+    }
+
+    public void setResKeyframeId(Long resKeyframeId) {
+        this.resKeyframeId = resKeyframeId;
+        this.resKeyframeIdProvided = true;
+    }
+
+    public void setCustomScenePrompt(String customScenePrompt) {
+        this.customScenePrompt = customScenePrompt;
+        this.customScenePromptProvided = true;
+    }
+
+    public boolean hasResSceneId() {
+        return resSceneIdProvided;
+    }
+
+    public boolean hasResKeyframeId() {
+        return resKeyframeIdProvided;
+    }
+
+    public boolean hasCustomScenePrompt() {
+        return customScenePromptProvided;
+    }
 
     /** 多角色引用列表 (前端传入列表，后端转换为 JSON 存储) */
     private List<CharacterShotRefDTO> characterRefs;

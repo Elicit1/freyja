@@ -278,6 +278,13 @@ export interface ShotRefAudio {
   language?: string
 }
 
+/** 背景字段省略表示保留，显式 null 表示清空。 */
+export type DramaShotSaveRequest = Omit<Partial<DramaShot>, 'resSceneId' | 'resKeyframeId' | 'customScenePrompt'> & {
+  resSceneId?: string | number | null
+  resKeyframeId?: string | number | null
+  customScenePrompt?: string | null
+}
+
 export interface DramaShot {
   id?: number | string
   dramaId: number | string

@@ -1108,7 +1108,7 @@ import { resPropApi, type ResPropItem } from '@/api/res-prop'
 import { keyframeApi } from '@/api/res-keyframe'
 import { KEY_IMAGE_ROLE_OPTIONS, normalizeKeyImageRole } from '@/constants/keyImageRoles'
 import { assetApi } from '@/api/res-asset'
-import type { DramaShot, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, DirectorPlan } from '@/types/drama'
+import type { DramaShot, DramaShotSaveRequest, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, DirectorPlan } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResKeyframeOption } from '@/types/resource'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import ShotPromptDeriveModal from './ShotPromptDeriveModal.vue'
@@ -1856,8 +1856,11 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
   isEdit.value = true
   visible.value = true
   loading.value = true
-  // 切换分镜时先清除上一个分镜的计划，避免详情请求尚未返回时串显。
+  // 切换分镜时先清除上一个分镜的计划与背景，避免详情加载期间串显。
   form.directorPlanJson = undefined
+  form.resSceneId = undefined
+  form.resKeyframeId = undefined
+  form.customScenePrompt = undefined
   currentDramaAspectRatio.value = dramaAspectRatio || ''
   if (!currentDramaAspectRatio.value && dramaId) {
     dramaApi.getById(dramaId).then((res: any) => {
@@ -1872,6 +1875,9 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
       Object.assign(form, res)
       // 兼容服务端省略 null 字段的序列化配置，始终以本次详情结果为准。
       form.directorPlanJson = res.directorPlanJson || undefined
+      form.resSceneId = res.resSceneId || undefined
+      form.resKeyframeId = res.resKeyframeId || undefined
+      form.customScenePrompt = res.customScenePrompt ?? undefined
       if (!form.generationMode) form.generationMode = 'FIRST_LAST_FRAME'
       drawerBackgroundType.value = res.resKeyframeId ? 'KEYFRAME' : 'SCENE'
       characterRefs.value = res.characterRefs ? [...res.characterRefs] : []
@@ -1942,8 +1948,12 @@ async function handleSave(closeAfter = false): Promise<boolean> {
       seed: _seed,
       ...editableForm
     } = form
-    const payload = {
+    const payload: DramaShotSaveRequest = {
       ...editableForm,
+      // 完整表单保存时显式提交清空，局部保存继续省略未编辑的背景字段。
+      resSceneId: form.resSceneId || null,
+      resKeyframeId: form.resKeyframeId || null,
+      customScenePrompt: form.customScenePrompt ?? null,
       shotType: form.shotType || undefined,
       cameraMovement: form.cameraMovement || undefined,
       characterRefs: characterRefs.value,
@@ -2210,8 +2220,8 @@ function handleApplyDerivedPrompts(res: DerivedPromptResult) {
     drawerBackgroundType.value = 'SCENE'
     form.resKeyframeId = undefined
   } else {
-    if (res.resSceneId !== undefined) form.resSceneId = res.resSceneId
-    if (res.resKeyframeId !== undefined) form.resKeyframeId = res.resKeyframeId
+    form.resSceneId = undefined
+    form.resKeyframeId = undefined
   }
   if (res.propRefs) {
     propRefs.value = res.propRefs.map(item => ({ ...item }))
@@ -2238,7 +2248,7 @@ async function handleApplyDerivedPromptsForPanel(shotId: string, res: DerivedPro
     return false
   }
 
-  const payload: Partial<DramaShot> = {
+  const payload: DramaShotSaveRequest = {
     id: shotId,
     generationMode: res.generationMode,
     prompt: res.prompt,
@@ -2248,8 +2258,8 @@ async function handleApplyDerivedPromptsForPanel(shotId: string, res: DerivedPro
     negativePrompt: res.negativePrompt,
     characterRefs: res.characterRefs.map(item => ({ ...item })),
     propRefs: res.propRefs.map(item => ({ ...item })),
-    resSceneId: res.resSceneId,
-    resKeyframeId: res.resKeyframeId,
+    resSceneId: res.resSceneId || null,
+    resKeyframeId: res.resKeyframeId || null,
     refImages: res.refImages.map(item => ({ ...item })),
     refAudios: res.refAudios.map(item => ({ ...item })),
     directorPlanJson: res.directorPlanJson || (res.directorPlan ? JSON.stringify(res.directorPlan) : undefined)

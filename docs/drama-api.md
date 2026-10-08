@@ -133,6 +133,7 @@
 ### 4.4 更新分镜
 - **URL**: `PUT /drama/shot`
 - **Body**: `DramaShotDTO`
+- **背景字段更新**: `resSceneId`、`resKeyframeId`、`customScenePrompt` 省略时保留已有值，显式 `null` 表示主动清空。场景资产与关键帧资产互斥：提交有效 `resSceneId` 自动清空关键帧；提交有效 `resKeyframeId` 自动清空场景。自定义背景描述独立保存，选择关键图不会清除该描述。完整编辑表单需显式提交被清空的背景字段；仅保存提示词、渲染设置等内容时可以省略它们。
 
 ### 4.5 删除分镜
 - **URL**: `DELETE /drama/shot/{id}`

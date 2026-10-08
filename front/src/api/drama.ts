@@ -11,6 +11,7 @@ import type {
   DramaEpisodeBatch,
   DramaScene,
   DramaShot,
+  DramaShotSaveRequest,
   DramaShotReorder,
   DramaShotBatchAssemble,
   DramaShotFirstFrame,
@@ -234,7 +235,7 @@ export const shotApi = {
     })
   },
 
-  create(data: Partial<DramaShot>) {
+  create(data: DramaShotSaveRequest) {
     return request<string | number>({
       url: '/drama/shot',
       method: 'post',
@@ -242,7 +243,7 @@ export const shotApi = {
     })
   },
 
-  update(data: Partial<DramaShot>) {
+  update(data: DramaShotSaveRequest) {
     return request<void>({
       url: '/drama/shot',
       method: 'put',

@@ -46,6 +46,7 @@ import com.astra.freyja.util.AspectRatioUtil;
 import com.astra.freyja.util.ShotSeedUtil;
 import com.astra.freyja.util.ShotRenderPromptUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
@@ -199,7 +200,6 @@ public class DramaShotServiceImpl implements DramaShotService {
         if (dto.getResKeyframeId() != null && dto.getResKeyframeId() > 0) {
             shot.setResKeyframeId(dto.getResKeyframeId());
             shot.setResSceneId(null);
-            shot.setCustomScenePrompt(null);
         } else if (dto.getResSceneId() != null && dto.getResSceneId() > 0) {
             shot.setResSceneId(dto.getResSceneId());
             shot.setResKeyframeId(null);
@@ -340,21 +340,29 @@ public class DramaShotServiceImpl implements DramaShotService {
         applyCameraConstraintUpdate(
                 shot, dto.getCameraMovement(), dto.getCameraMovementLocked(), existing.getCameraMovement(), existing.getCameraMovementLocked(), false);
 
-        // 场景资产与关键帧资产互斥清洗 (两者不可同时生效)
+        // 局部更新省略背景字段时保留原值；只对主动清空或互斥切换显式写入 NULL。
+        UpdateWrapper<DramaShot> backgroundUpdate = new UpdateWrapper<>();
         if (dto.getResKeyframeId() != null && dto.getResKeyframeId() > 0) {
             shot.setResKeyframeId(dto.getResKeyframeId());
             shot.setResSceneId(null);
-            shot.setCustomScenePrompt(null);
+            backgroundUpdate.set("res_scene_id", null);
         } else if (dto.getResSceneId() != null && dto.getResSceneId() > 0) {
             shot.setResSceneId(dto.getResSceneId());
             shot.setResKeyframeId(null);
+            backgroundUpdate.set("res_keyframe_id", null);
         } else {
-            if (dto.getResKeyframeId() != null && dto.getResKeyframeId() == 0) {
+            if (dto.hasResKeyframeId() && (dto.getResKeyframeId() == null || dto.getResKeyframeId() == 0)) {
                 shot.setResKeyframeId(null);
+                backgroundUpdate.set("res_keyframe_id", null);
             }
-            if (dto.getResSceneId() != null && dto.getResSceneId() == 0) {
+            if (dto.hasResSceneId() && (dto.getResSceneId() == null || dto.getResSceneId() == 0)) {
                 shot.setResSceneId(null);
+                backgroundUpdate.set("res_scene_id", null);
             }
+        }
+        // 自定义背景描述独立于资产选择，关键图模式也允许保存创作者的补充描述。
+        if (dto.hasCustomScenePrompt() && dto.getCustomScenePrompt() == null) {
+            backgroundUpdate.set("custom_scene_prompt", null);
         }
         if (dto.getDuration() != null) {
             if (dto.getDuration().compareTo(BigDecimal.ZERO) <= 0) {
@@ -404,7 +412,12 @@ public class DramaShotServiceImpl implements DramaShotService {
             shot.setFirstFrameSourceVideoUrl(null);
         }
 
-        shotMapper.updateById(shot);
+        if (backgroundUpdate.getSqlSet() == null) {
+            shotMapper.updateById(shot);
+        } else {
+            // 与其他编辑字段在同一条 UPDATE 中完成，避免场景/关键帧短暂同时生效。
+            shotMapper.update(shot, backgroundUpdate.eq("id", shot.getId()));
+        }
         log.info("[DramaShotService] 更新分镜成功: id={}", shot.getId());
 
         if (existing.getEpisodeId() != null) {
