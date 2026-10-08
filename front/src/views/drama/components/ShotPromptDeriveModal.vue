@@ -925,14 +925,15 @@ async function handleProviderChange(pid?: string | number) {
   }
 }
 
-async function loadAssetOptions(dramaId: string | number | undefined, viewVersion: number, shotId?: string | number) {
+async function loadAssetOptions(dramaId: string | number | undefined, viewVersion: number) {
   if (!dramaId) return
   try {
     const [cRes, sRes, pRes, kRes] = await Promise.all([
       characterApi.getOptions(dramaId),
       sceneApi.getOptions(dramaId),
       propApi.getOptions(dramaId),
-      keyframeApi.getOptions({ dramaId, shotId })
+      // 引用资产不要求归属于当前分镜；公共库与本剧已选关键图也必须进入图片候选池。
+      keyframeApi.getOptions({ dramaId })
     ])
     if (viewVersion !== promptViewVersion) return
     if (cRes) characterOptions.value = cRes
@@ -1013,7 +1014,7 @@ async function open(params: {
   keyframeOptions.value = params.keyframeOptions ? [...params.keyframeOptions] : []
 
   if (params.shot.dramaId) {
-    void loadAssetOptions(params.shot.dramaId, viewVersion, params.shot.id)
+    void loadAssetOptions(params.shot.dramaId, viewVersion)
   }
 
   generationMode.value = params.generationMode || params.shot.generationMode || 'FIRST_LAST_FRAME'

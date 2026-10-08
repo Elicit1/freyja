@@ -1304,7 +1304,7 @@ async function loadOptions(dramaId: string | number, sceneId?: string | number) 
       characterApi.getOptions(dramaId),
       sceneApi.getOptions(dramaId),
       resPropApi.getOptions(dramaId),
-      keyframeApi.getOptions({ dramaId, shotId: form.id })
+      keyframeApi.getOptions({ dramaId })
     ]
     if (sceneId) {
       promises.push(shotGroupApi.getListBySceneId(sceneId))
@@ -1488,7 +1488,7 @@ async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | '
   } else if (type === 'keyframe') {
     drawerAssetPickerTitle.value = '关键图参考资产'
     try {
-      const list = await keyframeApi.getOptions({ dramaId: form.dramaId, shotId: form.id })
+      const list = await keyframeApi.getOptions({ dramaId: form.dramaId })
       drawerAssetPickerList.value = (list || [])
         .filter(k => k.frameUrl)
         .map(k => ({
