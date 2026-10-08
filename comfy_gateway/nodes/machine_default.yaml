@@ -49,6 +49,44 @@ models:
       video_vae_name: ["119", "inputs", "vae_name"]
       audio_vae_name: ["120", "inputs", "vae_name"]
 
+  - model_name: "minimax-h3-fl2va-turbo4"
+    description: "Official MiniMax H3 FL2VA INT8 with 768p Turbo LoRA, fixed 4 steps"
+    template_file: "comfyUIApi/minimax_h3_fl2va_official_turbo4.json"
+    handler: "minimax_h3_fl2va"
+    default_steps: 4
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    # Turbo4 is distilled for four steps. Do not expose steps/LoRA overrides.
+    mappings:
+      prompt: ["104", "inputs", "prompt"]
+      width: ["104", "inputs", "width"]
+      height: ["104", "inputs", "height"]
+      length: ["104", "inputs", "length"]
+      seed: ["15", "inputs", "noise_seed"]
+      unet_name: ["6", "inputs", "unet_name"]
+      clip_name: ["13", "inputs", "clip_name"]
+      video_vae_name: ["11", "inputs", "vae_name"]
+      audio_vae_name: ["24", "inputs", "vae_name"]
+
+  - model_name: "minimax-h3-fl2va-turbo8"
+    description: "Official MiniMax H3 FL2VA INT8 with Turbo v1.0 LoRA, fixed 8 steps"
+    template_file: "comfyUIApi/minimax_h3_fl2va_official_turbo8.json"
+    handler: "minimax_h3_fl2va"
+    default_steps: 8
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    # Turbo8 is distilled for eight steps. Do not expose steps/LoRA overrides.
+    mappings:
+      prompt: ["104", "inputs", "prompt"]
+      width: ["104", "inputs", "width"]
+      height: ["104", "inputs", "height"]
+      length: ["104", "inputs", "length"]
+      seed: ["15", "inputs", "noise_seed"]
+      unet_name: ["6", "inputs", "unet_name"]
+      clip_name: ["13", "inputs", "clip_name"]
+      video_vae_name: ["11", "inputs", "vae_name"]
+      audio_vae_name: ["24", "inputs", "vae_name"]
+
   - model_name: "minimax-h3-ref2va"
     description: "MiniMax H3 16GB HiFi (Reference Images to Video+Audio, Ref2VA-Fast)"
     template_file: "comfyUIApi/minimax_h3_ref2va_fast.json"
@@ -111,6 +149,42 @@ models:
     template_file: "comfyUIApi/minimax_h3_ref2va_turbo4_face_refine.json"
     handler: "minimax_h3_face_refine"
     default_steps: 4
+    default_cfg: 1.0
+    timeout_seconds: 3600
+    mappings:
+      prompt: ["136", "inputs", "prompt"]
+      width: ["136", "inputs", "width"]
+      height: ["136", "inputs", "height"]
+      length: ["136", "inputs", "length"]
+      seed: ["129", "inputs", "noise_seed"]
+      unet_name: ["127", "inputs", "unet_name"]
+      clip_name: ["128", "inputs", "clip_name"]
+      video_vae_name: ["119", "inputs", "vae_name"]
+      audio_vae_name: ["120", "inputs", "vae_name"]
+
+  - model_name: "minimax-h3-ref-turbo8"
+    description: "Official MiniMax H3 Ref2VA INT8 with Turbo LoRA 8 steps"
+    template_file: "comfyUIApi/minimax_h3_ref2va_official_turbo8.json"
+    handler: "minimax_h3_ref2va"
+    default_steps: 8
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    mappings:
+      prompt: ["136", "inputs", "prompt"]
+      width: ["136", "inputs", "width"]
+      height: ["136", "inputs", "height"]
+      length: ["136", "inputs", "length"]
+      seed: ["129", "inputs", "noise_seed"]
+      unet_name: ["127", "inputs", "unet_name"]
+      clip_name: ["128", "inputs", "clip_name"]
+      video_vae_name: ["119", "inputs", "vae_name"]
+      audio_vae_name: ["120", "inputs", "vae_name"]
+
+  - model_name: "minimax-h3-ref-turbo8-face-refine"
+    description: "Official MiniMax H3 Ref2VA INT8 Turbo8 with H3 FaceRefine 8-step second pass"
+    template_file: "comfyUIApi/minimax_h3_ref2va_turbo8_face_refine.json"
+    handler: "minimax_h3_face_refine"
+    default_steps: 8
     default_cfg: 1.0
     timeout_seconds: 3600
     mappings:

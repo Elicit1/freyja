@@ -36,7 +36,11 @@
 | :--- | :--- | :--- | :--- |
 | `flux2_klein_9b_t2i_r3.json` | FLUX.2 Klein 9B + Qwen3 8B CLIP | 文本/参考图生图 (T2I) | 角色设定参考图、造型图、分镜首帧/关键帧生成 |
 | `minimax_h3_fl2va_fast.json` | MiniMax H3 (FL2VA-Fast) | 首尾帧生视频带音效 (I2V) | 分镜「首尾帧驱动」影视镜头生成、镜头组尾帧续接 |
+| `video_minimax_h3_i2v_official_turbo4.json` | 官方 FL2VA INT8 + FL2V Turbo4 LoRA | 文生/首帧/首尾帧视频与原生音频 | 官方四步加速，网关模型 `minimax-h3-fl2va-turbo4`；[部署与镜像下载](../docs/minimax-h3-fl2va-turbo4.md) |
+| `video_minimax_h3_i2v_official_turbo8.json` | 官方 FL2VA INT8 + FL2V Turbo8 v1.0 LoRA | 文生/首帧/首尾帧视频与原生音频 | 官方八步加速，网关模型 `minimax-h3-fl2va-turbo8`；[接入说明](../docs/minimax-h3-fl2va-turbo8.md) |
 | `minimax_h3_ref2va_fast.json` | MiniMax H3 (Ref2VA-Fast) | 参考图+音频驱动视频 | 分镜「多参考图+台词配音」音画同步角色演播 |
+| `video_minimax_h3_r2v_official_turbo8.json` | 官方 Ref2VA INT8 + 768p Turbo8 LoRA | 多参考图与音频生视频 | 固定八步，网关模型 `minimax-h3-ref-turbo8`；[接入说明](../docs/minimax-h3-ref2va-turbo8.md) |
+| `video_minimax_h3_r2v_turbo8_face_refine.json` | 官方 Ref2VA Turbo8 + H3 FaceRefine | 多参考图与音频生视频、人脸修复 | 首段八步、修复段八步，网关模型 `minimax-h3-ref-turbo8-face-refine` |
 | `h3_rife49_48fps.json` | RIFE 4.9 (VFI) | 视频平滑补帧 | 视频工坊：24 FPS 智能插帧平滑至 48 FPS 影视高帧率 |
 | `realesrgan_x2_video.json` | RealESRGAN x2plus | 视频超分辨率重建 | 视频工坊：720P/1080P 镜头 2 倍无损超分高清放大 |
 

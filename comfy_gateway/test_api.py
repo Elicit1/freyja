@@ -35,6 +35,10 @@ class TestGatewayAPI(unittest.TestCase):
         model_ids = [m["id"] for m in data.get("data", [])]
         self.assertIn("flux-2-klein-9b", model_ids)
         self.assertIn("minimax-h3-fl2va", model_ids)
+        self.assertIn("minimax-h3-fl2va-turbo4", model_ids)
+        self.assertIn("minimax-h3-fl2va-turbo8", model_ids)
+        self.assertIn("minimax-h3-ref-turbo8", model_ids)
+        self.assertIn("minimax-h3-ref-turbo8-face-refine", model_ids)
         self.assertIn("minimax-h3-ref2va", model_ids)
 
     def test_videos_generations_endpoint(self):
