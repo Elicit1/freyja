@@ -5,6 +5,8 @@ import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.AiModelMapper;
 import com.astra.freyja.dao.AiProviderMapper;
 import com.astra.freyja.dto.drama.DramaShotRenderRequestDTO;
+import com.astra.freyja.dto.drama.ShotRefImageDTO;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.astra.freyja.entity.AiProvider;
 import com.astra.freyja.entity.DramaShot;
 import com.astra.freyja.service.impl.AiImageApiServiceImpl;
@@ -22,6 +24,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Method;
 import java.util.Map;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -63,6 +66,19 @@ class AiImageApiServiceImplTest {
     @Spy
     @InjectMocks
     private AiImageApiServiceImpl aiImageApiService;
+
+    @Test
+    void invalidStoredKeyImageIsRejectedBeforeGatewayOrProviderAccess() throws Exception {
+        DramaShot shot = new DramaShot();
+        shot.setRefImagesJson("[{\"sourceType\":\"KEYFRAME\",\"usageRole\":\"END_FRAME\"}]");
+        when(objectMapper.readValue(eq(shot.getRefImagesJson()),
+                org.mockito.ArgumentMatchers.<TypeReference<List<ShotRefImageDTO>>>any()))
+                .thenReturn(List.of(ShotRefImageDTO.builder().sourceType("KEYFRAME")
+                        .usageRole("END_FRAME").build()));
+        assertEquals(400, assertThrows(BizException.class,
+                () -> aiImageApiService.generateAndArchiveVideo(1L, 2L, shot, null)).getCode());
+        org.mockito.Mockito.verifyNoInteractions(providerMapper, modelMapper, cryptoUtil, minioClient);
+    }
 
     @Test
     @DisplayName("参考模式拒绝聊天模型并只查询参考视频模型")

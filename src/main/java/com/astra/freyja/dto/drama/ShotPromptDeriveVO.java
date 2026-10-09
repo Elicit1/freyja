@@ -14,6 +14,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ShotPromptDeriveVO {
+    private String directorPlanMode;
+    private Integer directorPlanRevision;
+
 
     @JsonPropertyDescription("镜头主提示词/运镜动力Prompt (专供视频生成或整体视听指令)")
     private String prompt;

@@ -23,6 +23,7 @@ import com.astra.freyja.dto.drama.PropShotRefDTO;
 import com.astra.freyja.dto.drama.PropShotRefInfoVO;
 import com.astra.freyja.dto.drama.ShotRefAudioDTO;
 import com.astra.freyja.dto.drama.ShotRefImageDTO;
+import com.astra.freyja.dto.drama.manifest.KeyImageRole;
 import com.astra.freyja.dto.res.CharacterShotRefDTO;
 import com.astra.freyja.dto.res.PromptAssembleRequestDTO;
 import com.astra.freyja.dto.res.PromptAssembleResultVO;
@@ -43,6 +44,7 @@ import com.astra.freyja.entity.DramaShotVideoTake;
 import com.astra.freyja.entity.RenderTask;
 import com.astra.freyja.service.ShotVideoTakeService;
 import com.astra.freyja.util.AspectRatioUtil;
+import com.astra.freyja.util.KeyImageReferenceValidator;
 import com.astra.freyja.util.ShotSeedUtil;
 import com.astra.freyja.util.ShotRenderPromptUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
@@ -179,13 +181,22 @@ public class DramaShotServiceImpl implements DramaShotService {
         if (dto == null || dto.getSceneId() == null) {
             throw new BizException(400, "归属场次 ID 不能为空");
         }
+        KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
         DramaScene scene = sceneMapper.selectById(dto.getSceneId());
         if (scene == null) {
             throw new BizException(404, "归属场次不存在: " + dto.getSceneId());
         }
 
         DramaShot shot = new DramaShot();
-        BeanUtils.copyProperties(dto, shot);
+        BeanUtils.copyProperties(dto, shot, "directorPlan", "directorPlanMode");
+        if (dto.getDirectorPlan() != null || "MANUAL".equals(dto.getDirectorPlanMode())) {
+            new com.astra.freyja.director.service.DirectorPlanValidator().validateManual(dto.getDirectorPlan(),
+                    shot.getDuration(), shot.getShotType(), shot.getCameraMovement(),
+                    Boolean.TRUE.equals(shot.getShotTypeLocked()), Boolean.TRUE.equals(shot.getCameraMovementLocked()));
+            try { shot.setDirectorPlanJson(objectMapper.writeValueAsString(dto.getDirectorPlan())); }
+            catch (Exception e) { throw new BizException(400, "导演计划无法序列化"); }
+            shot.setDirectorPlanMode("MANUAL");
+        }
         shot.setSeed(ShotSeedUtil.next());
 
         shot.setSceneId(scene.getId());
@@ -318,13 +329,14 @@ public class DramaShotServiceImpl implements DramaShotService {
         if (dto == null || dto.getId() == null) {
             throw new BizException(400, "分镜 ID 不能为空");
         }
+        KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
         DramaShot existing = shotMapper.selectById(dto.getId());
         if (existing == null) {
             throw new BizException(404, "分镜不存在: " + dto.getId());
         }
 
         DramaShot shot = new DramaShot();
-        BeanUtils.copyProperties(dto, shot);
+        BeanUtils.copyProperties(dto, shot, "directorPlan", "directorPlanMode");
         // 视频产物及其来源只能通过视频 Take 选择/渲染流程更新，不能被旧的编辑表单覆盖。
         // 详情页可能在用户切换历史版本前已打开，直接保存 DTO 会把旧 videoUrl 写回数据库。
         shot.setVideoUrl(existing.getVideoUrl());
@@ -412,6 +424,20 @@ public class DramaShotServiceImpl implements DramaShotService {
             shot.setFirstFrameSourceVideoUrl(null);
         }
 
+        if ("MANUAL".equals(existing.getDirectorPlanMode()) &&
+                ((shot.getDuration() != null && !shot.getDuration().equals(existing.getDuration()))
+                || !java.util.Objects.equals(shot.getShotTypeLocked(), existing.getShotTypeLocked())
+                || !java.util.Objects.equals(shot.getCameraMovementLocked(), existing.getCameraMovementLocked())
+                || !java.util.Objects.equals(shot.getShotType(), existing.getShotType())
+                || !java.util.Objects.equals(shot.getCameraMovement(), existing.getCameraMovement()))) {
+            try {
+                var plan = objectMapper.readValue(existing.getDirectorPlanJson(), com.astra.freyja.director.model.DirectorPlan.class);
+                new com.astra.freyja.director.service.DirectorPlanValidator().validateManual(plan,
+                        shot.getDuration() == null ? existing.getDuration() : shot.getDuration(), shot.getShotType(), shot.getCameraMovement(),
+                        Boolean.TRUE.equals(shot.getShotTypeLocked()), Boolean.TRUE.equals(shot.getCameraMovementLocked()));
+            } catch (BizException e) { throw e; }
+            catch (Exception e) { throw new BizException(400, "手工导演计划无效，请重新编辑"); }
+        }
         if (backgroundUpdate.getSqlSet() == null) {
             shotMapper.updateById(shot);
         } else {
@@ -670,7 +696,8 @@ public class DramaShotServiceImpl implements DramaShotService {
             throw new BizException(404, "分镜不存在: " + id);
         }
 
-        boolean isEndFrame = dto != null && "END_FRAME".equalsIgnoreCase(dto.getFrameType());
+        KeyImageRole frameRole = dto == null ? KeyImageRole.FIRST_FRAME : dto.resolveFrameRole();
+        boolean isEndFrame = frameRole == KeyImageRole.LAST_FRAME;
 
         // 优先使用自定义传入词，其次使用对应关键帧提示词，若均为空则明确提示创作者
         String prompt = (dto != null && StringUtils.isNotBlank(dto.getCustomPrompt()))
@@ -686,6 +713,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         if (dto == null) {
             dto = new DramaShotFirstFrameDTO();
         }
+        dto.setFrameType(frameRole.name());
 
         // 尝试获取短剧配置中的画幅比例 / 尺寸
         if (StringUtils.isBlank(dto.getSize())) {
@@ -785,7 +813,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         taskVO.setOutputUrl(outputUrl);
         taskVO.setShotId(id);
         taskVO.setProjectId(shot.getDramaId());
-        log.info("[DramaShotService] 分镜关键帧生图并归档成功: shotId={}, frameType={}, outputUrl={}", id, isEndFrame ? "END_FRAME" : "FIRST_FRAME", outputUrl);
+        log.info("[DramaShotService] 分镜关键帧生图并归档成功: shotId={}, frameType={}, outputUrl={}", id, frameRole.name(), outputUrl);
         return taskVO;
     }
 
@@ -829,6 +857,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         if (shot == null) {
             throw new BizException(404, "分镜不存在: " + id);
         }
+        KeyImageReferenceValidator.parseAndValidate(shot.getRefImagesJson(), objectMapper, this::keyImageAssetType);
 
         if (StringUtils.isBlank(ShotRenderPromptUtil.resolve(
                 shot.getGenerationMode(), shot.getPrompt(), shot.getVideoPrompt(),
@@ -919,6 +948,11 @@ public class DramaShotServiceImpl implements DramaShotService {
     public static void interruptTaskThread(String taskId) {
         if (StringUtils.isBlank(taskId)) return;
         com.astra.freyja.service.RenderTaskThreadRegistry.interrupt(taskId);
+    }
+
+    private String keyImageAssetType(Long assetId) {
+        ResKeyframe asset = resKeyframeMapper != null ? resKeyframeMapper.selectById(assetId) : null;
+        return asset != null ? asset.getFrameType() : null;
     }
 
     private void dispatchRenderAfterCommit(Long id, String taskId, DramaShotRenderRequestDTO requestDTO) {

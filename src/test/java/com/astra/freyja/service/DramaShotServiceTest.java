@@ -11,6 +11,8 @@ import com.astra.freyja.dto.drama.DramaShotDTO;
 import com.astra.freyja.dto.drama.DramaShotFirstFrameDTO;
 import com.astra.freyja.dto.drama.DramaShotRenderRequestDTO;
 import com.astra.freyja.dto.drama.DramaShotReorderDTO;
+import com.astra.freyja.dto.drama.ShotRefImageDTO;
+import com.astra.freyja.common.BizException;
 import com.astra.freyja.dto.res.CharacterShotRefDTO;
 import com.astra.freyja.dto.res.PromptAssembleRequestDTO;
 import com.astra.freyja.dto.res.PromptAssembleResultVO;
@@ -414,6 +416,69 @@ class DramaShotServiceTest {
         verify(shotMapper).updateById(argThat((DramaShot saved) ->
                 "edited frame prompt".equals(saved.getFirstFramePrompt())
                         && "http://minio/frame.png".equals(saved.getPreviewImageUrl())));
+    }
+
+    @Test
+    void lastFrameRequestUsesEndPromptAndOnlyUpdatesEndImage() {
+        DramaShot shot = new DramaShot();
+        shot.setId(1000L);
+        shot.setDramaId(1L);
+        shot.setFirstFramePrompt("first prompt");
+        shot.setEndFramePrompt("last prompt");
+        shot.setPreviewImageUrl("http://minio/first.png");
+        when(shotMapper.selectById(1000L)).thenReturn(shot);
+        when(aiImageApiService.generateAndArchiveImage(eq(1000L), eq(1L), eq("last prompt"), any()))
+                .thenReturn("http://minio/last.png");
+        DramaShotFirstFrameDTO request = new DramaShotFirstFrameDTO();
+        request.setFrameType("LAST_FRAME");
+        request.setSize("720x1280");
+
+        shotService.generateFirstFrame(1000L, request);
+
+        assertEquals("http://minio/last.png", shot.getEndFrameImageUrl());
+        assertEquals("http://minio/first.png", shot.getPreviewImageUrl());
+        assertEquals("first prompt", shot.getFirstFramePrompt());
+    }
+
+    @Test
+    void invalidFrameRequestsDoNotCreateGenerationTasks() {
+        DramaShot shot = new DramaShot();
+        shot.setId(1000L);
+        when(shotMapper.selectById(1000L)).thenReturn(shot);
+        for (String type : List.of("END_FRAME", "KEYFRAME", "UNKNOWN")) {
+            DramaShotFirstFrameDTO request = new DramaShotFirstFrameDTO();
+            request.setFrameType(type);
+            assertEquals(400, assertThrows(BizException.class,
+                    () -> shotService.generateFirstFrame(1000L, request)).getCode());
+        }
+        verifyNoInteractions(aiImageApiService, renderTaskService);
+        verify(shotMapper, never()).updateById(any(DramaShot.class));
+    }
+
+    @Test
+    void savingInvalidKeyImageRoleIsRejectedBeforeDatabaseWrites() {
+        List<ShotRefImageDTO> refs = List.of(ShotRefImageDTO.builder()
+                .sourceType("KEYFRAME").usageRole("ACTION_BEAT").build());
+        DramaShotDTO create = new DramaShotDTO();
+        create.setSceneId(10L);
+        create.setRefImages(refs);
+        assertThrows(BizException.class, () -> shotService.create(create));
+        DramaShotDTO update = new DramaShotDTO();
+        update.setId(1000L);
+        update.setRefImages(refs);
+        assertThrows(BizException.class, () -> shotService.update(update));
+        verifyNoInteractions(shotMapper, sceneMapper);
+    }
+
+    @Test
+    void renderSubmissionRejectsInvalidStoredKeyImageRoleBeforeQueuing() {
+        DramaShot shot = new DramaShot();
+        shot.setId(1000L);
+        shot.setRefImagesJson("[{\"sourceType\":\"KEYFRAME\",\"usageRole\":\"END_FRAME\"}]");
+        when(shotMapper.selectById(1000L)).thenReturn(shot);
+        assertThrows(BizException.class, () -> shotService.submitShotRender(1000L, null));
+        verifyNoInteractions(aiImageApiService, renderTaskService, renderAsyncExecutor);
+        verify(shotMapper, never()).updateById(any(DramaShot.class));
     }
 
     @Test

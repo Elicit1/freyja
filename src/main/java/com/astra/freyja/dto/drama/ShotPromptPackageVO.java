@@ -15,6 +15,10 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ShotPromptPackageVO {
+    private String directorPlanMode;
+    private Integer directorPlanRevision;
+    private com.astra.freyja.director.model.DirectorPlan directorPlan;
+
 
     /** 生成模式: REFERENCE_MODE(多模态参考图与音频模式) / FIRST_LAST_FRAME(首尾帧过渡模式) */
     private String generationMode;

@@ -18,8 +18,18 @@ import java.util.List;
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ShotPromptDeriveDTO {
+    private String directorPlanMode;
+    private Integer directorPlanRevision;
+    private com.astra.freyja.director.model.DirectorPlan directorPlan;
+
 
     /** 分镜ID (可选，新建时为 null) */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Boolean directorPlanFrozen;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    public boolean isDirectorPlanFrozen() { return Boolean.TRUE.equals(directorPlanFrozen); }
+
     private Long shotId;
 
     /** 归属短剧ID */

@@ -1,5 +1,6 @@
 package com.astra.freyja.dto.drama.manifest;
 
+import com.astra.freyja.common.BizException;
 import org.apache.commons.lang3.StringUtils;
 
 import java.util.Locale;
@@ -50,9 +51,6 @@ public enum KeyImageRole {
     public static KeyImageRole fromCode(String code) {
         if (StringUtils.isBlank(code)) return null;
         String normalized = code.trim().toUpperCase(Locale.ROOT);
-        // Existing assets and saved slots use these names. Their meaning is kept on read.
-        if ("END_FRAME".equals(normalized)) return LAST_FRAME;
-        if ("ACTION_BEAT".equals(normalized) || "MOTION_KEYFRAME".equals(normalized)) return KEYFRAME;
         try {
             return valueOf(normalized);
         } catch (IllegalArgumentException ignored) {
@@ -60,10 +58,13 @@ public enum KeyImageRole {
         }
     }
 
+    public static KeyImageRole requireCode(String code) {
+        KeyImageRole role = fromCode(code);
+        if (role == null) throw new BizException(400, "不支持的关键图用途: " + code);
+        return role;
+    }
+
     public static KeyImageRole resolve(String slotRole, String assetFrameType) {
-        KeyImageRole selected = fromCode(slotRole);
-        if (selected != null && !"MOTION_KEYFRAME".equalsIgnoreCase(slotRole)) return selected;
-        KeyImageRole assetRole = fromCode(assetFrameType);
-        return assetRole != null ? assetRole : selected;
+        return requireCode(StringUtils.isNotBlank(slotRole) ? slotRole : assetFrameType);
     }
 }

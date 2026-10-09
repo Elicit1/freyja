@@ -1,3 +1,5 @@
+import type { KeyImageRole } from '@/constants/keyImageRoles'
+
 export interface ResCharacterLook {
   id?: string | number
   characterId?: string | number
@@ -441,7 +443,7 @@ export interface ResKeyframe {
   shotName?: string
   shotNo?: number
   name: string
-  frameType: string // Seven Picture roles; legacy END_FRAME/ACTION_BEAT may exist in saved assets
+  frameType: KeyImageRole
   frameUrl: string
   prompt?: string
   negativePrompt?: string

@@ -262,7 +262,7 @@ export interface ShotRefImage {
   name: string
   imageUrl: string
   referenceRole?: 'IDENTITY' | 'LOOK' | 'COMBINED' | 'POSE' | 'STYLE' | string
-  usageRole?: 'SUBJECT' | 'FIRST_FRAME' | 'END_FRAME' | 'SCENE' | 'PROP' | 'MOTION_KEYFRAME' | string
+  usageRole?: 'SUBJECT' | 'FIRST_FRAME' | 'LAST_FRAME' | 'SCENE' | 'PROP' | string
 }
 
 export interface ShotRefAudio {
@@ -286,6 +286,8 @@ export type DramaShotSaveRequest = Omit<Partial<DramaShot>, 'resSceneId' | 'resK
 }
 
 export interface DramaShot {
+  directorPlanMode?: 'AUTO' | 'MANUAL'
+  directorPlanRevision?: number
   id?: number | string
   dramaId: number | string
   episodeId: number | string
@@ -430,6 +432,9 @@ export interface ShotAiVisualPlan {
 }
 
 export interface ShotPromptDeriveDTO {
+  directorPlanMode?: 'AUTO' | 'MANUAL'
+  directorPlanRevision?: number
+  directorPlan?: DirectorPlan
   shotId?: number | string
   dramaId?: number | string
   episodeId?: number | string
@@ -469,6 +474,8 @@ export interface ShotPromptDeriveDTO {
 }
 
 export interface ShotPromptDeriveVO {
+  directorPlanMode?: 'AUTO' | 'MANUAL'
+  directorPlanRevision?: number
   prompt?: string
   firstFramePrompt?: string
   endFramePrompt?: string
@@ -478,6 +485,9 @@ export interface ShotPromptDeriveVO {
 }
 
 export interface ShotPromptPackageVO {
+  directorPlanMode?: 'AUTO' | 'MANUAL'
+  directorPlanRevision?: number
+  directorPlan?: DirectorPlan
   generationMode: 'FIRST_LAST_FRAME' | 'REFERENCE_MODE' | string
   systemPrompt: string
   userPrompt: string
@@ -512,6 +522,10 @@ export interface ShotPromptPackageVO {
 }
 
 export interface ShotPromptParseRequestDTO {
+  directorPlanMode?: 'AUTO' | 'MANUAL'
+  directorPlanRevision?: number
+  directorPlan?: DirectorPlan
+  exportedContext?: ShotPromptDeriveDTO
   shotId?: number | string
   dramaId?: number | string
   episodeId?: number | string
@@ -574,7 +588,7 @@ export interface DramaShotFirstFrame {
   customPrompt?: string
   negativePrompt?: string
   referenceImageUrls?: string[]
-  frameType?: 'FIRST_FRAME' | 'END_FRAME'
+  frameType?: 'FIRST_FRAME' | 'LAST_FRAME'
 }
 
 export interface DramaShotRenderRequest {

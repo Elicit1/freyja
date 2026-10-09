@@ -402,7 +402,7 @@ import { resolveGenerationSize, validateGenerationSize } from '@/utils/generatio
 
 export interface ShotImageGenerateOpenParams {
   shotId: string | number
-  frameType: 'FIRST_FRAME' | 'END_FRAME'
+  frameType: 'FIRST_FRAME' | 'LAST_FRAME'
   shotTitle?: string
   prompt: string
   negativePrompt?: string
@@ -413,7 +413,7 @@ export interface ShotImageGenerateOpenParams {
 }
 
 const emit = defineEmits<{
-  (e: 'applied', payload: { frameType: 'FIRST_FRAME' | 'END_FRAME'; url: string }): void
+  (e: 'applied', payload: { frameType: 'FIRST_FRAME' | 'LAST_FRAME'; url: string }): void
 }>()
 
 const visible = ref(false)
@@ -425,7 +425,7 @@ const assetMultiSelectDialogRef = ref()
 
 const currentShotId = ref<string | number>()
 const currentDramaId = ref<string | number>(0)
-const currentFrameType = ref<'FIRST_FRAME' | 'END_FRAME'>('FIRST_FRAME')
+const currentFrameType = ref<'FIRST_FRAME' | 'LAST_FRAME'>('FIRST_FRAME')
 const shotTitle = ref('')
 const originalPrompt = ref('')
 const slotOriginUrl = ref('')
@@ -467,7 +467,7 @@ function getStandardSizeByRatio(ratio?: string): string {
   return resolveGenerationSize(ratio, 'image')
 }
 
-const isEndFrame = computed(() => currentFrameType.value === 'END_FRAME')
+const isEndFrame = computed(() => currentFrameType.value === 'LAST_FRAME')
 
 const modalTitle = computed(() => {
   const frameText = isEndFrame.value ? '尾帧图 (End Frame)' : '首帧图 (First Frame)'
@@ -688,7 +688,7 @@ async function open(params: ShotImageGenerateOpenParams) {
   }
 
   // 默认推荐参考图初始化
-  if (params.frameType === 'END_FRAME' && params.firstFrameUrl) {
+  if (params.frameType === 'LAST_FRAME' && params.firstFrameUrl) {
     refImages.value.push({
       id: `init_first_${Date.now()}`,
       name: '本镜首帧图',

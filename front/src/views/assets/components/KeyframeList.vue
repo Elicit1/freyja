@@ -337,14 +337,12 @@ function getFrameTypeLabel(type?: string): string {
 function getFrameTypeTagColor(type?: string): '' | 'success' | 'warning' | 'info' | 'danger' {
   switch (type) {
     case 'FIRST_FRAME': return 'success'
-    case 'LAST_FRAME':
-    case 'END_FRAME': return 'danger'
+    case 'LAST_FRAME': return 'danger'
     case 'KEYFRAME': return 'warning'
     case 'EDITED_KEYFRAME': return 'warning'
     case 'COMPOSITION_ANCHOR':
     case 'STORYBOARD_REFERENCE':
-    case 'SHOT_PLANNING_REFERENCE':
-    case 'ACTION_BEAT': return 'info'
+    case 'SHOT_PLANNING_REFERENCE': return 'info'
     default: return ''
   }
 }

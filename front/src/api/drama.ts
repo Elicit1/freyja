@@ -193,6 +193,13 @@ export const dramaSceneApi = {
 // ==========================================
 
 export const shotApi = {
+  saveDirectorPlan(id: string | number, data: {
+    directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number;
+    directorPlan?: import('@/types/drama').DirectorPlan; duration?: number;
+    shotType?: string; cameraMovement?: string; shotTypeLocked?: boolean; cameraMovementLocked?: boolean
+  }) {
+    return request<typeof data>({ url: `/drama/shot/${String(id)}/director-plan`, method: 'put', data })
+  },
   startPromptTask(data: ShotPromptDeriveDTO) {
     return request<string>({ url: '/drama/shot/derive-prompt-task', method: 'post', data })
   },

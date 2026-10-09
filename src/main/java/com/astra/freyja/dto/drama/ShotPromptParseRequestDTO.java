@@ -17,6 +17,11 @@ import java.util.List;
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ShotPromptParseRequestDTO {
+    private String directorPlanMode;
+    private Integer directorPlanRevision;
+    private com.astra.freyja.director.model.DirectorPlan directorPlan;
+    private ShotPromptDeriveDTO exportedContext;
+
 
     /** 分镜ID (可选) */
     private Long shotId;

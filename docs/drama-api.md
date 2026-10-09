@@ -161,7 +161,18 @@
 - **URL**: `POST /drama/shot/batch-assemble`
 - **Body**: `DramaShotBatchAssembleDTO`
 
+### 4.9.1 首尾帧生图
+
+- **URL**: `POST /drama/shot/{id}/generate-first-frame`
+- **Body**: `DramaShotFirstFrameDTO`
+
+首尾帧生图请求的 `frameType` 统一使用 `FIRST_FRAME`（首帧，省略时默认）或
+`LAST_FRAME`（尾帧）。显式传入其他值返回参数错误；尾帧结果仍保存到
+`endFrameImageUrl`。分镜参考图 `sourceType=KEYFRAME` 时，`usageRole` 只允许
+七种关键图用途，未填写时继承关联关键图资产用途。
+
 ### 4.10 生成 AI 首帧与运镜方案
+
 - **URL**: `POST /drama/shot/{id}/ai-visual-plan`
 - **Body**: `ShotAiVisualPlanRequestDTO` (可选 `providerId`, `modelCode`, `instruction`)
 - **说明**: 服务端根据当前分镜绑定的人物、场景、道具和镜头参数构建事实上下文，由 AI 返回首帧 Prompt、负向 Prompt、视频运镜 Prompt 和参考图。只预览，不修改分镜。

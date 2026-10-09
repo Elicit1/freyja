@@ -15,6 +15,10 @@ import java.util.List;
  */
 @Data
 public class DramaShotDTO {
+    /** Only used when creating a new shot; existing plans use the versioned endpoint. */
+    private com.astra.freyja.director.model.DirectorPlan directorPlan;
+    private String directorPlanMode;
+
 
     private Long id;
 

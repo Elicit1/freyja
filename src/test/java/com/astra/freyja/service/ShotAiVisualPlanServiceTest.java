@@ -471,4 +471,24 @@ class ShotAiVisualPlanServiceTest {
         req.setProviderId(1L);
         assertThrows(com.astra.freyja.common.BizException.class, () -> shotAiVisualPlanService.generate(999L, req));
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"REFERENCE_MODE", "FIRST_LAST_FRAME"})
+    void editedPlanGoesDirectlyToPromptAiWithoutDirectorAi(String mode) throws Exception {
+        var plan = com.astra.freyja.director.model.DirectorPlan.builder()
+                .duration(new java.math.BigDecimal("4")).shotSize("MEDIUM_SHOT").cameraAngle("EYE_LEVEL")
+                .narrativeIntent("Creator revised plan")
+                .cameraBeats(List.of(com.astra.freyja.director.model.CameraBeat.builder()
+                        .startSec(java.math.BigDecimal.ZERO).endSec(new java.math.BigDecimal("4"))
+                        .movement("PAN_RIGHT").direction("RIGHT").speed("SLOW").build())).build();
+        ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder().duration(4.0).scriptContent("Wait")
+                .generationMode(mode).directorPlanMode("MANUAL").directorPlan(plan).providerId(1L).modelCode("deepseek-chat").build();
+        CountDownLatch latch = mockChatModelResponse("{\"prompt\":\"A person waits.\",\"videoPrompt\":\"A person waits.\"}");
+        shotAiVisualPlanService.derivePromptStream(dto);
+        assertTrue(latch.await(5, TimeUnit.SECONDS));
+        Prompt sent = capturePrompt(ArgumentCaptor.forClass(Prompt.class));
+        assertTrue(sent.getContents().contains("Creator revised plan"));
+        assertTrue(sent.getContents().contains("PAN_RIGHT"));
+        verifyNoInteractions(directorPlanningService);
+    }
 }

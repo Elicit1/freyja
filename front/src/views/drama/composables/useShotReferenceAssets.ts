@@ -1,7 +1,7 @@
 import { ref, computed, type Ref } from 'vue'
 import type { CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
-import { normalizeKeyImageRole } from '@/constants/keyImageRoles'
+import { requireKeyImageRole } from '@/constants/keyImageRoles'
 
 export interface ShotPromptDraft {
   characterRefs: CharacterShotRefInfo[]
@@ -20,8 +20,8 @@ export interface CandidateImageItem {
   sourceId?: string | number
   characterId?: string | number
   lookId?: string | number
-  referenceRole?: 'IDENTITY' | 'LOOK' | 'COMBINED' | 'POSE' | 'STYLE' | 'MOTION_KEYFRAME' | string
-  usageRole: 'SUBJECT' | 'SCENE' | 'PROP' | 'FIRST_FRAME' | 'END_FRAME' | 'MOTION_KEYFRAME' | string
+  referenceRole?: 'IDENTITY' | 'LOOK' | 'COMBINED' | 'POSE' | 'STYLE' | string
+  usageRole: 'SUBJECT' | 'SCENE' | 'PROP' | 'FIRST_FRAME' | 'LAST_FRAME' | string
   tag: string
   assetName: string
   assetType: 'CHARACTER' | 'SCENE' | 'PROP' | 'KEYFRAME' | 'UPLOAD'
@@ -176,7 +176,7 @@ export function useShotReferenceAssets(
           imageUrl: kf.frameUrl,
           sourceType: 'KEYFRAME',
           sourceId: String(kf.id),
-          usageRole: normalizeKeyImageRole(kf.frameType) || 'COMPOSITION_ANCHOR',
+          usageRole: requireKeyImageRole(kf.frameType),
           tag: '关键图参考',
           assetName: kf.name,
           assetType: 'KEYFRAME'

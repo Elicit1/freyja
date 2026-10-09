@@ -531,35 +531,11 @@
           </el-form-item>
         </div>
 
-        <!-- 结构化导演决策计划卡片 (DirectorPlan) -->
-        <div v-if="parsedDirectorPlan" class="studio-card p-4 mt-4 bg-gradient-to-r from-slate-50 to-indigo-50/30 border-indigo-200">
-          <div class="flex items-center justify-between border-b border-indigo-100 pb-2 mb-3">
-            <h4 class="text-sm font-bold text-indigo-950 flex items-center gap-1.5">
-              <span>🎬</span> 结构化导演决策计划 (DirectorPlan)
-            </h4>
-            <div class="flex items-center gap-2">
-              <el-tag size="small" type="primary" effect="plain">{{ parsedDirectorPlan.shotSize || (form.shotTypeLocked ? form.shotType : 'AUTO') || 'AUTO' }}</el-tag>
-              <el-tag size="small" type="info" effect="plain">{{ parsedDirectorPlan.cameraAngle || '未指定' }}</el-tag>
-            </div>
-          </div>
-          <div class="space-y-2 text-xs">
-            <div v-if="parsedDirectorPlan.narrativeIntent" class="text-slate-700">
-              <span class="font-semibold text-slate-500">叙事戏剧目标:</span> {{ parsedDirectorPlan.narrativeIntent }}
-            </div>
-            <div v-if="parsedDirectorPlan.cameraBeats && parsedDirectorPlan.cameraBeats.length > 0" class="flex flex-wrap gap-1.5 pt-1">
-              <div
-                v-for="(beat, bIdx) in parsedDirectorPlan.cameraBeats"
-                :key="bIdx"
-                class="bg-white border border-indigo-200 rounded px-2 py-1 text-[11px] text-slate-700 flex items-center gap-1 shadow-xs"
-              >
-                <span class="font-mono text-indigo-700 font-bold">[{{ beat.startSec }}s - {{ beat.endSec }}s]</span>
-                <span class="font-medium text-slate-900">{{ beat.movement }}</span>
-                <span v-if="beat.direction" class="text-slate-400 font-mono">({{ beat.direction }})</span>
-                <span v-if="beat.narrativePurpose" class="text-slate-500 max-w-[150px] truncate">— {{ beat.narrativePurpose }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <DirectorPlanEditor ref="directorEditor" :key="String(form.id || 'new') + ':' + String(visible)" class="mt-4"
+          :shot-id="form.id" :plan="parsedDirectorPlan" :mode="form.directorPlanMode" :revision="form.directorPlanRevision"
+          :duration="form.duration" :shot-type="form.shotType" :camera-movement="form.cameraMovement"
+          :shot-type-locked="form.shotTypeLocked" :camera-movement-locked="form.cameraMovementLocked"
+          @saved="handleDirectorPlanSaved" />
 
         <!-- 提示词工作台 (Prompt Workshop) -->
         <div class="studio-card p-5 mt-4">
@@ -965,6 +941,7 @@
     :key="panel.key"
     :ref="instance => setPromptPanelRef(panel.key, instance)"
     @apply="(result, done) => handlePromptPanelApply(panel.shotId, result, done)"
+    @director-plan-saved="data => { if (String(form.id) === panel.shotId) handleDirectorPlanSaved(data) }"
     @task-attached="taskId => handlePromptPanelTaskAttached(panel.key, taskId)"
     @task-starting="handlePromptPanelTaskStarting(panel.key)"
     @task-finished="handlePromptPanelTaskFinished(panel.key)"
@@ -1106,8 +1083,9 @@ import { characterApi } from '@/api/res-character'
 import { sceneApi } from '@/api/res-scene'
 import { resPropApi, type ResPropItem } from '@/api/res-prop'
 import { keyframeApi } from '@/api/res-keyframe'
-import { KEY_IMAGE_ROLE_OPTIONS, normalizeKeyImageRole } from '@/constants/keyImageRoles'
+import { KEY_IMAGE_ROLE_OPTIONS, requireKeyImageRole } from '@/constants/keyImageRoles'
 import { assetApi } from '@/api/res-asset'
+import DirectorPlanEditor from './DirectorPlanEditor.vue'
 import type { DramaShot, DramaShotSaveRequest, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, DirectorPlan } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResKeyframeOption } from '@/types/resource'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
@@ -1141,6 +1119,13 @@ type DerivedPromptResult = {
   directorPlanJson?: string
 }
 
+const directorEditor = ref<InstanceType<typeof DirectorPlanEditor>>()
+function handleDirectorPlanSaved(data: { directorPlan?: DirectorPlan; directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number }) {
+  form.directorPlan = data.directorPlan
+  form.directorPlanJson = data.directorPlan ? JSON.stringify(data.directorPlan) : undefined
+  form.directorPlanMode = data.directorPlanMode
+  form.directorPlanRevision = data.directorPlanRevision
+}
 const visible = ref(false)
 const router = useRouter()
 const isEdit = ref(false)
@@ -1223,7 +1208,10 @@ const form = reactive<DramaShot>({
   renderStatus: 'INIT',
   latestTaskId: '',
   comfyWorkflowTemplateId: 'SDXL_TXT2IMG',
+  directorPlan: undefined,
   directorPlanJson: undefined,
+  directorPlanMode: 'AUTO',
+  directorPlanRevision: 0,
   sortOrder: 1
 })
 
@@ -1408,7 +1396,7 @@ function handleOpenAiGenerateEndFrame() {
   const promptText = form.endFramePrompt || form.prompt || form.scriptContent || form.actionDescription || ''
   imageGenerateModalRef.value?.open({
     shotId: form.id,
-    frameType: 'END_FRAME',
+    frameType: 'LAST_FRAME',
     shotTitle: `S${form.shotNo || ''} ${form.shotName || ''}`,
     prompt: promptText,
     negativePrompt: form.negativePrompt || '',
@@ -1419,8 +1407,8 @@ function handleOpenAiGenerateEndFrame() {
   })
 }
 
-function handleImageGeneratedApplied(payload: { frameType: 'FIRST_FRAME' | 'END_FRAME'; url: string }) {
-  if (payload.frameType === 'END_FRAME') {
+function handleImageGeneratedApplied(payload: { frameType: 'FIRST_FRAME' | 'LAST_FRAME'; url: string }) {
+  if (payload.frameType === 'LAST_FRAME') {
     form.endFrameImageUrl = payload.url
     if (form.id) {
       shotApi.setEndFrame(form.id, payload.url).catch(() => {})
@@ -1496,7 +1484,7 @@ async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | '
           imageUrl: k.frameUrl,
           sourceType: 'KEYFRAME',
           sourceId: k.id,
-          usageRole: normalizeKeyImageRole(k.frameType) || 'COMPOSITION_ANCHOR',
+          usageRole: requireKeyImageRole(k.frameType),
           tag: '关键图参考'
         }))
     } catch (e) {}
@@ -1827,7 +1815,10 @@ function openCreate(dramaId: string | number, episodeId: string | number, sceneI
     videoPrompt: '',
     negativePrompt: '',
     stylePreset: '',
+    directorPlan: undefined,
     directorPlanJson: undefined,
+    directorPlanMode: 'AUTO',
+    directorPlanRevision: 0,
     previewImageUrl: '',
     videoUrl: '',
     audioUrl: '',
@@ -1857,7 +1848,10 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
   visible.value = true
   loading.value = true
   // 切换分镜时先清除上一个分镜的计划与背景，避免详情加载期间串显。
+  form.directorPlan = undefined
   form.directorPlanJson = undefined
+  form.directorPlanMode = 'AUTO'
+  form.directorPlanRevision = 0
   form.resSceneId = undefined
   form.resKeyframeId = undefined
   form.customScenePrompt = undefined
@@ -1922,6 +1916,7 @@ async function handleRender() {
 }
 
 async function handleSave(closeAfter = false): Promise<boolean> {
+  try { await directorEditor.value?.submit() } catch (e: any) { ElMessage.error(e.message || '保存导演计划失败'); return false }
   if (!formRef.value) return false
   if (characterRefs.value.some(item => !item.characterId || String(item.characterId) === '0')) {
     ElMessage.warning('请先为所有角色卡选择人物，或移除空白角色卡')
@@ -2077,6 +2072,8 @@ function handleOpenPromptPreview() {
 }
 
 async function handleOpenPromptDerive(eventOrTaskId?: string | Event) {
+  try { await directorEditor.value?.submit() } catch (e: any) { ElMessage.error(e.message || '保存导演计划失败'); return }
+
   // 模板中的 @click="handleOpenPromptDerive" 会自动传入 PointerEvent，不能把它当成任务 ID。
   const taskId = typeof eventOrTaskId === 'string' ? eventOrTaskId : undefined
   const shotSnapshot = { ...form }
@@ -2232,7 +2229,12 @@ function handleApplyDerivedPrompts(res: DerivedPromptResult) {
   if (res.refAudios) {
     refAudios.value = res.refAudios.map(item => ({ ...item }))
   }
-  form.directorPlanJson = res.directorPlanJson || (res.directorPlan ? JSON.stringify(res.directorPlan) : undefined)
+  // Always show the latest persisted plan, independently of the result being adopted.
+  if (form.id) void shotApi.getById(form.id).then(latest => {
+    form.directorPlanJson = latest.directorPlanJson
+    form.directorPlanMode = latest.directorPlanMode
+    form.directorPlanRevision = latest.directorPlanRevision
+  })
 }
 
 function handlePromptPanelApply(shotId: string, res: DerivedPromptResult, done: (success: boolean) => void) {
@@ -2262,7 +2264,6 @@ async function handleApplyDerivedPromptsForPanel(shotId: string, res: DerivedPro
     resKeyframeId: res.resKeyframeId || null,
     refImages: res.refImages.map(item => ({ ...item })),
     refAudios: res.refAudios.map(item => ({ ...item })),
-    directorPlanJson: res.directorPlanJson || (res.directorPlan ? JSON.stringify(res.directorPlan) : undefined)
   }
   try {
     await shotApi.update(payload)

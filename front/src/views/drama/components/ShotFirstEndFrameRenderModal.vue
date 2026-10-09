@@ -546,7 +546,7 @@ function handleGenerateEndFrame() {
   imageGenerateModalRef.value?.open({
     shotId: currentShotId.value,
     dramaId: dramaId.value,
-    frameType: 'END_FRAME',
+    frameType: 'LAST_FRAME',
     shotTitle: `#${shotNo.value} ${shotName.value}`,
     prompt: endFramePrompt.value || prompt.value,
     negativePrompt: negativePrompt.value,
@@ -557,11 +557,11 @@ function handleGenerateEndFrame() {
 }
 
 // 接收生图工坊应用回调
-async function handleImageApplied(payload: { frameType: 'FIRST_FRAME' | 'END_FRAME'; url: string }) {
+async function handleImageApplied(payload: { frameType: 'FIRST_FRAME' | 'LAST_FRAME'; url: string }) {
   if (payload.frameType === 'FIRST_FRAME') {
     firstFrameUrl.value = payload.url
     ElMessage.success('已应用生成图为首帧！')
-  } else if (payload.frameType === 'END_FRAME') {
+  } else if (payload.frameType === 'LAST_FRAME') {
     endFrameUrl.value = payload.url
     ElMessage.success('已应用生成图为尾帧！')
   }

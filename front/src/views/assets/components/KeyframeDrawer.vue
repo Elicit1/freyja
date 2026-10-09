@@ -253,7 +253,7 @@ import { keyframeApi } from '@/api/res-keyframe'
 import { dramaApi, shotApi } from '@/api/drama'
 import { assetApi } from '@/api/res-asset'
 import type { ResKeyframe } from '@/types/resource'
-import { KEY_IMAGE_ROLE_OPTIONS, keyImageRoleLabel, normalizeKeyImageRole } from '@/constants/keyImageRoles'
+import { KEY_IMAGE_ROLE_OPTIONS, keyImageRoleLabel, requireKeyImageRole } from '@/constants/keyImageRoles'
 
 const emit = defineEmits<{
   (e: 'success', keyframe: ResKeyframe): void
@@ -402,7 +402,7 @@ async function open(row?: ResKeyframe, defaultDramaId?: any, defaultFrameUrl?: a
     formData.id = String(row.id)
     formData.name = row.name || ''
     formData.dramaId = row.dramaId !== undefined && row.dramaId !== null ? String(row.dramaId) : '0'
-    formData.frameType = normalizeKeyImageRole(row.frameType) || 'COMPOSITION_ANCHOR'
+    formData.frameType = requireKeyImageRole(row.frameType)
     formData.frameUrl = row.frameUrl || ''
     formData.prompt = row.prompt || ''
     formData.negativePrompt = row.negativePrompt || ''

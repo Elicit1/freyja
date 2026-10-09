@@ -60,6 +60,9 @@ public class DramaShotVO {
 
     /** 结构化导演决策计划 JSON，供分镜详情按镜头独立回显。 */
     private String directorPlanJson;
+    private String directorPlanMode;
+    private Integer directorPlanRevision;
+
 
     /** 生成模式与首尾帧/多模态配置 */
     private String generationMode;

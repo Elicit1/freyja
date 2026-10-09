@@ -1,6 +1,9 @@
 package com.astra.freyja.dto.drama;
 
+import com.astra.freyja.common.BizException;
+import com.astra.freyja.dto.drama.manifest.KeyImageRole;
 import lombok.Data;
+import org.apache.commons.lang3.StringUtils;
 
 import java.util.List;
 
@@ -40,6 +43,15 @@ public class DramaShotFirstFrameDTO {
     /** 业务渲染任务唯一标识 (用于网关关联与精准取消) */
     private String taskId;
 
-    /** 关键帧类型: FIRST_FRAME-首帧图 (默认) / END_FRAME-尾帧图 */
+    /** 关键帧类型: FIRST_FRAME-首帧图 (默认) / LAST_FRAME-尾帧图 */
     private String frameType;
+
+    public KeyImageRole resolveFrameRole() {
+        KeyImageRole role = StringUtils.isBlank(frameType)
+                ? KeyImageRole.FIRST_FRAME : KeyImageRole.requireCode(frameType);
+        if (role != KeyImageRole.FIRST_FRAME && role != KeyImageRole.LAST_FRAME) {
+            throw new BizException(400, "首尾帧生图只支持 FIRST_FRAME / LAST_FRAME");
+        }
+        return role;
+    }
 }

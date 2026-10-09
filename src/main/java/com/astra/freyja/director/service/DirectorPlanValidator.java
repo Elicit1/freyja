@@ -240,6 +240,36 @@ public class DirectorPlanValidator {
         plan.setSkills(actualSkills);
     }
 
+    /** Strict validation for creator content. Never repairs, sorts or truncates it. */
+    public void validateManual(DirectorPlan plan, BigDecimal duration, String shotType,
+                               String movement, boolean sizeLocked, boolean movementLocked) {
+        if (plan == null || !"1.0".equals(plan.getSchemaVersion())) fail("计划及 schemaVersion 1.0 必须有效");
+        if (duration == null || duration.signum() <= 0 || plan.getDuration() == null
+                || plan.getDuration().compareTo(duration) != 0) fail("计划时长必须与分镜时长一致且大于零");
+        if (!VALID_SHOT_SIZES.contains(plan.getShotSize())) fail("景别无效");
+        if (!VALID_CAMERA_ANGLES.contains(plan.getCameraAngle())) fail("机位角度无效");
+        if (sizeLocked && isMovementLocked(shotType) && !plan.getShotSize().equals(shotType)) fail("计划景别与分镜锁定冲突");
+        List<CameraBeat> beats = plan.getCameraBeats();
+        int max = duration.compareTo(BigDecimal.TEN) <= 0 ? 3 : 5;
+        if (beats == null || beats.isEmpty() || beats.size() > max) fail("运镜节拍数量必须为 1 到 " + max);
+        BigDecimal cursor = BigDecimal.ZERO;
+        for (CameraBeat beat : beats) {
+            if (beat == null || beat.getStartSec() == null || beat.getEndSec() == null
+                    || beat.getStartSec().compareTo(cursor) != 0
+                    || beat.getEndSec().compareTo(cursor) <= 0
+                    || beat.getEndSec().compareTo(duration) > 0) fail("节拍必须从 0 连续覆盖分镜时长，不能重叠或留空");
+            if (!VALID_MOVEMENTS.contains(beat.getMovement()) || !VALID_SPEEDS.contains(beat.getSpeed())) fail("运镜或速度无效");
+            if (movementLocked && isMovementLocked(movement) && !beat.getMovement().equals(movement)) fail("运镜与分镜锁定冲突");
+            if ("STATIC".equals(beat.getMovement())) {
+                if (StringUtils.isNotBlank(beat.getDirection()) || !"NONE".equals(beat.getSpeed())) fail("STATIC 方向必须为空、速度必须为 NONE");
+            } else if ("NONE".equals(beat.getSpeed())) fail("运动镜头速度不能为 NONE");
+            cursor = beat.getEndSec();
+        }
+        if (cursor.compareTo(duration) != 0) fail("节拍终点必须等于分镜时长");
+    }
+
+    private void fail(String message) { throw new BizException(400, "手工导演计划：" + message); }
+
     private boolean isMovementLocked(String movement) {
         return StringUtils.isNotBlank(movement) && !"AUTO".equalsIgnoreCase(movement.trim());
     }

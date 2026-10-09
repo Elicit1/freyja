@@ -183,6 +183,20 @@ class ShotPromptDeriveH3Test {
     }
 
     @Test
+    void invalidKeyImageUsageIsRejectedBeforePromptTaskCreation() {
+        ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder().refImages(List.of(
+                ShotRefImageDTO.builder().sourceType("KEYFRAME").usageRole("MOTION_KEYFRAME").build()
+        )).build();
+        assertEquals(400, assertThrows(BizException.class,
+                () -> service.buildReferenceManifest(dto)).getCode());
+        assertEquals(400, assertThrows(BizException.class,
+                () -> service.startPromptTask(dto)).getCode());
+        assertEquals(400, assertThrows(BizException.class,
+                () -> service.derivePromptStream(dto)).getCode());
+        org.mockito.Mockito.verifyNoInteractions(aiModelFactory, providerMapper, modelMapper);
+    }
+
+    @Test
     @DisplayName("构建 MiniMax H3 ReferenceManifest 映射与上下文 - 关键帧模式 (互斥场景)")
     void testBuildReferenceManifestWithKeyframe() {
         ResKeyframe keyframe = new ResKeyframe();
@@ -1102,7 +1116,7 @@ class ShotPromptDeriveH3Test {
                                 .id("ref_kf_1")
                                 .sourceType("KEYFRAME")
                                 .sourceId(keyframeId)
-                                .usageRole("MOTION_KEYFRAME")
+                                .usageRole("FIRST_FRAME")
                                 .name("雨夜决战拔剑定格")
                                 .imageUrl("http://minio.local/keyframe/888.png")
                                 .build()
@@ -1124,7 +1138,7 @@ class ShotPromptDeriveH3Test {
         // 2. 严禁出现环境场景资产绑定
         assertFalse(userPrompt.contains("【绑定环境场景资产】"));
 
-        // 旧槽位角色由资产类型归一化为 FIRST_FRAME。
+        // 显式首帧用途保持为 FIRST_FRAME。
         assertTrue(userPrompt.contains("建议角色定位: FIRST_FRAME"));
 
         assertTrue(systemPrompt.contains("[keyframe completion]"));

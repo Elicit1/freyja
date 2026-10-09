@@ -2,6 +2,7 @@ package com.astra.freyja.service;
 
 import com.astra.freyja.dto.drama.manifest.KeyImageRole;
 import com.astra.freyja.dto.drama.manifest.ReferenceManifest;
+import com.astra.freyja.common.BizException;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -38,12 +39,22 @@ class KeyImageRoleTest {
     }
 
     @Test
-    void savedGenericKeyframeSlotUsesAssetRoleWhileExplicitSlotCanOverrideIt() {
+    void missingSlotInheritsAssetWhileExplicitSlotOverridesIt() {
         assertEquals(KeyImageRole.COMPOSITION_ANCHOR,
-                KeyImageRole.resolve("MOTION_KEYFRAME", "COMPOSITION_ANCHOR"));
+                KeyImageRole.resolve(null, "COMPOSITION_ANCHOR"));
         assertEquals(KeyImageRole.LAST_FRAME,
                 KeyImageRole.resolve("LAST_FRAME", "COMPOSITION_ANCHOR"));
-        assertEquals(KeyImageRole.LAST_FRAME, KeyImageRole.fromCode("END_FRAME"));
-        assertEquals(KeyImageRole.KEYFRAME, KeyImageRole.fromCode("ACTION_BEAT"));
+    }
+
+    @Test
+    void obsoleteAndUnknownRolesCannotFallBackToAsset() {
+        for (String code : List.of("END_FRAME", "ACTION_BEAT", "MOTION_KEYFRAME", "UNKNOWN")) {
+            assertNull(KeyImageRole.fromCode(code));
+            BizException error = assertThrows(BizException.class,
+                    () -> KeyImageRole.resolve(code, "COMPOSITION_ANCHOR"));
+            assertEquals(400, error.getCode());
+            assertThrows(BizException.class, () -> KeyImageRole.resolve(null, code));
+        }
+        assertThrows(BizException.class, () -> KeyImageRole.resolve(null, null));
     }
 }

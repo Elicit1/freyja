@@ -46,6 +46,14 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class DramaShotController {
 
+    private final com.astra.freyja.director.service.DirectorPlanStateService directorPlanStateService;
+
+    @PutMapping("/{id}/director-plan")
+    public R<com.astra.freyja.dto.drama.DirectorPlanEditDTO> saveDirectorPlan(@PathVariable Long id,
+            @RequestBody com.astra.freyja.dto.drama.DirectorPlanEditDTO dto) {
+        return R.ok(directorPlanStateService.save(id, dto));
+    }
+
     private final DramaShotService shotService;
     private final ShotAiVisualPlanService shotAiVisualPlanService;
     private final ShotFrameContinuityService continuityService;

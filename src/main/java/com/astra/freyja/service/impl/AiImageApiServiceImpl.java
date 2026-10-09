@@ -6,12 +6,13 @@ import com.astra.freyja.dao.AiModelMapper;
 import com.astra.freyja.dao.AiProviderMapper;
 import com.astra.freyja.dao.ResKeyframeMapper;
 import com.astra.freyja.dto.drama.DramaShotFirstFrameDTO;
-import com.astra.freyja.dto.drama.manifest.KeyImageRole;
+import com.astra.freyja.dto.drama.ShotRefImageDTO;
 import com.astra.freyja.entity.AiModel;
 import com.astra.freyja.entity.AiProvider;
 import com.astra.freyja.entity.ResKeyframe;
 import com.astra.freyja.service.AiImageApiService;
 import com.astra.freyja.util.CryptoUtil;
+import com.astra.freyja.util.KeyImageReferenceValidator;
 import com.astra.freyja.util.ShotRenderPromptUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -459,6 +460,11 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         throw new BizException(400, "当前供应商未配置启用的 " + requiredType + " 视频模型");
     }
 
+    private String keyImageAssetType(Long assetId) {
+        ResKeyframe asset = resKeyframeMapper != null ? resKeyframeMapper.selectById(assetId) : null;
+        return asset != null ? asset.getFrameType() : null;
+    }
+
     private String buildVideoEndpointUrl(String baseUrl) {
         String clean = baseUrl.trim();
         if (clean.endsWith("/")) {
@@ -479,6 +485,8 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         if (shot == null) {
             throw new BizException(404, "分镜实体不能为空");
         }
+        List<ShotRefImageDTO> validatedRefImages = KeyImageReferenceValidator.parseAndValidate(
+                shot.getRefImagesJson(), objectMapper, this::keyImageAssetType);
 
         // 1. 获取 AI 提供商
         AiProvider provider = resolveProvider(dto != null ? dto.getProviderId() : null);
@@ -554,10 +562,9 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         // a. 处理参考图列表 (refImagesJson)
         if (StringUtils.isNotBlank(shot.getRefImagesJson())) {
             try {
-                List<com.astra.freyja.dto.drama.ShotRefImageDTO> refImgList = objectMapper.readValue(
-                        shot.getRefImagesJson(), new com.fasterxml.jackson.core.type.TypeReference<List<com.astra.freyja.dto.drama.ShotRefImageDTO>>() {});
+                List<ShotRefImageDTO> refImgList = validatedRefImages;
                 if (refImgList != null) {
-                    for (com.astra.freyja.dto.drama.ShotRefImageDTO refImg : refImgList) {
+                    for (ShotRefImageDTO refImg : refImgList) {
                         if (StringUtils.isNotBlank(refImg.getImageUrl())) {
                             String b64Img = prepareMediaAsBase64(refImg.getImageUrl(), "image/png");
                             Map<String, Object> binding = new HashMap<>();
@@ -570,11 +577,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                             binding.put("entityName", refImg.getName());
                             String usageRole = refImg.getUsageRole();
                             if ("KEYFRAME".equals(refType)) {
-                                ResKeyframe asset = refImg.getSourceId() != null
-                                        ? resKeyframeMapper.selectById(refImg.getSourceId()) : null;
-                                KeyImageRole role = KeyImageRole.resolve(usageRole,
-                                        asset != null ? asset.getFrameType() : null);
-                                if (role != null) usageRole = role.name();
+                                usageRole = KeyImageReferenceValidator.resolveRole(refImg, this::keyImageAssetType).name();
                             }
                             binding.put("usageRole", usageRole);
                             binding.put("referenceRole", refImg.getReferenceRole());
@@ -583,8 +586,10 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                         }
                     }
                 }
+            } catch (BizException e) {
+                throw e;
             } catch (Exception e) {
-                log.warn("[AiImageApi] 解析分镜 refImagesJson 失败: {}", e.getMessage());
+                throw new BizException(400, "参考图处理失败: " + e.getMessage());
             }
         }
 

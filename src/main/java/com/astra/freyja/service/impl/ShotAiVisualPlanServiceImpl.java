@@ -25,6 +25,7 @@ import com.astra.freyja.dto.drama.ShotRefAudioDTO;
 import com.astra.freyja.dto.drama.ShotRefImageDTO;
 import com.astra.freyja.dto.drama.manifest.ReferenceManifest;
 import com.astra.freyja.dto.drama.manifest.KeyImageRole;
+import com.astra.freyja.util.KeyImageReferenceValidator;
 import com.astra.freyja.dto.drama.CharacterShotRefInfoVO;
 import com.astra.freyja.dto.drama.PropShotRefInfoVO;
 import com.astra.freyja.dto.res.ControlImageVO;
@@ -256,7 +257,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "局部特写或画面裁切导致部分道具暂时不可见时，必须在场景实际状态中保持其数量与归属，不得将画面外的道具解释为消失，也不得为了保持可见性复制新的道具。",
             "7.【参考媒体与关键图参考规范】",
             "只有 REFERENCE_MANIFEST 中实际提供的图片和音频才能被引用；不得虚构 Picture、Audio、Subject 编号，也不得把无图片资产描述成有参考图。",
-            "分镜视觉基准资产分为环境场景（SCENE）与分镜关键图（KEYFRAME），二者严格互斥。若当前镜头配置了关键图资产或 REFERENCE_MANIFEST 包含关键图参考（KEYFRAME / MOTION_KEYFRAME），说明本分镜采用关键图参考锚点模式，不存在环境场景资产！在 subject_definitions 中应当以 Key Image / Key Picture / Main Subject 建立主体定义，严禁将关键图参考指代或描述为 Scene！",
+            "分镜视觉基准资产分为环境场景（SCENE）与分镜关键图（KEYFRAME），二者严格互斥。若当前镜头配置了关键图资产或 REFERENCE_MANIFEST 包含关键图参考（KEYFRAME），说明本分镜采用关键图参考锚点模式，不存在环境场景资产！在 subject_definitions 中应当以 Key Image / Key Picture / Main Subject 建立主体定义，严禁将关键图参考指代或描述为 Scene！",
             "【严禁将关键图参考当成场景】关键图参考是当前镜头动作与画面定格的视觉锚点，严禁在提示词中将关键图参考误识别或描述为环境场景 (Scene)！若关键图为起始定格，firstFramePrompt 必须以此关键图参考呈现的主体姿态、构图与动作状态为核心基准继承，严禁脑补虚构的场景背景！",
             "必须根据实际参考媒体的角色、关键图参考、场景及用途建立对应关系，不得交换人物参考图、误将场景或关键图当作人物参考图，或让参考图中无关元素成为新增剧情事件。",
             "参考图用于保持外观、场景和必要的空间关系，不得因为参考图突出便利店大门，就擅自增加“自动门打开”等当前镜头没有要求的事件。",
@@ -466,7 +467,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "确认人物真实运动方向与摄影机运动相互独立且空间关系正确，特别检查多人相遇、擦肩、追逐和分离等动作是否出现方向混淆。",
             "确认当前镜头能够在规定时长内连续完成，且没有未经授权的硬切、跳切、转场或额外镜头。",
             "确认局部特写、视觉焦点转移及画面裁切没有导致必要剧情丢失、道具数量变化或人物状态不连续。",
-            "确认所有 Picture、Audio、Subject 引用均来自 REFERENCE_MANIFEST，角色、场景、关键图及道具的参考媒体对应关系正确；若存在关键图参考（KEYFRAME / MOTION_KEYFRAME），确认其未被误识别或描述为场景 (Scene)。",
+            "确认所有 Picture、Audio、Subject 引用均来自 REFERENCE_MANIFEST，角色、场景、关键图及道具的参考媒体对应关系正确；若存在关键图参考（KEYFRAME），确认其未被误识别或描述为场景 (Scene)。",
             "确认 DIALOGUE_REUSE 与 VOICE_TIMBRE 的使用符合当前任务提供的 usageMode，且没有复用未授权的旧台词。",
             "确认声音、台词、参考媒体及所有资产引用均来自当前任务提供的事实。",
             "确认 prompt 格式完整规范，firstFramePrompt 与 endFramePrompt 均为 null。",
@@ -520,6 +521,19 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     private final ObjectMapper objectMapper;
     private final DirectorPlanningService directorPlanningService;
     private final DirectorPlanMergeService directorPlanMergeService;
+    @Autowired
+    private com.astra.freyja.director.service.DirectorPlanStateService directorPlanStateService;
+
+    private com.astra.freyja.director.service.DirectorPlanStateService planState() {
+        return directorPlanStateService != null ? directorPlanStateService :
+                new com.astra.freyja.director.service.DirectorPlanStateService(shotMapper,
+                        new com.astra.freyja.director.service.DirectorPlanValidator());
+    }
+    private void prepareDirectorPlan(ShotPromptDeriveDTO dto) {
+        populateContext(dto);
+        planState().freeze(dto);
+    }
+
     private final CharacterVisualAssetResolver characterVisualAssetResolver;
 
     /**
@@ -891,7 +905,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             }
         }
 
-        if (dto.getShotId() != null && dto.getShotId() > 0) {
+        if (!dto.isDirectorPlanFrozen() && dto.getShotId() != null && dto.getShotId() > 0) {
             DramaShot existingShot = shotMapper.selectById(dto.getShotId());
             if (existingShot != null) {
                 if (StringUtils.isBlank(dto.getScriptContent()) && StringUtils.isNotBlank(existingShot.getScriptContent())) {
@@ -1017,6 +1031,12 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             sb.append("h3-system=").append(officialH3GuideFingerprint(systemPrompt)).append("|");
             sb.append("h3-user=").append(officialH3GuideFingerprint(userTemplate)).append("|");
             sb.append("local-skills=").append(StringUtils.defaultString(localSkillFingerprint)).append("|");
+            sb.append(dto.getDuration()).append("|").append(dto.getShotType()).append("|")
+                    .append(dto.getShotTypeLocked()).append("|").append(dto.getCameraMovement()).append("|")
+                    .append(dto.getCameraMovementLocked()).append("|");
+            sb.append("director-mode=").append(dto.getDirectorPlanMode()).append("|");
+            sb.append("director-revision=").append(dto.getDirectorPlanRevision()).append("|");
+            sb.append("director-plan=").append(dto.getDirectorPlan() == null ? "" : planState().encode(dto.getDirectorPlan())).append("|");
             sb.append(dto.getShotId() != null ? dto.getShotId() : "").append("|");
             sb.append(StringUtils.defaultString(dto.getScriptContent())).append("|");
             sb.append(StringUtils.defaultString(dto.getActionDescription())).append("|");
@@ -1283,44 +1303,14 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if (plan == null) {
             return "";
         }
-        StringBuilder sb = new StringBuilder();
-        sb.append("\n【结构化导演机位与运镜设计 (DIRECTOR_PLAN - 最高执行优先级)】:\n");
-        if (StringUtils.isNotBlank(plan.getNarrativeIntent())) {
-            sb.append("- 叙事意图与戏剧目标 (narrativeIntent): ").append(plan.getNarrativeIntent()).append("\n");
-        }
-        if (StringUtils.isNotBlank(plan.getShotSize())) {
-            sb.append("- 基础主景别 (shotSize): ").append(plan.getShotSize()).append("\n");
-        }
-        if (StringUtils.isNotBlank(plan.getCameraAngle())) {
-            sb.append("- 选定机位与角度 (cameraAngle): ").append(plan.getCameraAngle()).append("\n");
-        }
-        if (StringUtils.isNotBlank(plan.getSubjectAction())) {
-            sb.append("- 主体动作演进描述 (subjectAction): ").append(plan.getSubjectAction()).append("\n");
-        }
-        if (StringUtils.isNotBlank(plan.getGaze())) {
-            sb.append("- 角色视线动向 (gaze): ").append(plan.getGaze()).append("\n");
-        }
-        if (plan.getCameraBeats() != null && !plan.getCameraBeats().isEmpty()) {
-            sb.append("- 摄影机动作时间轴 (Camera Beats):\n");
-            for (CameraBeat beat : plan.getCameraBeats()) {
-                sb.append(String.format("  * [%.2fs - %.2fs] 运镜: %s | 方向: %s | 速度: %s | 起始节点: %s | 收束节点: %s | 戏剧目的: %s\n",
-                        beat.getStartSec() != null ? beat.getStartSec() : BigDecimal.ZERO,
-                        beat.getEndSec() != null ? beat.getEndSec() : BigDecimal.ZERO,
-                        StringUtils.defaultIfBlank(beat.getMovement(), "未指定"),
-                        StringUtils.defaultIfBlank(beat.getDirection(), "-"),
-                        StringUtils.defaultIfBlank(beat.getSpeed(), "-"),
-                        StringUtils.defaultIfBlank(beat.getStartCue(), "-"),
-                        StringUtils.defaultIfBlank(beat.getStopCue(), "-"),
-                        StringUtils.defaultIfBlank(beat.getNarrativePurpose(), "-")));
-            }
-        }
-        sb.append("- ★【执行约束】: 提示词中涉及的机位角度、运镜动作、景别变化必须与上述 Beats 严格对应，禁止随意添加或更改。\n");
-        return sb.toString();
+        return "\n【结构化导演决策计划：最高执行优先级】\n" + planState().encode(plan)
+                + "\n提示词必须忠实执行此完整计划。Ref2VA 按参考媒体用途和时间轴生成；FL2VA 首尾图是静态瞬间，视频执行全部节拍。不得增删或改写导演决策。\n";
     }
 
     @Override
     public ShotPromptPackageVO buildPromptPackage(ShotPromptDeriveDTO dto) {
-        return buildPromptPackage(dto, null);
+        prepareDirectorPlan(dto);
+        return buildPromptPackage(dto, dto.getDirectorPlan());
     }
 
     @Override
@@ -1329,6 +1319,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             throw new BizException("请求参数不能为空");
         }
 
+        if (!dto.isDirectorPlanFrozen()) prepareDirectorPlan(dto);
+        if ("MANUAL".equals(dto.getDirectorPlanMode())) directorPlan = dto.getDirectorPlan();
         // 1. 自动补全短剧与剧集背景上下文
         Drama drama = populateContext(dto);
 
@@ -1381,6 +1373,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         systemPrompt = appendFl2VaOutputContract(systemPrompt, genMode, dto.getDuration());
 
         String userPrompt = resolveTemplate(userTemplate, vars);
+        if (directorPlan != null && !userTemplate.contains("${DIRECTOR_PLAN}")) userPrompt += formatDirectorPlan(directorPlan);
         validatePromptSecurity(systemPrompt, userPrompt);
 
         // 组装专供外部 AI 聊天窗口单输入框的 combinedPrompt
@@ -1398,6 +1391,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 不要添加 Markdown 代码块、解释、前言或结语。
                 """, systemPrompt.trim(), userPrompt.trim());
 
+        dto.setDirectorPlan(directorPlan);
         // 生成上下文指纹
         String contextFingerprint = calculateFingerprint(genMode, dto, manifest, templateVersion,
                 systemPrompt, userTemplate, skillContext.fingerprint());
@@ -1410,6 +1404,9 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 .outputFormat(outputFormat)
                 .referenceManifest(manifest)
                 .templateVersion(templateVersion)
+.directorPlan(directorPlan)
+                .directorPlanMode(dto.getDirectorPlanMode())
+                .directorPlanRevision(dto.getDirectorPlanRevision())
                 .contextFingerprint(contextFingerprint)
                 .build();
     }
@@ -1441,7 +1438,17 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 .selectedSkillNames(request.getSelectedSkillNames())
                 .build();
 
-        populateContext(contextDto);
+        if (request.getExportedContext() != null) {
+            contextDto = request.getExportedContext();
+            contextDto.setDirectorPlan(request.getDirectorPlan());
+            contextDto.setDirectorPlanMode(request.getDirectorPlanMode());
+            contextDto.setDirectorPlanRevision(request.getDirectorPlanRevision());
+        } else {
+            contextDto.setDirectorPlan(request.getDirectorPlan());
+            contextDto.setDirectorPlanMode(request.getDirectorPlanMode());
+            contextDto.setDirectorPlanRevision(request.getDirectorPlanRevision());
+        }
+        prepareDirectorPlan(contextDto);
         ReferenceManifest manifest = buildReferenceManifest(contextDto);
 
         String templateVersion = "REFERENCE_MODE".equalsIgnoreCase(genMode)
@@ -1470,6 +1477,11 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
         // 2. 清洗并解析 JSON
         ShotPromptDeriveVO parsedVo = cleanAndParseJson(request.getRawResponse());
+        if (parsedVo != null) {
+            parsedVo.setDirectorPlan(contextDto.getDirectorPlan());
+            parsedVo.setDirectorPlanMode(contextDto.getDirectorPlanMode());
+            parsedVo.setDirectorPlanRevision(contextDto.getDirectorPlanRevision());
+        }
 
         // 3. 执行统一校验与归一化
         return validateAndNormalize(parsedVo, genMode, manifest, contextDto.getDialogue(), fingerprintMatched,
@@ -1478,6 +1490,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     @Override
     public SseEmitter derivePromptStream(ShotPromptDeriveDTO dto) {
+        resolveRefImages(dto);
+        prepareDirectorPlan(dto);
         SseEmitter emitter = new SseEmitter(180_000L);
         ConcurrentSseBridge sseBridge = new ConcurrentSseBridge(emitter);
 
@@ -1496,6 +1510,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     @Override
     public String startPromptTask(ShotPromptDeriveDTO dto) {
+        resolveRefImages(dto);
+        prepareDirectorPlan(dto);
         if (shotPromptEventStore == null) throw new BizException("提示词事件缓存不可用");
         AiTask task = createPromptTask(dto);
         if (task == null || task.getId() == null) throw new BizException("提示词任务持久化失败，请检查数据库");
@@ -1543,8 +1559,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
                 // 1.5 导演决策规划 (Director Planning)
                 publishPromptEvent(taskId, sseBridge, "stage", "正在规划分镜导演方案…\n");
-                DirectorPlan directorPlan = null;
-                try {
+                DirectorPlan directorPlan = dto.getDirectorPlan();
+                if (!"MANUAL".equals(dto.getDirectorPlanMode())) try {
                     // Hydrate persisted script and explicitly locked values before DirectorPlanningService sees the request.
                     populateContext(dto);
                     directorPlan = directorPlanningService.plan(dto,
@@ -1553,6 +1569,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                     log.warn("[ShotPromptDeriveStream] 导演决策层规划异常，将降级为常规提示词衍生: {}", ex.getMessage());
                 }
 
+                dto.setDirectorPlan(directorPlan);
                 // 2. 统一构建 ShotPromptPackageVO (挂载 DirectorPlan)
                 ShotPromptPackageVO packageVO;
                 try {
@@ -1585,8 +1602,10 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 // 4. 统一清洗、解析与校验
                 rawText = StringUtils.defaultString(rawText).trim();
                 ShotPromptDeriveVO vo = cleanAndParseJson(rawText);
-                if (vo != null && directorPlan != null) {
+                if (vo != null) {
                     vo.setDirectorPlan(directorPlan);
+                    vo.setDirectorPlanMode(dto.getDirectorPlanMode());
+                    vo.setDirectorPlanRevision(dto.getDirectorPlanRevision());
                 }
                 ShotPromptValidationResult validationResult = validateAndNormalize(
                         vo,
@@ -1604,18 +1623,9 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                     return;
                 }
 
-                // 若指定了 shotId，将 DirectorPlan 合并更新回分镜实体
-                if (dto.getShotId() != null && dto.getShotId() > 0 && directorPlan != null) {
-                    ensurePromptTaskNotCancelled(taskId);
-                    try {
-                        DramaShot shot = shotMapper.selectById(dto.getShotId());
-                        if (shot != null) {
-                            directorPlanMergeService.applyPlanToShot(shot, directorPlan);
-                            shotMapper.updateById(shot);
-                        }
-                    } catch (Exception ex) {
-                        log.warn("[ShotPromptDeriveStream] 回填 DirectorPlan 到分镜异常: {}", ex.getMessage());
-                    }
+                ensurePromptTaskNotCancelled(taskId);
+                if (planState().completeAuto(dto, directorPlan) && vo != null) {
+                    vo.setDirectorPlanRevision(dto.getDirectorPlanRevision() + 1);
                 }
 
                 String resultJson = objectMapper.writeValueAsString(validationResult.getResult());
@@ -1917,6 +1927,28 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         return value != null && !value.isNull() ? value.asText() : null;
     }
 
+    private String keyImageAssetType(Long assetId) {
+        ResKeyframe asset = resKeyframeMapper != null ? resKeyframeMapper.selectById(assetId) : null;
+        return asset != null ? asset.getFrameType() : null;
+    }
+
+    private List<ShotRefImageDTO> resolveRefImages(ShotPromptDeriveDTO dto) {
+        if (dto == null) throw new BizException(400, "提示词生成请求不能为空");
+        // An explicit empty list means the creator removed all reference images.
+        if (dto.getRefImages() != null) {
+            KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
+            return dto.getRefImages();
+        }
+        if (dto.getShotId() != null && dto.getShotId() > 0) {
+            DramaShot shot = shotMapper.selectById(dto.getShotId());
+            if (shot != null) {
+                return KeyImageReferenceValidator.parseAndValidate(shot.getRefImagesJson(),
+                        new com.fasterxml.jackson.databind.ObjectMapper(), this::keyImageAssetType);
+            }
+        }
+        return List.of();
+    }
+
     /**
      * 构建稳定有序的 MiniMax H3 ReferenceManifest 清单。
      * 将参考图片分配为 Picture 1..N，参考音频分配为 Audio 1..N，并挂载资产视觉/语义描述。
@@ -1926,15 +1958,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         List<ReferenceManifest.AudioManifestItem> audios = new ArrayList<>();
         com.fasterxml.jackson.databind.ObjectMapper jacksonMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
-        List<ShotRefImageDTO> refImgs = dto.getRefImages();
-        if ((refImgs == null || refImgs.isEmpty()) && dto.getShotId() != null && dto.getShotId() > 0) {
-            DramaShot s = shotMapper.selectById(dto.getShotId());
-            if (s != null && StringUtils.isNotBlank(s.getRefImagesJson())) {
-                try {
-                    refImgs = jacksonMapper.readValue(s.getRefImagesJson(), new TypeReference<List<ShotRefImageDTO>>() {});
-                } catch (Exception ignored) {}
-            }
-        }
+        List<ShotRefImageDTO> refImgs = resolveRefImages(dto);
 
         if (refImgs != null) {
             int pIdx = 1;
@@ -1945,6 +1969,9 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
                 String sType = StringUtils.defaultIfBlank(img.getSourceType(), "UPLOAD").toUpperCase();
                 String role = img.getUsageRole();
+                if ("KEYFRAME".equals(sType)) {
+                    role = KeyImageReferenceValidator.resolveRole(img, this::keyImageAssetType).name();
+                }
                 if (StringUtils.isBlank(role)) {
                     role = switch (sType) {
                         case "SCENE" -> "SCENE_LAYOUT";
@@ -1998,8 +2025,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                             if (StringUtils.isNotBlank(kf.getName())) {
                                 dsb.append(kf.getName());
                             }
-                            KeyImageRole keyImageRole = KeyImageRole.resolve(img.getUsageRole(), kf.getFrameType());
-                            role = keyImageRole != null ? keyImageRole.name() : "UNSPECIFIED";
                             if (StringUtils.isNotBlank(kf.getPrompt())) {
                                 dsb.append(": ").append(kf.getPrompt().trim());
                             } else if (StringUtils.isNotBlank(kf.getDescription())) {
@@ -2007,9 +2032,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                             }
                             desc = dsb.toString();
                         }
-                    }
-                    if ("MOTION_KEYFRAME".equalsIgnoreCase(role)) {
-                        role = KeyImageRole.KEYFRAME.name();
                     }
                 } else if ("SCENE".equalsIgnoreCase(sType) && img.getSourceId() != null && img.getSourceId() > 0) {
                     ResScene sc = resSceneMapper.selectById(img.getSourceId());

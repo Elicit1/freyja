@@ -170,14 +170,14 @@ class DirectorPlanToH3IntegrationTest {
 
         // 验证用户任务包含格式化后的 DirectorPlan 时间轴及 Beats 约束
         String userPrompt = pkg.getUserPrompt();
-        assertTrue(userPrompt.contains("【结构化导演机位与运镜设计 (DIRECTOR_PLAN - 最高执行优先级)】"));
+        assertTrue(userPrompt.contains("【结构化导演决策计划：最高执行优先级】"));
         assertTrue(userPrompt.contains("MEDIUM_CLOSE_UP"));
         assertTrue(userPrompt.contains("EYE_LEVEL"));
         assertTrue(userPrompt.contains("林峰静止凝视，瞳孔微缩"));
-        assertTrue(userPrompt.contains("[0.00s - 2.00s] 运镜: STATIC"));
-        assertTrue(userPrompt.contains("[2.00s - 4.00s] 运镜: PUSH_IN"));
+        assertTrue(userPrompt.contains("\"movement\":\"STATIC\""));
+        assertTrue(userPrompt.contains("\"startSec\":2.00") && userPrompt.contains("\"movement\":\"PUSH_IN\""));
         assertTrue(userPrompt.contains("放大压迫感与决意"));
-        assertTrue(userPrompt.contains("提示词中涉及的机位角度、运镜动作、景别变化必须与上述 Beats 严格对应，禁止随意添加或更改。"));
+        assertTrue(userPrompt.contains("不得增删或改写导演决策。"));
     }
 
     @Test
@@ -284,9 +284,9 @@ class DirectorPlanToH3IntegrationTest {
 
         ShotPromptPackageVO pkg = service.buildPromptPackage(dto, plan);
 
-        assertTrue(pkg.getUserPrompt().contains("运镜: PAN_RIGHT"));
+        assertTrue(pkg.getUserPrompt().contains("\"movement\":\"PAN_RIGHT\""));
         assertTrue(pkg.getUserPrompt().contains("轻微横摇跟随两人擦肩"));
-        assertFalse(pkg.getUserPrompt().contains("运镜: STATIC"));
+        assertFalse(pkg.getUserPrompt().contains("\"movement\":\"STATIC\""));
     }
 
     @Test
@@ -317,11 +317,11 @@ class DirectorPlanToH3IntegrationTest {
 
         ShotPromptPackageVO pkg = service.buildPromptPackage(dto, plan);
 
-        assertTrue(pkg.getUserPrompt().contains("运镜: TRACKING"));
+        assertTrue(pkg.getUserPrompt().contains("\"movement\":\"TRACKING\""));
         assertTrue(pkg.getUserPrompt().contains("雷姆左手提一个购物袋、右手提一个购物袋，共两个"));
         assertTrue(pkg.getUserPrompt().contains("菜月昴持有一部手机"));
-        assertFalse(pkg.getUserPrompt().contains("运镜: AUTO"));
-        assertFalse(pkg.getUserPrompt().contains("运镜: STATIC"));
+        assertFalse(pkg.getUserPrompt().contains("\"movement\":\"AUTO\""));
+        assertFalse(pkg.getUserPrompt().contains("\"movement\":\"STATIC\""));
     }
 
     @Test
@@ -351,9 +351,9 @@ class DirectorPlanToH3IntegrationTest {
 
         ShotPromptPackageVO pkg = service.buildPromptPackage(dto, plan);
 
-        assertTrue(pkg.getUserPrompt().contains("运镜: STATIC"));
-        assertTrue(pkg.getUserPrompt().contains("shotSize): CLOSE_UP"));
-        assertFalse(pkg.getUserPrompt().contains("运镜: AUTO"));
+        assertTrue(pkg.getUserPrompt().contains("\"movement\":\"STATIC\""));
+        assertTrue(pkg.getUserPrompt().contains("\"shotSize\":\"CLOSE_UP\""));
+        assertFalse(pkg.getUserPrompt().contains("\"movement\":\"AUTO\""));
     }
 
     @Test
@@ -377,5 +377,52 @@ class DirectorPlanToH3IntegrationTest {
 
         assertTrue(pkg.getUserPrompt().contains("【创作者明确锁定景别】: CLOSE_UP"));
         assertTrue(pkg.getUserPrompt().contains("【创作者明确锁定运镜】: STATIC"));
+    }
+
+    private DirectorPlan manualPlan(String intent) {
+        return DirectorPlan.builder().duration(new BigDecimal("4.0")).shotSize("MEDIUM_SHOT")
+                .cameraAngle("EYE_LEVEL").narrativeIntent(intent)
+                .cameraBeats(List.of(CameraBeat.builder().startSec(BigDecimal.ZERO).endSec(new BigDecimal("4.0"))
+                        .movement("STATIC").speed("NONE").build())).build();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"REFERENCE_MODE", "FIRST_LAST_FRAME"})
+    void manualPlanSurvivesCustomTemplatesAndRepeatedEdit(String mode) {
+        lenient().when(sysConfigService.getConfigValue(anyString(), anyString())).thenAnswer(inv ->
+                inv.<String>getArgument(0).endsWith("_user") ? "Custom template without director placeholder: ${SHOT_SPEC}" : inv.getArgument(1));
+        ShotPromptDeriveDTO first = ShotPromptDeriveDTO.builder().duration(4.0).scriptContent("A person waits")
+                .generationMode(mode).directorPlanMode("MANUAL").directorPlan(manualPlan("First intent")).build();
+        ShotPromptPackageVO pkg = service.buildPromptPackage(first);
+        assertTrue(pkg.getUserPrompt().contains("First intent"));
+        assertEquals("MANUAL", pkg.getDirectorPlanMode());
+        assertEquals("First intent", pkg.getDirectorPlan().getNarrativeIntent());
+        ShotPromptDeriveDTO second = ShotPromptDeriveDTO.builder().duration(4.0).scriptContent("A person waits")
+                .generationMode(mode).directorPlanMode("MANUAL").directorPlan(manualPlan("Second intent")).build();
+        ShotPromptPackageVO updated = service.buildPromptPackage(second);
+        assertTrue(updated.getUserPrompt().contains("Second intent"));
+        assertFalse(updated.getUserPrompt().contains("First intent"));
+        assertNotEquals(pkg.getContextFingerprint(), updated.getContextFingerprint());
+        assertEquals("First intent", pkg.getDirectorPlan().getNarrativeIntent());
+        verifyNoInteractions(directorPlanningService);
+    }
+
+    @Test
+    void externalParsePreservesPlanAndFullExportContextFingerprint() {
+        lenient().when(sysConfigService.getConfigValue(anyString(), anyString())).thenAnswer(inv -> inv.getArgument(1));
+        ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder().duration(4.0).scriptContent("Wait")
+                .generationMode("REFERENCE_MODE").directorPlanMode("MANUAL").directorPlan(manualPlan("Do not move"))
+                .userInstruction("Preserve the exact composition").build();
+        ShotPromptPackageVO pkg = service.buildPromptPackage(dto);
+        var request = com.astra.freyja.dto.drama.ShotPromptParseRequestDTO.builder()
+                .generationMode("REFERENCE_MODE").exportedContext(dto).directorPlan(pkg.getDirectorPlan())
+                .directorPlanMode(pkg.getDirectorPlanMode()).directorPlanRevision(pkg.getDirectorPlanRevision())
+                .contextFingerprint(pkg.getContextFingerprint())
+                .rawResponse("{\"prompt\":\"A person waits.\",\"videoPrompt\":\"A person waits.\"}").build();
+        var parsed = service.parseAndValidateDerivedPrompt(request);
+        assertTrue(parsed.getFingerprintMatched());
+        assertNotNull(parsed.getResult());
+        assertEquals("Do not move", parsed.getResult().getDirectorPlan().getNarrativeIntent());
+        verifyNoInteractions(directorPlanningService);
     }
 }

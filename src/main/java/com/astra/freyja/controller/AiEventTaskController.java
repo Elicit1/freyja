@@ -99,6 +99,7 @@ public class AiEventTaskController {
     @PostMapping("/shot/{shotId}/frame")
     public R<String> shotFrame(@PathVariable Long shotId, @RequestBody(required = false) DramaShotFirstFrameDTO dto) {
         var input = dto == null ? new DramaShotFirstFrameDTO() : dto;
+        input.setFrameType(input.resolveFrameRole().name());
         return R.ok(tasks.start(AiTaskType.SHOT_FRAME_GENERATE, null, String.valueOf(shotId),
                 input.getModelCode(), input, () -> shots.generateFirstFrame(shotId, input)));
     }

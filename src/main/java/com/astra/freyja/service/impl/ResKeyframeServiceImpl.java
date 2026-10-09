@@ -56,14 +56,7 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
                 .eq(query.getStatus() != null, ResKeyframe::getStatus, query.getStatus());
 
         if (StringUtils.isNotBlank(query.getFrameType())) {
-            KeyImageRole role = KeyImageRole.fromCode(query.getFrameType());
-            if (role == KeyImageRole.KEYFRAME) {
-                wrapper.in(ResKeyframe::getFrameType, "KEYFRAME", "ACTION_BEAT");
-            } else if (role == KeyImageRole.LAST_FRAME) {
-                wrapper.in(ResKeyframe::getFrameType, "LAST_FRAME", "END_FRAME");
-            } else {
-                wrapper.eq(ResKeyframe::getFrameType, role != null ? role.name() : query.getFrameType());
-            }
+            wrapper.eq(ResKeyframe::getFrameType, KeyImageRole.requireCode(query.getFrameType()).name());
         }
         wrapper.orderByAsc(ResKeyframe::getSortOrder).orderByDesc(ResKeyframe::getId);
 
@@ -295,8 +288,6 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
 
     private String resolveFrameType(String frameType) {
         if (StringUtils.isBlank(frameType)) return KeyImageRole.COMPOSITION_ANCHOR.name();
-        KeyImageRole role = KeyImageRole.fromCode(frameType);
-        if (role == null) throw new BizException("不支持的关键图类型: " + frameType);
-        return role.name();
+        return KeyImageRole.requireCode(frameType).name();
     }
 }

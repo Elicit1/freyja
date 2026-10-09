@@ -11,9 +11,13 @@ export const KEY_IMAGE_ROLE_OPTIONS = [
 export type KeyImageRole = typeof KEY_IMAGE_ROLE_OPTIONS[number]['value']
 
 export function normalizeKeyImageRole(value?: string): KeyImageRole | undefined {
-  if (value === 'END_FRAME') return 'LAST_FRAME'
-  if (value === 'ACTION_BEAT' || value === 'MOTION_KEYFRAME') return 'KEYFRAME'
   return KEY_IMAGE_ROLE_OPTIONS.find(option => option.value === value)?.value
+}
+
+export function requireKeyImageRole(value: string): KeyImageRole {
+  const role = normalizeKeyImageRole(value)
+  if (!role) throw new Error(`不支持的关键图用途: ${value}`)
+  return role
 }
 
 export function keyImageRoleLabel(value?: string): string {

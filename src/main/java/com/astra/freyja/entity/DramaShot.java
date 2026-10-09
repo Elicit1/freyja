@@ -105,7 +105,12 @@ public class DramaShot extends BaseEntity {
     private String videoPrompt;
 
     /** 结构化导演决策计划 JSON (DirectorPlan: 含 shotSize, cameraAngle, cameraBeats, narrativeIntent 等) */
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String directorPlanJson;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String directorPlanMode = "AUTO";
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private Integer directorPlanRevision = 0;
 
     /** 生成模式 (字典 shot_generation_mode: FIRST_LAST_FRAME / REFERENCE_MODE) */
     private String generationMode;
