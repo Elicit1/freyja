@@ -21,6 +21,23 @@ public class ShotPromptDeriveDTO {
     private String directorPlanMode;
     private Integer directorPlanRevision;
     private com.astra.freyja.director.model.DirectorPlan directorPlan;
+    /** Local generation compares current basic shot inputs with the plan's persisted basis. */
+    private Boolean replanOnInputChange;
+    private Boolean directorPlanOverwriteConfirmed;
+    private com.astra.freyja.director.model.DirectorPlanInput directorPlanInput;
+
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Boolean directorPlanReplanning;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String directorPlanOriginalMode;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private java.util.Map<String, Object> directorPlanSourceFields;
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private String directorPlanSourceHash;
+
+    /** Server-only correlation ID for director response and validation logs. */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Long directorPlanningTaskId;
 
 
     /** 分镜ID (可选，新建时为 null) */

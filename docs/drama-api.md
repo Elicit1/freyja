@@ -191,12 +191,12 @@
 
 ### 4.13 上一镜视频尾帧按需提取与首帧引用 (On-demand Previous Video Tail Inheritance)
 - **URL**: `POST /drama/shot/{currentShotId}/inherit-previous-video-tail`
-- **Body**: `PreviousVideoTailRequest` (可选: `forceExtract: boolean`, `tailOffsetMs: Integer`)
+- **Body**: `PreviousVideoTailRequest` (可选: `forceExtract: boolean`)
 - **说明**:
   - 在同一连续镜头组（`shotGroupId`）内，根据 `(sortOrder ASC, shotNo ASC, id ASC)` 定位当前分镜的直接前驱分镜；
   - 若前驱分镜无生成视频（`videoUrl`），直接抛出 `400: 上一镜尚未生成视频`；
-  - 若前驱分镜已缓存 `lastFrameUrl` 且其 `lastFrameSourceVideoUrl` 与当前 `videoUrl` 一致，且未指定 `forceExtract=true`，则直接复用；
-  - 否则通过 ffmpeg 截取尾帧（倒数 `tailOffsetMs` 毫秒，默认 300ms），无损上传至 MinIO，并更新前驱分镜的 `lastFrameUrl` 与 `lastFrameSourceVideoUrl` 缓存；
+  - 若前驱分镜已缓存 `lastFrameUrl`，来源视频 Take ID（无 Take 时按视频 URL）及抽帧策略版本均一致，且未指定 `forceExtract=true`，则直接复用；
+  - 否则通过 ffmpeg 解码视频并保留实际最后一帧（无时间偏移），以 JPEG 上传至 MinIO，并更新前驱分镜的 `lastFrameUrl` 与 `lastFrameSourceVideoUrl` 缓存；
   - 将提取后的尾帧 URL 回写至当前分镜的 `previewImageUrl`，并将 `firstFrameSourceType` 置为 `PREVIOUS_VIDEO_TAIL`，`firstFrameSourceShotId` 指向前驱分镜 ID，`firstFrameSourceVideoUrl` 指向来源视频 URL。
 - **返回**: `R<PreviousVideoTailVO>`
 ```json
@@ -209,12 +209,14 @@
     "sourceShotNo": 1,
     "sourceShotName": "S01-01",
     "sourceVideoUrl": "http://127.0.0.1:9000/freyja/videos/shot_1.mp4",
-    "tailFrameUrl": "http://127.0.0.1:9000/freyja/frames/shot_1_tail.jpg",
+    "tailFrameUrl": "http://127.0.0.1:9000/freyja/projects/1/shots/1/frames/video_last_decoded_v1_123.jpg",
     "reused": true,
     "applied": true
   }
 }
 ```
+
+尾帧缓存同时校验抽取策略版本：旧的偏移帧缓存不复用，下一次引用时自动重新提取实际末帧。已经保存为当前分镜首帧的图片保留，重新点击引用后使用新末帧。
 
 **Ref2VA 新建场景**：`POST /drama/shot/{currentShotId}/extract-previous-video-tail` 使用相同请求与前驱镜头校验、缓存机制，返回相同结构且 `applied: false`。它只提取并归档尾帧，不修改当前镜头首帧。前端在参考图模式的“镜头环境场景”区域提供“用上一镜视频尾帧新建场景”入口：先保存当前分镜，再提取尾帧并跳转场景新建页，将 `tailFrameUrl` 预填到场景的 `referenceImageUrl`。用户填写其余场景资料并保存后，沿用新建场景流程返回分镜并绑定场景。首尾帧模式继续使用上述首帧引用接口。
 

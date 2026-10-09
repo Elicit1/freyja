@@ -70,7 +70,7 @@
 | 字段 | 语义 | 是否可作为本功能来源 |
 |---|---|---:|
 | `videoUrl` | 上一镜实际生成视频 | 是，抽帧源 |
-| `lastFrameUrl` | 从 `videoUrl` 按需抽取并归档的尾部稳定帧 | 是，缓存命中时复用 |
+| `lastFrameUrl` | 从 `videoUrl` 按需抽取并归档的实际最后一帧 | 是，缓存命中时复用 |
 | `endFrameImageUrl` | 视频生成前设计/生成的目标尾帧 | 否 |
 | `previewImageUrl` | 当前镜视频首帧 | 本功能的写入目标，不是上一镜尾帧来源 |
 
@@ -92,20 +92,13 @@
 
 ### 4.3 尾帧定义
 
-本功能提取“视频结束前一定偏移量处的尾部稳定帧”，不是强求容器中的最后一个可解码帧。
+本功能提取视频流实际最后一个可解码帧，不使用时间偏移。
 
-- 默认偏移量：300ms。
-- 合法范围：0～2000ms。
-- 配置项建议：
-
-  ```yaml
-  freyja:
-    ffmpeg:
-      tail-offset-ms: 300
-  ```
-
-- `VideoFrameExtractService` 不应继续硬编码 `-0.5`，改为接收偏移毫秒并安全转换为 `-sseof` 参数。
-- 产品文案统一使用“尾部稳定帧”，避免声称一定是编码层最后一帧。
+- 不再提供请求偏移参数和默认偏移配置。
+- FFmpeg 解码完整视频流，通过 `-fps_mode passthrough -update 1` 持续更新同一张 JPEG；成功结束后保留最后一帧。不通过文件结束位置减毫秒数猜测帧位置。
+- 不使用反转整个视频的滤镜，避免将全部解码帧装入内存。
+- 缓存同时校验抽取策略版本，旧偏移帧在下次引用时自动重新提取，已有首帧引用不会被后台改写。
+- 产品文案统一使用“上一镜视频实际最后一帧”。
 
 ## 5. 数据结构调整
 
@@ -166,7 +159,6 @@ dto/drama/PreviousVideoTailVO.java
 
 ```java
 private Boolean forceExtract; // 默认 false
-private Integer tailOffsetMs; // 为空使用配置值，范围 0～2000
 ```
 
 首版不要暴露 `scope`，固定同 ShotGroup，避免接口表面支持实际未实现的跨组行为。
@@ -238,18 +230,18 @@ PreviousVideoTailVO inheritPreviousVideoTail(
 
 ### 6.4 抽帧与归档
 
-可以复用 `VideoFrameExtractService`，但建议增加重载：
+使用 `VideoFrameExtractService` 的双参数方法：
 
 ```java
-byte[] extractLastFrame(byte[] videoBytes, String extension, int tailOffsetMs);
+byte[] extractLastFrame(byte[] videoBytes, String extension);
 ```
 
-旧的双参数方法可暂时保留并委托到默认配置，避免影响其他调用方。
+统一提取实际末帧，不提供偏移参数重载。
 
 MinIO 对象路径建议包含来源视频版本摘要，保证幂等和便于排查：
 
 ```text
-projects/{dramaId}/shots/{sourceShotId}/frames/video_tail_{versionHash}_{offsetMs}.jpg
+projects/{dramaId}/shots/{sourceShotId}/frames/video_last_decoded_v1_{timestamp}.jpg
 ```
 
 若不引入摘要，也至少使用时间戳并在数据库中保存最终 URL。不得覆盖用户上传的图片对象。
@@ -276,8 +268,7 @@ POST /drama/shot/{currentShotId}/inherit-previous-video-tail
 
 ```json
 {
-  "forceExtract": false,
-  "tailOffsetMs": 300
+  "forceExtract": false
 }
 ```
 
@@ -290,7 +281,7 @@ POST /drama/shot/{currentShotId}/inherit-previous-video-tail
   "sourceShotNo": 3,
   "sourceShotName": "S01-03",
   "sourceVideoUrl": "http://minio/video-assets/projects/1/shots/2/takes/video_123.mp4",
-  "tailFrameUrl": "http://minio/video-assets/projects/1/shots/2/frames/video_tail_xxx_300.jpg",
+  "tailFrameUrl": "http://minio/video-assets/projects/1/shots/2/frames/video_last_decoded_v1_123.jpg",
   "reused": false,
   "applied": true
 }
@@ -332,7 +323,7 @@ POST /drama/shot/{currentShotId}/inherit-previous-video-tail
 ```ts
 inheritPreviousVideoTail(
   currentShotId: string | number,
-  data?: { forceExtract?: boolean; tailOffsetMs?: number }
+  data?: { forceExtract?: boolean }
 ): Promise<PreviousVideoTailResult>
 ```
 
@@ -452,14 +443,14 @@ URL 中使用原始 ID 字符串插值，不进行数字转换。
 
 文档中统一使用：
 
-- “上一镜视频尾部稳定帧”；
+- “上一镜视频实际最后一帧”；
 - “用户按需提取”；
 - “同一连续镜头组的直接前驱镜头”。
 
 ## 12. 建议实施顺序
 
 1. 更新数据库结构、实体、DTO/VO 和前端类型。
-2. 修改 `VideoFrameExtractService`，支持可配置偏移量。
+2. 修改 `VideoFrameExtractService`，移除偏移时间并提取实际最后一帧。
 3. 实现 MinIO 视频读取和尾帧归档。
 4. 实现 `ShotFrameContinuityService` 及单元测试。
 5. 暴露 Controller 接口并更新 API 文档。

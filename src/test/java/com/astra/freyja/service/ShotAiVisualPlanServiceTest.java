@@ -491,4 +491,56 @@ class ShotAiVisualPlanServiceTest {
         assertTrue(sent.getContents().contains("PAN_RIGHT"));
         verifyNoInteractions(directorPlanningService);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"REFERENCE_MODE", "FIRST_LAST_FRAME"})
+    void localCardChangeSendsLatestScriptAndRegeneratedPlanToPromptAi(String mode) {
+        DramaShot shot = new DramaShot(); shot.setId(7L); shot.setDuration(new java.math.BigDecimal("4"));
+        shot.setScriptContent("old script");
+        shot.setDirectorPlanInputHash(com.astra.freyja.director.model.DirectorPlanInput.fromShot(shot).fingerprint());
+        when(shotMapper.selectById(7L)).thenReturn(shot);
+        shot.setScriptContent("new saved script");
+        var plan = com.astra.freyja.director.model.DirectorPlan.builder()
+                .duration(new java.math.BigDecimal("4")).shotSize("MEDIUM_SHOT").cameraAngle("EYE_LEVEL")
+                .narrativeIntent("regenerated for latest script")
+                .cameraBeats(List.of(com.astra.freyja.director.model.CameraBeat.builder()
+                        .startSec(java.math.BigDecimal.ZERO).endSec(new java.math.BigDecimal("4"))
+                        .movement("STATIC").speed("NONE").build())).build();
+        when(directorPlanningService.plan(any(), any())).thenAnswer(inv -> {
+            ShotPromptDeriveDTO request = inv.getArgument(0);
+            assertEquals("new saved script", request.getScriptContent());
+            return plan;
+        });
+        var dto = ShotPromptDeriveDTO.builder().shotId(7L).directorPlanRevision(0).generationMode(mode)
+                .providerId(1L).modelCode("deepseek-chat").replanOnInputChange(true)
+                .directorPlanInput(com.astra.freyja.director.model.DirectorPlanInput.fromShot(shot)).build();
+        mockChatModelResponse("{\"prompt\":\"Latest scene\",\"videoPrompt\":\"Latest scene\"}");
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(shotAiVisualPlanService, "prepareDirectorPlan", dto);
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(shotAiVisualPlanService, "runPromptTask", dto, null, null);
+        Prompt sent = capturePrompt(ArgumentCaptor.forClass(Prompt.class));
+        assertTrue(sent.getContents().contains("regenerated for latest script"));
+        assertTrue(sent.getContents().contains("new saved script"));
+        verify(directorPlanningService).plan(any(), any());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"REFERENCE_MODE", "FIRST_LAST_FRAME"})
+    void failedReplanningNeverCallsPromptAiOrOverwritesSavedManualPlan(String mode) {
+        DramaShot shot = new DramaShot(); shot.setId(7L); shot.setDuration(new java.math.BigDecimal("4"));
+        shot.setScriptContent("old script"); shot.setDirectorPlanMode("MANUAL"); shot.setDirectorPlanJson("original saved manual plan");
+        String oldHash = com.astra.freyja.director.model.DirectorPlanInput.fromShot(shot).fingerprint();
+        shot.setDirectorPlanInputHash(oldHash);
+        shot.setScriptContent("new saved script");
+        when(shotMapper.selectById(7L)).thenReturn(shot);
+        when(directorPlanningService.plan(any(), any())).thenThrow(new IllegalStateException("director unavailable"));
+        var dto = ShotPromptDeriveDTO.builder().shotId(7L).directorPlanRevision(0).generationMode(mode)
+                .providerId(1L).modelCode("deepseek-chat").replanOnInputChange(true).directorPlanOverwriteConfirmed(true)
+                .directorPlanInput(com.astra.freyja.director.model.DirectorPlanInput.fromShot(shot)).build();
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(shotAiVisualPlanService, "prepareDirectorPlan", dto);
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(shotAiVisualPlanService, "runPromptTask", dto, null, null);
+        verifyNoInteractions(chatModel);
+        verify(shotMapper, never()).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper.class));
+        assertEquals(oldHash, shot.getDirectorPlanInputHash());
+        assertEquals("original saved manual plan", shot.getDirectorPlanJson());
+    }
 }

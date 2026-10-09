@@ -589,6 +589,7 @@ CREATE TABLE `drama_shot` (
     `video_prompt`               TEXT            DEFAULT NULL COMMENT '视频动态运镜提示词 (I2V 自然语言指令)',
     `director_plan_mode` VARCHAR(16) NOT NULL DEFAULT 'AUTO' COMMENT '导演计划来源 AUTO/MANUAL',
     `director_plan_revision` INT NOT NULL DEFAULT 0 COMMENT '导演计划乐观版本',
+    `director_plan_input_hash` CHAR(64) COMMENT '导演计划生成时的镜头输入 SHA-256',
     `director_plan_json`         TEXT            DEFAULT NULL COMMENT '结构化导演决策计划 JSON (DirectorPlan)',
     `generation_mode`            VARCHAR(32)     NOT NULL DEFAULT 'FIRST_LAST_FRAME' COMMENT '生成模式: FIRST_LAST_FRAME(首尾帧模式)/REFERENCE_MODE(参考图音频模式)',
     `end_frame_image_url`        VARCHAR(512)    DEFAULT NULL COMMENT '尾帧图URL (MinIO URL)',

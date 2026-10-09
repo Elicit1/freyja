@@ -151,7 +151,7 @@ class ShotFrameContinuityServiceTest {
         // shotNo 不连续: 1, 5, 8; 当前是 8，直接前驱应该是 5
         DramaShot shot1 = buildShot(101L, 10L, 1, 1, "http://127.0.0.1:9000/video-assets/video1.mp4");
         DramaShot shot5 = buildShot(105L, 10L, 5, 5, "http://127.0.0.1:9000/video-assets/video5.mp4");
-        shot5.setLastFrameUrl("http://127.0.0.1:9000/video-assets/tail5.jpg");
+        shot5.setLastFrameUrl("http://127.0.0.1:9000/video-assets/frames/video_last_decoded_v1_5.jpg");
         shot5.setLastFrameSourceVideoUrl("http://127.0.0.1:9000/video-assets/video5.mp4");
 
         DramaShot shot8 = buildShot(108L, 10L, 8, 8, null);
@@ -166,7 +166,7 @@ class ShotFrameContinuityServiceTest {
         assertEquals(105L, vo.getSourceShotId());
         assertEquals(5, vo.getSourceShotNo());
         assertTrue(vo.getReused());
-        assertEquals("http://127.0.0.1:9000/video-assets/tail5.jpg", vo.getTailFrameUrl());
+        assertEquals("http://127.0.0.1:9000/video-assets/frames/video_last_decoded_v1_5.jpg", vo.getTailFrameUrl());
     }
 
     @Test
@@ -189,7 +189,7 @@ class ShotFrameContinuityServiceTest {
     @DisplayName("7. 存在有效尾帧缓存且视频版本一致时直接复用不调用 ffmpeg")
     void testReuseCachedLastFrame() {
         String videoUrl = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/takes/video_1.mp4";
-        String cachedTail = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/frames/video_tail_1.jpg";
+        String cachedTail = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/frames/video_last_decoded_v1_1.jpg";
 
         DramaShot shot1 = buildShot(101L, 10L, 1, 1, videoUrl);
         shot1.setLastFrameUrl(cachedTail);
@@ -201,7 +201,7 @@ class ShotFrameContinuityServiceTest {
         when(shotMapper.selectById(101L)).thenReturn(shot1);
         when(shotMapper.selectList(any())).thenReturn(List.of(shot1, shot2));
 
-        PreviousVideoTailVO vo = continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(false, 300));
+        PreviousVideoTailVO vo = continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(false));
 
         assertNotNull(vo);
         assertTrue(vo.getReused());
@@ -211,14 +211,14 @@ class ShotFrameContinuityServiceTest {
         assertEquals(videoUrl, shot2.getFirstFrameSourceVideoUrl());
 
         // 验证不调用 extractLastFrame
-        verify(videoFrameExtractService, never()).extractLastFrame(any(), any(), any());
+        verify(videoFrameExtractService, never()).extractLastFrame(any(), any());
     }
 
     @Test
     @DisplayName("参考图提取复用上一镜尾帧，但不改写当前镜头首帧")
     void testExtractTailForSceneReferenceDoesNotApplyFirstFrame() {
         String videoUrl = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/takes/video_1.mp4";
-        String cachedTail = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/frames/video_tail_1.jpg";
+        String cachedTail = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/frames/video_last_decoded_v1_1.jpg";
         DramaShot previous = buildShot(101L, 10L, 1, 1, videoUrl);
         previous.setLastFrameUrl(cachedTail);
         previous.setLastFrameSourceVideoUrl(videoUrl);
@@ -235,7 +235,7 @@ class ShotFrameContinuityServiceTest {
         assertFalse(result.getApplied());
         assertEquals("original-first-frame.jpg", current.getPreviewImageUrl());
         verify(shotMapper, never()).updateById(current);
-        verify(videoFrameExtractService, never()).extractLastFrame(any(), any(), any());
+        verify(videoFrameExtractService, never()).extractLastFrame(any(), any());
     }
 
     @Test
@@ -265,25 +265,26 @@ class ShotFrameContinuityServiceTest {
 
         // Mock extractLastFrame
         byte[] fakeFrameBytes = "fake-jpg-bytes".getBytes(StandardCharsets.UTF_8);
-        when(videoFrameExtractService.extractLastFrame(any(), eq("mp4"), any())).thenReturn(fakeFrameBytes);
+        when(videoFrameExtractService.extractLastFrame(any(), eq("mp4"))).thenReturn(fakeFrameBytes);
 
-        PreviousVideoTailVO vo = continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(false, 300));
+        PreviousVideoTailVO vo = continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(false));
 
         assertNotNull(vo);
         assertFalse(vo.getReused());
-        assertTrue(vo.getTailFrameUrl().contains("video_tail_"));
+        assertTrue(vo.getTailFrameUrl().contains("video_last_decoded_v1_"));
         assertEquals(newVideoUrl, shot1.getLastFrameSourceVideoUrl());
         assertEquals("PREVIOUS_VIDEO_TAIL", shot2.getFirstFrameSourceType());
 
-        verify(videoFrameExtractService).extractLastFrame(any(), eq("mp4"), any());
+        verify(videoFrameExtractService).extractLastFrame(any(), eq("mp4"));
         verify(minioClient).putObject(any(PutObjectArgs.class));
     }
 
-    @Test
-    @DisplayName("9. forceExtract=true 时即使缓存有效也强制重新提取")
-    void testForceExtractBypassesCache() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"true,video_last_decoded_v1_1.jpg", "false,video_tail_legacy.jpg"})
+    @DisplayName("9. 强制刷新或旧偏移帧缓存必须重新提取实际末帧")
+    void testForceOrLegacyCacheTriggersExtraction(boolean forceExtract, String filename) throws Exception {
         String videoUrl = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/takes/video_1.mp4";
-        String cachedTail = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/frames/video_tail_1.jpg";
+        String cachedTail = "http://127.0.0.1:9000/video-assets/projects/1/shots/101/frames/" + filename;
 
         DramaShot shot1 = buildShot(101L, 10L, 1, 1, videoUrl);
         shot1.setLastFrameUrl(cachedTail);
@@ -303,13 +304,13 @@ class ShotFrameContinuityServiceTest {
         when(minioClient.getObject(any(GetObjectArgs.class))).thenReturn(getResponse);
 
         byte[] newFrameBytes = "new-extracted-jpg-bytes".getBytes(StandardCharsets.UTF_8);
-        when(videoFrameExtractService.extractLastFrame(any(), eq("mp4"), eq(300))).thenReturn(newFrameBytes);
+        when(videoFrameExtractService.extractLastFrame(any(), eq("mp4"))).thenReturn(newFrameBytes);
 
-        PreviousVideoTailVO vo = continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(true, 300));
+        PreviousVideoTailVO vo = continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(forceExtract));
 
         assertNotNull(vo);
         assertFalse(vo.getReused());
-        verify(videoFrameExtractService).extractLastFrame(any(), eq("mp4"), eq(300));
+        verify(videoFrameExtractService).extractLastFrame(any(), eq("mp4"));
         verify(minioClient).putObject(any(PutObjectArgs.class));
     }
 
@@ -334,10 +335,10 @@ class ShotFrameContinuityServiceTest {
         when(minioClient.getObject(any(GetObjectArgs.class))).thenReturn(getResponse);
 
         // ffmpeg 返回 null 模拟失败
-        when(videoFrameExtractService.extractLastFrame(any(), any(), any())).thenReturn(null);
+        when(videoFrameExtractService.extractLastFrame(any(), any())).thenReturn(null);
 
         BizException ex = assertThrows(BizException.class, () ->
-                continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(true, 300))
+                continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(true))
         );
         assertEquals(500, ex.getCode());
         assertTrue(ex.getMessage().contains("尾帧提取失败"));
@@ -372,10 +373,10 @@ class ShotFrameContinuityServiceTest {
         when(minioClient.getObject(any(GetObjectArgs.class))).thenReturn(getResponse);
 
         byte[] frameBytes = "jpg-bytes".getBytes(StandardCharsets.UTF_8);
-        when(videoFrameExtractService.extractLastFrame(any(), any(), any())).thenReturn(frameBytes);
+        when(videoFrameExtractService.extractLastFrame(any(), any())).thenReturn(frameBytes);
 
         BizException ex = assertThrows(BizException.class, () ->
-                continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(true, 300))
+                continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(true))
         );
         assertEquals(409, ex.getCode());
         assertTrue(ex.getMessage().contains("镜头顺序已变化"));
@@ -400,7 +401,7 @@ class ShotFrameContinuityServiceTest {
 
         byte[] frameBytes = "jpg-bytes".getBytes(StandardCharsets.UTF_8);
         AtomicInteger extractCount = new AtomicInteger(0);
-        when(videoFrameExtractService.extractLastFrame(any(), any(), any())).thenAnswer(inv -> {
+        when(videoFrameExtractService.extractLastFrame(any(), any())).thenAnswer(inv -> {
             extractCount.incrementAndGet();
             Thread.sleep(50); // 模拟耗时
             return frameBytes;
@@ -414,7 +415,7 @@ class ShotFrameContinuityServiceTest {
         for (int i = 0; i < threads; i++) {
             futures.add(executor.submit(() -> {
                 latch.await();
-                return continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(false, 300));
+                return continuityService.inheritPreviousVideoTail(102L, new PreviousVideoTailRequest(false));
             }));
         }
 

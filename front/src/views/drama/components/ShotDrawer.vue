@@ -532,6 +532,7 @@
         </div>
 
         <DirectorPlanEditor ref="directorEditor" :key="String(form.id || 'new') + ':' + String(visible)" class="mt-4"
+          :inputs-changed="basicInputsChanged" :input-hash="form.directorPlanInputHash"
           :shot-id="form.id" :plan="parsedDirectorPlan" :mode="form.directorPlanMode" :revision="form.directorPlanRevision"
           :duration="form.duration" :shot-type="form.shotType" :camera-movement="form.cameraMovement"
           :shot-type-locked="form.shotTypeLocked" :camera-movement-locked="form.cameraMovementLocked"
@@ -813,7 +814,7 @@
                   class="!text-xs"
                   :loading="inheritingTail"
                   @click="handleApplyPrevTail"
-                  title="从同镜头组上一镜视频按需提取尾部稳定帧并引用为本镜首帧"
+                  title="从同镜头组上一镜视频按需提取实际最后一帧并引用为本镜首帧"
                 >
                   📎 引用上一镜尾帧
                 </el-button>
@@ -941,7 +942,7 @@
     :key="panel.key"
     :ref="instance => setPromptPanelRef(panel.key, instance)"
     @apply="(result, done) => handlePromptPanelApply(panel.shotId, result, done)"
-    @director-plan-saved="data => { if (String(form.id) === panel.shotId) handleDirectorPlanSaved(data) }"
+    @director-plan-saved="data => { if (String(form.id) === panel.shotId) handleDirectorPlanSaved(data, panel.directorPlanDraft?.plan) }"
     @task-attached="taskId => handlePromptPanelTaskAttached(panel.key, taskId)"
     @task-starting="handlePromptPanelTaskStarting(panel.key)"
     @task-finished="handlePromptPanelTaskFinished(panel.key)"
@@ -1086,6 +1087,7 @@ import { keyframeApi } from '@/api/res-keyframe'
 import { KEY_IMAGE_ROLE_OPTIONS, requireKeyImageRole } from '@/constants/keyImageRoles'
 import { assetApi } from '@/api/res-asset'
 import DirectorPlanEditor from './DirectorPlanEditor.vue'
+import { useDirectorInputCheck, directorPlanInput } from '@/utils/director-plan-input'
 import type { DramaShot, DramaShotSaveRequest, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, DirectorPlan } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResKeyframeOption } from '@/types/resource'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
@@ -1120,16 +1122,19 @@ type DerivedPromptResult = {
 }
 
 const directorEditor = ref<InstanceType<typeof DirectorPlanEditor>>()
-function handleDirectorPlanSaved(data: { directorPlan?: DirectorPlan; directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number }) {
+function handleDirectorPlanSaved(data: { directorPlan?: DirectorPlan; directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number; directorPlanInputHash?: string }, submittedPlan?: DirectorPlan) {
+  if (data.directorPlan && data.directorPlanRevision > (form.directorPlanRevision ?? 0)) directorEditor.value?.discardDraftIfUnchanged(submittedPlan)
   form.directorPlan = data.directorPlan
   form.directorPlanJson = data.directorPlan ? JSON.stringify(data.directorPlan) : undefined
   form.directorPlanMode = data.directorPlanMode
   form.directorPlanRevision = data.directorPlanRevision
+  if (data.directorPlanInputHash) form.directorPlanInputHash = data.directorPlanInputHash
 }
 const visible = ref(false)
 const router = useRouter()
 const isEdit = ref(false)
 type PromptPanelSession = {
+  directorPlanDraft?: { plan: DirectorPlan; revision: number }
   key: string
   shotId: string
   taskId?: string
@@ -1250,6 +1255,8 @@ const parsedDirectorPlan = computed<DirectorPlan | null>(() => {
     return null
   }
 })
+
+const { inputsChanged: basicInputsChanged } = useDirectorInputCheck(() => form)
 
 const rules: FormRules = {
   shotNo: [{ required: true, message: '请输入镜头序号', trigger: 'blur' }],
@@ -2072,7 +2079,14 @@ function handleOpenPromptPreview() {
 }
 
 async function handleOpenPromptDerive(eventOrTaskId?: string | Event) {
-  try { await directorEditor.value?.submit() } catch (e: any) { ElMessage.error(e.message || '保存导演计划失败'); return }
+  let inputsChanged: boolean
+  try {
+    inputsChanged = (await shotApi.checkDirectorPlanInputs({ shotId: form.id, directorPlanInput: directorPlanInput(form) })).inputsChanged
+  } catch (e: any) { ElMessage.error(e.message || '检查导演计划输入失败'); return }
+  if (!inputsChanged) {
+    try { await directorEditor.value?.submit() } catch (e: any) { ElMessage.error(e.message || '保存导演计划失败'); return }
+  }
+  const directorPlanDraft = directorEditor.value?.getDraft()
 
   // 模板中的 @click="handleOpenPromptDerive" 会自动传入 PointerEvent，不能把它当成任务 ID。
   const taskId = typeof eventOrTaskId === 'string' ? eventOrTaskId : undefined
@@ -2114,6 +2128,7 @@ async function handleOpenPromptDerive(eventOrTaskId?: string | Event) {
   }
 
   const panelParams = {
+    directorPlanDraft,
     shot: shotSnapshot,
     characterRefs: characterRefsSnapshot,
     propRefs: propRefsSnapshot,
@@ -2151,6 +2166,7 @@ async function openPromptPanel(shotId: string, taskId: string | undefined, param
   }
 
   await nextTick()
+  panel.directorPlanDraft = params.directorPlanDraft
   await promptPanelRefs.value[panel.key]?.open(params)
 }
 
@@ -2234,6 +2250,7 @@ function handleApplyDerivedPrompts(res: DerivedPromptResult) {
     form.directorPlanJson = latest.directorPlanJson
     form.directorPlanMode = latest.directorPlanMode
     form.directorPlanRevision = latest.directorPlanRevision
+    form.directorPlanInputHash = latest.directorPlanInputHash
   })
 }
 

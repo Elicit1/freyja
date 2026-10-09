@@ -1543,6 +1543,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     private void runPromptTask(ShotPromptDeriveDTO dto, AiTask task, ConcurrentSseBridge sseBridge) {
             Long taskId = task != null ? task.getId() : null;
+            dto.setDirectorPlanningTaskId(taskId);
             try {
                 markPromptTaskRunning(taskId);
                 ensurePromptTaskNotCancelled(taskId);
@@ -1566,8 +1567,13 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                     directorPlan = directorPlanningService.plan(dto,
                             stage -> publishPromptEvent(taskId, sseBridge, "stage", stage));
                 } catch (Exception ex) {
+                    if (Boolean.TRUE.equals(dto.getDirectorPlanReplanning()))
+                        throw new BizException("导演计划重新生成失败，已保留原计划：" + ex.getMessage());
                     log.warn("[ShotPromptDeriveStream] 导演决策层规划异常，将降级为常规提示词衍生: {}", ex.getMessage());
                 }
+
+                if (Boolean.TRUE.equals(dto.getDirectorPlanReplanning()) && directorPlan == null)
+                    throw new BizException("导演计划重新生成未返回有效计划，已保留原计划");
 
                 dto.setDirectorPlan(directorPlan);
                 // 2. 统一构建 ShotPromptPackageVO (挂载 DirectorPlan)
@@ -1624,7 +1630,13 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 }
 
                 ensurePromptTaskNotCancelled(taskId);
-                if (planState().completeAuto(dto, directorPlan) && vo != null) {
+                boolean autoPlanSaved = planState().completeAuto(dto, directorPlan);
+                if (Boolean.TRUE.equals(dto.getReplanOnInputChange()) && dto.getShotId() != null) {
+                    if (("AUTO".equals(dto.getDirectorPlanMode()) && directorPlan != null && !autoPlanSaved)
+                            || ("MANUAL".equals(dto.getDirectorPlanMode()) && !planState().manualSnapshotCurrent(dto)))
+                        throw new BizException(409, "镜头内容或导演计划在生成期间已修改，已保留当前编辑，请重新生成");
+                }
+                if (autoPlanSaved && vo != null) {
                     vo.setDirectorPlanRevision(dto.getDirectorPlanRevision() + 1);
                 }
 

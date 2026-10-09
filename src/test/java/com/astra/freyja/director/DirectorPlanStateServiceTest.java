@@ -113,4 +113,130 @@ class DirectorPlanStateServiceTest {
         });
         assertEquals(1, service.save(7L, edit).getDirectorPlanRevision());
     }
+
+    private ShotPromptDeriveDTO localRequest() {
+        return ShotPromptDeriveDTO.builder().shotId(7L).directorPlanRevision(shot.getDirectorPlanRevision())
+                .directorPlanMode(shot.getDirectorPlanMode()).directorPlanInput(DirectorPlanInput.fromShot(shot))
+                .replanOnInputChange(true).build();
+    }
+
+    private void generatedBasis() {
+        shot.setScriptContent("original script");
+        shot.setDirectorPlanJson(service.encode(plan()));
+        shot.setDirectorPlanInputHash(DirectorPlanInput.fromShot(shot).fingerprint());
+    }
+
+    @Test void unchangedCardAndEditedPlanReuseManualPlan() {
+        generatedBasis();
+        shot.setDirectorPlanMode("MANUAL");
+        DirectorPlan edited = plan(); edited.setNarrativeIntent("creator revised plan");
+        shot.setDirectorPlanJson(service.encode(edited));
+        ShotPromptDeriveDTO dto = localRequest();
+        assertFalse(service.inspect(dto).inputsChanged());
+        service.freeze(dto);
+        assertEquals("MANUAL", dto.getDirectorPlanMode());
+        assertEquals("creator revised plan", dto.getDirectorPlan().getNarrativeIntent());
+        assertFalse(Boolean.TRUE.equals(dto.getDirectorPlanReplanning()));
+        verify(mapper, never()).update(isNull(), any(UpdateWrapper.class));
+    }
+
+    @Test void savedCardAndSavedManualPlanStillRequireConfirmationAfterReopen() {
+        generatedBasis();
+        String oldHash = shot.getDirectorPlanInputHash();
+        shot.setScriptContent("saved new script");
+        DirectorPlanEditDTO edit = new DirectorPlanEditDTO();
+        edit.setDirectorPlanMode("MANUAL"); edit.setDirectorPlanRevision(0); edit.setDirectorPlan(plan());
+        when(mapper.update(isNull(), any(UpdateWrapper.class))).thenReturn(1);
+        assertEquals(oldHash, service.save(7L, edit).getDirectorPlanInputHash());
+        shot.setDirectorPlanMode("MANUAL"); shot.setDirectorPlanRevision(1);
+        DirectorPlanStateService reopened = new DirectorPlanStateService(mapper, new DirectorPlanValidator());
+        ShotPromptDeriveDTO dto = localRequest();
+        assertTrue(reopened.inspect(dto).overwriteRequired());
+        assertEquals(409, assertThrows(BizException.class, () -> reopened.freeze(dto)).getCode());
+        verify(mapper, times(1)).update(isNull(), any(UpdateWrapper.class));
+        dto.setDirectorPlanOverwriteConfirmed(true);
+        reopened.freeze(dto);
+        assertEquals("AUTO", dto.getDirectorPlanMode());
+        assertTrue(dto.getDirectorPlanReplanning()); assertNull(dto.getDirectorPlan());
+        assertEquals(oldHash, shot.getDirectorPlanInputHash());
+        verify(mapper, times(1)).update(isNull(), any(UpdateWrapper.class));
+    }
+
+    @Test void savedCardWithoutManualPlanReplansWithoutConfirmation() {
+        generatedBasis(); shot.setScriptContent("new saved script");
+        ShotPromptDeriveDTO dto = localRequest();
+        assertTrue(service.inspect(dto).inputsChanged());
+        assertFalse(service.inspect(dto).overwriteRequired());
+        service.freeze(dto);
+        assertTrue(dto.getDirectorPlanReplanning());
+        assertEquals("AUTO", dto.getDirectorPlanMode());
+        verify(mapper, never()).update(isNull(), any(UpdateWrapper.class));
+    }
+
+    @Test void unsavedPlanDraftAlsoRequiresOverwriteConfirmation() {
+        generatedBasis(); shot.setActionDescription("new action");
+        ShotPromptDeriveDTO dto = localRequest(); dto.setDirectorPlan(plan());
+        assertTrue(service.inspect(dto).overwriteRequired());
+        assertThrows(BizException.class, () -> service.freeze(dto));
+        verify(mapper, never()).update(isNull(), any(UpdateWrapper.class));
+    }
+
+    @Test void changedThenRestoredInputsAndUnrelatedFieldsDoNotTriggerReplanning() {
+        generatedBasis();
+        shot.setScriptContent("temporary edit"); shot.setScriptContent("original script");
+        shot.setSeed(99L); shot.setShotGroupId(88L); shot.setShotType("CLOSE_UP"); shot.setCameraMovement("PUSH_IN");
+        shot.setDuration(new BigDecimal("4.00"));
+        assertFalse(service.inspect(localRequest()).inputsChanged());
+        shot.setShotTypeLocked(true);
+        assertTrue(service.inspect(localRequest()).inputsChanged());
+    }
+
+    @Test void explicitClearsSurviveFreezeInsteadOfHydratingSavedText() {
+        generatedBasis();
+        ShotPromptDeriveDTO dto = localRequest();
+        var blank = new DramaShot(); blank.setDuration(new BigDecimal("4"));
+        dto.setDirectorPlanInput(DirectorPlanInput.fromShot(blank));
+        dto.setScriptContent("original script");
+        service.freeze(dto);
+        assertNull(dto.getScriptContent()); assertTrue(dto.getDirectorPlanReplanning());
+    }
+
+    @Test void confirmedReplanningUpdatesHashPlanAndModeTogetherOnlyOnCompletion() {
+        generatedBasis(); shot.setDirectorPlanMode("MANUAL");
+        String oldHash = shot.getDirectorPlanInputHash(); shot.setVoiceover("new voiceover");
+        ShotPromptDeriveDTO dto = localRequest(); dto.setDirectorPlanOverwriteConfirmed(true);
+        service.freeze(dto);
+        verify(mapper, never()).update(isNull(), any(UpdateWrapper.class));
+        when(mapper.update(isNull(), any(UpdateWrapper.class))).thenAnswer(inv -> {
+            UpdateWrapper<?> w = inv.getArgument(1);
+            assertTrue(w.getSqlSet().contains("director_plan_input_hash="));
+            assertTrue(w.getSqlSet().contains("director_plan_json="));
+            assertTrue(w.getSqlSet().contains("director_plan_mode="));
+            assertTrue(w.getSqlSegment().contains("script_content"));
+            assertTrue(w.getParamNameValuePairs().containsValue(dto.getDirectorPlanInput().fingerprint()));
+            assertNotEquals(oldHash, dto.getDirectorPlanInput().fingerprint());
+            return 1;
+        });
+        assertTrue(service.completeAuto(dto, plan()));
+    }
+
+    @Test void legacyManualPlanWithUnknownBasisNeedsExplicitConfirmation() {
+        shot.setDirectorPlanMode("MANUAL"); shot.setDirectorPlanJson(service.encode(plan()));
+        assertTrue(service.inspect(localRequest()).overwriteRequired());
+        assertThrows(BizException.class, () -> service.freeze(localRequest()));
+    }
+
+    @Test void clientsCannotInjectServerReplanningOrSourceGuards() throws Exception {
+        var json = new tools.jackson.databind.ObjectMapper();
+        var dto = json.readValue("{\"directorPlanReplanning\":true,\"directorPlanOriginalMode\":\"MANUAL\",\"directorPlanSourceFields\":{}}", ShotPromptDeriveDTO.class);
+        assertNull(dto.getDirectorPlanReplanning()); assertNull(dto.getDirectorPlanOriginalMode()); assertNull(dto.getDirectorPlanSourceFields());
+    }
+
+    @Test void manualTaskCannotBeAdoptedIfCardIsSavedAgainWhileItRuns() {
+        generatedBasis(); shot.setDirectorPlanMode("MANUAL");
+        ShotPromptDeriveDTO dto = localRequest(); service.freeze(dto);
+        assertTrue(service.manualSnapshotCurrent(dto));
+        shot.setScriptContent("saved during generation");
+        assertFalse(service.manualSnapshotCurrent(dto));
+    }
 }

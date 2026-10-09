@@ -62,6 +62,7 @@ public class DramaShotVO {
     private String directorPlanJson;
     private String directorPlanMode;
     private Integer directorPlanRevision;
+    private String directorPlanInputHash;
 
 
     /** 生成模式与首尾帧/多模态配置 */

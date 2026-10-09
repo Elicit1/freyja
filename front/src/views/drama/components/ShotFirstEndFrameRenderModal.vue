@@ -166,7 +166,7 @@
                 plain
                 :loading="extractingTail"
                 @click="handleInheritPreviousTail(false)"
-                title="从同镜头组上一镜已生成的实际视频中提取尾部稳定帧并引用为本镜首帧"
+                title="从同镜头组上一镜已生成的实际视频中提取实际最后一帧并引用为本镜首帧"
               >
                 📎 从上一镜视频提取并引用尾帧
               </el-button>

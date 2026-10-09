@@ -33,14 +33,9 @@ public class VideoFrameExtractService {
         this.processExecutor = processExecutor;
     }
 
+    /** Decode the complete video stream and keep its final frame, without a time offset. */
     public byte[] extractLastFrame(byte[] videoBytes, String extension) {
-        return extractLastFrame(videoBytes, extension, properties.getTailOffsetMs());
-    }
-
-    public byte[] extractLastFrame(byte[] videoBytes, String extension, Integer tailOffsetMs) {
         if (videoBytes == null || videoBytes.length == 0 || StringUtils.isBlank(properties.getFfmpegPath())) return null;
-        int offsetMs = tailOffsetMs != null && tailOffsetMs >= 0 && tailOffsetMs <= 2000 ? tailOffsetMs : properties.getTailOffsetMs();
-        double offsetSec = offsetMs > 0 ? offsetMs / 1000.0 : 0.050;
         Path videoPath = null;
         Path framePath = null;
         try {
@@ -48,8 +43,8 @@ public class VideoFrameExtractService {
             framePath = Files.createTempFile("freyja_frame_out_", ".jpg");
             Files.write(videoPath, videoBytes);
             List<String> command = List.of(properties.getFfmpegPath(), "-hide_banner", "-loglevel", "error", "-y",
-                    "-sseof", String.format(Locale.US, "-%.3f", offsetSec), "-i", videoPath.toString(),
-                    "-frames:v", "1", "-q:v", "2", framePath.toString());
+                    "-i", videoPath.toString(), "-map", "0:v:0", "-an",
+                    "-fps_mode", "passthrough", "-update", "1", "-q:v", "2", framePath.toString());
             NativeProcessExecutor.ProcessResult result = processExecutor.execute(command, timeout());
             if (result.timedOut() || result.exitCode() != 0) {
                 log.warn("[VideoFrameExtract] ffmpeg failed, exit={}, timeout={}, output={}", result.exitCode(), result.timedOut(), result.output());

@@ -24,10 +24,16 @@
         <span>正在恢复提示词事件，进度和结果会继续显示在当前页面。</span>
       </div>
       <DirectorPlanEditor v-if="currentShotContext" ref="directorEditor" :key="String(currentShotContext.id || 'new') + ':' + String(visible)"
-        :shot-id="currentShotContext.id" :plan="editableDirectorPlan" :mode="currentShotContext.directorPlanMode" :revision="currentShotContext.directorPlanRevision"
+        :shot-id="currentShotContext.id" :plan="editableDirectorPlan" :mode="inheritedDirectorDraft ? 'MANUAL' : currentShotContext.directorPlanMode" :revision="currentShotContext.directorPlanRevision"
+        :inputs-changed="basicInputsChanged" :input-hash="currentShotContext.directorPlanInputHash"
         :duration="currentShotContext.duration" :shot-type="currentShotContext.shotType" :camera-movement="currentShotContext.cameraMovement"
         :shot-type-locked="currentShotContext.shotTypeLocked" :camera-movement-locked="currentShotContext.cameraMovementLocked"
         @dirty="directorDirty = $event" @saved="handleDirectorPlanSaved" />
+      <div v-if="executionMode === 'API' && basicInputsChanged" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
+        {{ !currentShotContext?.directorPlanInputHash && currentShotContext?.directorPlanJson
+          ? '当前计划尚未建立输入基准，本地生成将重新规划；手工计划覆盖前会弹窗确认。'
+          : localPlanModified ? '镜头内容与导演计划均已修改，本地生成前将确认是否覆盖导演计划。' : '镜头内容已修改，本地生成将重新生成导演计划，再生成提示词。' }}
+      </div>
       <!-- 1. 当前镜头与剧情上下文横幅 (AI 推理基准) -->
       <div class="context-panel space-y-3">
         <div class="flex items-center justify-between">
@@ -698,23 +704,26 @@
               plain
               type="primary"
               @click="handleStartStream(true)"
+              :loading="preparingGeneration"
             >
               ▣ 后台生成
             </el-button>
             <el-button
               v-if="!isStreaming && !restoringTask && !restoredTaskRunning && !previewResult"
               type="primary"
+              :loading="preparingGeneration"
               @click="handleStartStream(false)"
             >
-              ⚡ 开始 AI 分析
+              ⚡ 本地生成
             </el-button>
             <el-button
               v-if="previewResult && !isStreaming && !restoringTask && !restoredTaskRunning"
               :type="isResultStale ? 'danger' : 'warning'"
               :plain="!isResultStale"
+              :loading="preparingGeneration"
               @click="handleStartStream(false)"
             >
-              🔄 重新 AI 分析
+              🔄 重新本地生成
             </el-button>
             <el-button v-if="restoringTask" type="primary" plain disabled>
               正在读取任务状态
@@ -762,6 +771,7 @@
 
 <script setup lang="ts">
 import DirectorPlanEditor from './DirectorPlanEditor.vue'
+import { useDirectorInputCheck, directorPlanInput } from '@/utils/director-plan-input'
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { shotApi, dramaApi } from '@/api/drama'
@@ -813,7 +823,7 @@ const emit = defineEmits<{
     directorPlan?: DirectorPlan
     directorPlanJson?: string
   }, done: (success: boolean) => void): void
-  (e: 'director-plan-saved', data: { directorPlan?: DirectorPlan; directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number }): void
+  (e: 'director-plan-saved', data: { directorPlan?: DirectorPlan; directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number; directorPlanInputHash?: string }): void
   (e: 'task-attached', taskId: string): void
   (e: 'task-starting'): void
   (e: 'task-finished', taskId?: string): void
@@ -891,29 +901,41 @@ const previewTitle = computed(() => {
 const currentShotContext = ref<DramaShot | null>(null)
 const directorEditor = ref<InstanceType<typeof DirectorPlanEditor>>()
 const directorDirty = ref(false)
+const inheritedDirectorDraft = ref<{ plan: DirectorPlan; revision: number }>()
+const preparingGeneration = ref(false)
+let submittedDirectorPlan: DirectorPlan | undefined
+const { inputsChanged: basicInputsChanged } = useDirectorInputCheck(() => currentShotContext.value)
+const localPlanModified = computed(() => directorDirty.value || Boolean(inheritedDirectorDraft.value) || currentShotContext.value?.directorPlanMode === 'MANUAL')
 const exportedContext = ref<ShotPromptDeriveDTO>()
 watch(directorDirty, dirty => {
   if (dirty) { promptPackage.value = null; exportedContext.value = undefined }
 })
 const editableDirectorPlan = computed<DirectorPlan | null>(() => {
+  if (inheritedDirectorDraft.value) return inheritedDirectorDraft.value.plan
   try { return currentShotContext.value?.directorPlanJson ? JSON.parse(currentShotContext.value.directorPlanJson) : null } catch { return null }
 })
 const isResultStale = computed(() => assetsResultStale.value || directorDirty.value || Boolean(previewResult.value &&
   (previewResult.value.directorPlanMode !== currentShotContext.value?.directorPlanMode ||
    (previewResult.value.directorPlanRevision ?? 0) !== (currentShotContext.value?.directorPlanRevision ?? 0))))
-function handleDirectorPlanSaved(data: { directorPlan?: DirectorPlan; directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number }) {
+function handleDirectorPlanSaved(data: { directorPlan?: DirectorPlan; directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number; directorPlanInputHash?: string }) {
   if (!currentShotContext.value) return
   Object.assign(currentShotContext.value, data, { directorPlanJson: data.directorPlan ? JSON.stringify(data.directorPlan) : undefined })
   emit('director-plan-saved', data)
+  inheritedDirectorDraft.value = undefined
   directorDirty.value = false
   promptPackage.value = null
   exportedContext.value = undefined
 }
-async function refreshDirectorPlan() {
+async function refreshDirectorPlan(settleDraft = false) {
   if (!currentShotContext.value?.id) return
   const latest = await shotApi.getById(currentShotContext.value.id)
-  Object.assign(currentShotContext.value, { directorPlanJson: latest.directorPlanJson, directorPlanMode: latest.directorPlanMode, directorPlanRevision: latest.directorPlanRevision })
-  emit('director-plan-saved', { directorPlan: editableDirectorPlan.value || undefined, directorPlanMode: latest.directorPlanMode || 'AUTO', directorPlanRevision: latest.directorPlanRevision ?? 0 })
+  if (settleDraft && submittedDirectorPlan) {
+    directorEditor.value?.discardDraftIfUnchanged(submittedDirectorPlan)
+    if (JSON.stringify(inheritedDirectorDraft.value?.plan) === JSON.stringify(submittedDirectorPlan)) inheritedDirectorDraft.value = undefined
+    submittedDirectorPlan = undefined
+  }
+  Object.assign(currentShotContext.value, { directorPlanJson: latest.directorPlanJson, directorPlanMode: latest.directorPlanMode, directorPlanRevision: latest.directorPlanRevision, directorPlanInputHash: latest.directorPlanInputHash })
+  emit('director-plan-saved', { directorPlan: latest.directorPlanJson ? JSON.parse(latest.directorPlanJson) : undefined, directorPlanMode: latest.directorPlanMode || 'AUTO', directorPlanRevision: latest.directorPlanRevision ?? 0, directorPlanInputHash: latest.directorPlanInputHash })
 }
 
 const dramaInfo = ref<Drama | null>(null)
@@ -996,6 +1018,7 @@ async function loadAssetOptions(dramaId: string | number | undefined, viewVersio
 
 async function open(params: {
   shot: DramaShot
+  directorPlanDraft?: { plan: DirectorPlan; revision: number }
   characterRefs?: CharacterShotRefInfo[]
   propRefs?: PropShotRefInfo[]
   resSceneId?: string | number
@@ -1044,6 +1067,8 @@ async function open(params: {
   restoringTask.value = Boolean(params.shot.id && params.taskId)
   restoredTaskRunning.value = false
   directorDirty.value = false
+  inheritedDirectorDraft.value = undefined
+  submittedDirectorPlan = undefined
   exportedContext.value = undefined
   currentShotContext.value = { ...params.shot, directorPlanMode: params.shot.directorPlanMode || 'AUTO', directorPlanRevision: params.shot.directorPlanRevision ?? 0 }
   if (params.shot.id) {
@@ -1051,6 +1076,12 @@ async function open(params: {
     if (viewVersion !== promptViewVersion) return
   }
   dramaInfo.value = null
+  if (params.directorPlanDraft) {
+    if (params.directorPlanDraft.revision !== currentShotContext.value.directorPlanRevision) {
+      ElMessage.warning('导演计划已变更，请重新打开分镜后生成'); return
+    }
+    inheritedDirectorDraft.value = JSON.parse(JSON.stringify(params.directorPlanDraft))
+  }
 
   // 1. 初始化草稿：深拷贝所有分镜数据，完全隔离外部表单
   draft.value = {
@@ -1184,7 +1215,7 @@ async function restorePromptTask(shotId: string, explicitTaskId: string | undefi
     if ((task.status === 'SUCCESS' || task.status === 'PARTIAL_SUCCESS') && task.outputPayload) {
       const parsed = JSON.parse(task.outputPayload) as ShotPromptDeriveVO
       previewResult.value = parsed
-      void refreshDirectorPlan()
+      void refreshDirectorPlan(true)
       recordAiGeneratedSnapshot()
       backgroundStatus.value = 'completed'
       restoredTaskRunning.value = false
@@ -1281,7 +1312,7 @@ function handlePromptTaskCompleted(event: Event) {
   isStreaming.value = false
   if (detail.result) {
     previewResult.value = detail.result
-    void refreshDirectorPlan()
+    void refreshDirectorPlan(true)
     recordAiGeneratedSnapshot()
   }
 }
@@ -1333,11 +1364,12 @@ function buildPromptCharacterRefs(): CharacterShotRefInfo[] {
 
 function buildDerivePayload(): ShotPromptDeriveDTO {
   const optionalText = (value?: string) => value?.trim() || undefined
+  const pendingPlan = directorEditor.value?.getDraft() || inheritedDirectorDraft.value
 
   return {
-    directorPlanMode: currentShotContext.value?.directorPlanMode || 'AUTO',
-    directorPlanRevision: currentShotContext.value?.directorPlanRevision ?? 0,
-    directorPlan: currentShotContext.value?.directorPlanMode === 'MANUAL' ? editableDirectorPlan.value || undefined : undefined,
+    directorPlanMode: pendingPlan ? 'MANUAL' : currentShotContext.value?.directorPlanMode || 'AUTO',
+    directorPlanRevision: pendingPlan?.revision ?? currentShotContext.value?.directorPlanRevision ?? 0,
+    directorPlan: pendingPlan?.plan || (currentShotContext.value?.directorPlanMode === 'MANUAL' ? editableDirectorPlan.value || undefined : undefined),
     shotId: currentShotContext.value?.id,
     dramaId: currentShotContext.value?.dramaId,
     episodeId: currentShotContext.value?.episodeId,
@@ -1547,7 +1579,7 @@ function attachPromptEvents(taskId: string) {
     } else if (event.type === 'result') {
       try {
         previewResult.value = JSON.parse(event.data) as ShotPromptDeriveVO
-        void refreshDirectorPlan()
+        void refreshDirectorPlan(true)
         recordAiGeneratedSnapshot()
       } catch (e) {
         backgroundError.value = '提示词结果解析失败'
@@ -1582,12 +1614,44 @@ function attachPromptEvents(taskId: string) {
 }
 
 async function handleStartStream(runInBackground = false) {
-  try { await directorEditor.value?.submit() } catch (e: any) { ElMessage.error(e.message || '保存导演计划失败'); return }
-  if (isStreaming.value || restoringTask.value || restoredTaskRunning.value) return
+  if (preparingGeneration.value || isStreaming.value || restoringTask.value || restoredTaskRunning.value) return
   if (!providerId.value || !modelCode.value) {
     ElMessage.warning('请选择 AI 文本推理模型提供商与模型编码')
     return
   }
+  const payload = buildDerivePayload()
+  const input = directorPlanInput(currentShotContext.value || {})
+  const requestBeforeConfirmation = JSON.stringify(payload)
+  const confirmationViewVersion = promptViewVersion
+  preparingGeneration.value = true
+  try {
+    const check = await shotApi.checkDirectorPlanInputs({ ...payload, directorPlanInput: input })
+    basicInputsChanged.value = check.inputsChanged
+    if (check.directorPlanRevision !== payload.directorPlanRevision) {
+      ElMessage.warning('导演计划已变更，请重新打开分镜后生成'); return
+    }
+    if (check.overwriteRequired) {
+      await ElMessageBox.confirm(
+        !currentShotContext.value?.directorPlanInputHash && currentShotContext.value?.directorPlanJson
+          ? '当前手工导演计划缺少生成时的镜头输入基准。继续将根据最新镜头内容重新生成计划，覆盖当前手工计划，再生成提示词。'
+          : '镜头基本规格与机位内容已发生变化，你也修改了结构化导演决策计划。继续将根据最新镜头内容重新生成计划，覆盖你的计划修改，再生成提示词。',
+        '确认覆盖结构化导演决策计划',
+        { type: 'warning', confirmButtonText: '重新规划并生成', cancelButtonText: '取消', closeOnClickModal: false }
+      )
+      payload.directorPlanOverwriteConfirmed = true
+    }
+    if (confirmationViewVersion !== promptViewVersion || !visible.value) return
+    if (requestBeforeConfirmation !== JSON.stringify(buildDerivePayload())) {
+      ElMessage.warning('生成内容在确认期间已修改，请再次点击本地生成'); return
+    }
+  } catch (e: any) {
+    if (e !== 'cancel' && e !== 'close') ElMessage.error(e.message || '检查导演计划输入失败')
+    return
+  }
+  finally { preparingGeneration.value = false }
+  payload.replanOnInputChange = true
+  payload.directorPlanInput = input
+  submittedDirectorPlan = payload.directorPlan ? JSON.parse(JSON.stringify(payload.directorPlan)) : undefined
   isStreaming.value = true
   emit('task-starting')
   backgroundMode.value = runInBackground
@@ -1602,7 +1666,6 @@ async function handleStartStream(runInBackground = false) {
     elapsedSeconds.value++
   }, 1000)
 
-  const payload = buildDerivePayload()
   const viewVersion = promptViewVersion
   if (runInBackground) {
     visible.value = false

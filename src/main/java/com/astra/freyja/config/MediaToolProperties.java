@@ -15,5 +15,4 @@ public class MediaToolProperties {
     private String ffmpegPath = "ffmpeg";
     private String ffprobePath = "ffprobe";
     private Duration timeout = Duration.ofSeconds(30);
-    private int tailOffsetMs = 100;
 }

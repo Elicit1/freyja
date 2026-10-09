@@ -193,8 +193,12 @@ export const dramaSceneApi = {
 // ==========================================
 
 export const shotApi = {
+  checkDirectorPlanInputs(data: ShotPromptDeriveDTO) {
+    return request<import('@/types/drama').DirectorPlanGenerationCheck>({ url: '/drama/shot/director-plan/check', method: 'post', data })
+  },
   saveDirectorPlan(id: string | number, data: {
     directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number;
+    directorPlanInputHash?: string;
     directorPlan?: import('@/types/drama').DirectorPlan; duration?: number;
     shotType?: string; cameraMovement?: string; shotTypeLocked?: boolean; cameraMovementLocked?: boolean
   }) {
@@ -370,7 +374,7 @@ export const shotApi = {
 
   inheritPreviousVideoTail(
     currentShotId: string | number,
-    data?: { forceExtract?: boolean; tailOffsetMs?: number }
+    data?: { forceExtract?: boolean }
   ) {
     return request<PreviousVideoTailResult>({
       url: `/drama/shot/${currentShotId}/inherit-previous-video-tail`,
@@ -381,7 +385,7 @@ export const shotApi = {
 
   extractPreviousVideoTail(
     currentShotId: string | number,
-    data?: { forceExtract?: boolean; tailOffsetMs?: number }
+    data?: { forceExtract?: boolean }
   ) {
     return request<PreviousVideoTailResult>({
       url: `/drama/shot/${currentShotId}/extract-previous-video-tail`,

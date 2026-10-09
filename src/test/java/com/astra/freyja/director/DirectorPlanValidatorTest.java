@@ -243,7 +243,7 @@ public class DirectorPlanValidatorTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> validator.validateAndNormalize(
                         plan, new BigDecimal("5.0"), null, null, false, false, null))
                 .isInstanceOf(com.astra.freyja.common.BizException.class)
-                .hasMessageContaining("Camera Beats");
+                .hasMessageContaining("$.cameraBeats");
         assertThat(plan.getCameraBeats()).isEmpty();
     }
 

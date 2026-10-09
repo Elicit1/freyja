@@ -288,6 +288,7 @@ export type DramaShotSaveRequest = Omit<Partial<DramaShot>, 'resSceneId' | 'resK
 export interface DramaShot {
   directorPlanMode?: 'AUTO' | 'MANUAL'
   directorPlanRevision?: number
+  directorPlanInputHash?: string
   id?: number | string
   dramaId: number | string
   episodeId: number | string
@@ -405,6 +406,29 @@ export interface AppliedSkillRef {
   manifestHash?: string
 }
 
+export interface DirectorPlanInput {
+  shotNo: number
+  shotName: string | null
+  duration: number | null
+  shotTypeLocked: boolean
+  shotType: string | null
+  cameraMovementLocked: boolean
+  cameraMovement: string | null
+  scriptContent: string | null
+  actionDescription: string | null
+  dialogue: string | null
+  dialogueSpeaker: string | null
+  voiceover: string | null
+  soundEffect: string | null
+}
+
+export interface DirectorPlanGenerationCheck {
+  inputsChanged: boolean
+  overwriteRequired: boolean
+  inputHash: string
+  directorPlanRevision: number
+}
+
 export interface DirectorPlan {
   schemaVersion?: string
   duration?: number
@@ -435,6 +459,9 @@ export interface ShotPromptDeriveDTO {
   directorPlanMode?: 'AUTO' | 'MANUAL'
   directorPlanRevision?: number
   directorPlan?: DirectorPlan
+  replanOnInputChange?: boolean
+  directorPlanOverwriteConfirmed?: boolean
+  directorPlanInput?: DirectorPlanInput
   shotId?: number | string
   dramaId?: number | string
   episodeId?: number | string

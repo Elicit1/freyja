@@ -111,6 +111,8 @@ public class DramaShot extends BaseEntity {
     private String directorPlanMode = "AUTO";
     @TableField(updateStrategy = FieldStrategy.NEVER)
     private Integer directorPlanRevision = 0;
+    @TableField(updateStrategy = FieldStrategy.NEVER)
+    private String directorPlanInputHash;
 
     /** 生成模式 (字典 shot_generation_mode: FIRST_LAST_FRAME / REFERENCE_MODE) */
     private String generationMode;

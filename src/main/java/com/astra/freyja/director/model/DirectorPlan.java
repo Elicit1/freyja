@@ -22,7 +22,7 @@ public class DirectorPlan implements Serializable {
 
     /** Schema 协议版本，第一阶段恒为 1.0 */
     @Builder.Default
-    private String schemaVersion = "1.0";
+    private String schemaVersion = DirectorPlanSchema.VERSION;
 
     /** 镜头总时长 (秒) */
     private BigDecimal duration;

@@ -5,6 +5,7 @@ import com.astra.freyja.director.model.DirectorPlan;
 public class DirectorPlanEditDTO {
     private String directorPlanMode;
     private Integer directorPlanRevision;
+    private String directorPlanInputHash;
     private DirectorPlan directorPlan;
     private Double duration;
     private String shotType;

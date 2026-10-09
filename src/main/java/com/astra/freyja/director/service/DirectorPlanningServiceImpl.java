@@ -4,6 +4,7 @@ import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.AiModelMapper;
 import com.astra.freyja.dao.AiProviderMapper;
 import com.astra.freyja.director.model.DirectorPlan;
+import com.astra.freyja.director.model.DirectorPlanSchema;
 import com.astra.freyja.dto.drama.ShotPromptDeriveDTO;
 import com.astra.freyja.entity.AiModel;
 import com.astra.freyja.entity.AiProvider;
@@ -17,6 +18,8 @@ import com.astra.freyja.skill.tool.LoadSkillToolSession;
 import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -47,7 +50,7 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
     private final ReadSkillFileToolFactory readSkillFileToolFactory;
     private final SkillPromptContextService skillPromptContextService;
     private final DirectorPlanValidator planValidator;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper().enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     @Override
     public DirectorPlan plan(ShotPromptDeriveDTO dto) {
@@ -75,8 +78,8 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
         if (catalog == null) {
             catalog = List.of();
         }
-        log.info("[DirectorPlanning] Skill 目录已准备: enabledSkillCount={}, availableSkills={}",
-                catalog.size(), catalog.stream().map(SkillCatalogItem::getName).toList());
+        log.info("[DirectorPlanning] Skill 目录已准备: taskId={}, shotId={}, enabledSkillCount={}, availableSkills={}",
+                dto.getDirectorPlanningTaskId(), dto.getShotId(), catalog.size(), catalog.stream().map(SkillCatalogItem::getName).toList());
         String catalogPrompt = skillCatalogService.formatCatalogForPrompt(catalog);
         Map<String, Long> versionSnapshot = new HashMap<>();
         catalog.forEach(item -> {
@@ -108,8 +111,8 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
         }
         String userPrompt = buildUserPrompt(dto);
 
-        log.info("[DirectorPlanning] 启动导演规划流水线: shotId={}, shotNo={}, duration={}, providerId={}, modelCode={}",
-                dto.getShotId(), dto.getShotNo(), dto.getDuration(), providerId, modelCode);
+        log.info("[DirectorPlanning] 启动导演规划流水线: taskId={}, shotId={}, generationMode={}, shotNo={}, duration={}, providerId={}, modelCode={}",
+                dto.getDirectorPlanningTaskId(), dto.getShotId(), dto.getGenerationMode(), dto.getShotNo(), dto.getDuration(), providerId, modelCode);
 
         long startMs = System.currentTimeMillis();
         String responseContent;
@@ -121,41 +124,49 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
                     .call()
                     .content();
         } catch (Exception e) {
-            logSkillInvocationSummary(session, "FAILED");
-            log.error("[DirectorPlanning] 调用 AI 导演规划失败: {}", e.getMessage(), e);
+            logSkillInvocationSummary(dto, session, "CALL_FAILED");
+            log.error("[DirectorPlanning] taskId={}, shotId={}, outcome=CALL_FAILED, error={}",
+                    dto.getDirectorPlanningTaskId(), dto.getShotId(), e.getMessage(), e);
             throw new BizException("AI 导演规划调用异常: " + e.getMessage());
         }
 
         long durationMs = System.currentTimeMillis() - startMs;
-        log.info("[DirectorPlanning] 导演规划调用完成 (耗时 {}ms), 工具调用次数: {}", durationMs, session.getInvocationCount());
-        logSkillInvocationSummary(session, "SUCCESS");
+        // Record the unmodified response before parsing/normalization, including valid JSON with invalid enum values.
+        log.info("[DirectorPlanning] taskId={}, shotId={}, outcome=RESPONSE_RECEIVED, durationMs={}, response={}",
+                dto.getDirectorPlanningTaskId(), dto.getShotId(), durationMs, jsonForLog(responseContent));
 
-        // 4. 解析为 DirectorPlan
-        DirectorPlan plan = cleanAndParsePlan(responseContent);
-        if (plan == null) {
-            log.warn("[DirectorPlanning] 无法从 AI 输出中解析出有效 DirectorPlan: {}", responseContent);
-            throw new BizException("未能从 AI 返回文本中解析出合法的 DirectorPlan 结构");
+        try {
+            DirectorPlan plan = cleanAndParsePlan(responseContent);
+            BigDecimal expectedDuration = dto.getDuration() != null ? BigDecimal.valueOf(dto.getDuration()) : new BigDecimal("3.0");
+            planValidator.validateAndNormalize(
+                    plan, expectedDuration, dto.getShotType(), dto.getCameraMovement(),
+                    Boolean.TRUE.equals(dto.getShotTypeLocked()), Boolean.TRUE.equals(dto.getCameraMovementLocked()), session);
+            logSkillInvocationSummary(dto, session, "SUCCESS");
+            log.info("[DirectorPlanning] taskId={}, shotId={}, outcome=SUCCESS, plan={}",
+                    dto.getDirectorPlanningTaskId(), dto.getShotId(), jsonForLog(plan));
+            return plan;
+        } catch (BizException e) {
+            logSkillInvocationSummary(dto, session, "VALIDATION_FAILED");
+            log.warn("[DirectorPlanning] taskId={}, shotId={}, outcome=VALIDATION_FAILED, error={}",
+                    dto.getDirectorPlanningTaskId(), dto.getShotId(), jsonForLog(e.getMessage()));
+            // One planning attempt only; content errors never trigger another AI request.
+            throw e;
         }
-
-        // 5. 执行确定性物理校验并套用用户锁定
-        BigDecimal expectedDuration = dto.getDuration() != null ? BigDecimal.valueOf(dto.getDuration()) : new BigDecimal("3.0");
-        planValidator.validateAndNormalize(
-                plan,
-                expectedDuration,
-                dto.getShotType(),
-                dto.getCameraMovement(),
-                Boolean.TRUE.equals(dto.getShotTypeLocked()),
-                Boolean.TRUE.equals(dto.getCameraMovementLocked()),
-                session
-        );
-
-        return plan;
     }
 
-    private void logSkillInvocationSummary(LoadSkillToolSession session, String outcome) {
+    private String jsonForLog(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception e) {
+            return "<serialization failed>";
+        }
+    }
+
+    private void logSkillInvocationSummary(ShotPromptDeriveDTO dto, LoadSkillToolSession session, String outcome) {
         List<String> invokedSkills = session.getInvokedSkillNames();
-        log.info("[DirectorPlanning] Skill 调用追踪: outcome={}, called={}, invocationCount={}, "
+        log.info("[DirectorPlanning] Skill 调用追踪: taskId={}, shotId={}, outcome={}, called={}, invocationCount={}, "
                         + "invokedSkills={}, successfullyLoadedSkills={}, loadAttemptCount={}",
+                dto.getDirectorPlanningTaskId(), dto.getShotId(),
                 outcome,
                 !invokedSkills.isEmpty(),
                 session.getInvocationCount(),
@@ -215,29 +226,16 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
                    - 人物动作与摄影机运动可以同时存在，但不得互相争夺画面控制权，也不得为了展示正脸而擅自添加没有剧情依据的回转或姿态复原；
                    - 每个 Camera Beat 必须明确触发节点 (startCue / stopCue) 与叙事目的 (narrativePurpose)。
                 4. 输出格式要求：
-                   严格输出符合以下 JSON Schema 的纯 JSON 对象，不得包含 Markdown 代码块之外的闲聊前言：
-                   {
-                     "schemaVersion": "1.0",
-                     "duration": 5.0,
-                     "shotSize": "MEDIUM_SHOT",
-                     "cameraAngle": "EYE_LEVEL",
-                     "cameraBeats": [
-                       {
-                         "startSec": 0.0,
-                         "endSec": 2.5,
-                         "movement": "PAN_LEFT",
-                         "direction": "LEFT",
-                         "speed": "SLOW",
-                         "startCue": "...",
-                         "stopCue": "...",
-                         "narrativePurpose": "..."
-                       }
-                     ],
-                     "subjectAction": "...",
-                     "gaze": "...",
-                     "narrativeIntent": "..."
-                   }
-                """, catalogPrompt);
+                   只输出一个纯 JSON 对象，不得包含 Markdown 代码块、前言或解释。
+                   所有枚举严格使用下方协议列出的英文值，不得输出中文、缩写或其他同义标签。
+                   景别、角度与运镜使用各自字段的枚举，不能混用。不得使用 AUTO、PULL_BACK 等协议中未列出的值。
+                   节拍按时间顺序连续覆盖 [0, duration]，每段 endSec > startSec，10 秒内最多 3 段，超过 10 秒最多 5 段。
+                   STATIC 的 direction 必须为 null、speed 必须为 NONE；其他运镜的 speed 必须为 SLOW、NORMAL 或 FAST。
+                   subjectAction、gaze、narrativeIntent 和各节拍的动作触发、收束、叙事目的应根据剧情填写；没有依据的内容使用 null。
+                   skills 和 lockedFields 由服务端填写，无需输出。
+                   以下 JSON Schema 是接口输出协议，优先于 Skill 中的示例标签；Skill 提供摄影知识，最终 JSON 必须遵守此协议：
+                   %s
+                """, catalogPrompt, DirectorPlanSchema.jsonSchema());
     }
 
     private String buildUserPrompt(ShotPromptDeriveDTO dto) {
@@ -273,6 +271,9 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
         if (StringUtils.isNotBlank(dto.getDialogue())) {
             sb.append("【对白台词】: ").append(dto.getDialogue()).append("\n");
         }
+        if (StringUtils.isNotBlank(dto.getShotName())) sb.append("【镜头标识】: ").append(dto.getShotName()).append("\n");
+        if (StringUtils.isNotBlank(dto.getVoiceover())) sb.append("【旁白 / 独白】: ").append(dto.getVoiceover()).append("\n");
+        if (StringUtils.isNotBlank(dto.getSoundEffect())) sb.append("【音效】: ").append(dto.getSoundEffect()).append("\n");
         if (StringUtils.isNotBlank(dto.getStylePreset())) {
             sb.append("【短剧画风预设】: ").append(dto.getStylePreset()).append("\n");
         }
@@ -286,7 +287,7 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
     }
 
     private DirectorPlan cleanAndParsePlan(String rawText) {
-        if (StringUtils.isBlank(rawText)) return null;
+        if (StringUtils.isBlank(rawText)) throw new BizException("DirectorPlan $ 响应为空，实际值=" + String.valueOf(rawText));
         String text = rawText.trim();
 
         if (text.contains("```")) {
@@ -301,21 +302,33 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
             }
         }
 
+        JsonNode root;
         try {
-            return objectMapper.readValue(text, DirectorPlan.class);
-        } catch (Exception e) {
-            log.debug("[cleanAndParsePlan] 直接反序列化失败: {}", e.getMessage());
-        }
-
-        int start = text.indexOf('{');
-        int end = text.lastIndexOf('}');
-        if (start >= 0 && end > start) {
+            root = objectMapper.readTree(text);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException initialError) {
+            int start = text.indexOf('{');
+            int end = text.lastIndexOf('}');
+            if (start < 0 || end <= start) {
+                throw new BizException("DirectorPlan $ JSON 解析失败：" + initialError.getOriginalMessage());
+            }
             try {
-                return objectMapper.readValue(text.substring(start, end + 1), DirectorPlan.class);
-            } catch (Exception e) {
-                log.warn("[cleanAndParsePlan] 截取 JSON 反序列化失败: {}", e.getMessage());
+                root = objectMapper.readTree(text.substring(start, end + 1));
+            } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+                throw new BizException("DirectorPlan $ JSON 解析失败：" + e.getOriginalMessage());
             }
         }
-        return null;
+        DirectorPlanSchema.validateGeneratedStructure(root);
+        try {
+            return objectMapper.treeToValue(root, DirectorPlan.class);
+        } catch (JsonMappingException e) {
+            StringBuilder path = new StringBuilder("$");
+            for (JsonMappingException.Reference ref : e.getPath()) {
+                if (ref.getFieldName() != null) path.append('.').append(ref.getFieldName());
+                else path.append('[').append(ref.getIndex()).append(']');
+            }
+            throw new BizException("DirectorPlan " + path + " JSON 字段解析失败：" + e.getOriginalMessage());
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new BizException("DirectorPlan $ JSON 字段解析失败：" + e.getOriginalMessage());
+        }
     }
 }

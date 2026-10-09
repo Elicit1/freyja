@@ -4,6 +4,7 @@ import com.astra.freyja.common.BizException;
 import com.astra.freyja.director.model.AppliedSkillRef;
 import com.astra.freyja.director.model.CameraBeat;
 import com.astra.freyja.director.model.DirectorPlan;
+import com.astra.freyja.director.model.DirectorPlanSchema;
 import com.astra.freyja.skill.model.LoadedSkill;
 import com.astra.freyja.skill.tool.LoadSkillToolSession;
 import lombok.extern.slf4j.Slf4j;
@@ -11,11 +12,9 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -28,23 +27,10 @@ public class DirectorPlanValidator {
 
     private static final BigDecimal EPSILON = new BigDecimal("0.05");
 
-    private static final Set<String> VALID_SHOT_SIZES = new HashSet<>(Arrays.asList(
-            "EXTREME_CLOSE_UP", "CLOSE_UP", "MEDIUM_CLOSE_UP", "MEDIUM_SHOT",
-            "FULL_SHOT", "LONG_SHOT", "OVER_SHOULDER", "TOP_DOWN"
-    ));
-
-    private static final Set<String> VALID_CAMERA_ANGLES = new HashSet<>(Arrays.asList(
-            "EYE_LEVEL", "LOW_ANGLE", "HIGH_ANGLE", "DUTCH_ANGLE", "OVER_THE_SHOULDER", "BIRDS_EYE"
-    ));
-
-    private static final Set<String> VALID_MOVEMENTS = new HashSet<>(Arrays.asList(
-            "STATIC", "PUSH_IN", "PULL_OUT", "PAN_LEFT", "PAN_RIGHT",
-            "TILT_UP", "TILT_DOWN", "TRACKING", "ORBIT", "ZOOM_IN"
-    ));
-
-    private static final Set<String> VALID_SPEEDS = new HashSet<>(Arrays.asList(
-            "NONE", "SLOW", "NORMAL", "FAST"
-    ));
+    private static final Set<String> VALID_SHOT_SIZES = DirectorPlanSchema.SHOT_SIZES;
+    private static final Set<String> VALID_CAMERA_ANGLES = DirectorPlanSchema.CAMERA_ANGLES;
+    private static final Set<String> VALID_MOVEMENTS = DirectorPlanSchema.MOVEMENTS;
+    private static final Set<String> VALID_SPEEDS = DirectorPlanSchema.SPEEDS;
 
     /**
      * 对生成的 DirectorPlan 进行确定性物理与结构校验，并回填技能与锁定
@@ -60,6 +46,10 @@ public class DirectorPlanValidator {
     ) {
         if (plan == null) {
             throw new BizException("DirectorPlan 不能为空");
+        }
+        if (!DirectorPlanSchema.VERSION.equals(plan.getSchemaVersion())) {
+            throw new BizException("DirectorPlan $.schemaVersion 无效，实际值=" + plan.getSchemaVersion()
+                    + "，要求=" + DirectorPlanSchema.VERSION);
         }
 
         // 1. 时长确定性校验
@@ -86,9 +76,9 @@ public class DirectorPlanValidator {
         boolean isShotTypeLocked = shotTypeExplicitlyLocked
                 && StringUtils.isNotBlank(lockedShotType) && !"AUTO".equalsIgnoreCase(lockedShotType.trim());
         if (isShotTypeLocked) {
-            String canonicalLockedShot = lockedShotType.trim().toUpperCase();
+            String canonicalLockedShot = lockedShotType.trim().toUpperCase(Locale.ROOT);
             if (!VALID_SHOT_SIZES.contains(canonicalLockedShot)) {
-                throw new BizException("创作者锁定的景别无效: " + lockedShotType);
+                throw DirectorPlanSchema.invalidEnum("创作者锁定 shotType", lockedShotType, VALID_SHOT_SIZES);
             }
             if (!canonicalLockedShot.equalsIgnoreCase(plan.getShotSize())) {
                 log.info("[DirectorPlanValidator] 套用创作者锁定的景别 [{}], 覆盖 AI 建议 [{}]",
@@ -96,30 +86,33 @@ public class DirectorPlanValidator {
                 plan.setShotSize(canonicalLockedShot);
             }
         } else {
-            if (StringUtils.isBlank(plan.getShotSize()) || !VALID_SHOT_SIZES.contains(plan.getShotSize().toUpperCase())) {
-                throw new BizException("DirectorPlan 必须由 Prompt AI 返回有效景别 (shotSize)");
+            if (StringUtils.isBlank(plan.getShotSize()) || !VALID_SHOT_SIZES.contains(plan.getShotSize().toUpperCase(Locale.ROOT))) {
+                throw DirectorPlanSchema.invalidEnum("$.shotSize", plan.getShotSize(), VALID_SHOT_SIZES);
             } else {
-                plan.setShotSize(plan.getShotSize().toUpperCase());
+                plan.setShotSize(plan.getShotSize().toUpperCase(Locale.ROOT));
             }
         }
 
         // 3. 摄影角度 (cameraAngle) 归一化
-        if (StringUtils.isBlank(plan.getCameraAngle()) || !VALID_CAMERA_ANGLES.contains(plan.getCameraAngle().toUpperCase())) {
-            throw new BizException("DirectorPlan 必须由 Prompt AI 返回有效机位角度 (cameraAngle)");
+        if (StringUtils.isBlank(plan.getCameraAngle()) || !VALID_CAMERA_ANGLES.contains(plan.getCameraAngle().toUpperCase(Locale.ROOT))) {
+            throw DirectorPlanSchema.invalidEnum("$.cameraAngle", plan.getCameraAngle(), VALID_CAMERA_ANGLES);
         } else {
-            plan.setCameraAngle(plan.getCameraAngle().toUpperCase());
+            plan.setCameraAngle(plan.getCameraAngle().toUpperCase(Locale.ROOT));
         }
 
         // 4. Camera Beats 时间轴与物理校验
         List<CameraBeat> beats = plan.getCameraBeats();
         if (beats == null || beats.isEmpty()) {
-            throw new BizException("DirectorPlan 必须由 Prompt AI 返回 Camera Beats；Java 不会补造固定镜头");
+            throw new BizException("DirectorPlan $.cameraBeats 必须为非空数组，实际值=" + beats);
+        }
+        for (int i = 0; i < beats.size(); i++) {
+            if (beats.get(i) == null) throw new BizException("DirectorPlan $.cameraBeats[" + i + "] 必须为对象，实际值=null");
         }
         beats = new ArrayList<>(beats);
         plan.setCameraBeats(beats);
 
         // 节拍数量上限检查 (10秒内最多允许 3 段)
-        int maxBeats = duration.compareTo(new BigDecimal("10.0")) <= 0 ? 3 : 5;
+        int maxBeats = DirectorPlanSchema.maxBeats(duration);
         if (beats.size() > maxBeats) {
             log.warn("[DirectorPlanValidator] beats 数量 ({}) 超过上限 ({}), 截断保留前 {} 个",
                     beats.size(), maxBeats, maxBeats);
@@ -138,10 +131,10 @@ public class DirectorPlanValidator {
         boolean isMovementLocked = cameraMovementExplicitlyLocked
                 && isMovementLocked(lockedCameraMovement);
         if (cameraMovementExplicitlyLocked && isMovementLocked
-                && !VALID_MOVEMENTS.contains(lockedCameraMovement.trim().toUpperCase())) {
-            throw new BizException("创作者锁定的运镜无效: " + lockedCameraMovement);
+                && !VALID_MOVEMENTS.contains(lockedCameraMovement.trim().toUpperCase(Locale.ROOT))) {
+            throw DirectorPlanSchema.invalidEnum("创作者锁定 cameraMovement", lockedCameraMovement, VALID_MOVEMENTS);
         }
-        String lockedMovement = isMovementLocked ? lockedCameraMovement.trim().toUpperCase() : null;
+        String lockedMovement = isMovementLocked ? lockedCameraMovement.trim().toUpperCase(Locale.ROOT) : null;
 
         for (int i = 0; i < beats.size(); i++) {
             CameraBeat beat = beats.get(i);
@@ -176,9 +169,9 @@ public class DirectorPlanValidator {
             }
 
             // 运镜枚举归一化
-            String mov = StringUtils.trimToEmpty(beat.getMovement()).toUpperCase();
+            String mov = StringUtils.trimToEmpty(beat.getMovement()).toUpperCase(Locale.ROOT);
             if (!VALID_MOVEMENTS.contains(mov)) {
-                throw new BizException("DirectorPlan Camera Beat 必须由 Prompt AI 返回有效运镜: " + beat.getMovement());
+                throw DirectorPlanSchema.invalidEnum("$.cameraBeats[" + i + "].movement", beat.getMovement(), VALID_MOVEMENTS);
             }
 
             // 用户运镜锁定检查：不得引入冲突运动
@@ -198,10 +191,10 @@ public class DirectorPlanValidator {
             } else {
                 if (StringUtils.isBlank(beat.getSpeed()) || "NONE".equalsIgnoreCase(beat.getSpeed())) {
                     beat.setSpeed("SLOW");
-                } else if (!VALID_SPEEDS.contains(beat.getSpeed().toUpperCase())) {
+                } else if (!VALID_SPEEDS.contains(beat.getSpeed().toUpperCase(Locale.ROOT))) {
                     beat.setSpeed("SLOW");
                 } else {
-                    beat.setSpeed(beat.getSpeed().toUpperCase());
+                    beat.setSpeed(beat.getSpeed().toUpperCase(Locale.ROOT));
                 }
             }
 
@@ -243,22 +236,24 @@ public class DirectorPlanValidator {
     /** Strict validation for creator content. Never repairs, sorts or truncates it. */
     public void validateManual(DirectorPlan plan, BigDecimal duration, String shotType,
                                String movement, boolean sizeLocked, boolean movementLocked) {
-        if (plan == null || !"1.0".equals(plan.getSchemaVersion())) fail("计划及 schemaVersion 1.0 必须有效");
+        if (plan == null || !DirectorPlanSchema.VERSION.equals(plan.getSchemaVersion())) fail("计划及 schemaVersion 1.0 必须有效");
         if (duration == null || duration.signum() <= 0 || plan.getDuration() == null
                 || plan.getDuration().compareTo(duration) != 0) fail("计划时长必须与分镜时长一致且大于零");
-        if (!VALID_SHOT_SIZES.contains(plan.getShotSize())) fail("景别无效");
-        if (!VALID_CAMERA_ANGLES.contains(plan.getCameraAngle())) fail("机位角度无效");
+        if (!VALID_SHOT_SIZES.contains(plan.getShotSize())) fail("$.shotSize 无效，实际值=" + plan.getShotSize() + "，合法值=" + VALID_SHOT_SIZES);
+        if (!VALID_CAMERA_ANGLES.contains(plan.getCameraAngle())) fail("$.cameraAngle 无效，实际值=" + plan.getCameraAngle() + "，合法值=" + VALID_CAMERA_ANGLES);
         if (sizeLocked && isMovementLocked(shotType) && !plan.getShotSize().equals(shotType)) fail("计划景别与分镜锁定冲突");
         List<CameraBeat> beats = plan.getCameraBeats();
-        int max = duration.compareTo(BigDecimal.TEN) <= 0 ? 3 : 5;
+        int max = DirectorPlanSchema.maxBeats(duration);
         if (beats == null || beats.isEmpty() || beats.size() > max) fail("运镜节拍数量必须为 1 到 " + max);
         BigDecimal cursor = BigDecimal.ZERO;
-        for (CameraBeat beat : beats) {
+        for (int i = 0; i < beats.size(); i++) {
+            CameraBeat beat = beats.get(i);
             if (beat == null || beat.getStartSec() == null || beat.getEndSec() == null
                     || beat.getStartSec().compareTo(cursor) != 0
                     || beat.getEndSec().compareTo(cursor) <= 0
                     || beat.getEndSec().compareTo(duration) > 0) fail("节拍必须从 0 连续覆盖分镜时长，不能重叠或留空");
-            if (!VALID_MOVEMENTS.contains(beat.getMovement()) || !VALID_SPEEDS.contains(beat.getSpeed())) fail("运镜或速度无效");
+            if (!VALID_MOVEMENTS.contains(beat.getMovement())) fail("$.cameraBeats[" + i + "].movement 无效，实际值=" + beat.getMovement() + "，合法值=" + VALID_MOVEMENTS);
+            if (!VALID_SPEEDS.contains(beat.getSpeed())) fail("$.cameraBeats[" + i + "].speed 无效，实际值=" + beat.getSpeed() + "，合法值=" + VALID_SPEEDS);
             if (movementLocked && isMovementLocked(movement) && !beat.getMovement().equals(movement)) fail("运镜与分镜锁定冲突");
             if ("STATIC".equals(beat.getMovement())) {
                 if (StringUtils.isNotBlank(beat.getDirection()) || !"NONE".equals(beat.getSpeed())) fail("STATIC 方向必须为空、速度必须为 NONE");

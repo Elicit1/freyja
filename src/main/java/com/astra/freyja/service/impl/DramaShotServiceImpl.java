@@ -196,6 +196,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             try { shot.setDirectorPlanJson(objectMapper.writeValueAsString(dto.getDirectorPlan())); }
             catch (Exception e) { throw new BizException(400, "导演计划无法序列化"); }
             shot.setDirectorPlanMode("MANUAL");
+            shot.setDirectorPlanInputHash(com.astra.freyja.director.model.DirectorPlanInput.fromShot(shot).fingerprint());
         }
         shot.setSeed(ShotSeedUtil.next());
 
@@ -424,20 +425,8 @@ public class DramaShotServiceImpl implements DramaShotService {
             shot.setFirstFrameSourceVideoUrl(null);
         }
 
-        if ("MANUAL".equals(existing.getDirectorPlanMode()) &&
-                ((shot.getDuration() != null && !shot.getDuration().equals(existing.getDuration()))
-                || !java.util.Objects.equals(shot.getShotTypeLocked(), existing.getShotTypeLocked())
-                || !java.util.Objects.equals(shot.getCameraMovementLocked(), existing.getCameraMovementLocked())
-                || !java.util.Objects.equals(shot.getShotType(), existing.getShotType())
-                || !java.util.Objects.equals(shot.getCameraMovement(), existing.getCameraMovement()))) {
-            try {
-                var plan = objectMapper.readValue(existing.getDirectorPlanJson(), com.astra.freyja.director.model.DirectorPlan.class);
-                new com.astra.freyja.director.service.DirectorPlanValidator().validateManual(plan,
-                        shot.getDuration() == null ? existing.getDuration() : shot.getDuration(), shot.getShotType(), shot.getCameraMovement(),
-                        Boolean.TRUE.equals(shot.getShotTypeLocked()), Boolean.TRUE.equals(shot.getCameraMovementLocked()));
-            } catch (BizException e) { throw e; }
-            catch (Exception e) { throw new BizException(400, "手工导演计划无效，请重新编辑"); }
-        }
+        // Basic input edits may make an existing plan stale. Local generation will
+        // replan with explicit overwrite confirmation rather than block saving the shot.
         if (backgroundUpdate.getSqlSet() == null) {
             shotMapper.updateById(shot);
         } else {

@@ -129,17 +129,6 @@
                 </el-tag>
               </div>
 
-              <!-- 状态开关浮动右上角 -->
-              <div class="absolute top-2 right-2" @click.stop>
-                <el-switch
-                  :model-value="item.status === 1"
-                  inline-prompt
-                  active-text="启"
-                  inactive-text="停"
-                  style="--el-switch-on-color: var(--brand); --el-switch-off-color: var(--border-strong);"
-                  @change="handleStatusToggle(item)"
-                />
-              </div>
             </div>
 
             <!-- 卡片信息区 -->
@@ -231,18 +220,6 @@
           </el-table-column>
 
           <el-table-column prop="description" label="画面描述" min-width="180" show-overflow-tooltip />
-
-          <el-table-column prop="status" label="状态" width="80" align="center">
-            <template #default="{ row }">
-              <el-switch
-                :model-value="row.status === 1"
-                inline-prompt
-                active-text="启"
-                inactive-text="停"
-                @change="handleStatusToggle(row)"
-              />
-            </template>
-          </el-table-column>
 
           <el-table-column prop="updateTime" label="更新时间" width="160">
             <template #default="{ row }">
@@ -426,17 +403,6 @@ function handleDrawerSuccess(payload: ResKeyframe) {
 function handleDrawerCancel() {
   isEditing.value = false
   emit('assetCancelled')
-}
-
-async function handleStatusToggle(row: ResKeyframe) {
-  const newStatus = row.status === 1 ? 0 : 1
-  try {
-    await keyframeApi.changeStatus(row.id!, newStatus)
-    row.status = newStatus
-    ElMessage.success(`关键图已${newStatus === 1 ? '启用' : '停用'}`)
-  } catch (error: any) {
-    ElMessage.error(error.message || '更新状态失败')
-  }
 }
 
 async function handleDelete(row: ResKeyframe) {

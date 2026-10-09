@@ -37,6 +37,9 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityService {
 
+    /** Versioned artifact name prevents reuse of frames extracted with the former time offset. */
+    private static final String LAST_FRAME_OBJECT_PREFIX = "video_last_decoded_v1_";
+
     private final DramaShotMapper shotMapper;
     private final VideoFrameExtractService videoFrameExtractService;
     private final MinioClient minioClient;
@@ -145,6 +148,7 @@ public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityServic
                             && Objects.equals(latestPrev.getLastFrameSourceVideoUrl(), latestPrev.getVideoUrl());
                 }
 
+                cacheValid = cacheValid && isCurrentExtractionPolicy(latestPrev.getLastFrameUrl());
                 if (!forceExtract && cacheValid) {
                     tailFrameUrl = latestPrev.getLastFrameUrl();
                     reused = true;
@@ -167,8 +171,7 @@ public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityServic
                         ext = objectKey.substring(dotIdx + 1);
                     }
 
-                    Integer offsetMs = request != null ? request.getTailOffsetMs() : null;
-                    byte[] frameBytes = videoFrameExtractService.extractLastFrame(videoBytes, ext, offsetMs);
+                    byte[] frameBytes = videoFrameExtractService.extractLastFrame(videoBytes, ext);
                     if (frameBytes == null || frameBytes.length == 0) {
                         throw new BizException(500, "上一镜视频尾帧提取失败，请检查 ffmpeg 配置");
                     }
@@ -176,8 +179,8 @@ public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityServic
                     // 归档尾帧至 MinIO
                     long timestamp = System.currentTimeMillis();
                     long dramaId = latestPrev.getDramaId() != null ? latestPrev.getDramaId() : 0L;
-                    String frameObjectKey = String.format("projects/%d/shots/%d/frames/video_tail_%d.jpg",
-                            dramaId, sourceShotId, timestamp);
+                    String frameObjectKey = String.format("projects/%d/shots/%d/frames/%s%d.jpg",
+                            dramaId, sourceShotId, LAST_FRAME_OBJECT_PREFIX, timestamp);
                     ensureBucketExists(bucket);
 
                     try (InputStream fis = new ByteArrayInputStream(frameBytes)) {
@@ -205,7 +208,7 @@ public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityServic
                     latestPrev.setLastFrameSourceTakeId(latestPrev.getCurrentVideoTakeId());
                     shotMapper.updateById(latestPrev);
                     reused = false;
-                    log.info("[ShotFrameContinuity] 成功从上一镜视频提取并归档尾部稳定帧: sourceShotId={}, tailFrameUrl={}", sourceShotId, tailFrameUrl);
+                    log.info("[ShotFrameContinuity] 成功从上一镜视频提取并归档实际末帧: sourceShotId={}, tailFrameUrl={}", sourceShotId, tailFrameUrl);
                 }
             } finally {
                 sourceShotLockMap.remove(sourceShotId, lock);
@@ -255,6 +258,12 @@ public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityServic
                 .reused(reused)
                 .applied(applyToFirstFrame)
                 .build();
+    }
+
+    private boolean isCurrentExtractionPolicy(String frameUrl) {
+        if (StringUtils.isBlank(frameUrl)) return false;
+        String objectName = StringUtils.substringAfterLast(StringUtils.substringBefore(frameUrl, "?"), "/");
+        return objectName.startsWith(LAST_FRAME_OBJECT_PREFIX);
     }
 
     private void sortShotsStably(List<DramaShot> shots) {

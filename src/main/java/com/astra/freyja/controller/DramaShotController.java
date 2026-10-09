@@ -48,6 +48,11 @@ public class DramaShotController {
 
     private final com.astra.freyja.director.service.DirectorPlanStateService directorPlanStateService;
 
+    @PostMapping("/director-plan/check")
+    public R<com.astra.freyja.dto.drama.DirectorPlanGenerationCheckVO> checkDirectorPlan(@RequestBody ShotPromptDeriveDTO dto) {
+        return R.ok(directorPlanStateService.inspect(dto));
+    }
+
     @PutMapping("/{id}/director-plan")
     public R<com.astra.freyja.dto.drama.DirectorPlanEditDTO> saveDirectorPlan(@PathVariable Long id,
             @RequestBody com.astra.freyja.dto.drama.DirectorPlanEditDTO dto) {
