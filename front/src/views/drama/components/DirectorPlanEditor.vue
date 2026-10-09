@@ -11,7 +11,7 @@
       <span class="flex items-center gap-2">
         <el-tag v-if="dirty" size="small" type="warning">有未保存修改</el-tag>
         <el-tag v-if="inputsChanged" size="small" type="warning">需要重新规划</el-tag>
-        <el-tag>{{ mode === 'MANUAL' ? '手工计划' : 'AI 自动规划' }} · v{{ revision }}</el-tag>
+        <el-tag>{{ mode === 'MANUAL' ? '手工计划' : 'AI 自动规划' }} · 版本 {{ revision }}</el-tag>
         <span class="text-xs text-slate-500">{{ expanded ? '收起' : '展开' }}</span>
         <el-icon class="transition-transform" :class="{ 'rotate-180': expanded }"><ArrowDown /></el-icon>
       </span>
@@ -30,8 +30,8 @@
         <div class="grid grid-cols-2 gap-3">
           <label>总时长（分镜时长）<el-input :model-value="duration" disabled /></label>
           <label>协议版本<el-input :model-value="draft.schemaVersion" disabled /></label>
-          <label>景别<el-select v-model="draft.shotSize"><el-option v-for="v in sizes" :key="v" :value="v" :label="v" /></el-select></label>
-          <label>机位角度<el-select v-model="draft.cameraAngle"><el-option v-for="v in angles" :key="v" :value="v" :label="v" /></el-select></label>
+          <label>景别<el-select v-model="draft.shotSize"><el-option v-for="v in directorPlanOptions.shotSize" :key="v.value" :value="v.value" :label="v.label" /></el-select></label>
+          <label>机位角度<el-select v-model="draft.cameraAngle"><el-option v-for="v in directorPlanOptions.cameraAngle" :key="v.value" :value="v.value" :label="v.label" /></el-select></label>
         </div>
         <label class="block">叙事意图<el-input v-model="draft.narrativeIntent" type="textarea" /></label>
         <label class="block">主体动作<el-input v-model="draft.subjectAction" type="textarea" /></label>
@@ -41,23 +41,23 @@
           <div class="grid grid-cols-2 gap-2">
             <label>起始秒<el-input-number v-model="beat.startSec" :min="0" :precision="3" /></label>
             <label>结束秒<el-input-number v-model="beat.endSec" :min="0" :precision="3" /></label>
-            <label>运镜<el-select v-model="beat.movement" @change="movementChanged(beat)"><el-option v-for="v in movements" :key="v" :value="v" :label="v" /></el-select></label>
-            <label>速度<el-select v-model="beat.speed"><el-option v-for="v in speeds" :key="v" :value="v" :label="v" /></el-select></label>
+            <label>运镜<el-select v-model="beat.movement" @change="movementChanged(beat)"><el-option v-for="v in directorPlanOptions.movement" :key="v.value" :value="v.value" :label="v.label" /></el-select></label>
+            <label>速度<el-select v-model="beat.speed"><el-option v-for="v in directorPlanOptions.speed" :key="v.value" :value="v.value" :label="v.label" /></el-select></label>
           </div>
-          <label class="block">方向<el-input v-model="beat.direction" :disabled="beat.movement === 'STATIC'" /></label>
-          <label class="block">起始节点<el-input v-model="beat.startCue" /></label>
-          <label class="block">收束节点<el-input v-model="beat.stopCue" /></label>
-          <label class="block">戏剧目的<el-input v-model="beat.narrativePurpose" /></label>
+          <label class="block">方向<el-select v-model="beat.direction" filterable allow-create default-first-option clearable :disabled="beat.movement === 'STATIC'" placeholder="选择方向或输入方向说明"><el-option v-for="v in directorPlanOptions.direction" :key="v.value" :value="v.value" :label="v.label" /></el-select></label>
+          <label class="block">开始节点<el-input v-model="beat.startCue" /></label>
+          <label class="block">结束节点<el-input v-model="beat.stopCue" /></label>
+          <label class="block">目的<el-input v-model="beat.narrativePurpose" /></label>
         </div>
         <el-button size="small" @click="addBeat">添加节拍</el-button>
-        <p class="text-xs text-slate-500">节拍须从 0 连续覆盖 {{ duration }} 秒；10 秒内最多 3 段，否则最多 5 段。锁定字段：{{ draft.lockedFields?.join(', ') || '无' }}</p>
-        <p class="text-xs text-slate-500">技能记录（只读）：{{ draft.skills?.map(s => s.name + '@' + s.version).join(', ') || '无' }}</p>
+        <p class="text-xs text-slate-500">节拍须从 0 连续覆盖 {{ duration }} 秒；10 秒内最多 3 段，否则最多 5 段。锁定字段：{{ draft.lockedFields?.map(v => directorPlanLabel('lockedField', v)).join('、') || '无' }}</p>
+        <p class="text-xs text-slate-500">技能记录（只读）：{{ draft.skills?.map(s => directorPlanLabel('skill', s.name) + '（版本 ' + s.version + '）').join('、') || '无' }}</p>
       </template>
       <template v-else-if="plan">
-        <p class="text-sm">{{ plan.shotSize }} · {{ plan.cameraAngle }} · {{ plan.duration }} 秒</p>
+        <p class="text-sm">{{ directorPlanLabel('shotSize', plan.shotSize) }} · {{ directorPlanLabel('cameraAngle', plan.cameraAngle) }} · {{ plan.duration }} 秒</p>
         <p class="text-sm">{{ plan.narrativeIntent }}</p>
         <p class="text-sm">{{ plan.subjectAction }} {{ plan.gaze }}</p>
-        <div v-for="(b, i) in plan.cameraBeats" :key="i" class="text-xs text-slate-600">{{ b.startSec }}–{{ b.endSec }}s · {{ b.movement }} · {{ b.direction }} · {{ b.speed }} · {{ b.startCue }} → {{ b.stopCue }} · {{ b.narrativePurpose }}</div>
+        <div v-for="(b, i) in plan.cameraBeats" :key="i" class="text-xs text-slate-600">{{ b.startSec }}–{{ b.endSec }} 秒 · {{ directorPlanLabel('movement', b.movement) }}<template v-if="b.direction"> · {{ directorPlanLabel('direction', b.direction) }}</template> · {{ directorPlanLabel('speed', b.speed) }} · {{ b.startCue }} → {{ b.stopCue }} · {{ b.narrativePurpose }}</div>
       </template>
     </div>
   </div>
@@ -69,6 +69,7 @@ import { ArrowDown } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { shotApi } from '@/api/drama'
 import type { DirectorPlan, CameraBeat } from '@/types/drama'
+import { directorPlanLabel, directorPlanOptions } from '@/utils/director-plan-labels'
 const props = defineProps<{ shotId?: string | number; plan?: DirectorPlan | null; mode?: 'AUTO' | 'MANUAL'; revision?: number; duration?: number; shotType?: string; cameraMovement?: string; shotTypeLocked?: boolean; cameraMovementLocked?: boolean; inputsChanged?: boolean; inputHash?: string }>()
 const emit = defineEmits<{ saved: [data: { directorPlan?: DirectorPlan; directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number; directorPlanInputHash?: string }]; dirty: [value: boolean] }>()
 const contentId = useId()
@@ -80,10 +81,6 @@ const baseline = ref('')
 const editingRevision = ref(0)
 const mode = computed(() => props.mode || 'AUTO')
 const revision = computed(() => props.revision ?? 0)
-const sizes = ['EXTREME_CLOSE_UP', 'CLOSE_UP', 'MEDIUM_CLOSE_UP', 'MEDIUM_SHOT', 'FULL_SHOT', 'LONG_SHOT', 'OVER_SHOULDER', 'TOP_DOWN']
-const angles = ['EYE_LEVEL', 'LOW_ANGLE', 'HIGH_ANGLE', 'DUTCH_ANGLE', 'OVER_THE_SHOULDER', 'BIRDS_EYE']
-const movements = ['STATIC', 'PUSH_IN', 'PULL_OUT', 'PAN_LEFT', 'PAN_RIGHT', 'TILT_UP', 'TILT_DOWN', 'TRACKING', 'ORBIT', 'ZOOM_IN']
-const speeds = ['NONE', 'SLOW', 'NORMAL', 'FAST']
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
 const dirty = computed(() => editing.value && JSON.stringify(draft.value) !== baseline.value)
 watch(dirty, v => emit('dirty', v))

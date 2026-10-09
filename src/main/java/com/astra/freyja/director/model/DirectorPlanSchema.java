@@ -22,6 +22,14 @@ public final class DirectorPlanSchema {
     public static final Set<String> MOVEMENTS = values("STATIC", "PUSH_IN", "PULL_OUT", "PAN_LEFT",
             "PAN_RIGHT", "TILT_UP", "TILT_DOWN", "TRACKING", "ORBIT", "ZOOM_IN");
     public static final Set<String> SPEEDS = values("NONE", "SLOW", "NORMAL", "FAST");
+    public static final String LANGUAGE_INSTRUCTION = """
+            这是简体中文创作工作台，导演计划中供创作者阅读的说明必须使用简体中文。
+            JSON 字段名、schemaVersion，以及 shotSize、cameraAngle、movement、speed 的协议枚举继续使用规定的英文编码。
+            subjectAction、gaze、narrativeIntent，以及每个 cameraBeats 的 startCue、stopCue、narrativePurpose 必须使用简体中文完整描述，不得输出英文说明。
+            非 STATIC 节拍的 direction 使用简体中文描述摄影机运动方向；STATIC 的 direction 为 null。
+            即使 Skill 或参考示例使用英文，计划说明仍须使用简体中文；创作者提供的人名、专名可保持原样。
+            没有剧情依据的说明保持 null，不要为了填字段虚构内容。
+            """;
     private static final List<String> REQUIRED_PLAN_FIELDS = List.of(
             "schemaVersion", "duration", "shotSize", "cameraAngle", "cameraBeats");
     private static final List<String> REQUIRED_BEAT_FIELDS = List.of("startSec", "endSec", "movement", "speed");
@@ -90,10 +98,10 @@ public final class DirectorPlanSchema {
         beatProperties.put("startSec", Map.of("type", "number", "minimum", 0));
         beatProperties.put("endSec", Map.of("type", "number", "exclusiveMinimum", 0));
         beatProperties.put("movement", enumProperty(MOVEMENTS));
-        beatProperties.put("direction", Map.of("type", List.of("string", "null")));
+        beatProperties.put("direction", chineseTextProperty("摄影机运动方向；STATIC 时为 null"));
         beatProperties.put("speed", enumProperty(SPEEDS));
         for (String field : List.of("startCue", "stopCue", "narrativePurpose")) {
-            beatProperties.put(field, Map.of("type", List.of("string", "null")));
+            beatProperties.put(field, chineseTextProperty("动作触发、收束或叙事目的"));
         }
         Map<String, Object> beat = Map.of("type", "object", "required", REQUIRED_BEAT_FIELDS,
                 "properties", beatProperties, "allOf", List.of(Map.of(
@@ -108,7 +116,7 @@ public final class DirectorPlanSchema {
         properties.put("cameraAngle", enumProperty(CAMERA_ANGLES));
         properties.put("cameraBeats", Map.of("type", "array", "minItems", 1, "maxItems", 5, "items", beat));
         for (String field : List.of("subjectAction", "gaze", "narrativeIntent")) {
-            properties.put(field, Map.of("type", List.of("string", "null")));
+            properties.put(field, chineseTextProperty("主体动作、视线或导演叙事意图"));
         }
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("$schema", "https://json-schema.org/draft/2020-12/schema");
@@ -123,5 +131,10 @@ public final class DirectorPlanSchema {
         } catch (Exception e) {
             throw new ExceptionInInitializerError(e);
         }
+    }
+
+    private static Map<String, Object> chineseTextProperty(String description) {
+        return Map.of("type", List.of("string", "null"), "description",
+                description + "，使用简体中文描述；无依据时为 null");
     }
 }

@@ -31,8 +31,8 @@
         @dirty="directorDirty = $event" @saved="handleDirectorPlanSaved" />
       <div v-if="executionMode === 'API' && basicInputsChanged" class="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
         {{ !currentShotContext?.directorPlanInputHash && currentShotContext?.directorPlanJson
-          ? '当前计划尚未建立输入基准，本地生成将重新规划；手工计划覆盖前会弹窗确认。'
-          : localPlanModified ? '镜头内容与导演计划均已修改，本地生成前将确认是否覆盖导演计划。' : '镜头内容已修改，本地生成将重新生成导演计划，再生成提示词。' }}
+          ? '当前计划尚未建立输入基准，AI生成将重新规划；手工计划覆盖前会弹窗确认。'
+          : localPlanModified ? '镜头内容与导演计划均已修改，AI生成前将确认是否覆盖导演计划。' : '镜头内容已修改，AI生成将重新生成导演计划，再生成提示词。' }}
       </div>
       <!-- 1. 当前镜头与剧情上下文横幅 (AI 推理基准) -->
       <div class="context-panel space-y-3">
@@ -589,8 +589,8 @@
                 <div class="bg-white p-2.5 rounded border border-slate-200">
                   <span class="font-semibold text-slate-500 block mb-1">主选景别 / 机位角度</span>
                   <div class="flex items-center gap-1.5">
-                    <el-tag size="small" type="primary">{{ previewResult.directorPlan.shotSize || '未指定' }}</el-tag>
-                    <el-tag size="small" type="info">{{ previewResult.directorPlan.cameraAngle || '未指定' }}</el-tag>
+                    <el-tag size="small" type="primary">{{ directorPlanLabel('shotSize', previewResult.directorPlan.shotSize) }}</el-tag>
+                    <el-tag size="small" type="info">{{ directorPlanLabel('cameraAngle', previewResult.directorPlan.cameraAngle) }}</el-tag>
                   </div>
                 </div>
                 <div class="bg-white p-2.5 rounded border border-slate-200 md:col-span-2">
@@ -614,7 +614,7 @@
               <div v-if="previewResult.directorPlan.cameraBeats && previewResult.directorPlan.cameraBeats.length > 0" class="bg-white p-2.5 rounded border border-slate-200 space-y-2">
                 <div class="flex items-center justify-between">
                   <span class="font-semibold text-slate-700 flex items-center gap-1.5">
-                    <span>⏱️</span> 摄影机动作时间轴 (Camera Beats)
+                    <span>⏱️</span> 摄影机动作时间轴
                   </span>
                   <span class="text-[10px] text-slate-400 font-mono">共 {{ previewResult.directorPlan.cameraBeats.length }} 个运镜节拍</span>
                 </div>
@@ -625,18 +625,18 @@
                     class="flex items-start gap-2 bg-slate-50 border border-slate-200 rounded p-2 text-xs"
                   >
                     <el-tag size="small" type="warning" effect="plain" class="font-mono font-bold shrink-0">
-                      {{ beat.startSec }}s - {{ beat.endSec }}s
+                      {{ beat.startSec }} 秒 - {{ beat.endSec }} 秒
                     </el-tag>
                     <div class="flex-1 min-w-0 space-y-1">
                       <div class="flex items-center gap-2 flex-wrap">
-                        <span class="font-bold text-slate-800">{{ beat.movement }}</span>
-                        <el-tag v-if="beat.direction" size="small" type="info" class="!text-[10px] !h-4">{{ beat.direction }}</el-tag>
-                        <el-tag v-if="beat.speed" size="small" type="success" class="!text-[10px] !h-4">{{ beat.speed }}</el-tag>
+                        <span class="font-bold text-slate-800">{{ directorPlanLabel('movement', beat.movement) }}</span>
+                        <el-tag v-if="beat.direction" size="small" type="info" class="!text-[10px] !h-4">{{ directorPlanLabel('direction', beat.direction) }}</el-tag>
+                        <el-tag v-if="beat.speed" size="small" type="success" class="!text-[10px] !h-4">{{ directorPlanLabel('speed', beat.speed) }}</el-tag>
                         <span v-if="beat.narrativePurpose" class="text-slate-500 text-[11px]">— {{ beat.narrativePurpose }}</span>
                       </div>
                       <div v-if="beat.startCue || beat.stopCue" class="text-[11px] text-slate-600 flex gap-3">
-                        <span v-if="beat.startCue">🎬 起始节点: {{ beat.startCue }}</span>
-                        <span v-if="beat.stopCue">🛑 收束节点: {{ beat.stopCue }}</span>
+                        <span v-if="beat.startCue">🎬 开始节点: {{ beat.startCue }}</span>
+                        <span v-if="beat.stopCue">🛑 结束节点: {{ beat.stopCue }}</span>
                       </div>
                     </div>
                   </div>
@@ -645,7 +645,7 @@
 
               <!-- 生效技能 -->
               <div v-if="previewResult.directorPlan.skills && previewResult.directorPlan.skills.length > 0" class="flex items-center gap-2 text-[11px] text-slate-500">
-                <span>📚 调用的 AI Skills:</span>
+                <span>📚 使用的 AI 技能：</span>
                 <el-tag
                   v-for="s in previewResult.directorPlan.skills"
                   :key="s.name"
@@ -653,7 +653,7 @@
                   type="success"
                   effect="plain"
                 >
-                  {{ s.name }} v{{ s.version }}
+                  {{ directorPlanLabel('skill', s.name) }}（版本 {{ s.version }}）
                 </el-tag>
               </div>
             </div>
@@ -772,6 +772,7 @@
 <script setup lang="ts">
 import DirectorPlanEditor from './DirectorPlanEditor.vue'
 import { useDirectorInputCheck, directorPlanInput } from '@/utils/director-plan-input'
+import { directorPlanLabel } from '@/utils/director-plan-labels'
 import { ref, computed, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { shotApi, dramaApi } from '@/api/drama'

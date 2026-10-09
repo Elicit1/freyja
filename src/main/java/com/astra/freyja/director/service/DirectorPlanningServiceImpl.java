@@ -109,6 +109,7 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
                     session.getVersionSnapshot());
             systemPrompt = skillPromptContextService.appendToSystemPrompt(systemPrompt, requiredContext);
         }
+        systemPrompt += "\n【导演计划说明语言】\n" + DirectorPlanSchema.LANGUAGE_INSTRUCTION;
         String userPrompt = buildUserPrompt(dto);
 
         log.info("[DirectorPlanning] 启动导演规划流水线: taskId={}, shotId={}, generationMode={}, shotNo={}, duration={}, providerId={}, modelCode={}",
@@ -231,7 +232,7 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
                    景别、角度与运镜使用各自字段的枚举，不能混用。不得使用 AUTO、PULL_BACK 等协议中未列出的值。
                    节拍按时间顺序连续覆盖 [0, duration]，每段 endSec > startSec，10 秒内最多 3 段，超过 10 秒最多 5 段。
                    STATIC 的 direction 必须为 null、speed 必须为 NONE；其他运镜的 speed 必须为 SLOW、NORMAL 或 FAST。
-                   subjectAction、gaze、narrativeIntent 和各节拍的动作触发、收束、叙事目的应根据剧情填写；没有依据的内容使用 null。
+                   subjectAction、gaze、narrativeIntent 和各节拍的动作触发、收束、叙事目的应根据剧情使用简体中文填写；没有依据的内容使用 null。
                    skills 和 lockedFields 由服务端填写，无需输出。
                    以下 JSON Schema 是接口输出协议，优先于 Skill 中的示例标签；Skill 提供摄影知识，最终 JSON 必须遵守此协议：
                    %s

@@ -20,7 +20,7 @@
         </el-col>
       </el-row>
 
-      <el-form-item label="导演叙事意图 / 戏剧目的" prop="purpose">
+      <el-form-item label="导演叙事意图 / 目的" prop="purpose">
         <el-input
           v-model="form.purpose"
           type="textarea"

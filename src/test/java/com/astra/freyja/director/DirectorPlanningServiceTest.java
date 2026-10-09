@@ -85,7 +85,8 @@ class DirectorPlanningServiceTest {
         session.preload("cinematography", skill);
         when(skillContext.createApiSession(anyString(), anyString(), anyList())).thenReturn(session);
         when(skillContext.loadSelected(anyString(), anyString(), anyList(), anyMap())).thenReturn(SkillPromptContext.empty());
-        when(skillContext.appendToSystemPrompt(anyString(), any())).thenAnswer(inv -> inv.getArgument(0));
+        when(skillContext.appendToSystemPrompt(anyString(), any())).thenAnswer(inv ->
+                inv.getArgument(0) + "\nSkill example: The subject rises and the camera pulls back.\n");
         service = new DirectorPlanningServiceImpl(providers, models, factory, catalog,
                 new LoadSkillToolFactory(mock(SkillContentService.class)),
                 new ReadSkillFileToolFactory(mock(AiSkillFileMapper.class), mock(SkillRepository.class)),
@@ -112,6 +113,14 @@ class DirectorPlanningServiceTest {
         ArgumentCaptor<Prompt> prompt = ArgumentCaptor.forClass(Prompt.class);
         verify(model, times(1)).call(prompt.capture());
         assertThat(prompt.getValue().getContents()).contains(DirectorPlanSchema.jsonSchema(), dto.getScriptContent());
+        String system = prompt.getValue().getSystemMessage().getText();
+        assertThat(system).endsWith(DirectorPlanSchema.LANGUAGE_INSTRUCTION);
+        assertThat(system).contains("shotSize、cameraAngle、movement、speed", "必须使用简体中文完整描述");
+        assertThat(plan.getSubjectAction()).isEqualTo("人物起身后停步");
+        assertThat(plan.getNarrativeIntent()).isEqualTo("展示空间关系");
+        assertThat(plan.getCameraBeats().getFirst().getStartCue()).isEqualTo("人物起身");
+        assertThat(plan.getCameraBeats().getFirst().getStopCue()).isEqualTo("人物停步");
+        assertThat(plan.getCameraBeats().getFirst().getNarrativePurpose()).isEqualTo("交代空间");
         assertThat(messages()).anyMatch(line -> line.contains("outcome=SUCCESS") && line.contains("plan="));
         assertThat(messages()).allMatch(line -> line.contains("taskId=2108398458276372481"));
         verify(catalog, times(1)).getEnabledCatalog();
