@@ -706,7 +706,7 @@
               @click="handleStartStream(true)"
               :loading="preparingGeneration"
             >
-              ▣ 后台生成
+              后台生成
             </el-button>
             <el-button
               v-if="!isStreaming && !restoringTask && !restoredTaskRunning && !previewResult"
@@ -714,7 +714,7 @@
               :loading="preparingGeneration"
               @click="handleStartStream(false)"
             >
-              ⚡ 本地生成
+              AI生成
             </el-button>
             <el-button
               v-if="previewResult && !isStreaming && !restoringTask && !restoredTaskRunning"
@@ -723,7 +723,7 @@
               :loading="preparingGeneration"
               @click="handleStartStream(false)"
             >
-              🔄 重新本地生成
+              AI重新生成
             </el-button>
             <el-button v-if="restoringTask" type="primary" plain disabled>
               正在读取任务状态
@@ -1642,7 +1642,7 @@ async function handleStartStream(runInBackground = false) {
     }
     if (confirmationViewVersion !== promptViewVersion || !visible.value) return
     if (requestBeforeConfirmation !== JSON.stringify(buildDerivePayload())) {
-      ElMessage.warning('生成内容在确认期间已修改，请再次点击本地生成'); return
+      ElMessage.warning('生成内容在确认期间已修改，请再次点击AI生成'); return
     }
   } catch (e: any) {
     if (e !== 'cancel' && e !== 'close') ElMessage.error(e.message || '检查导演计划输入失败')
