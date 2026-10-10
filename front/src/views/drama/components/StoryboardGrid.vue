@@ -309,6 +309,8 @@
                             <el-dropdown-item command="upscale" :disabled="!shot.videoUrl">视频超分</el-dropdown-item>
                             <el-dropdown-item command="interpolate" :disabled="!shot.videoUrl">视频插帧</el-dropdown-item>
                             <el-dropdown-item command="clone" divided>复制分镜</el-dropdown-item>
+                            <el-dropdown-item command="insert-before">在此镜头前插入分镜</el-dropdown-item>
+                            <el-dropdown-item command="insert-after">在此镜头后插入分镜</el-dropdown-item>
                             <el-dropdown-item command="delete" divided class="!text-[var(--danger)]">删除镜头</el-dropdown-item>
                           </el-dropdown-menu>
                         </template>
@@ -365,6 +367,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'add-shot', groupId?: any): void
+  (e: 'insert-shot', payload: { shot: DramaShot; position: 'before' | 'after' }): void
   (e: 'edit-shot', shotId: any): void
   (e: 'delete-shot', shotId: any): void
   (e: 'clone-shot', shotId: any): void
@@ -510,7 +513,10 @@ function getStatusLabel(status?: string) {
 }
 
 function handleCardCommand(cmd: string, shotId: any) {
-  if (cmd === 'preview') {
+  if (cmd === 'insert-before' || cmd === 'insert-after') {
+    const shot = displayedGroups.value.flatMap(group => group.shots || []).find(item => String(item.id) === String(shotId))
+    if (shot) emit('insert-shot', { shot, position: cmd === 'insert-before' ? 'before' : 'after' })
+  } else if (cmd === 'preview') {
     const s = props.shots.find(item => String(item.id) === String(shotId))
     if (s) emit('preview-prompt', s)
   } else if (cmd === 'clone') {

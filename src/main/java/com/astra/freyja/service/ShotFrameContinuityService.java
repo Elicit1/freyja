@@ -7,6 +7,9 @@ import com.astra.freyja.dto.drama.PreviousVideoTailVO;
  * 镜头视听连续性服务 (首尾帧继承与实际末帧按需提取)。
  */
 public interface ShotFrameContinuityService {
+    /** FL2VA: decode the direct successor's actual first video frame and apply it as this shot's end frame. */
+    com.astra.freyja.dto.drama.NextVideoHeadVO inheritNextVideoHead(Long currentShotId,
+            com.astra.freyja.dto.drama.NextVideoHeadRequest request);
 
     /**
      * 从同镜头组的直接前驱镜头视频中按需提取尾帧并设置为当前镜首帧。

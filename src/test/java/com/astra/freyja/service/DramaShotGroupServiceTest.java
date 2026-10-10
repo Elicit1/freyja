@@ -58,6 +58,40 @@ class DramaShotGroupServiceTest {
     private DramaShotGroupServiceImpl shotGroupService;
 
     @Test
+    void reordersEntireGroupWithoutOverwritingShotConfiguration() {
+        DramaShotGroup group = new DramaShotGroup();
+        group.setId(100L);
+        DramaShot first = new DramaShot();
+        first.setId(1L);
+        DramaShot second = new DramaShot();
+        second.setId(2L);
+        when(shotGroupMapper.selectForUpdate(100L)).thenReturn(group);
+        when(shotMapper.selectList(any())).thenReturn(List.of(first, second));
+        when(shotMapper.updateOrderInGroup(anyLong(), eq(100L), anyInt())).thenReturn(1);
+
+        shotGroupService.reorderShotsInGroup(100L, List.of(2L, 1L));
+
+        verify(shotMapper).updateOrderInGroup(2L, 100L, 1);
+        verify(shotMapper).updateOrderInGroup(1L, 100L, 2);
+        verify(shotMapper, never()).updateById(any(DramaShot.class));
+    }
+
+    @Test
+    void rejectsStaleDragOrderAfterNewShotInserted() {
+        DramaShotGroup group = new DramaShotGroup();
+        group.setId(100L);
+        DramaShot first = new DramaShot();
+        first.setId(1L);
+        DramaShot inserted = new DramaShot();
+        inserted.setId(3L);
+        when(shotGroupMapper.selectForUpdate(100L)).thenReturn(group);
+        when(shotMapper.selectList(any())).thenReturn(List.of(first, inserted));
+        assertEquals(409, assertThrows(com.astra.freyja.common.BizException.class,
+                () -> shotGroupService.reorderShotsInGroup(100L, List.of(1L))).getCode());
+        verify(shotMapper, never()).updateOrderInGroup(anyLong(), anyLong(), anyInt());
+    }
+
+    @Test
     void testCreateShotGroupSuccess() {
         DramaScene scene = new DramaScene();
         scene.setId(10L);

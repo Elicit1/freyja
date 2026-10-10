@@ -309,6 +309,7 @@
             :current-episode="currentEpisode"
             :loading="shotsLoading"
             @add-shot="handleCreateShot"
+            @insert-shot="handleInsertShot"
             @edit-shot="handleEditShot"
             @delete-shot="handleDeleteShot"
             @clone-shot="handleCloneShot"
@@ -914,6 +915,18 @@ function handleCreateShot(groupId?: any) {
     currentScene.value?.resSceneId,
     groupId,
     currentDrama.value?.aspectRatio
+  )
+}
+
+function handleInsertShot({ shot, position }: { shot: DramaShot; position: 'before' | 'after' }) {
+  if (!shot.id || !currentDramaId.value || !selectedEpisodeId.value || !selectedSceneId.value) return
+  const group = shotGroups.value.find(item => String(item.id) === String(shot.shotGroupId))
+  const index = group?.shots?.findIndex(item => String(item.id) === String(shot.id)) ?? -1
+  const nextShotNo = index >= 0 ? index + (position === 'after' ? 2 : 1) : shot.shotNo + (position === 'after' ? 1 : 0)
+  shotDrawerRef.value?.openCreate(
+    currentDramaId.value, selectedEpisodeId.value, selectedSceneId.value, nextShotNo,
+    currentScene.value?.resSceneId, shot.shotGroupId, currentDrama.value?.aspectRatio,
+    { shotId: shot.id, position }
   )
 }
 

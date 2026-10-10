@@ -144,8 +144,9 @@ public class DramaShotServiceImpl implements DramaShotService {
         List<DramaShot> list = shotMapper.selectList(
                 new LambdaQueryWrapper<DramaShot>()
                         .eq(DramaShot::getSceneId, sceneId)
-                        .orderByAsc(DramaShot::getShotNo)
                         .orderByAsc(DramaShot::getSortOrder)
+                        .orderByAsc(DramaShot::getShotNo)
+                        .orderByAsc(DramaShot::getId)
         );
 
         return list.stream().map(this::enrichShotVO).collect(Collectors.toList());
@@ -160,7 +161,9 @@ public class DramaShotServiceImpl implements DramaShotService {
                 new LambdaQueryWrapper<DramaShot>()
                         .eq(DramaShot::getEpisodeId, episodeId)
                         .orderByAsc(DramaShot::getSceneId)
+                        .orderByAsc(DramaShot::getSortOrder)
                         .orderByAsc(DramaShot::getShotNo)
+                        .orderByAsc(DramaShot::getId)
         );
 
         return list.stream().map(this::enrichShotVO).collect(Collectors.toList());
@@ -181,14 +184,52 @@ public class DramaShotServiceImpl implements DramaShotService {
         if (dto == null || dto.getSceneId() == null) {
             throw new BizException(400, "归属场次 ID 不能为空");
         }
+        validateSeed(dto.getSeed());
         KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
         DramaScene scene = sceneMapper.selectById(dto.getSceneId());
         if (scene == null) {
             throw new BizException(404, "归属场次不存在: " + dto.getSceneId());
         }
 
+        List<DramaShot> insertionShots = null;
+        int insertionIndex = -1;
+        Long anchorId = dto.getInsertBeforeShotId() != null ? dto.getInsertBeforeShotId() : dto.getInsertAfterShotId();
+        if (dto.getInsertBeforeShotId() != null && dto.getInsertAfterShotId() != null) {
+            throw new BizException(400, "插入前/后锚点只能指定一个");
+        }
+        if (anchorId != null) {
+            DramaShot anchor = shotMapper.selectById(anchorId);
+            if (anchor == null) throw new BizException(404, "插入位置分镜不存在，请刷新后重试");
+            if (!Objects.equals(anchor.getSceneId(), scene.getId()) || anchor.getShotGroupId() == null
+                    || (dto.getShotGroupId() != null && !Objects.equals(dto.getShotGroupId(), anchor.getShotGroupId()))) {
+                throw new BizException(400, "插入位置必须属于当前场次和镜头组");
+            }
+            var group = shotGroupMapper.selectForUpdate(anchor.getShotGroupId());
+            if (group == null || !Objects.equals(group.getSceneId(), scene.getId())) {
+                throw new BizException(409, "插入位置镜头组已变化，请刷新后重试");
+            }
+            insertionShots = new ArrayList<>(shotMapper.selectList(new LambdaQueryWrapper<DramaShot>()
+                    .eq(DramaShot::getShotGroupId, group.getId())
+                    .orderByAsc(DramaShot::getSortOrder).orderByAsc(DramaShot::getShotNo).orderByAsc(DramaShot::getId)
+                    .last("FOR UPDATE")));
+            for (int i = 0; i < insertionShots.size(); i++) {
+                if (Objects.equals(insertionShots.get(i).getId(), anchorId)) {
+                    insertionIndex = i + (dto.getInsertAfterShotId() != null ? 1 : 0);
+                    break;
+                }
+            }
+            if (insertionIndex < 0) throw new BizException(409, "插入位置已变化，请刷新后重试");
+        }
+
         DramaShot shot = new DramaShot();
         BeanUtils.copyProperties(dto, shot, "directorPlan", "directorPlanMode");
+        if (insertionShots != null) {
+            shot.setShotGroupId(insertionShots.get(0).getShotGroupId());
+            shot.setShotNo(insertionIndex + 1);
+            shot.setSortOrder(insertionIndex + 1);
+            shot.setDramaId(scene.getDramaId());
+            shot.setEpisodeId(scene.getEpisodeId());
+        }
         if (dto.getDirectorPlan() != null || "MANUAL".equals(dto.getDirectorPlanMode())) {
             new com.astra.freyja.director.service.DirectorPlanValidator().validateManual(dto.getDirectorPlan(),
                     shot.getDuration(), shot.getShotType(), shot.getCameraMovement(),
@@ -198,7 +239,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             shot.setDirectorPlanMode("MANUAL");
             shot.setDirectorPlanInputHash(com.astra.freyja.director.model.DirectorPlanInput.fromShot(shot).fingerprint());
         }
-        shot.setSeed(ShotSeedUtil.next());
+        shot.setSeed(dto.getSeed() != null ? dto.getSeed() : ShotSeedUtil.next());
 
         shot.setSceneId(scene.getId());
         if (shot.getEpisodeId() == null) {
@@ -316,6 +357,15 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
 
         shotMapper.insert(shot);
+        if (insertionShots != null) {
+            insertionShots.add(insertionIndex, shot);
+            for (int i = 0; i < insertionShots.size(); i++) {
+                // Update only ordering columns: partial entities can clear ALWAYS-strategy camera fields.
+                if (shotMapper.updateOrderInGroup(insertionShots.get(i).getId(), shot.getShotGroupId(), i + 1) != 1) {
+                    throw new BizException(409, "镜头组分镜已变化，请刷新后重试");
+                }
+            }
+        }
         log.info("[DramaShotService] 创建分镜成功: id={}, sceneId={}, shotGroupId={}, shotNo={}",
                 shot.getId(), shot.getSceneId(), shot.getShotGroupId(), shot.getShotNo());
 
@@ -330,6 +380,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         if (dto == null || dto.getId() == null) {
             throw new BizException(400, "分镜 ID 不能为空");
         }
+        validateSeed(dto.getSeed());
         KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
         DramaShot existing = shotMapper.selectById(dto.getId());
         if (existing == null) {
@@ -493,6 +544,12 @@ public class DramaShotServiceImpl implements DramaShotService {
             episodeService.recalculateEpisodeDuration(clone.getEpisodeId());
         }
         return clone.getId();
+    }
+
+    private void validateSeed(Long seed) {
+        if (seed != null && (seed <= 0 || seed > ShotSeedUtil.MAX_SEED)) {
+            throw new BizException(400, "视频随机种子必须是 1 到 " + ShotSeedUtil.MAX_SEED + " 的整数");
+        }
     }
 
     @Override
@@ -660,7 +717,9 @@ public class DramaShotServiceImpl implements DramaShotService {
             List<DramaShot> list = shotMapper.selectList(
                     new LambdaQueryWrapper<DramaShot>()
                             .eq(DramaShot::getSceneId, dto.getSceneId())
+                            .orderByAsc(DramaShot::getSortOrder)
                             .orderByAsc(DramaShot::getShotNo)
+                            .orderByAsc(DramaShot::getId)
             );
             targetIds = list.stream().map(DramaShot::getId).collect(Collectors.toList());
         }
@@ -1306,6 +1365,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
         LambdaQueryWrapper<DramaShot> wrapper = new LambdaQueryWrapper<DramaShot>()
                 .eq(DramaShot::getDramaId, dramaId)
+                .orderByAsc(DramaShot::getSortOrder)
                 .orderByAsc(DramaShot::getShotNo)
                 .orderByAsc(DramaShot::getId);
         List<DramaShot> shots = shotMapper.selectList(wrapper);

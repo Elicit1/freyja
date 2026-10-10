@@ -12,6 +12,9 @@ import org.apache.ibatis.annotations.Select;
  */
 @Mapper
 public interface DramaShotGroupMapper extends BaseMapper<DramaShotGroup> {
+    /** Serialize insertion and drag reordering within a shot group. */
+    @Select("SELECT * FROM drama_shot_group WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    DramaShotGroup selectForUpdate(@Param("id") Long id);
 
     /**
      * 查询某剧集下当前最大连续镜头组序号

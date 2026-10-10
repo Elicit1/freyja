@@ -129,10 +129,14 @@
 - **URL**: `POST /drama/shot`
 - **Body**: `DramaShotDTO`
 - `shotType` / `cameraMovement` 只有对应的 `shotTypeLocked` / `cameraMovementLocked` 为 `true` 且值不是 `AUTO` 时，才作为 Prompt AI 的创作者硬约束。Worker 新生成分镜将两项设为 `AUTO`；`AUTO` 表示由 Prompt AI 自主规划，不是固定镜头或具体景别。未确认来源的历史值保持原样存储但默认不锁定。
+- `seed` 支持手动指定视频随机种子，范围为 `1` 到 `9007199254740991`，可传十进制字符串；省略或为 `null` 时自动生成。
+- **指定位置插入**：创建时可传 `insertBeforeShotId` 或 `insertAfterShotId`（只允许一个，Snowflake ID 可传字符串）。新镜头继承锚点所在的镜头组和场次归属；若指定 `shotGroupId`，必须与锚点一致。后端按 `(sortOrder ASC, shotNo ASC, id ASC)` 定位锚点，在同一事务内插入并将该组全部镜头的 `sort_order` 和 `shot_no` 连续重排为 `1..N`，已有镜头名称及其他配置保留。组内插入不重排其他镜头组。锚点不存在返回 404，场次/组不一致返回 400，等待排序锁期间锚点已移走返回 409。创建时传入的 `shotNo` / `sortOrder` 由插入位置决定。
+- 前端在分镜卡片“更多”菜单提供“在此镜头前插入分镜”和“在此镜头后插入分镜”，打开新建配置，保存后生效。取消新建不会创建镜头或改变排序；插入配置的镜头组和序号由位置决定。
 
 ### 4.4 更新分镜
 - **URL**: `PUT /drama/shot`
 - **Body**: `DramaShotDTO`
+- `seed` 提交有效整数时更新视频随机种子；省略或为 `null` 时保留已有值。分镜配置只在种子被手动修改时提交该字段，避免旧表单覆盖已刷新的种子；已排队任务继续使用提交时冻结的种子。
 - **背景字段更新**: `resSceneId`、`resKeyframeId`、`customScenePrompt` 省略时保留已有值，显式 `null` 表示主动清空。场景资产与关键帧资产互斥：提交有效 `resSceneId` 自动清空关键帧；提交有效 `resKeyframeId` 自动清空场景。自定义背景描述独立保存，选择关键图不会清除该描述。完整编辑表单需显式提交被清空的背景字段；仅保存提示词、渲染设置等内容时可以省略它们。
 
 ### 4.5 删除分镜
@@ -219,6 +223,19 @@
 尾帧缓存同时校验抽取策略版本：旧的偏移帧缓存不复用，下一次引用时自动重新提取实际末帧。已经保存为当前分镜首帧的图片保留，重新点击引用后使用新末帧。
 
 **Ref2VA 新建场景**：`POST /drama/shot/{currentShotId}/extract-previous-video-tail` 使用相同请求与前驱镜头校验、缓存机制，返回相同结构且 `applied: false`。它只提取并归档尾帧，不修改当前镜头首帧。前端在参考图模式的“镜头环境场景”区域提供“用上一镜视频尾帧新建场景”入口：先保存当前分镜，再提取尾帧并跳转场景新建页，将 `tailFrameUrl` 预填到场景的 `referenceImageUrl`。用户填写其余场景资料并保存后，沿用新建场景流程返回分镜并绑定场景。首尾帧模式继续使用上述首帧引用接口。
+
+### 4.13.1 下一镜视频首帧引用为当前尾帧（FL2VA）
+
+- **URL**：`POST /drama/shot/{currentShotId}/inherit-next-video-head`
+- **Body**：可选 `NextVideoHeadRequest`，如 `{ "forceExtract": true }`。
+- 仅支持 `FIRST_LAST_FRAME` 模式。在同一连续镜头组中按 `(sortOrder ASC, shotNo ASC, id ASC)` 选择直接后一镜，不跨组、不跳过尚无视频的镜头；没有后一镜或其 `videoUrl` 为空返回 400。
+- 用 FFmpeg 解码后一镜已生成视频的实际第一帧（无时间偏移，非配置中的 `previewImageUrl`），以 JPEG 归档到 MinIO，并仅回写当前镜头的 `endFrameImageUrl`。来源镜头配置、当前首帧及视频产物不变。
+- 缓存存放在来源镜头的 `frames/video_first_decoded_v1_{hash}.jpg`，hash 由来源视频 URL 和 Take ID 确定；视频版本变化自动使用新缓存键，无需新增数据库字段。`forceExtract=true` 会绕过缓存重新提取；返回 URL 包含缓存版本参数。
+- 抽帧后复核当前组、模式、直接后一镜和来源视频版本；发生变化返回 409，不应用提取结果。归档/抽帧失败返回 500，保留当前尾帧。
+- **返回**：`R<NextVideoHeadVO>`，包含 `currentShotId`、`sourceShotId`、`sourceShotNo`、`sourceShotName`、`sourceVideoUrl`、`sourceVideoTakeId`、`headFrameUrl`、`reused`、`applied: true`。引用是当次视频版本的图片快照；后一镜重新生成或重选 Take 后，可再次点击引用更新。
+- 分镜配置与首尾帧渲染工坊的尾帧区域均提供“引用下一镜视频首帧”和“重新提取”入口；需先保存当前分镜并生成后一镜视频。
+
+组内拖拽排序与插入共用镜头组事务锁，拖拽请求必须包含该组全部镜头且 ID 不重复；若页面列表未包含刚插入的镜头，返回 409 提示刷新，避免局部重排导致排序重复。
 
 ### 4.14 分页查询分镜视频抽卡候选历史 (Shot Video Takes)
 - **URL**: `GET /drama/shot/{shotId}/video-takes`

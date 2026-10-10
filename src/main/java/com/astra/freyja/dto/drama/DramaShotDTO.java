@@ -34,6 +34,10 @@ public class DramaShotDTO {
     /** 归属镜头组 ID (drama_shot_group.id) */
     private Long shotGroupId;
 
+    /** 仅创建时使用：插入到指定分镜之前/之后，两者互斥，继承锚点的镜头组。 */
+    private Long insertBeforeShotId;
+    private Long insertAfterShotId;
+
     /** 分镜序号 (1, 2, 3...) */
     private Integer shotNo;
 
@@ -54,6 +58,9 @@ public class DramaShotDTO {
 
     /** 预估镜头时长 (秒) */
     private BigDecimal duration;
+
+    /** 视频随机种子；创建时省略则自动生成，更新时省略则保留已有值。 */
+    private Long seed;
 
     /** 本镜头剧本文本 (Shot Script) */
     private String scriptContent;

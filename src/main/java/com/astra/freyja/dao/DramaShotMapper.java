@@ -21,8 +21,13 @@ public interface DramaShotMapper extends BaseMapper<DramaShot> {
             + "AND sc.drama_id = s.drama_id AND ep.drama_id = s.drama_id";
 
     /** 仅包含所属场次、剧集均未删除的分镜，兼容历史遗留的孤立分镜。 */
-    @Select("SELECT s.*" + ACTIVE_DRAMA_SHOTS + " ORDER BY s.shot_no, s.sort_order")
+    @Select("SELECT s.*" + ACTIVE_DRAMA_SHOTS + " ORDER BY s.sort_order, s.shot_no, s.id")
     List<DramaShot> selectActiveByDramaId(@Param("dramaId") Long dramaId);
+
+    /** Reordering must not overwrite camera constraints, prompts or render artifacts. */
+    @Update("UPDATE drama_shot SET sort_order = #{order}, shot_no = #{order} "
+            + "WHERE id = #{shotId} AND shot_group_id = #{groupId} AND deleted = 0")
+    int updateOrderInGroup(@Param("shotId") Long shotId, @Param("groupId") Long groupId, @Param("order") int order);
 
     @Select("SELECT COUNT(*)" + ACTIVE_DRAMA_SHOTS)
     Long countActiveByDramaId(@Param("dramaId") Long dramaId);

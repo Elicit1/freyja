@@ -263,8 +263,9 @@ public class DramaShotGroupServiceImpl implements DramaShotGroupService {
         List<DramaShot> allShots = shotMapper.selectList(
                 new LambdaQueryWrapper<DramaShot>()
                         .eq(DramaShot::getShotGroupId, dto.getSourceGroupId())
-                        .orderByAsc(DramaShot::getShotNo)
                         .orderByAsc(DramaShot::getSortOrder)
+                        .orderByAsc(DramaShot::getShotNo)
+                        .orderByAsc(DramaShot::getId)
         );
 
         int splitIdx = -1;
@@ -340,8 +341,9 @@ public class DramaShotGroupServiceImpl implements DramaShotGroupService {
             List<DramaShot> shots = shotMapper.selectList(
                     new LambdaQueryWrapper<DramaShot>()
                             .eq(DramaShot::getShotGroupId, gid)
-                            .orderByAsc(DramaShot::getShotNo)
                             .orderByAsc(DramaShot::getSortOrder)
+                            .orderByAsc(DramaShot::getShotNo)
+                            .orderByAsc(DramaShot::getId)
             );
             for (DramaShot s : shots) {
                 s.setShotGroupId(primaryGroupId);
@@ -373,22 +375,23 @@ public class DramaShotGroupServiceImpl implements DramaShotGroupService {
         if (groupId == null || shotIds == null || shotIds.isEmpty()) {
             throw new BizException(400, "参数不能为空");
         }
-        DramaShotGroup group = shotGroupMapper.selectById(groupId);
+        DramaShotGroup group = shotGroupMapper.selectForUpdate(groupId);
         if (group == null) {
             throw new BizException(404, "镜头组不存在: " + groupId);
         }
 
+        List<DramaShot> existing = shotMapper.selectList(new LambdaQueryWrapper<DramaShot>()
+                .eq(DramaShot::getShotGroupId, groupId).last("FOR UPDATE"));
+        var requestedIds = new java.util.HashSet<>(shotIds);
+        var existingIds = existing.stream().map(DramaShot::getId).collect(Collectors.toSet());
+        if (requestedIds.size() != shotIds.size() || !requestedIds.equals(existingIds)) {
+            throw new BizException(409, "镜头组分镜已变化，请刷新后重新排序");
+        }
         for (int i = 0; i < shotIds.size(); i++) {
             Long sid = shotIds.get(i);
-            DramaShot updateEntity = new DramaShot();
-            updateEntity.setId(sid);
-            updateEntity.setShotGroupId(groupId);
-            updateEntity.setSceneId(group.getSceneId());
-            updateEntity.setEpisodeId(group.getEpisodeId());
-            updateEntity.setDramaId(group.getDramaId());
-            updateEntity.setShotNo(i + 1);
-            updateEntity.setSortOrder(i + 1);
-            shotMapper.updateById(updateEntity);
+            if (shotMapper.updateOrderInGroup(sid, groupId, i + 1) != 1) {
+                throw new BizException(409, "镜头组分镜已变化，请刷新后重新排序");
+            }
         }
 
         log.info("[ShotGroupService] 组内分镜重排完成: groupId={}, count={}", groupId, shotIds.size());

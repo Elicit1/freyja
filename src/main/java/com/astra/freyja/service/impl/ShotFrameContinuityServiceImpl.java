@@ -5,15 +5,20 @@ import com.astra.freyja.config.MinioProperties;
 import com.astra.freyja.dao.DramaShotMapper;
 import com.astra.freyja.dto.drama.PreviousVideoTailRequest;
 import com.astra.freyja.dto.drama.PreviousVideoTailVO;
+import com.astra.freyja.dto.drama.NextVideoHeadRequest;
+import com.astra.freyja.dto.drama.NextVideoHeadVO;
 import com.astra.freyja.entity.DramaShot;
 import com.astra.freyja.service.ShotFrameContinuityService;
 import com.astra.freyja.service.VideoFrameExtractService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.StatObjectArgs;
+import io.minio.errors.ErrorResponseException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -47,6 +52,142 @@ public class ShotFrameContinuityServiceImpl implements ShotFrameContinuityServic
 
     /** 针对来源分镜 ID 的并发操作锁，防止同一分镜短时间内重复触发 ffmpeg 抽帧 */
     private final ConcurrentHashMap<Long, Object> sourceShotLockMap = new ConcurrentHashMap<>();
+
+    private final Object[] headFrameLocks = java.util.stream.IntStream.range(0, 64)
+            .mapToObj(i -> new Object()).toArray();
+
+    @Override
+    public NextVideoHeadVO inheritNextVideoHead(Long currentShotId, NextVideoHeadRequest request) {
+        if (currentShotId == null) throw new BizException(400, "当前分镜 ID 不能为空");
+        DramaShot current = shotMapper.selectById(currentShotId);
+        if (current == null) throw new BizException(404, "当前分镜不存在");
+        if (StringUtils.isNotBlank(current.getGenerationMode()) && !"FIRST_LAST_FRAME".equals(current.getGenerationMode())) {
+            throw new BizException(400, "仅首尾帧模式支持引用下一镜视频首帧");
+        }
+        if (current.getShotGroupId() == null || current.getShotGroupId() <= 0) {
+            throw new BizException(400, "当前分镜未归属连续镜头组");
+        }
+        DramaShot next = findNextShot(current);
+        Long sourceId = next.getId();
+        synchronized (headFrameLocks[Long.hashCode(sourceId) & 63]) {
+            DramaShot source = shotMapper.selectById(sourceId);
+            if (source == null || StringUtils.isBlank(source.getVideoUrl())) {
+                throw new BizException(400, "请先生成下一镜视频");
+            }
+            String sourceVideoUrl = source.getVideoUrl();
+            Long sourceTakeId = source.getCurrentVideoTakeId();
+            String bucket = minioProperties.getBucketName();
+            String objectKey = videoObjectKey(sourceVideoUrl, bucket);
+            // The versioned object key is the cache index; no schema change or preview-image reuse is needed.
+            String version = videoVersionHash(sourceVideoUrl, sourceTakeId);
+            String frameKey = String.format("projects/%d/shots/%d/frames/video_first_decoded_v1_%s.jpg",
+                    source.getDramaId() != null ? source.getDramaId() : 0L, sourceId, version);
+            boolean reused = false;
+            long cacheVersion = System.currentTimeMillis();
+            try {
+                if (request == null || !Boolean.TRUE.equals(request.getForceExtract())) {
+                    try {
+                        var cached = minioClient.statObject(StatObjectArgs.builder().bucket(bucket).object(frameKey).build());
+                        if (cached != null && cached.size() > 0) {
+                            reused = true;
+                            if (cached.lastModified() != null) cacheVersion = cached.lastModified().toInstant().toEpochMilli();
+                        }
+                    } catch (ErrorResponseException e) {
+                        if (!List.of("NoSuchKey", "NoSuchObject", "NotFound").contains(e.errorResponse().code())) throw e;
+                    }
+                }
+                if (!reused) {
+                    byte[] videoBytes;
+                    try (InputStream input = minioClient.getObject(GetObjectArgs.builder().bucket(bucket).object(objectKey).build())) {
+                        videoBytes = input.readAllBytes();
+                    }
+                    String ext = StringUtils.defaultIfBlank(StringUtils.substringAfterLast(objectKey, "."), "mp4");
+                    byte[] frame = videoFrameExtractService.extractFirstFrame(videoBytes, ext);
+                    if (frame == null || frame.length == 0) {
+                        throw new BizException(500, "下一镜视频首帧提取失败，请检查 ffmpeg 配置");
+                    }
+                    try (InputStream input = new ByteArrayInputStream(frame)) {
+                        minioClient.putObject(PutObjectArgs.builder().bucket(bucket).object(frameKey)
+                                .stream(input, frame.length, -1).contentType("image/jpeg").build());
+                    }
+                    cacheVersion = System.currentTimeMillis();
+                }
+            } catch (BizException e) {
+                throw e;
+            } catch (Exception e) {
+                log.error("[ShotFrameContinuity] 下一镜视频首帧提取/归档失败: sourceShotId={}", sourceId, e);
+                throw new BizException(500, "下一镜视频首帧提取/归档失败");
+            }
+
+            DramaShot latestCurrent = shotMapper.selectById(currentShotId);
+            if (latestCurrent == null || !Objects.equals(latestCurrent.getShotGroupId(), current.getShotGroupId())
+                    || (StringUtils.isNotBlank(latestCurrent.getGenerationMode())
+                    && !"FIRST_LAST_FRAME".equals(latestCurrent.getGenerationMode()))) {
+                throw new BizException(409, "当前分镜已变化，请刷新后重试");
+            }
+            DramaShot latestNext;
+            try {
+                latestNext = findNextShot(latestCurrent);
+            } catch (BizException e) {
+                throw new BizException(409, "镜头顺序已变化，请刷新后重试");
+            }
+            if (!Objects.equals(latestNext.getId(), sourceId)) {
+                throw new BizException(409, "镜头顺序已变化，请刷新后重试");
+            }
+            DramaShot latestSource = shotMapper.selectById(sourceId);
+            if (latestSource == null || !Objects.equals(latestSource.getVideoUrl(), sourceVideoUrl)
+                    || !Objects.equals(latestSource.getCurrentVideoTakeId(), sourceTakeId)) {
+                throw new BizException(409, "下一镜视频版本已变化，请重新引用");
+            }
+            String base = StringUtils.defaultIfBlank(minioProperties.getExternalEndpoint(), minioProperties.getEndpoint());
+            String frameUrl = StringUtils.removeEnd(base, "/") + "/" + bucket + "/" + frameKey + "?v=" + cacheVersion;
+            int updated = shotMapper.update(null, new UpdateWrapper<DramaShot>()
+                    .eq("id", currentShotId).eq("shot_group_id", current.getShotGroupId())
+                    .and(w -> w.isNull("generation_mode").or().eq("generation_mode", "FIRST_LAST_FRAME").or().eq("generation_mode", ""))
+                    .set("end_frame_image_url", frameUrl));
+            if (updated == 0) throw new BizException(409, "当前分镜已变化，请刷新后重试");
+            return NextVideoHeadVO.builder().currentShotId(currentShotId).sourceShotId(sourceId)
+                    .sourceShotNo(source.getShotNo()).sourceShotName(source.getShotName())
+                    .sourceVideoUrl(sourceVideoUrl).sourceVideoTakeId(sourceTakeId).headFrameUrl(frameUrl)
+                    .reused(reused).applied(true).build();
+        }
+    }
+
+    private DramaShot findNextShot(DramaShot current) {
+        List<DramaShot> shots = new ArrayList<>(shotMapper.selectList(new LambdaQueryWrapper<DramaShot>()
+                .eq(DramaShot::getShotGroupId, current.getShotGroupId())));
+        sortShotsStably(shots);
+        int index = findShotIndex(shots, current.getId());
+        if (index < 0 || index + 1 >= shots.size()) throw new BizException(400, "当前分镜没有可引用的下一镜");
+        DramaShot next = shots.get(index + 1);
+        if (StringUtils.isBlank(next.getVideoUrl())) throw new BizException(400, "请先生成下一镜视频");
+        return next;
+    }
+
+    private String videoObjectKey(String videoUrl, String bucket) {
+        String token = "/" + bucket + "/";
+        int index = videoUrl.indexOf(token);
+        if (index < 0) throw new BizException(400, "下一镜视频不支持服务端首帧提取");
+        String key;
+        try {
+            key = URLDecoder.decode(StringUtils.substringBefore(videoUrl.substring(index + token.length()), "?"), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException e) {
+            throw new BizException(400, "下一镜视频路径解析失败");
+        }
+        if (StringUtils.isBlank(key) || key.contains("..") || key.startsWith("/") || key.contains("\\")) {
+            throw new BizException(400, "下一镜视频路径非法");
+        }
+        return key;
+    }
+
+    private String videoVersionHash(String url, Long takeId) {
+        try {
+            byte[] bytes = (url + "\n" + Objects.toString(takeId, "")).getBytes(StandardCharsets.UTF_8);
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        } catch (java.security.NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     @Override
     public PreviousVideoTailVO inheritPreviousVideoTail(Long currentShotId, PreviousVideoTailRequest request) {

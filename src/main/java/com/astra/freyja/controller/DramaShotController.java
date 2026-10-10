@@ -168,6 +168,13 @@ public class DramaShotController {
         return R.ok(continuityService.extractPreviousVideoTail(currentShotId, request));
     }
 
+    @PostMapping("/{currentShotId}/inherit-next-video-head")
+    public R<com.astra.freyja.dto.drama.NextVideoHeadVO> inheritNextVideoHead(
+            @PathVariable Long currentShotId,
+            @RequestBody(required = false) com.astra.freyja.dto.drama.NextVideoHeadRequest request) {
+        return R.ok(continuityService.inheritNextVideoHead(currentShotId, request));
+    }
+
     @PutMapping("/{id}/set-end-frame")
     public R<Void> setEndFrame(@PathVariable Long id,
                                @RequestBody Map<String, String> body) {

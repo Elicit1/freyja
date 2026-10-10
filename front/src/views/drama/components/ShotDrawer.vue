@@ -3,7 +3,7 @@
     v-model="visible"
     scope="workspace"
     breadcrumb="剧作大纲与分镜 / 分镜精细工坊"
-    :title="isEdit ? `分镜精细配置 - ${form.shotName || '镜头'}` : '新增分镜镜头'"
+    :title="isEdit ? `分镜精细配置 - ${form.shotName || '镜头'}` : insertionAnchor ? `插入分镜（指定镜头${insertionAnchor.position === 'before' ? '前' : '后'}）` : '新增分镜镜头'"
     max-width="max-w-6xl"
   >
     <template #badge>
@@ -113,7 +113,7 @@
           <el-row :gutter="16">
             <el-col :span="4">
               <el-form-item label="镜头序号" prop="shotNo">
-                <el-input-number v-model="form.shotNo" :min="1" :max="500" class="w-full" />
+                <el-input-number v-model="form.shotNo" :disabled="!isEdit && !!insertionAnchor" :min="1" :max="500" class="w-full" />
               </el-form-item>
             </el-col>
             <el-col :span="6">
@@ -123,7 +123,7 @@
             </el-col>
             <el-col :span="8">
               <el-form-item label="归属连续镜头组 (ShotGroup)">
-                <el-select v-model="form.shotGroupId" placeholder="选择镜头组" clearable class="w-full">
+                <el-select v-model="form.shotGroupId" :disabled="!isEdit && !!insertionAnchor" placeholder="选择镜头组" clearable class="w-full">
                   <el-option
                     v-for="g in groupOptions"
                     :key="g.id"
@@ -154,9 +154,9 @@
               </el-form-item>
             </el-col>
             <el-col :span="10">
-              <el-form-item label="视频随机种子 Seed">
+              <el-form-item label="视频随机种子 Seed" prop="seed">
                 <div class="flex w-full items-center gap-2">
-                  <el-input :model-value="form.seed || '创建后自动生成'" readonly class="flex-1 font-mono" />
+                  <el-input v-model="form.seed" :disabled="refreshingSeed" :placeholder="isEdit ? '留空保留原种子' : '留空自动生成'" clearable class="flex-1 font-mono" />
                   <el-button :disabled="!form.id" :loading="refreshingSeed" @click="handleRefreshSeed">刷新种子</el-button>
                 </div>
               </el-form-item>
@@ -916,6 +916,21 @@
                       📤 上传尾帧
                     </el-button>
                   </el-upload>
+                  <el-button
+                    size="small" plain type="success" class="w-full !ml-0"
+                    :loading="inheritingHead" :disabled="!form.id"
+                    title="从同镜头组下一镜已生成视频中提取实际首帧，并设为本镜尾帧"
+                    @click="handleApplyNextHead()"
+                  >
+                    引用下一镜视频首帧
+                  </el-button>
+                  <el-popconfirm title="重新提取下一镜视频首帧并覆盖当前尾帧？" @confirm="handleApplyNextHead(true)">
+                    <template #reference>
+                      <el-button v-if="form.id && form.endFrameImageUrl" size="small" link :disabled="inheritingHead" class="!ml-0">
+                        重新提取下一镜首帧
+                      </el-button>
+                    </template>
+                  </el-popconfirm>
                   <div v-if="form.endFrameImageUrl" class="flex justify-end">
                     <el-button
                       size="small"
@@ -1133,6 +1148,8 @@ function handleDirectorPlanSaved(data: { directorPlan?: DirectorPlan; directorPl
 const visible = ref(false)
 const router = useRouter()
 const isEdit = ref(false)
+const insertionAnchor = ref<{ shotId: string | number; position: 'before' | 'after' }>()
+const inheritingHead = ref(false)
 type PromptPanelSession = {
   directorPlanDraft?: { plan: DirectorPlan; revision: number }
   key: string
@@ -1154,6 +1171,7 @@ const loading = ref(false)
 const saving = ref(false)
 const rendering = ref(false)
 const refreshingSeed = ref(false)
+const savedSeed = ref<string>()
 const formRef = ref<FormInstance>()
 
 const uploadingFirst = ref(false)
@@ -1260,6 +1278,17 @@ const { inputsChanged: basicInputsChanged } = useDirectorInputCheck(() => form)
 
 const rules: FormRules = {
   shotNo: [{ required: true, message: '请输入镜头序号', trigger: 'blur' }],
+  seed: [{
+    validator: (_rule: any, value: string | undefined, callback: any) => {
+      const seed = value?.trim()
+      if (seed && (!/^\d+$/.test(seed) || BigInt(seed) < 1n || BigInt(seed) > BigInt(Number.MAX_SAFE_INTEGER))) {
+        callback(new Error('请输入 1 到 9007199254740991 的整数种子'))
+      } else {
+        callback()
+      }
+    },
+    trigger: ['blur', 'change']
+  }],
   duration: [
     { required: true, message: '请输入预估时长', trigger: 'blur' },
     {
@@ -1318,6 +1347,24 @@ async function loadOptions(dramaId: string | number, sceneId?: string | number) 
     propOptions.value = []
     keyframeOptions.value = []
     groupOptions.value = []
+  }
+}
+
+async function handleApplyNextHead(forceExtract = false) {
+  if (!form.id) return ElMessage.warning('请先保存分镜基础信息，再引用下一镜首帧')
+  if (inheritingHead.value) return
+  inheritingHead.value = true
+  const shotId = form.id
+  try {
+    const result = await shotApi.inheritNextVideoHead(shotId, { forceExtract })
+    if (String(form.id) !== String(shotId)) return
+    form.endFrameImageUrl = result.headFrameUrl
+    ElMessage.success(`已${result.reused ? '引用缓存的' : '提取'}下一镜 (S#${result.sourceShotNo}) 视频首帧并设为当前尾帧`)
+    emit('success', shotId)
+  } catch (e: any) {
+    ElMessage.error(e.message || '提取/引用下一镜首帧失败')
+  } finally {
+    inheritingHead.value = false
   }
 }
 
@@ -1775,8 +1822,9 @@ async function bindAsset(assetType: ShotAssetType, assetId: string | number): Pr
   return saved
 }
 
-function openCreate(dramaId: string | number, episodeId: string | number, sceneId: string | number, nextShotNo = 1, defaultResSceneId?: string | number, defaultGroupId?: string | number, dramaAspectRatio?: string) {
+function openCreate(dramaId: string | number, episodeId: string | number, sceneId: string | number, nextShotNo = 1, defaultResSceneId?: string | number, defaultGroupId?: string | number, dramaAspectRatio?: string, insertion?: { shotId: string | number; position: 'before' | 'after' }) {
   isEdit.value = false
+  insertionAnchor.value = insertion
   characterRefs.value = []
   propRefs.value = []
   refImages.value = []
@@ -1834,6 +1882,7 @@ function openCreate(dramaId: string | number, episodeId: string | number, sceneI
     comfyWorkflowTemplateId: 'SDXL_TXT2IMG',
     sortOrder: nextShotNo
   })
+  savedSeed.value = undefined
   drawerBackgroundType.value = 'SCENE'
   visible.value = true
 }
@@ -1852,6 +1901,7 @@ function copyToClipboard(text?: string, successMsg = '已复制到剪贴板') {
 
 async function openEdit(id: string | number, dramaId: string | number, dramaAspectRatio?: string) {
   isEdit.value = true
+  insertionAnchor.value = undefined
   visible.value = true
   loading.value = true
   // 切换分镜时先清除上一个分镜的计划与背景，避免详情加载期间串显。
@@ -1862,6 +1912,8 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
   form.resSceneId = undefined
   form.resKeyframeId = undefined
   form.customScenePrompt = undefined
+  form.seed = undefined
+  savedSeed.value = undefined
   currentDramaAspectRatio.value = dramaAspectRatio || ''
   if (!currentDramaAspectRatio.value && dramaId) {
     dramaApi.getById(dramaId).then((res: any) => {
@@ -1874,6 +1926,7 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
       await loadOptions(dramaId, res.sceneId)
       loadVoiceProviders()
       Object.assign(form, res)
+      savedSeed.value = form.seed
       // 兼容服务端省略 null 字段的序列化配置，始终以本次详情结果为准。
       form.directorPlanJson = res.directorPlanJson || undefined
       form.resSceneId = res.resSceneId || undefined
@@ -1898,6 +1951,7 @@ async function handleRefreshSeed() {
   refreshingSeed.value = true
   try {
     form.seed = await shotApi.refreshSeed(form.id)
+    savedSeed.value = form.seed
     ElMessage.success('已生成并保存新的镜头种子')
     emit('success', form.id)
   } catch (e: any) {
@@ -1909,7 +1963,7 @@ async function handleRefreshSeed() {
 
 async function handleRender() {
   const saved = await handleSave(false)
-  if (!saved && !form.id) return
+  if (!saved) return
   visible.value = false
   if (form.generationMode === 'REFERENCE_MODE') {
     multiModalRefRenderModalRef.value?.open({
@@ -1950,8 +2004,13 @@ async function handleSave(closeAfter = false): Promise<boolean> {
       seed: _seed,
       ...editableForm
     } = form
+    const seed = form.seed?.trim() || undefined
     const payload: DramaShotSaveRequest = {
       ...editableForm,
+      insertBeforeShotId: !isEdit.value && insertionAnchor.value?.position === 'before' ? insertionAnchor.value.shotId : undefined,
+      insertAfterShotId: !isEdit.value && insertionAnchor.value?.position === 'after' ? insertionAnchor.value.shotId : undefined,
+      // 只提交主动编辑的种子，避免旧表单覆盖其他窗口刷新后的值。
+      seed: seed !== savedSeed.value ? seed : undefined,
       // 完整表单保存时显式提交清空，局部保存继续省略未编辑的背景字段。
       resSceneId: form.resSceneId || null,
       resKeyframeId: form.resKeyframeId || null,
@@ -1965,6 +2024,8 @@ async function handleSave(closeAfter = false): Promise<boolean> {
     }
     if (isEdit.value && form.id) {
       await shotApi.update(payload)
+      savedSeed.value = seed || savedSeed.value
+      form.seed = savedSeed.value
       ElMessage.success('分镜保存成功')
       if (closeAfter) visible.value = false
       emit('success', form.id)
@@ -1976,10 +2037,14 @@ async function handleSave(closeAfter = false): Promise<boolean> {
         form.id = res
         isEdit.value = true
         try {
-          form.seed = (await shotApi.getById(res)).seed
+          const created = await shotApi.getById(res)
+          form.seed = created.seed
+          form.shotNo = created.shotNo
+          form.sortOrder = created.sortOrder
         } catch {
           // Seed is persisted by the backend; the next detail load will display it.
         }
+        savedSeed.value = form.seed
       }
       if (closeAfter) visible.value = false
       emit('success', form.id)

@@ -26,6 +26,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -95,6 +97,129 @@ class DramaShotServiceTest {
     @InjectMocks
     private DramaShotServiceImpl shotService;
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"true,101,0", "false,101,1", "true,102,1", "false,102,2", "false,103,3"})
+    void insertsShotAtRequestedPositionAndRenumbersOnlyItsGroup(boolean before, long anchorId, int insertionIndex) {
+        DramaScene scene = new DramaScene();
+        scene.setId(10L);
+        scene.setEpisodeId(5L);
+        scene.setDramaId(1L);
+        scene.setSceneNo(1);
+        var group = new com.astra.freyja.entity.DramaShotGroup();
+        group.setId(20L);
+        group.setSceneId(10L);
+        var existing = new java.util.ArrayList<DramaShot>();
+        for (long id = 101; id <= 103; id++) {
+            DramaShot shot = new DramaShot();
+            shot.setId(id);
+            shot.setSceneId(10L);
+            shot.setShotGroupId(20L);
+            shot.setShotNo((int) (id - 100) * 10);
+            shot.setSortOrder((int) (id - 100) * 5);
+            shot.setShotType("CLOSE_UP");
+            shot.setVideoUrl("video-" + id);
+            existing.add(shot);
+        }
+        when(sceneMapper.selectById(10L)).thenReturn(scene);
+        when(shotMapper.selectById(anchorId)).thenReturn(existing.get((int) (anchorId - 101)));
+        when(shotGroupMapper.selectForUpdate(20L)).thenReturn(group);
+        when(shotMapper.selectList(any())).thenReturn(existing);
+        when(shotMapper.updateOrderInGroup(anyLong(), eq(20L), anyInt())).thenReturn(1);
+        doAnswer(invocation -> {
+            ((DramaShot) invocation.getArgument(0)).setId(1000L);
+            return 1;
+        }).when(shotMapper).insert(any(DramaShot.class));
+        DramaShotDTO dto = new DramaShotDTO();
+        dto.setSceneId(10L);
+        dto.setShotNo(99);
+        dto.setSortOrder(99);
+        dto.setDramaId(999L);
+        dto.setEpisodeId(999L);
+        if (before) dto.setInsertBeforeShotId(anchorId); else dto.setInsertAfterShotId(anchorId);
+
+        assertEquals(1000L, shotService.create(dto));
+
+        var ids = new java.util.ArrayList<>(List.of(101L, 102L, 103L));
+        ids.add(insertionIndex, 1000L);
+        for (int i = 0; i < ids.size(); i++) verify(shotMapper).updateOrderInGroup(ids.get(i), 20L, i + 1);
+        verify(shotMapper, times(4)).updateOrderInGroup(anyLong(), anyLong(), anyInt());
+        verify(shotMapper, never()).updateById(any(DramaShot.class));
+        ArgumentCaptor<DramaShot> inserted = ArgumentCaptor.forClass(DramaShot.class);
+        verify(shotMapper).insert(inserted.capture());
+        assertEquals(insertionIndex + 1, inserted.getValue().getSortOrder());
+        assertEquals(insertionIndex + 1, inserted.getValue().getShotNo());
+        assertEquals(20L, inserted.getValue().getShotGroupId());
+        assertEquals(1L, inserted.getValue().getDramaId());
+        assertEquals(5L, inserted.getValue().getEpisodeId());
+        verify(episodeService).recalculateEpisodeDuration(5L);
+    }
+
+    @Test
+    void insertionRejectsTwoAnchorsWithoutCreatingShot() {
+        DramaScene scene = new DramaScene();
+        scene.setId(10L);
+        when(sceneMapper.selectById(10L)).thenReturn(scene);
+        DramaShotDTO dto = new DramaShotDTO();
+        dto.setSceneId(10L);
+        dto.setInsertBeforeShotId(101L);
+        dto.setInsertAfterShotId(102L);
+        assertEquals(400, assertThrows(BizException.class, () -> shotService.create(dto)).getCode());
+        verify(shotMapper, never()).insert(any(DramaShot.class));
+    }
+
+    @Test
+    void insertionRejectsDeletedAnchor() {
+        DramaScene scene = new DramaScene();
+        scene.setId(10L);
+        when(sceneMapper.selectById(10L)).thenReturn(scene);
+        DramaShotDTO dto = new DramaShotDTO();
+        dto.setSceneId(10L);
+        dto.setInsertAfterShotId(101L);
+        assertEquals(404, assertThrows(BizException.class, () -> shotService.create(dto)).getCode());
+        verify(shotMapper, never()).insert(any(DramaShot.class));
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"11,20", "10,21"})
+    void insertionRejectsAnchorOutsideRequestedSceneOrGroup(long anchorScene, long requestedGroup) {
+        DramaScene scene = new DramaScene();
+        scene.setId(10L);
+        DramaShot anchor = new DramaShot();
+        anchor.setId(101L);
+        anchor.setSceneId(anchorScene);
+        anchor.setShotGroupId(20L);
+        when(sceneMapper.selectById(10L)).thenReturn(scene);
+        when(shotMapper.selectById(101L)).thenReturn(anchor);
+        DramaShotDTO dto = new DramaShotDTO();
+        dto.setSceneId(10L);
+        dto.setShotGroupId(requestedGroup);
+        dto.setInsertAfterShotId(101L);
+        assertEquals(400, assertThrows(BizException.class, () -> shotService.create(dto)).getCode());
+        verify(shotMapper, never()).insert(any(DramaShot.class));
+    }
+
+    @Test
+    void insertionRejectsAnchorMovedWhileWaitingForGroupLock() {
+        DramaScene scene = new DramaScene();
+        scene.setId(10L);
+        var group = new com.astra.freyja.entity.DramaShotGroup();
+        group.setId(20L);
+        group.setSceneId(10L);
+        DramaShot anchor = new DramaShot();
+        anchor.setId(101L);
+        anchor.setSceneId(10L);
+        anchor.setShotGroupId(20L);
+        when(sceneMapper.selectById(10L)).thenReturn(scene);
+        when(shotMapper.selectById(101L)).thenReturn(anchor);
+        when(shotGroupMapper.selectForUpdate(20L)).thenReturn(group);
+        when(shotMapper.selectList(any())).thenReturn(List.of());
+        DramaShotDTO dto = new DramaShotDTO();
+        dto.setSceneId(10L);
+        dto.setInsertBeforeShotId(101L);
+        assertEquals(409, assertThrows(BizException.class, () -> shotService.create(dto)).getCode());
+        verify(shotMapper, never()).insert(any(DramaShot.class));
+    }
+
     @Test
     void testCreateShotSuccess() {
         DramaScene scene = new DramaScene();
@@ -137,6 +262,74 @@ class DramaShotServiceTest {
                         && "STATIC".equals(shot.getCameraMovement())
                         && Boolean.TRUE.equals(shot.getCameraMovementLocked())));
         verify(episodeService, times(1)).recalculateEpisodeDuration(5L);
+    }
+
+    @Test
+    void testCreateShotPersistsManualSeedFromStringWithoutPrecisionLoss() throws Exception {
+        DramaScene scene = new DramaScene();
+        scene.setId(10L);
+        scene.setDramaId(1L);
+        scene.setEpisodeId(5L);
+        scene.setSceneNo(1);
+        when(sceneMapper.selectById(10L)).thenReturn(scene);
+        when(shotMapper.selectList(any())).thenReturn(List.of());
+
+        DramaShotDTO dto = objectMapper.readValue(
+                "{\"sceneId\":\"10\",\"seed\":\"9007199254740991\"}", DramaShotDTO.class);
+        dto.setShotGroupId(20L);
+        shotService.create(dto);
+
+        ArgumentCaptor<DramaShot> inserted = ArgumentCaptor.forClass(DramaShot.class);
+        verify(shotMapper).insert(inserted.capture());
+        assertEquals(ShotSeedUtil.MAX_SEED, inserted.getValue().getSeed());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {1L, 123456L, 9007199254740991L})
+    void testUpdateShotPersistsManuallyEditedSeed(long seed) {
+        DramaShot existing = new DramaShot();
+        existing.setId(1000L);
+        existing.setSeed(1234L);
+        when(shotMapper.selectById(1000L)).thenReturn(existing);
+
+        DramaShotDTO dto = new DramaShotDTO();
+        dto.setId(1000L);
+        dto.setSeed(seed);
+        shotService.update(dto);
+
+        ArgumentCaptor<DramaShot> updated = ArgumentCaptor.forClass(DramaShot.class);
+        verify(shotMapper).updateById(updated.capture());
+        assertEquals(seed, updated.getValue().getSeed());
+    }
+
+    @Test
+    void testUpdateWithoutSeedDoesNotOverwriteRefreshedSeed() {
+        DramaShot existing = new DramaShot();
+        existing.setId(1000L);
+        existing.setSeed(5678L);
+        when(shotMapper.selectById(1000L)).thenReturn(existing);
+
+        DramaShotDTO dto = new DramaShotDTO();
+        dto.setId(1000L);
+        dto.setActionDescription("更新剧情描述");
+        shotService.update(dto);
+
+        ArgumentCaptor<DramaShot> updated = ArgumentCaptor.forClass(DramaShot.class);
+        verify(shotMapper).updateById(updated.capture());
+        assertNull(updated.getValue().getSeed(), "未提交种子时不写入该列，保留数据库中的最新值");
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {0L, -1L, 9007199254740992L, Long.MAX_VALUE})
+    void testInvalidManualSeedsAreRejectedBeforePersistence(long seed) {
+        DramaShotDTO dto = new DramaShotDTO();
+        dto.setSceneId(10L);
+        dto.setId(1000L);
+        dto.setSeed(seed);
+
+        assertEquals(400, assertThrows(BizException.class, () -> shotService.create(dto)).getCode());
+        assertEquals(400, assertThrows(BizException.class, () -> shotService.update(dto)).getCode());
+        verifyNoInteractions(shotMapper, sceneMapper, shotGroupMapper);
     }
 
     @Test

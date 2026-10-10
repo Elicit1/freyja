@@ -21,6 +21,8 @@ class VideoFrameExtractServiceTest {
     void testNullOrEmptyInputReturnsNull() {
         assertNull(service.extractLastFrame(null, "mp4"));
         assertNull(service.extractLastFrame(new byte[0], "mp4"));
+        assertNull(service.extractFirstFrame(null, "mp4"));
+        assertNull(service.extractFirstFrame(new byte[0], "mp4"));
     }
 
     @Test
@@ -30,6 +32,7 @@ class VideoFrameExtractServiceTest {
         assertNull(service.extractLastFrame(garbage, "mp4"));
         assertNull(service.extractLastFrame(garbage, ""));
         assertNull(service.extractLastFrame(garbage, "webm"));
+        assertNull(service.extractFirstFrame(garbage, "mp4"));
     }
 
     @org.junit.jupiter.params.ParameterizedTest
@@ -61,5 +64,16 @@ class VideoFrameExtractServiceTest {
         var color = new java.awt.Color(image.getRGB(32, 32));
         org.junit.jupiter.api.Assertions.assertTrue(color.getBlue() > 200 && color.getRed() < 50,
                 "Expected the final blue frame rather than an earlier red frame, got " + color);
+        byte[] firstFrame = extractor.extractFirstFrame(java.nio.file.Files.readAllBytes(video), "mp4");
+        org.junit.jupiter.api.Assertions.assertNotNull(firstFrame);
+        var firstImage = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(firstFrame));
+        org.junit.jupiter.api.Assertions.assertNotNull(firstImage);
+        var firstColor = new java.awt.Color(firstImage.getRGB(32, 32));
+        if (frames == 1) {
+            org.junit.jupiter.api.Assertions.assertTrue(firstColor.getBlue() > 200 && firstColor.getRed() < 50);
+        } else {
+            org.junit.jupiter.api.Assertions.assertTrue(firstColor.getRed() > 200 && firstColor.getBlue() < 50,
+                    "Expected the actual first red frame, got " + firstColor);
+        }
     }
 }

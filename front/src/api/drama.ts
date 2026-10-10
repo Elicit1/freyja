@@ -22,6 +22,7 @@ import type {
   ShotPromptParseRequestDTO,
   ShotPromptValidationResult,
   PreviousVideoTailResult,
+  NextVideoHeadResult,
   ShotVideoTake,
   ShotVideoTakeSelectResult
 } from '@/types/drama'
@@ -378,6 +379,14 @@ export const shotApi = {
   ) {
     return request<PreviousVideoTailResult>({
       url: `/drama/shot/${currentShotId}/inherit-previous-video-tail`,
+      method: 'post',
+      data
+    })
+  },
+
+  inheritNextVideoHead(currentShotId: string | number, data?: { forceExtract?: boolean }) {
+    return request<NextVideoHeadResult>({
+      url: `/drama/shot/${currentShotId}/inherit-next-video-head`,
       method: 'post',
       data
     })

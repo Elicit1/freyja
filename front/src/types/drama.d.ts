@@ -280,6 +280,8 @@ export interface ShotRefAudio {
 
 /** 背景字段省略表示保留，显式 null 表示清空。 */
 export type DramaShotSaveRequest = Omit<Partial<DramaShot>, 'resSceneId' | 'resKeyframeId' | 'customScenePrompt'> & {
+  insertBeforeShotId?: string | number
+  insertAfterShotId?: string | number
   resSceneId?: string | number | null
   resKeyframeId?: string | number | null
   customScenePrompt?: string | null
@@ -706,6 +708,18 @@ export interface PreviousVideoTailResult {
   sourceShotName: string
   sourceVideoUrl: string
   tailFrameUrl: string
+  reused: boolean
+  applied: boolean
+}
+
+export interface NextVideoHeadResult {
+  currentShotId: string | number
+  sourceShotId: string | number
+  sourceShotNo: number
+  sourceShotName: string
+  sourceVideoUrl: string
+  sourceVideoTakeId?: string | number
+  headFrameUrl: string
   reused: boolean
   applied: boolean
 }

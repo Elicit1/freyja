@@ -19,7 +19,7 @@
         </div>
         <p class="text-purple-700 leading-relaxed">
           本模式专供关键帧运动生成模型（如 MiniMax H3 FL2VA、Wan 2.1 等），<strong>仅支持首帧图、尾帧图与提示词作为参考</strong>。
-          首尾帧<strong>不强制提供</strong>，可以仅凭提示词生成。若上一镜头已生成尾帧，可一键引用为本镜首帧。
+          首尾帧<strong>不强制提供</strong>，可以仅凭提示词生成。可引用上一镜视频的实际尾帧为本镜首帧，也可引用下一镜视频的实际首帧为本镜尾帧（限同镜头组）。
         </p>
       </div>
     </div>
@@ -283,6 +283,18 @@
             </div>
           </div>
 
+          <div class="flex flex-wrap items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 p-2">
+            <el-button size="small" type="success" plain :loading="extractingHead" @click="handleInheritNextHead()">
+              引用下一镜视频首帧
+            </el-button>
+            <el-popconfirm title="重新提取下一镜视频首帧并覆盖当前尾帧？" @confirm="handleInheritNextHead(true)">
+              <template #reference>
+                <el-button v-if="endFrameUrl" size="small" link :disabled="extractingHead">重新提取</el-button>
+              </template>
+            </el-popconfirm>
+            <span class="text-[11px] text-purple-600">{{ headSourceInfo || '使用同组下一镜已生成视频的实际首帧' }}</span>
+          </div>
+
           <!-- 尾帧操作栏 -->
           <div class="flex items-center justify-between gap-2 pt-1 border-t border-gray-100">
             <div class="flex items-center gap-1.5">
@@ -347,13 +359,14 @@
         </div>
         <div class="flex items-center gap-2.5">
           <el-button @click="visible = false">取消</el-button>
-          <el-button type="primary" plain :loading="savingConfig" @click="handleSaveConfig">
+          <el-button type="primary" plain :loading="savingConfig" :disabled="extractingHead || extractingTail" @click="handleSaveConfig">
             💾 仅保存配置
           </el-button>
           <el-button
             type="primary"
             class="!bg-purple-600 !border-purple-600 hover:!bg-purple-500 !font-bold"
             :loading="renderingVideo"
+            :disabled="extractingHead || extractingTail"
             @click="handleStartRender"
           >
             🚀 启动首尾帧渲染
@@ -396,6 +409,8 @@ const tailSourceInfo = ref<string>('')
 const endFrameUrl = ref<string>('')
 const videoUrl = ref<string>('')
 const extractingTail = ref(false)
+const extractingHead = ref(false)
+const headSourceInfo = ref('')
 const dramaAspectRatio = ref<string>('')
 const shotSeed = ref<string>('')
 
@@ -482,6 +497,7 @@ async function open(shot: DramaShot, _prevShotTailUrl?: string, dramaAspectRatio
   firstFrameSourceType.value = shot.firstFrameSourceType || ''
   tailSourceInfo.value = shot.firstFrameSourceShotId ? `已引用上一镜 (ID: ${shot.firstFrameSourceShotId}) 尾帧` : ''
   endFrameUrl.value = shot.endFrameImageUrl || ''
+  headSourceInfo.value = ''
   videoUrl.value = shot.videoUrl || ''
 
   // 尝试获取短剧配置中的画幅比例与尺寸
@@ -501,6 +517,24 @@ async function open(shot: DramaShot, _prevShotTailUrl?: string, dramaAspectRatio
 
   visible.value = true
   loadProviders()
+}
+
+async function handleInheritNextHead(forceExtract = false) {
+  if (!currentShotId.value || extractingHead.value) return
+  extractingHead.value = true
+  const shotId = currentShotId.value
+  try {
+    const result = await shotApi.inheritNextVideoHead(shotId, { forceExtract })
+    if (String(currentShotId.value) !== String(shotId)) return
+    endFrameUrl.value = result.headFrameUrl
+    headSourceInfo.value = `来源: S${result.sourceShotNo} ${result.sourceShotName || ''}`
+    ElMessage.success(result.reused ? '已引用缓存的下一镜视频首帧为当前尾帧' : '已从下一镜视频提取首帧并设为当前尾帧')
+    emit('success', shotId)
+  } catch (e: any) {
+    ElMessage.error(e.message || '提取/引用下一镜首帧失败')
+  } finally {
+    extractingHead.value = false
+  }
 }
 
 // 从上一镜视频按需提取并引用尾帧
@@ -563,6 +597,7 @@ async function handleImageApplied(payload: { frameType: 'FIRST_FRAME' | 'LAST_FR
     ElMessage.success('已应用生成图为首帧！')
   } else if (payload.frameType === 'LAST_FRAME') {
     endFrameUrl.value = payload.url
+    headSourceInfo.value = ''
     ElMessage.success('已应用生成图为尾帧！')
   }
   if (currentShotId.value) {
@@ -617,6 +652,7 @@ async function handleUploadEndFrame(file: File) {
     const res = await assetApi.upload(file, 'shots')
     if (res && res.url) {
       endFrameUrl.value = res.url
+      headSourceInfo.value = ''
       await shotApi.setEndFrame(currentShotId.value, res.url)
       ElMessage.success('尾帧图上传并保存成功！')
       emit('success', currentShotId.value)
@@ -632,6 +668,7 @@ async function handleUploadEndFrame(file: File) {
 // 清除尾帧
 async function handleClearEndFrame() {
   endFrameUrl.value = ''
+  headSourceInfo.value = ''
   if (currentShotId.value) {
     try {
       await shotApi.setEndFrame(currentShotId.value, '')

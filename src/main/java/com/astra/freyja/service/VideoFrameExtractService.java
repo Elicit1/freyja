@@ -35,6 +35,15 @@ public class VideoFrameExtractService {
 
     /** Decode the complete video stream and keep its final frame, without a time offset. */
     public byte[] extractLastFrame(byte[] videoBytes, String extension) {
+        return extractFrame(videoBytes, extension, false);
+    }
+
+    /** Decode the first displayed video frame; the configured preview image is not the video frame. */
+    public byte[] extractFirstFrame(byte[] videoBytes, String extension) {
+        return extractFrame(videoBytes, extension, true);
+    }
+
+    private byte[] extractFrame(byte[] videoBytes, String extension, boolean first) {
         if (videoBytes == null || videoBytes.length == 0 || StringUtils.isBlank(properties.getFfmpegPath())) return null;
         Path videoPath = null;
         Path framePath = null;
@@ -44,7 +53,7 @@ public class VideoFrameExtractService {
             Files.write(videoPath, videoBytes);
             List<String> command = List.of(properties.getFfmpegPath(), "-hide_banner", "-loglevel", "error", "-y",
                     "-i", videoPath.toString(), "-map", "0:v:0", "-an",
-                    "-fps_mode", "passthrough", "-update", "1", "-q:v", "2", framePath.toString());
+                    "-fps_mode", "passthrough", first ? "-frames:v" : "-update", "1", "-q:v", "2", framePath.toString());
             NativeProcessExecutor.ProcessResult result = processExecutor.execute(command, timeout());
             if (result.timedOut() || result.exitCode() != 0) {
                 log.warn("[VideoFrameExtract] ffmpeg failed, exit={}, timeout={}, output={}", result.exitCode(), result.timedOut(), result.output());
