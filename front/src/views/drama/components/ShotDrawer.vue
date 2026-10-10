@@ -876,7 +876,18 @@
             <div class="border border-slate-200 rounded-lg p-3 bg-slate-50/40 space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-xs font-bold text-purple-900">尾帧图 (End Frame)</span>
-                <span class="text-[11px] text-gray-400">供首尾关键帧过渡</span>
+                <!-- 按需引用下一镜首帧快捷入口，与首帧卡片的上一镜引用入口一致 -->
+                <el-button
+                  size="small"
+                  type="primary"
+                  link
+                  class="!text-xs"
+                  :loading="inheritingHead"
+                  @click="handleApplyNextHead"
+                  title="从同镜头组下一镜视频按需提取实际第一帧并引用为本镜尾帧"
+                >
+                  📎 引用下一镜首帧
+                </el-button>
               </div>
 
               <div class="flex gap-3 items-center">
@@ -916,21 +927,6 @@
                       📤 上传尾帧
                     </el-button>
                   </el-upload>
-                  <el-button
-                    size="small" plain type="success" class="w-full !ml-0"
-                    :loading="inheritingHead" :disabled="!form.id"
-                    title="从同镜头组下一镜已生成视频中提取实际首帧，并设为本镜尾帧"
-                    @click="handleApplyNextHead()"
-                  >
-                    引用下一镜视频首帧
-                  </el-button>
-                  <el-popconfirm title="重新提取下一镜视频首帧并覆盖当前尾帧？" @confirm="handleApplyNextHead(true)">
-                    <template #reference>
-                      <el-button v-if="form.id && form.endFrameImageUrl" size="small" link :disabled="inheritingHead" class="!ml-0">
-                        重新提取下一镜首帧
-                      </el-button>
-                    </template>
-                  </el-popconfirm>
                   <div v-if="form.endFrameImageUrl" class="flex justify-end">
                     <el-button
                       size="small"
@@ -1350,17 +1346,20 @@ async function loadOptions(dramaId: string | number, sceneId?: string | number) 
   }
 }
 
-async function handleApplyNextHead(forceExtract = false) {
+async function handleApplyNextHead() {
   if (!form.id) return ElMessage.warning('请先保存分镜基础信息，再引用下一镜首帧')
   if (inheritingHead.value) return
   inheritingHead.value = true
   const shotId = form.id
   try {
-    const result = await shotApi.inheritNextVideoHead(shotId, { forceExtract })
+    const result = await shotApi.inheritNextVideoHead(shotId)
     if (String(form.id) !== String(shotId)) return
     form.endFrameImageUrl = result.headFrameUrl
-    ElMessage.success(`已${result.reused ? '引用缓存的' : '提取'}下一镜 (S#${result.sourceShotNo}) 视频首帧并设为当前尾帧`)
-    emit('success', shotId)
+    if (result.reused) {
+      ElMessage.success(`已引用缓存的下一镜 (S#${result.sourceShotNo || ''}) 视频首帧！`)
+    } else {
+      ElMessage.success(`已从下一镜 (S#${result.sourceShotNo || ''}) 视频提取首帧并设为当前尾帧！`)
+    }
   } catch (e: any) {
     ElMessage.error(e.message || '提取/引用下一镜首帧失败')
   } finally {

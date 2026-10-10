@@ -256,7 +256,39 @@
                 {{ endFrameUrl ? '已设置' : '可选/未设置' }}
               </el-tag>
             </div>
-            <span class="text-[11px] text-gray-400">过渡重点终点</span>
+            <!-- 尾帧来源与按需提取下一镜视频首帧操作，与首帧卡片保持一致 -->
+            <div class="flex items-center gap-1.5">
+              <span v-if="headSourceInfo" class="text-[11px] text-purple-600 font-medium">
+                🔗 {{ headSourceInfo }}
+              </span>
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                :loading="extractingHead"
+                @click="handleInheritNextHead(false)"
+                title="从同镜头组下一镜已生成的实际视频中提取实际第一帧并引用为本镜尾帧"
+              >
+                📎 从下一镜视频提取并引用首帧
+              </el-button>
+              <el-popconfirm
+                v-if="nextHeadIsApplied"
+                title="确定要忽略缓存强制重新提取下一镜视频首帧吗？"
+                @confirm="handleInheritNextHead(true)"
+              >
+                <template #reference>
+                  <el-button
+                    size="small"
+                    text
+                    type="warning"
+                    :loading="extractingHead"
+                    title="忽略缓存强制重新截取下一镜视频首帧"
+                  >
+                    🔄 重新提取
+                  </el-button>
+                </template>
+              </el-popconfirm>
+            </div>
           </div>
 
           <!-- 图片展示/占位框 -->
@@ -281,18 +313,6 @@
             <div v-if="endFrameUrl" class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-xs pointer-events-none gap-1">
               <span>🔍 点击放大预览</span>
             </div>
-          </div>
-
-          <div class="flex flex-wrap items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 p-2">
-            <el-button size="small" type="success" plain :loading="extractingHead" @click="handleInheritNextHead()">
-              引用下一镜视频首帧
-            </el-button>
-            <el-popconfirm title="重新提取下一镜视频首帧并覆盖当前尾帧？" @confirm="handleInheritNextHead(true)">
-              <template #reference>
-                <el-button v-if="endFrameUrl" size="small" link :disabled="extractingHead">重新提取</el-button>
-              </template>
-            </el-popconfirm>
-            <span class="text-[11px] text-purple-600">{{ headSourceInfo || '使用同组下一镜已生成视频的实际首帧' }}</span>
           </div>
 
           <!-- 尾帧操作栏 -->
@@ -356,6 +376,7 @@
         <div class="text-xs text-gray-500">
           <span>分镜: <strong>#{{ shotNo }} {{ shotName }}</strong></span>
           <span v-if="tailSourceInfo" class="ml-3 text-indigo-600 font-medium">✓ {{ tailSourceInfo }}</span>
+          <span v-if="headSourceInfo" class="ml-3 text-purple-600 font-medium">✓ {{ headSourceInfo }}</span>
         </div>
         <div class="flex items-center gap-2.5">
           <el-button @click="visible = false">取消</el-button>
@@ -378,7 +399,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { shotApi, dramaApi } from '@/api/drama'
@@ -411,6 +432,17 @@ const videoUrl = ref<string>('')
 const extractingTail = ref(false)
 const extractingHead = ref(false)
 const headSourceInfo = ref('')
+// The continuity API archives video first frames with this versioned object-name prefix.
+// Use the saved artifact URL so the refresh action also survives closing and reopening the dialog.
+const nextHeadIsApplied = computed(() => {
+  if (!endFrameUrl.value) return false
+  try {
+    const objectName = new URL(endFrameUrl.value).pathname.split('/').pop() || ''
+    return objectName.startsWith('video_first_decoded_v1_')
+  } catch {
+    return false
+  }
+})
 const dramaAspectRatio = ref<string>('')
 const shotSeed = ref<string>('')
 
@@ -497,7 +529,7 @@ async function open(shot: DramaShot, _prevShotTailUrl?: string, dramaAspectRatio
   firstFrameSourceType.value = shot.firstFrameSourceType || ''
   tailSourceInfo.value = shot.firstFrameSourceShotId ? `已引用上一镜 (ID: ${shot.firstFrameSourceShotId}) 尾帧` : ''
   endFrameUrl.value = shot.endFrameImageUrl || ''
-  headSourceInfo.value = ''
+  headSourceInfo.value = nextHeadIsApplied.value ? '已引用下一镜视频首帧' : ''
   videoUrl.value = shot.videoUrl || ''
 
   // 尝试获取短剧配置中的画幅比例与尺寸
@@ -527,8 +559,12 @@ async function handleInheritNextHead(forceExtract = false) {
     const result = await shotApi.inheritNextVideoHead(shotId, { forceExtract })
     if (String(currentShotId.value) !== String(shotId)) return
     endFrameUrl.value = result.headFrameUrl
-    headSourceInfo.value = `来源: S${result.sourceShotNo} ${result.sourceShotName || ''}`
-    ElMessage.success(result.reused ? '已引用缓存的下一镜视频首帧为当前尾帧' : '已从下一镜视频提取首帧并设为当前尾帧')
+    headSourceInfo.value = `来源: S${result.sourceShotNo || ''} ${result.sourceShotName || ''}`
+    if (result.reused) {
+      ElMessage.success('已引用缓存的下一镜视频首帧')
+    } else {
+      ElMessage.success('已从下一镜视频提取首帧并设为当前尾帧')
+    }
     emit('success', shotId)
   } catch (e: any) {
     ElMessage.error(e.message || '提取/引用下一镜首帧失败')
