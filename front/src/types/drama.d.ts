@@ -262,7 +262,7 @@ export interface ShotRefImage {
   name: string
   imageUrl: string
   referenceRole?: 'IDENTITY' | 'LOOK' | 'COMBINED' | 'POSE' | 'STYLE' | string
-  usageRole?: 'SUBJECT' | 'FIRST_FRAME' | 'LAST_FRAME' | 'SCENE' | 'PROP' | string
+  usageRole?: 'SUBJECT' | 'NON_SUBJECT' | 'FIRST_FRAME' | 'LAST_FRAME' | 'SCENE' | 'PROP' | string
 }
 
 export interface ShotRefAudio {
@@ -527,9 +527,12 @@ export interface ShotPromptPackageVO {
       pictureIndex: number
       referenceId?: string
       sourceType?: string
-      sourceId?: number
+      sourceId?: string | number
+      characterId?: string | number
+      lookId?: string | number
       entityName?: string
       usageRole?: string
+      referenceRole?: string
       description?: string
       imageUrl?: string
     }>

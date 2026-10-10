@@ -130,6 +130,38 @@ class AiImageApiServiceImplTest {
     }
 
     @Test
+    @DisplayName("非主体人物参考图和造型关系仍传给视频网关")
+    void nonSubjectCharacterImageIsNotDroppedFromVideoPayload() throws Exception {
+        AiProvider provider = new AiProvider(); provider.setId(5L); provider.setStatus(1);
+        provider.setBaseUrl("https://gateway.example.test/v1");
+        when(providerMapper.selectById(5L)).thenReturn(provider);
+        String dataUri = "data:image/png;base64,aW1hZ2U=";
+        ShotRefImageDTO reference = ShotRefImageDTO.builder().id("pov-look")
+                .sourceType("CHARACTER_REFERENCE").sourceId(301L).characterId(201L).lookId(301L)
+                .name("林默造型").usageRole("NON_SUBJECT").referenceRole("COMBINED").imageUrl(dataUri).build();
+        DramaShot shot = new DramaShot(); shot.setGenerationMode("REFERENCE_MODE");
+        shot.setPrompt("First-person view from Lin Mo, looking toward the doorway.");
+        shot.setRefImagesJson("stored-reference-json");
+        when(objectMapper.readValue(eq(shot.getRefImagesJson()),
+                org.mockito.ArgumentMatchers.<TypeReference<List<ShotRefImageDTO>>>any())).thenReturn(List.of(reference));
+        DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO(); request.setProviderId(5L);
+        doReturn("minimax-h3-ref2va").when(aiImageApiService)
+                .resolveVideoModelCode(eq(request), eq(5L), eq("REFERENCE_MODE"));
+        when(objectMapper.writeValueAsString(any())).thenThrow(new BizException(500, "capture payload"));
+        assertThrows(BizException.class, () -> aiImageApiService.generateAndArchiveVideo(1L, 2L, shot, request));
+
+        ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
+        verify(objectMapper).writeValueAsString(payload.capture());
+        List<?> references = (List<?>) ((Map<?, ?>) payload.getValue()).get("references");
+        Map<?, ?> binding = (Map<?, ?>) references.getFirst();
+        assertEquals("NON_SUBJECT", binding.get("usageRole"));
+        assertEquals("COMBINED", binding.get("referenceRole"));
+        assertEquals("201", binding.get("characterId"));
+        assertEquals("301", binding.get("lookId"));
+        assertEquals(List.of(dataUri), binding.get("referenceImages"));
+    }
+
+    @Test
     @DisplayName("测试当生图网关返回127.0.0.1时，自动校正为提供商配置的真实远程IP")
     void testResolveRemoteImageUrl_loopbackRewrite() throws Exception {
         Method method = AiImageApiServiceImpl.class.getDeclaredMethod("resolveRemoteImageUrl", String.class, String.class);

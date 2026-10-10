@@ -21,6 +21,8 @@ import org.junit.jupiter.api.DisplayName;
 import com.astra.freyja.common.BizException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -180,6 +182,93 @@ class ShotPromptDeriveH3Test {
         assertTrue(context.contains("<Picture 2>"));
         assertTrue(context.contains("Audio 1"));
         assertTrue(context.contains("<Audio 1>"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"REFERENCE_MODE", "FIRST_LAST_FRAME"})
+    @DisplayName("第一人称人物保留设定图和音频绑定，不成为可见人物主体")
+    void nonSubjectCharacterKeepsReferenceAndVoiceContext(String mode) {
+        ResCharacter pov = new ResCharacter();
+        pov.setId(201L);
+        pov.setName("林默");
+        pov.setAppearanceDesc("short black hair, charcoal-gray jacket");
+        when(characterMapper.selectById(201L)).thenReturn(pov);
+        ShotRefImageDTO povImage = ShotRefImageDTO.builder().id("pov")
+                .sourceType("CHARACTER").sourceId(201L).name("林默身份设定图")
+                .usageRole("NON_SUBJECT").referenceRole("IDENTITY")
+                .imageUrl("http://minio/pov.png").build();
+        ShotRefImageDTO visibleImage = ShotRefImageDTO.builder().id("visible")
+                .sourceType("UPLOAD").name("对面出镜人物").usageRole("SUBJECT")
+                .imageUrl("http://minio/visible.png").build();
+        ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder().shotNo(1).generationMode(mode)
+                .scriptContent("林默第一人称视角看向对面人物，低头时可见自己的衣袖；林默在画外说话。")
+                .characterRefs(List.of(CharacterShotRefInfoVO.builder().characterId(201L).build()))
+                .refImages(List.of(povImage, visibleImage))
+                .refAudios(List.of(ShotRefAudioDTO.builder().id("voice").characterId(201L)
+                        .characterName("林默").usageMode("VOICE_TIMBRE").audioUrl("http://minio/voice.wav").build()))
+                .build();
+
+        ShotPromptPackageVO pkg = service.buildPromptPackage(dto);
+        ReferenceManifest manifest = pkg.getReferenceManifest();
+        assertEquals(2, manifest.getPictures().size());
+        assertEquals("NON_SUBJECT", manifest.getPictures().getFirst().getUsageRole());
+        assertEquals(201L, manifest.getPictures().getFirst().getCharacterId());
+        assertEquals("IDENTITY", manifest.getPictures().getFirst().getReferenceRole());
+        assertEquals(povImage.getImageUrl(), manifest.getPictures().getFirst().getImageUrl());
+        assertEquals("SUBJECT", manifest.getPictures().get(1).getUsageRole());
+        assertEquals(2, manifest.getPictures().get(1).getPictureIndex());
+        assertEquals(201L, manifest.getAudios().getFirst().getCharacterId());
+        assertTrue(pkg.getUserPrompt().contains("charcoal-gray jacket"));
+        assertTrue(pkg.getUserPrompt().contains("参考用途: NON_SUBJECT"));
+        if ("REFERENCE_MODE".equals(mode)) {
+            assertTrue(pkg.getSystemPrompt().contains("<Picture 1>（林默身份设定图）: NON_SUBJECT"));
+        } else {
+            assertTrue(pkg.getSystemPrompt().contains("不属于 FL2VA 的 Picture 1/2 首尾帧槽位"));
+            assertFalse(pkg.getSystemPrompt().contains("<Picture 1>（林默身份设定图）"));
+        }
+        assertTrue(pkg.getSystemPrompt().contains("不得为该画外人物建立可见人物 <Subject N>"));
+        assertTrue(pkg.getSystemPrompt().contains("画外对白仍按原说话人"));
+        assertFalse(pkg.getSystemPrompt().contains("<Picture 2>（对面出镜人物）: NON_SUBJECT"));
+        assertFalse(pkg.getCombinedPrompt().contains("http://minio"));
+
+        povImage.setUsageRole("SUBJECT");
+        ShotPromptPackageVO switched = service.buildPromptPackage(dto);
+        assertEquals("SUBJECT", switched.getReferenceManifest().getPictures().getFirst().getUsageRole());
+        assertEquals("IDENTITY", switched.getReferenceManifest().getPictures().getFirst().getReferenceRole());
+        assertEquals(povImage.getImageUrl(), switched.getReferenceManifest().getPictures().getFirst().getImageUrl());
+        assertFalse(switched.getSystemPrompt().contains("【人物参考图的出镜约束】"));
+        assertNotEquals(pkg.getContextFingerprint(), switched.getContextFingerprint());
+    }
+
+    @Test
+    @DisplayName("持久化的非主体造型参考恢复到任务快照，不回退成主体")
+    void storedNonSubjectLookReferenceIsRestored() {
+        com.astra.freyja.entity.DramaShot shot = new com.astra.freyja.entity.DramaShot();
+        shot.setId(7L);
+        shot.setRefImagesJson("""
+                [{"id":"pov-look","sourceType":"CHARACTER_REFERENCE","sourceId":"301",
+                  "characterId":"201","lookId":"301","name":"林默造型",
+                  "usageRole":"NON_SUBJECT","referenceRole":"COMBINED","imageUrl":"http://minio/look.png"}]
+                """);
+        when(shotMapper.selectById(7L)).thenReturn(shot);
+        ResCharacter character = new ResCharacter(); character.setId(201L); character.setName("林默");
+        when(characterMapper.selectById(201L)).thenReturn(character);
+        ResCharacterOutfit look = new ResCharacterOutfit(); look.setId(301L); look.setCharacterId(201L);
+        look.setOutfitPrompt("charcoal-gray sleeves");
+        when(outfitMapper.selectById(301L)).thenReturn(look);
+        ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder().shotId(7L).build();
+
+        ReferenceManifest manifest = service.buildReferenceManifest(dto);
+        var picture = manifest.getPictures().getFirst();
+        assertEquals(201L, picture.getCharacterId());
+        assertEquals(301L, picture.getLookId());
+        assertEquals("COMBINED", picture.getReferenceRole());
+        assertEquals("NON_SUBJECT", picture.getUsageRole());
+        assertTrue(picture.getDescription().contains("charcoal-gray sleeves"));
+        assertEquals("NON_SUBJECT", dto.getRefImages().getFirst().getUsageRole());
+
+        dto.setRefImages(List.of());
+        assertTrue(service.buildReferenceManifest(dto).getPictures().isEmpty());
     }
 
     @Test
@@ -656,7 +745,7 @@ class ShotPromptDeriveH3Test {
 
         ShotPromptPackageVO pkg1 = service.buildPromptPackage(dtoWithDirectDesc);
         assertNotNull(pkg1);
-        assertTrue(pkg1.getUserPrompt().contains("【出场角色与造型装配】"));
+        assertTrue(pkg1.getUserPrompt().contains("【角色与造型装配】"));
         assertTrue(pkg1.getUserPrompt().contains("中文造型视觉概念描述: 一袭深青色织锦长袍，银丝暗纹滚边，腰系墨玉带"));
         assertTrue(pkg1.getUserPrompt().contains("范闲 (定位: PROTAGONIST)"));
 

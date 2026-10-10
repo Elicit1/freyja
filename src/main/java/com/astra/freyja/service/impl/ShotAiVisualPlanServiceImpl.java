@@ -1342,7 +1342,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         vars.put("SHOT_SPEC", buildShotSpec(dto, genMode));
         vars.put("DIRECTOR_PLAN", formatDirectorPlan(directorPlan));
         vars.put("SCENE_CONTEXT", buildVisualAssetContext(dto, manifest));
-        vars.put("CHARACTER_CONTEXT", buildCharacterContext(dto));
+        vars.put("CHARACTER_CONTEXT", buildCharacterContext(dto, manifest));
         vars.put("PROP_CONTEXT", buildPropContext(dto));
         vars.put("REFERENCE_MANIFEST", manifest.toPromptContext());
         vars.put("USER_INSTRUCTION", buildUserInstruction(dto));
@@ -1367,6 +1367,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         SkillPromptContext skillContext = loadSkillContext("shot-h3-" + genMode, String.valueOf(dto.getShotId()), dto.getSelectedSkillNames());
         systemPrompt = appendSkillContext(systemPrompt, skillContext);
         systemPrompt = appendCameraDutyBoundary(systemPrompt);
+        systemPrompt += manifest.toCharacterReferenceGuidance("REFERENCE_MODE".equalsIgnoreCase(genMode));
         if ("REFERENCE_MODE".equalsIgnoreCase(genMode)) {
             systemPrompt += manifest.toSystemRoleGuidance();
         }
@@ -1460,6 +1461,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         SkillPromptContext skillContext = loadSkillContext("shot-h3-" + genMode, String.valueOf(request.getShotId()), request.getSelectedSkillNames());
         currentSystemPrompt = appendSkillContext(currentSystemPrompt, skillContext);
         currentSystemPrompt = appendCameraDutyBoundary(currentSystemPrompt);
+        currentSystemPrompt += manifest.toCharacterReferenceGuidance("REFERENCE_MODE".equalsIgnoreCase(genMode));
         if ("REFERENCE_MODE".equalsIgnoreCase(genMode)) {
             currentSystemPrompt += manifest.toSystemRoleGuidance();
         }
@@ -1837,17 +1839,22 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         return sb.toString();
     }
 
-    private String buildCharacterContext(ShotPromptDeriveDTO dto) {
+    private String buildCharacterContext(ShotPromptDeriveDTO dto, ReferenceManifest manifest) {
         if (dto.getCharacterRefs() == null || dto.getCharacterRefs().isEmpty()) {
             return "";
         }
         StringBuilder sb = new StringBuilder();
-        sb.append("\n【出场角色与造型装配】:\n");
+        sb.append("\n【角色与造型装配】:\n");
+        sb.append("角色绑定与文字设定不代表必须出镜，是否作为可见人物以本次参考图用途和分镜显式事实为准。\n");
         for (CharacterShotRefInfoVO ref : dto.getCharacterRefs()) {
             if (ref == null || ref.getCharacterId() == null || ref.getCharacterId() <= 0) continue;
             ResolvedCharacterPromptContext resolved = getCharacterVisualAssetResolver().resolvePromptContext(ref);
             if (resolved == null) continue;
             sb.append(resolved.toCharacterContextItem());
+            if (manifest.getPictures().stream().anyMatch(pic ->
+                    ref.getCharacterId().equals(pic.getCharacterId()) && "NON_SUBJECT".equals(pic.getUsageRole()))) {
+                sb.append("  * 参考用途: NON_SUBJECT（第一人称视角/画外人物，不据此安排人物出镜）\n");
+            }
         }
         return sb.toString();
     }
@@ -1954,8 +1961,10 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if (dto.getShotId() != null && dto.getShotId() > 0) {
             DramaShot shot = shotMapper.selectById(dto.getShotId());
             if (shot != null) {
-                return KeyImageReferenceValidator.parseAndValidate(shot.getRefImagesJson(),
+                List<ShotRefImageDTO> savedImages = KeyImageReferenceValidator.parseAndValidate(shot.getRefImagesJson(),
                         new com.fasterxml.jackson.databind.ObjectMapper(), this::keyImageAssetType);
+                dto.setRefImages(savedImages);
+                return savedImages;
             }
         }
         return List.of();
@@ -2092,8 +2101,12 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                         .referenceId(img.getId())
                         .sourceType(sType)
                         .sourceId(img.getSourceId())
+                        .characterId(img.getCharacterId() != null ? img.getCharacterId()
+                                : "CHARACTER".equals(sType) ? img.getSourceId() : null)
+                        .lookId(img.getLookId())
                         .entityName(img.getName())
                         .usageRole(role)
+                        .referenceRole(img.getReferenceRole())
                         .description(desc)
                         .imageUrl(img.getImageUrl())
                         .build());

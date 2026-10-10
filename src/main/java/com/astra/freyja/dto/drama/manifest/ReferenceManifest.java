@@ -36,8 +36,11 @@ public class ReferenceManifest {
         private String referenceId;
         private String sourceType; // SCENE, CHARACTER, PROP, UPLOAD, KEYFRAME
         private Long sourceId;
+        private Long characterId;
+        private Long lookId;
         private String entityName;
         private String usageRole; // For KEYFRAME: one of the seven KeyImageRole values
+        private String referenceRole; // IDENTITY / LOOK / COMBINED, independent of visibility
         private String description; // 完整的原著/资产文字描述 (外貌、场景、道具材质等)
         private String imageUrl;
     }
@@ -79,6 +82,18 @@ public class ReferenceManifest {
                 sb.append(String.format("- 实体类型: %s\n", pic.getSourceType()));
                 sb.append(String.format("- 实体名称: %s\n", StringUtils.defaultString(pic.getEntityName(), "未命名")));
                 sb.append(String.format("- 建议角色定位: %s\n", StringUtils.defaultString(pic.getUsageRole(), "IDENTITY")));
+                if (pic.getCharacterId() != null) {
+                    sb.append("- 关联人物 ID: ").append(pic.getCharacterId()).append("\n");
+                }
+                if (pic.getLookId() != null) {
+                    sb.append("- 关联造型 ID: ").append(pic.getLookId()).append("\n");
+                }
+                if (StringUtils.isNotBlank(pic.getReferenceRole())) {
+                    sb.append("- 人物设定约束: ").append(pic.getReferenceRole()).append("\n");
+                }
+                if ("NON_SUBJECT".equals(pic.getUsageRole())) {
+                    sb.append("- 出镜约束: 第一人称视角/画外人物，仅作设定参考，不据此安排人物出镜。\n");
+                }
                 if (StringUtils.isNotBlank(pic.getDescription())) {
                     sb.append(String.format("- 实体特征与保留基准: %s\n", pic.getDescription().trim()));
                 }
@@ -109,6 +124,33 @@ public class ReferenceManifest {
             }
         }
 
+        return sb.toString();
+    }
+
+    /** Explicit creator-selected visibility; never infer POV from names or prose. */
+    public String toCharacterReferenceGuidance(boolean referenceMode) {
+        StringBuilder sb = new StringBuilder();
+        if (pictures == null) return "";
+        for (PictureManifestItem pic : pictures) {
+            if (pic == null || !"NON_SUBJECT".equals(pic.getUsageRole())) continue;
+            if (sb.isEmpty()) {
+                sb.append("\n【人物参考图的出镜约束】\n");
+                sb.append("NON_SUBJECT 是创作者显式选择的本系统参考用途，不是 H3 官方标签或保留关系标记。人物资产绑定、外貌设定和参考图的存在均不代表该人物必须出镜。\n");
+            }
+            if (referenceMode) {
+                sb.append("<Picture ").append(pic.getPictureIndex()).append(">");
+            } else {
+                sb.append("人物设定参考（不属于 FL2VA 的 Picture 1/2 首尾帧槽位）");
+            }
+            sb.append("（").append(StringUtils.defaultString(pic.getEntityName(), "未命名人物"))
+                    .append("）: NON_SUBJECT，只提供第一人称视角人物或画外人物的身份/造型上下文。")
+                    .append("不得为该画外人物建立可见人物 <Subject N>，不得为了展示设定图添加正脸、全身、第三人称外拍、镜面或其他反射。")
+                    .append("如果当前分镜明确要求第一人称视角，摄影机必须保持该人物的主观视点；不能仅凭此用途自行改变镜头视角。")
+                    .append("只有剧本明确可见的手、衣袖或其他局部才使用对应设定，禁止新增身体局部或把设定图的姿势、表情、背景带入剧情。")
+                    .append(referenceMode ? "可以按实际编号说明来源，但不得把该图声明为首帧、尾帧、关键帧或构图锚点。"
+                            : "该设定图只指导静态首尾帧生图中的明确可见局部，不得在 videoPrompt 中占用或新增 Picture 编号；videoPrompt 的 Picture 1/2 始终是实际首尾帧。")
+                    .append("画外对白仍按原说话人和已提供的 Audio/(Sx) 关系绑定，不得为绑定音频而虚构可见人物 Subject。\n");
+        }
         return sb.toString();
     }
 

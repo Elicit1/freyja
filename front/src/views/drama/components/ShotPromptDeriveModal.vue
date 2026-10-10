@@ -92,7 +92,8 @@
           v-model:ref-audios="draft.refAudios"
           :candidate-images="candidateImages"
           :candidate-audios="candidateAudios"
-          :disabled="isStreaming"
+          :disabled="isStreaming || isExportingPackage"
+          @change="handleReferenceMediaChange"
         />
 
         <SkillSelector
@@ -1408,6 +1409,11 @@ function buildDerivePayload(): ShotPromptDeriveDTO {
   }
 }
 
+function handleReferenceMediaChange() {
+  promptPackage.value = null
+  exportedContext.value = undefined
+}
+
 function handleBgmChange() {
   if (executionMode.value === 'MANUAL' && promptPackage.value) {
     loadPromptPackage()
@@ -1744,7 +1750,7 @@ function handleConfirmApply() {
 
   if (isResultStale.value) {
     ElMessageBox.confirm(
-      '检测到素材或槽位顺序在 AI 分析完成后发生了变更。继续采纳可能导致提示词中引用的 <Picture N> 顺序与当前素材错位。确定仍要采纳并回填吗？',
+      '检测到素材、参考用途或槽位顺序在 AI 分析完成后发生了变更。继续采纳可能导致人物出镜方式或 <Picture N> 引用与当前配置不一致。确定仍要采纳并回填吗？',
       '素材变更提示',
       {
         type: 'warning',

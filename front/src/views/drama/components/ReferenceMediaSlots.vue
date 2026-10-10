@@ -99,11 +99,20 @@
                 @change="handleImageRoleChange"
               >
                 <el-option label="主体 (SUBJECT)" value="SUBJECT" />
+                <el-option
+                  v-if="['CHARACTER', 'CHARACTER_REFERENCE', 'UPLOAD'].includes(img.sourceType)"
+                  label="非主体参考（第一人称 / 画外人物）"
+                  value="NON_SUBJECT"
+                />
                 <el-option label="场景 (SCENE)" value="SCENE" />
                 <el-option v-for="role in KEY_IMAGE_ROLE_OPTIONS" :key="role.value" :label="role.label" :value="role.value" />
                 <el-option label="道具 (PROP)" value="PROP" />
               </el-select>
             </div>
+
+            <p v-if="img.usageRole === 'NON_SUBJECT'" class="text-[10px] text-amber-700">
+              仅作人物设定参考，不据此安排人物出镜。更改用途后请重新生成提示词。
+            </p>
 
             <!-- 排序与替换按钮条 -->
             <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
@@ -532,6 +541,7 @@ function getUsageRoleLabel(role?: string) {
   if (normalizeKeyImageRole(role)) return keyImageRoleLabel(role)
   switch (role) {
     case 'SUBJECT': return '主体'
+    case 'NON_SUBJECT': return '非主体参考'
     case 'SCENE': return '场景'
     case 'PROP': return '道具'
     default: return role || '未指定'

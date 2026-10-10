@@ -38,6 +38,8 @@ public class ShotRefImageDTO {
 
     /**
      * 参考图角色定位 (MiniMax H3 / 视觉映射):
+     * SUBJECT: 主体人物参考
+     * NON_SUBJECT: 第一人称视角/画外人物设定参考，不据此安排人物出镜
      * IDENTITY: 人物身份/面容
      * LOOK: 当前造型服饰/妆发/配饰
      * COMBINED: 同时约束人物身份和当前造型
@@ -48,6 +50,6 @@ public class ShotRefImageDTO {
      */
     private String usageRole;
 
-    /** 人物参考图的细分约束角色：IDENTITY/LOOK/COMBINED/POSE/STYLE。 */
+    /** 人物参考图的细分约束角色：IDENTITY/LOOK/COMBINED/POSE/STYLE，与是否作为主体独立。 */
     private String referenceRole;
 }

@@ -175,6 +175,13 @@
 `endFrameImageUrl`。分镜参考图 `sourceType=KEYFRAME` 时，`usageRole` 只允许
 七种关键图用途，未填写时继承关联关键图资产用途。
 
+人物参考图（`sourceType=CHARACTER/CHARACTER_REFERENCE`，也支持自行上传的人物图）可按当前分镜切换 `usageRole`：
+
+- `SUBJECT`：作为主体人物参考。
+- `NON_SUBJECT`：作为第一人称视角人物或画外人物的设定参考。保留图片槽位、人物/造型关联和上传顺序，不因参考图的存在安排人物出镜，也不为画外人物建立可见人物 `<Subject N>`。只有剧本明确可见的手、衣袖等局部才使用对应造型；画外对白保留原说话人及音频绑定。
+
+`referenceRole=IDENTITY/LOOK/COMBINED` 独立描述图片约束的是身份还是造型，不随主体切换而清空。`NON_SUBJECT` 是本系统显式用途，不是 H3 官方标签；它不会自行把镜头切换为第一人称，剧本或创作者指令仍应明确视角。前端在参考图槽位的“用途”下拉中切换，选择随 `refImages` 保存；切换后需重新生成提示词，已生成结果的素材指纹会失效。无需数据库迁移。
+
 ### 4.10 生成 AI 首帧与运镜方案
 
 - **URL**: `POST /drama/shot/{id}/ai-visual-plan`

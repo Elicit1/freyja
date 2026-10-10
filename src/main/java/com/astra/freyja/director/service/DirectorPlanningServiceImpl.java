@@ -284,6 +284,18 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
         if (StringUtils.isNotBlank(dto.getUserInstruction())) {
             sb.append("【创作者特别导演指令】: ").append(dto.getUserInstruction()).append("\n");
         }
+        if (dto.getRefImages() != null) {
+            for (var image : dto.getRefImages()) {
+                if (image == null || StringUtils.isBlank(image.getImageUrl())
+                        || !"NON_SUBJECT".equals(image.getUsageRole())) continue;
+                sb.append("【非主体人物参考】: ").append(StringUtils.defaultString(image.getName(), "未命名人物"))
+                        .append("（NON_SUBJECT，人物 ID: ").append(image.getCharacterId() != null
+                                ? image.getCharacterId() : "CHARACTER".equalsIgnoreCase(image.getSourceType()) ? image.getSourceId() : null)
+                        .append("）。仅保留人物身份/造型上下文，不因资产存在安排其正脸、全身、第三人称外拍或反射出镜；")
+                        .append("分镜明确第一人称时保持该人物的主观视点，只有剧情明确可见的手或衣袖等局部才纳入构图。")
+                        .append("不要仅凭此参考用途自行改变镜头视角。\n");
+            }
+        }
         return sb.toString();
     }
 

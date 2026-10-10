@@ -198,10 +198,18 @@
             <div class="px-1.5 pb-1.5">
               <el-select v-model="img.usageRole" size="small" placeholder="角色" class="w-full !text-[10px]">
                 <el-option label="主体 (SUBJECT)" value="SUBJECT" />
+                <el-option
+                  v-if="['CHARACTER', 'CHARACTER_REFERENCE', 'UPLOAD'].includes(img.sourceType)"
+                  label="非主体参考（第一人称 / 画外人物）"
+                  value="NON_SUBJECT"
+                />
                 <el-option label="场景 (SCENE)" value="SCENE" />
                 <el-option v-for="role in KEY_IMAGE_ROLE_OPTIONS" :key="role.value" :label="role.label" :value="role.value" />
                 <el-option label="道具 (PROP)" value="PROP" />
               </el-select>
+              <p v-if="img.usageRole === 'NON_SUBJECT'" class="mt-1 text-[10px] text-amber-700">
+                仅作人物设定参考，不据此安排人物出镜。更改用途后请重新生成提示词。
+              </p>
             </div>
           </div>
         </div>

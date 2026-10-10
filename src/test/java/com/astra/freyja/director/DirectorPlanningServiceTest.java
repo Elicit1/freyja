@@ -12,6 +12,7 @@ import com.astra.freyja.director.model.DirectorPlanSchema;
 import com.astra.freyja.director.service.DirectorPlanValidator;
 import com.astra.freyja.director.service.DirectorPlanningServiceImpl;
 import com.astra.freyja.dto.drama.ShotPromptDeriveDTO;
+import com.astra.freyja.dto.drama.ShotRefImageDTO;
 import com.astra.freyja.entity.AiModel;
 import com.astra.freyja.entity.AiProvider;
 import com.astra.freyja.service.AiModelFactory;
@@ -125,6 +126,21 @@ class DirectorPlanningServiceTest {
         assertThat(messages()).allMatch(line -> line.contains("taskId=2108398458276372481"));
         verify(catalog, times(1)).getEnabledCatalog();
         verify(skillContext, times(1)).loadSelected(anyString(), anyString(), anyList(), eq(Map.of("cinematography", 49L)));
+    }
+
+    @Test
+    void firstPersonReferenceVisibilityReachesDirectorBeforePromptTranslation() {
+        dto.setScriptContent("林默的第一人称视角看向门口，仅能看到衣袖");
+        dto.setRefImages(List.of(ShotRefImageDTO.builder().sourceType("CHARACTER_REFERENCE")
+                .characterId(201L).lookId(301L).name("林默造型").usageRole("NON_SUBJECT")
+                .referenceRole("COMBINED").imageUrl("http://minio/pov.png").build()));
+        when(model.call(any(Prompt.class))).thenReturn(response(VALID));
+        service.plan(dto);
+        ArgumentCaptor<Prompt> prompt = ArgumentCaptor.forClass(Prompt.class);
+        verify(model).call(prompt.capture());
+        assertThat(prompt.getValue().getUserMessage().getText())
+                .contains("林默造型", "NON_SUBJECT", "人物 ID: 201", "主观视点")
+                .doesNotContain("http://minio", "pov.png");
     }
 
     static Stream<Arguments> invalidOutputs() {

@@ -21,7 +21,7 @@ export interface CandidateImageItem {
   characterId?: string | number
   lookId?: string | number
   referenceRole?: 'IDENTITY' | 'LOOK' | 'COMBINED' | 'POSE' | 'STYLE' | string
-  usageRole: 'SUBJECT' | 'SCENE' | 'PROP' | 'FIRST_FRAME' | 'LAST_FRAME' | string
+  usageRole: 'SUBJECT' | 'NON_SUBJECT' | 'SCENE' | 'PROP' | 'FIRST_FRAME' | 'LAST_FRAME' | string
   tag: string
   assetName: string
   assetType: 'CHARACTER' | 'SCENE' | 'PROP' | 'KEYFRAME' | 'UPLOAD'
