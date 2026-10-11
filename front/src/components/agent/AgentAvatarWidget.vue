@@ -5,13 +5,13 @@
       <button class="bubble-close" aria-label="收起提醒" @click="dismiss">×</button>
     </div>
     <el-badge :value="store.unreadCount" :hidden="!store.unreadCount">
-      <button class="agent-launcher" :class="{ compact: collapsed || !store.currentProfile?.avatar.visible }"
+      <button class="agent-launcher" :class="{ compact: !avatarExpanded }"
         :aria-label="store.visible ? '关闭 Agent 聊天' : '打开 Agent 聊天'" :aria-expanded="store.visible" @pointerdown="startDrag" @click="openChat">
-        <el-icon v-if="collapsed || !store.currentProfile?.avatar.visible"><ChatDotRound /></el-icon>
-        <AgentAvatarMedia v-else :avatar="store.currentProfile.avatar" :state="displayState" :animation-row="dragRow" :label="store.currentProfile?.displayName" />
+        <el-icon v-if="!avatarExpanded"><ChatDotRound /></el-icon>
+        <AgentAvatarMedia v-else :avatar="store.currentProfile?.avatar" :state="displayState" :animation-row="dragRow" :label="store.currentProfile?.displayName" />
       </button>
     </el-badge>
-    <button class="widget-toggle" @click="collapsed = !collapsed" :aria-label="collapsed ? '展开形象' : '收起形象'">{{ collapsed ? '展开' : '收起' }}</button>
+    <button v-if="store.currentProfile?.avatar.visible" class="widget-toggle" @click="collapsed = !collapsed" :aria-label="collapsed ? '展开形象' : '收起形象'">{{ collapsed ? '展开' : '收起' }}</button>
   </div>
   <AgentChatDrawer />
 </template>
@@ -25,7 +25,8 @@ import AgentAvatarMedia from './AgentAvatarMedia.vue'
 import AgentChatDrawer from './AgentChatDrawer.vue'
 const store = useAgentStore()
 const widget = ref<HTMLElement>()
-const collapsed = ref(localStorage.getItem('freyja-agent-collapsed') === 'true')
+const collapsed = computed({ get: () => store.avatarCollapsed, set: value => { store.avatarCollapsed = value } })
+const avatarExpanded = computed(() => !!store.currentProfile?.avatar.visible && !collapsed.value)
 function readDismissed(): string[] {
   try { const value = JSON.parse(localStorage.getItem('freyja-agent-dismissed') || '[]'); return Array.isArray(value) ? value.filter((item: unknown) => typeof item === 'string') : [] }
   catch { return [] }
@@ -107,8 +108,7 @@ onMounted(() => {
   window.addEventListener('resize', clampPosition)
 })
 onBeforeUnmount(() => { cleanupDrag?.(); store.stop(); window.removeEventListener('agent-open-chat', requested); window.removeEventListener('resize', clampPosition) })
-watch(collapsed, clampPosition, { flush: 'post' })
-watch(collapsed, value => localStorage.setItem('freyja-agent-collapsed', String(value)))
+watch(avatarExpanded, clampPosition, { flush: 'post' })
 </script>
 <style scoped>
 .agent-widget { position: fixed; z-index: 1995; display: flex; flex-direction: column; align-items: center; gap: 2px; }

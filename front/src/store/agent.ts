@@ -1,4 +1,4 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { agentApi } from '@/api/agent'
 import { useTaskCenterStore } from '@/store/taskCenter'
@@ -13,6 +13,7 @@ export const useAgentStore = defineStore('agent', () => {
   const runs = ref<Record<string, AgentRun>>({})
   const notifications = ref<AgentRun[]>([])
   const visible = ref(false)
+  const avatarCollapsed = ref(localStorage.getItem('freyja-agent-collapsed') === 'true')
   const loading = ref(false)
   const phase = ref<AvatarState>('IDLE')
   const focusRunId = ref<string>()
@@ -23,6 +24,7 @@ export const useAgentStore = defineStore('agent', () => {
   const activeRun = computed(() => selectedSession.value?.activeRunId ? runs.value[selectedSession.value.activeRunId] : undefined)
   const currentProfile = computed(() => profiles.value[0])
   const unreadCount = computed(() => notifications.value.length)
+  watch(avatarCollapsed, value => localStorage.setItem('freyja-agent-collapsed', String(value)), { flush: 'sync' })
 
   function mergeMessage(message: AgentMessage) {
     const existing = messages.value.findIndex(item => item.seq === message.seq)
@@ -61,7 +63,11 @@ export const useAgentStore = defineStore('agent', () => {
     if (subscriptions.has(session.id)) return
     subscriptions.set(session.id, taskCenter.subscribeAgent(session.id, receive, Math.max(0, session.nextSeq - 1)))
   }
-  async function refreshProfiles() { profiles.value = await agentApi.profiles() }
+  async function refreshProfiles({ revealAvatar = false }: { revealAvatar?: boolean } = {}) {
+    const avatarWasVisible = !!currentProfile.value?.avatar.visible
+    profiles.value = await agentApi.profiles()
+    if (currentProfile.value?.avatar.visible && (revealAvatar || !avatarWasVisible)) avatarCollapsed.value = false
+  }
   async function start() {
     if (started) return
     started = true
@@ -133,7 +139,7 @@ export const useAgentStore = defineStore('agent', () => {
     notifications.value = notifications.value.filter(n => n.id !== id)
     taskCenter.markRead(id, 'AGENT_RUN')
   }
-  return { profiles, sessions, selectedSession, messages, runs, notifications, visible, loading, phase,
+  return { profiles, sessions, selectedSession, messages, runs, notifications, visible, avatarCollapsed, loading, phase,
     focusRunId, activeRun, currentProfile, unreadCount, start, stop, open, selectSession, createSession,
     send, cancel, refreshProfiles, refreshRun, markRead }
 })

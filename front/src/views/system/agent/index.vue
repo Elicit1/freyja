@@ -90,7 +90,7 @@
           </el-tab-pane>
           <el-tab-pane label="虚拟形象" name="avatar">
             <el-form label-position="top">
-              <el-form-item label="显示虚拟形象"><el-switch v-model="form.avatar.visible" /></el-form-item>
+              <el-form-item label="显示虚拟形象"><el-switch v-model="form.avatar.visible" @change="requestAvatarReveal" /></el-form-item>
               <div class="avatar-preset">
                 <el-upload :show-file-list="false" accept=".zip" :http-request="upload" :disabled="uploading"><el-button type="primary" :loading="uploading">上传 ZIP</el-button></el-upload>
                 <el-button @click="useFreyjaAvatar">恢复默认</el-button>
@@ -139,6 +139,7 @@ const tab = ref('basic')
 const loading = ref(false), saving = ref(false), validating = ref(false), uploading = ref(false)
 const validation = ref<ValidationResult>()
 const saved = ref('')
+const revealAvatarOnSave = ref(false)
 const dirty = computed(() => !!form.value && JSON.stringify(form.value) !== saved.value)
 const toolNames: Record<string, string> = {
   start_script_decomposition: '拆解小说', retry_decomposition_segment: '重试失败段落', commit_decomposition: '保存拆解结果',
@@ -162,7 +163,7 @@ async function load(code: string) {
   try {
     const [config, directory] = await Promise.all([agentConfigApi.get(code), agentConfigApi.catalog(code)])
     form.value = config; catalog.value = directory; selectedCode.value = code; validation.value = undefined
-    saved.value = JSON.stringify(config)
+    saved.value = JSON.stringify(config); revealAvatarOnSave.value = false
     models.value = config.model.providerId ? await aiProviderApi.getModelList(config.model.providerId, 'CHAT') : []
   } finally { loading.value = false }
 }
@@ -194,7 +195,8 @@ async function save() {
     if (!validation.value.valid) return
     const updated = await agentConfigApi.save(selectedCode.value, payload())
     form.value = updated; saved.value = JSON.stringify(updated)
-    await useAgentStore().refreshProfiles()
+    await useAgentStore().refreshProfiles({ revealAvatar: revealAvatarOnSave.value || tab.value === 'avatar' })
+    revealAvatarOnSave.value = false
     ElMessage.success('Agent 配置已保存')
   } finally { saving.value = false }
 }
@@ -202,16 +204,18 @@ async function upload(options: UploadRequestOptions) {
   uploading.value = true
   try {
     const media = await agentConfigApi.uploadAvatar(options.file)
-    if (form.value) { form.value.avatar.pet = media; form.value.avatar.stateMedia = {}; form.value.avatar.visible = true }
+    if (form.value) { form.value.avatar.pet = media; form.value.avatar.stateMedia = {}; form.value.avatar.visible = true; requestAvatarReveal() }
     ElMessage.success('宠物包已导入，保存后生效')
     return media
   } finally { uploading.value = false }
 }
+function requestAvatarReveal() { revealAvatarOnSave.value = !!form.value?.avatar.visible }
 function useFreyjaAvatar() {
   if (!form.value) return
   form.value.avatar.pet = structuredClone(freyjaDefaultPet)
   form.value.avatar.stateMedia = {}
   form.value.avatar.visible = true
+  requestAvatarReveal()
   ElMessage.success('已恢复默认形象，保存后生效')
 }
 onBeforeRouteLeave(async () => await confirmDiscard())
