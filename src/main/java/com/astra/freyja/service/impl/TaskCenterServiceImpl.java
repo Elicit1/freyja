@@ -54,10 +54,15 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     private final DramaShotMapper shotMapper;
     @Autowired(required = false)
     private VideoProcessingService videoProcessingService;
+    @Autowired(required = false)
+    private com.astra.freyja.agent.runtime.AgentStore agentStore;
+    @Autowired(required = false)
+    private com.astra.freyja.agent.runtime.AgentExecutionScheduler agentScheduler;
 
     @Override
     public List<TaskCenterItemVO> getActiveTasks() {
         List<TaskCenterItemVO> result = new ArrayList<>();
+        if (agentStore != null) result.addAll(agentStore.activeRuns().stream().map(this::fromAgent).toList());
         result.addAll(renderTaskService.getActiveTasks().stream().map(this::fromRender).toList());
 
         AiTaskQueryDTO query = AiTaskQueryDTO.builder().statuses(ACTIVE_AI_STATUSES).build();
@@ -77,6 +82,7 @@ public class TaskCenterServiceImpl implements TaskCenterService {
         Page<RenderTaskVO> renderPage = renderTaskService.getHistoryTasks(query);
 
         List<TaskCenterItemVO> result = new ArrayList<>();
+        if (agentStore != null) result.addAll(agentStore.historyRuns(safeLimit).stream().map(this::fromAgent).toList());
         if (renderPage != null && renderPage.getRecords() != null) {
             result.addAll(renderPage.getRecords().stream().map(this::fromRender).toList());
         }
@@ -97,6 +103,12 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     @Override
     public TaskCenterItemVO getTask(String sourceType, String taskId) {
         if (StringUtils.isBlank(sourceType) || StringUtils.isBlank(taskId)) return null;
+        if ("AGENT_RUN".equalsIgnoreCase(sourceType) && agentStore != null) {
+            Long id = parseLong(taskId);
+            if (id == null) return null;
+            try { return fromAgent(agentStore.run(id)); }
+            catch (com.astra.freyja.common.BizException missing) { return null; }
+        }
         if ("RENDER_TASK".equalsIgnoreCase(sourceType)) {
             RenderTaskVO task = renderTaskService.getTaskById(taskId);
             return task == null ? null : fromRender(task);
@@ -115,6 +127,16 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     @Override
     public synchronized TaskCancelResultVO cancelTask(String sourceType, String taskId) {
         if (StringUtils.isBlank(sourceType) || StringUtils.isBlank(taskId)) return failedCancel("任务标识不能为空");
+        if ("AGENT_RUN".equalsIgnoreCase(sourceType) && agentStore != null) {
+            Long id = parseLong(taskId);
+            if (id == null) return failedCancel("Agent 任务 ID 无效");
+            var run = agentStore.run(id);
+            if (com.astra.freyja.agent.model.AgentProtocol.RunStatus.valueOf(run.getStatus()).terminal()) return failedCancel("任务已结束");
+            agentStore.cancel(id);
+            if (agentScheduler != null) agentScheduler.interrupt(id);
+            return TaskCancelResultVO.builder().cancelled(true).status("CANCELLED").upstreamStatus("UNCONFIRMED")
+                    .message("已停止后续操作；已提交的数据保留，上游模型请求可能仍在处理").build();
+        }
         if ("RENDER_TASK".equalsIgnoreCase(sourceType)) {
             RenderTaskVO render = renderTaskService.getTaskById(taskId);
             if (render != null && videoProcessingService != null
@@ -198,6 +220,20 @@ public class TaskCenterServiceImpl implements TaskCenterService {
                 .message(remoteFailed ? "本地任务已中断；部分上游取消调用失败"
                         : remoteConfirmed ? "任务及上游作业已取消" : "本地请求已中断；上游未提供取消确认")
                 .build();
+    }
+
+    private TaskCenterItemVO fromAgent(com.astra.freyja.entity.AgentRun run) {
+        var session = agentStore.session(run.getSessionId());
+        var snapshot = agentStore.snapshot(run);
+        return TaskCenterItemVO.builder().sourceType("AGENT_RUN").taskId(String.valueOf(run.getId()))
+                .category("AGENT").taskType("AGENT_ASSISTANT").title(session.getTitle())
+                .status("COMPLETED".equals(run.getStatus()) ? "SUCCESS" : run.getStatus())
+                .progress("COMPLETED".equals(run.getStatus()) ? 100 : null).currentStage(run.getStatus())
+                .modelCode(snapshot.config().getModel().getModelCode()).errorMessage(run.getErrorMessage())
+                .dramaId(session.getDramaId() == null ? null : String.valueOf(session.getDramaId()))
+                .targetType("AGENT_SESSION").targetId(String.valueOf(session.getId())).resumeAction("AGENT_CHAT")
+                .createdAt(run.getCreateTime()).startedAt(run.getStartedAt()).finishedAt(run.getFinishedAt())
+                .unread(run.getFinishedAt() != null && run.getReadAt() == null).build();
     }
 
     private boolean isDirectModelRequest(AiTaskDTO task) {

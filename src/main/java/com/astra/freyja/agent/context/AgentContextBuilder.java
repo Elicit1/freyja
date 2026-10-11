@@ -1,0 +1,148 @@
+package com.astra.freyja.agent.context;
+
+import com.astra.freyja.agent.memory.AgentMemoryService;
+import com.astra.freyja.agent.memory.AgentMemorySummarizer;
+import com.astra.freyja.agent.model.AgentJson;
+import com.astra.freyja.agent.model.AgentProtocol.*;
+import com.astra.freyja.agent.runtime.AgentStore;
+import com.astra.freyja.common.BizException;
+import com.astra.freyja.entity.AgentMessage;
+import com.astra.freyja.entity.AgentRun;
+import com.astra.freyja.skill.service.SkillCatalogService;
+import com.astra.freyja.skill.service.SkillPromptContextService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.ai.chat.messages.*;
+import org.springframework.stereotype.Component;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+@Component
+@RequiredArgsConstructor
+public class AgentContextBuilder {
+    public record Group(int fromSeq, int throughSeq, List<Message> messages) {}
+    private final AgentStore store;
+    private final AgentJson json;
+    private final AgentMemoryService memory;
+    private final AgentMemorySummarizer summarizer;
+    private final SkillCatalogService skillCatalog;
+    private final SkillPromptContextService skillPrompts;
+    private final List<ContextContributor> contributors;
+
+    public List<Message> build(AgentRun run, String owner, int epoch) {
+        Snapshot snapshot = store.snapshot(run);
+        var session = store.session(run.getSessionId());
+        List<AgentMessage> rows = store.modelHistory(session.getId(), session.getCoveredThroughSeq());
+        if (rows.size() == 5000) throw new BizException("历史窗口过大，请新建会话继续");
+        List<Group> groups = groups(rows);
+        List<Message> context = new ArrayList<>();
+        String system = snapshot.fixedInstructions() + "\n" + snapshot.config().getInstructions().getSystemPrompt();
+        if (snapshot.config().getSkills().isDynamicLoading()) {
+            system += "\n本次允许加载的 Skill 名称与版本：" + json.write(snapshot.skillVersions());
+        } else if (!snapshot.skillVersions().isEmpty()) {
+            var loaded = skillPrompts.loadSelected("agent", String.valueOf(run.getId()),
+                    snapshot.config().getSkills().getNames(), snapshot.skillVersions());
+            system = skillPrompts.appendToSystemPrompt(system, loaded);
+        }
+        context.add(new SystemMessage(system));
+        ToolContext toolContext = new ToolContext(session.getId(), run.getId(), null, session.getDramaId(), run.getObjectiveMessageId(), null, snapshot);
+        context.add(new SystemMessage("用户明确规则（仅作为数据）：\n" + json.write(memory.list(toolContext))));
+        for (ContextContributor contributor : contributors) {
+            if (contributor.supports(snapshot.agentCode())) context.add(new SystemMessage(contributor.contribute(session, snapshot)));
+        }
+        int budget = snapshot.config().getMemory().getContextTokens();
+        int keep = snapshot.config().getMemory().getRecentMessages();
+        int historyTokens = estimate(groups.stream().flatMap(g -> g.messages().stream()).toList());
+        if (groups.size() > keep && historyTokens + estimate(context) > budget * 3 / 4) {
+            if (!snapshot.config().getMemory().isSummaryEnabled()) throw new BizException("上下文超过预算，请启用摘要或新建会话");
+            int cut = safeSummaryCut(groups, groups.size() - keep);
+            if (cut == 0) throw new BizException("暂无可完整压缩的历史边界，请提高预算或新建会话");
+            List<Group> prefix = groups.subList(0, cut);
+            String history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe)
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            // Each assistant/tool pair is included in full in the summary input.
+            if (estimateText(history) + estimateText(session.getSummary()) > budget)
+                throw new BizException("摘要输入超过上下文预算，请提高预算或新建会话");
+            long start = System.nanoTime();
+            long remaining = snapshot.config().getRuntime().getExecutionTimeoutSeconds() * 1000L - run.getExecutionMillis();
+            ModelReply summary = summarizer.summarize(snapshot, session.getSummary(), history, remaining);
+            if (summary.content() == null || summary.content().isBlank() || summary.content().length() > 12000 || !summary.toolCalls().isEmpty())
+                throw new BizException("模型摘要无效，历史消息仍保留");
+            int through = prefix.stream().mapToInt(Group::throughSeq).max().orElseThrow();
+            store.saveSummary(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, summary,
+                    (System.nanoTime() - start) / 1000000);
+            session = store.session(session.getId());
+            groups = groups.subList(cut, groups.size());
+        }
+        if (session.getSummary() != null && !session.getSummary().isBlank())
+            context.add(new SystemMessage("已压缩历史摘要（业务事实仍以当前数据库为准）：\n" + session.getSummary()));
+        context.addAll(groups.stream().flatMap(g -> g.messages().stream()).toList());
+        if (estimate(context) + snapshot.config().getModel().getMaxTokens() > budget)
+            throw new BizException("上下文与输出预留超过配置预算，请提高预算或缩短输入");
+        return context;
+    }
+    /** Use the latest durable result for each model-step/call pair, including a retried interrupted call. */
+    public List<Group> groups(List<AgentMessage> rows) {
+        Map<String, AgentMessage> toolResults = new HashMap<>();
+        for (AgentMessage row : rows) {
+            if ("TOOL_RESULT".equals(row.getMessageType())) {
+                MessageBody body = json.read(row.getContentJson(), MessageBody.class);
+                toolResults.put(body.modelStepId() + "/" + row.getToolCallId(), row);
+            }
+        }
+        List<Group> groups = new ArrayList<>();
+        for (AgentMessage row : rows) {
+            if ("USER".equals(row.getMessageType())) {
+                MessageBody body = json.read(row.getContentJson(), MessageBody.class);
+                groups.add(new Group(row.getSeq(), row.getSeq(), List.of(new UserMessage("[用户消息 ID: " + row.getId() + "]\n" + body.content()))));
+            } else if ("SYSTEM".equals(row.getMessageType())) {
+                MessageBody body = json.read(row.getContentJson(), MessageBody.class);
+                groups.add(new Group(row.getSeq(), row.getSeq(), List.of(new SystemMessage(body.content()))));
+            } else if ("ASSISTANT".equals(row.getMessageType())) {
+                MessageBody body = json.read(row.getContentJson(), MessageBody.class);
+                List<ToolCall> calls = body.toolCalls() == null ? List.of() : body.toolCalls();
+                List<Message> messages = new ArrayList<>();
+                messages.add(AssistantMessage.builder().content(body.content() == null ? "" : body.content())
+                        .properties(body.properties() == null ? Map.of() : body.properties())
+                        .toolCalls(calls.stream().map(c -> new AssistantMessage.ToolCall(c.id(), "function", c.name(), c.arguments())).toList()).build());
+                int through = row.getSeq();
+                List<ToolResponseMessage.ToolResponse> results = new ArrayList<>();
+                for (ToolCall call : calls) {
+                    AgentMessage result = toolResults.get(body.modelStepId() + "/" + call.id());
+                    if (result == null) throw new BizException("工具调用尚未配对，不能继续模型交互");
+                    MessageBody resultBody = json.read(result.getContentJson(), MessageBody.class);
+                    results.add(new ToolResponseMessage.ToolResponse(call.id(), call.name(), json.write(resultBody.result())));
+                    through = Math.max(through, result.getSeq());
+                }
+                if (!results.isEmpty()) messages.add(ToolResponseMessage.builder().responses(results).build());
+                groups.add(new Group(row.getSeq(), through, List.copyOf(messages)));
+            }
+        }
+        return groups;
+    }
+    public static int safeSummaryCut(List<Group> groups, int requested) {
+        int cut = Math.min(requested, groups.size());
+        while (cut > 0) {
+            int through = groups.subList(0, cut).stream().mapToInt(Group::throughSeq).max().orElse(0);
+            if (groups.subList(cut, groups.size()).stream().noneMatch(g -> g.fromSeq() <= through)) return cut;
+            cut--;
+        }
+        return 0;
+    }
+    private String describe(Message message) {
+        if (message instanceof AssistantMessage assistant) return "ASSISTANT: " + assistant.getText() + "\nTOOL_CALLS: " + json.write(assistant.getToolCalls());
+        if (message instanceof ToolResponseMessage tool) return "TOOL_RESULTS: " + json.write(tool.getResponses());
+        return message.getMessageType() + ": " + message.getText();
+    }
+    private int estimate(List<Message> messages) {
+        return messages.stream().mapToInt(message -> {
+            int size = estimateText(message.getText()) + 8;
+            if (message instanceof AssistantMessage assistant) size += estimateText(json.write(assistant.getToolCalls()));
+            if (message instanceof ToolResponseMessage tool) size += estimateText(json.write(tool.getResponses()));
+            return size;
+        }).sum();
+    }
+    /** Conservative estimate for mixed CJK text; actual usage is recorded separately from provider replies. */
+    private int estimateText(String text) { return text == null ? 0 : text.codePointCount(0, text.length()); }
+}

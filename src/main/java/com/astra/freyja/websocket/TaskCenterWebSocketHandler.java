@@ -37,6 +37,15 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
     private final ShotPromptEventStore promptEvents;
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<WebSocketSession, Set<String>> promptSubscriptions = new ConcurrentHashMap<>();
+    private final Map<WebSocketSession, Set<String>> agentSubscriptions = new ConcurrentHashMap<>();
+    private com.astra.freyja.agent.runtime.AgentStore agentStore;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void registerAgentEvents(com.astra.freyja.agent.runtime.AgentStore store,
+                                    com.astra.freyja.agent.event.AgentEventPublisher publisher) {
+        this.agentStore = store;
+        publisher.addListener(this::broadcastAgentEvent);
+    }
 
     public TaskCenterWebSocketHandler(ObjectMapper objectMapper, @Lazy TaskCenterService taskCenterService,
                                       AiTaskService aiTaskService, ShotPromptEventStore promptEvents) {
@@ -76,6 +85,31 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
             try {
                 var request = objectMapper.readTree(payload);
                 String event = request.path("event").asText();
+                if ("AGENT_SUBSCRIBE".equals(event) && agentStore != null) {
+                    Long sessionId = Long.valueOf(request.path("sessionId").asText());
+                    int cursor = Math.max(0, request.path("afterSeq").asInt());
+                    synchronized (session) {
+                        agentSubscriptions.computeIfAbsent(session, ignored -> ConcurrentHashMap.newKeySet()).add(String.valueOf(sessionId));
+                        // The session monitor buffers live sends while a fixed durable high-water mark is replayed.
+                        int highWater = agentStore.session(sessionId).getNextSeq() - 1;
+                        while (cursor < highWater) {
+                            var page = agentStore.after(sessionId, cursor);
+                            if (page.isEmpty()) break;
+                            for (var item : page) {
+                                if (item.seq() > highWater) break;
+                                sendAgentEvent(session, new com.astra.freyja.agent.model.AgentProtocol.Event(sessionId, item.runId(), item.seq(),
+                                        "EVENT".equals(item.messageType()) ? item.eventType() : "MESSAGE_SAVED", item));
+                                cursor = item.seq();
+                            }
+                        }
+                    }
+                    return;
+                }
+                if ("AGENT_UNSUBSCRIBE".equals(event)) {
+                    var subscribed = agentSubscriptions.get(session);
+                    if (subscribed != null) subscribed.remove(request.path("sessionId").asText());
+                    return;
+                }
                 if ("PROMPT_SUBSCRIBE".equals(event) || "AI_SUBSCRIBE".equals(event)) {
                     String taskId = request.path("taskId").asText();
                     long afterSeq = Math.max(0, request.path("afterSeq").asLong());
@@ -112,6 +146,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
         sessions.remove(session.getId());
         promptSubscriptions.remove(session);
+        agentSubscriptions.remove(session);
         log.debug("[TaskCenterWS] 客户端长连接断开: sessionId={}, code={}, 当前在线数={}",
                 session.getId(), status.getCode(), sessions.size());
     }
@@ -120,6 +155,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
     public void handleTransportError(WebSocketSession session, Throwable exception) {
         sessions.remove(session.getId());
         promptSubscriptions.remove(session);
+        agentSubscriptions.remove(session);
         log.warn("[TaskCenterWS] 客户端连接异常: sessionId={}, err={}", session.getId(), exception.getMessage());
     }
 
@@ -196,6 +232,20 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
                 catch (IOException e) { promptSubscriptions.remove(session); }
             }
         });
+    }
+
+    private void broadcastAgentEvent(com.astra.freyja.agent.model.AgentProtocol.Event event) {
+        agentSubscriptions.forEach((session, ids) -> {
+            if (!ids.contains(String.valueOf(event.sessionId()))) return;
+            synchronized (session) {
+                try { sendAgentEvent(session, event); }
+                catch (IOException error) { agentSubscriptions.remove(session); }
+            }
+        });
+    }
+
+    private void sendAgentEvent(WebSocketSession session, com.astra.freyja.agent.model.AgentProtocol.Event event) throws IOException {
+        if (session.isOpen()) session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of("event", "AGENT_EVENT", "data", event))));
     }
 
     private void sendPromptEvent(WebSocketSession session, ShotPromptEventStore.Event event) throws IOException {

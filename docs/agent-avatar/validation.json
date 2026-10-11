@@ -1,0 +1,67 @@
+{
+  "format": "Codex Pet v1",
+  "frameSize": [
+    192,
+    208
+  ],
+  "atlasSize": [
+    1536,
+    1872
+  ],
+  "transparent": true,
+  "rows": [
+    {
+      "name": "idle",
+      "frames": 6,
+      "distinctFrames": 6
+    },
+    {
+      "name": "running-right",
+      "frames": 8,
+      "distinctFrames": 8
+    },
+    {
+      "name": "running-left",
+      "frames": 8,
+      "distinctFrames": 8
+    },
+    {
+      "name": "waving",
+      "frames": 4,
+      "distinctFrames": 4
+    },
+    {
+      "name": "jumping",
+      "frames": 5,
+      "distinctFrames": 5
+    },
+    {
+      "name": "failed",
+      "frames": 8,
+      "distinctFrames": 8
+    },
+    {
+      "name": "waiting",
+      "frames": 6,
+      "distinctFrames": 6
+    },
+    {
+      "name": "running",
+      "frames": 6,
+      "distinctFrames": 6
+    },
+    {
+      "name": "review",
+      "frames": 6,
+      "distinctFrames": 6
+    }
+  ],
+  "spritesheet.webp": {
+    "bytes": 2165158,
+    "sha256": "8584dadd1ab7715d19fb59b6038c42ba45e505bc6938316e23844fc05cf35575"
+  },
+  "freyja.codex-pet.zip": {
+    "bytes": 2165114,
+    "sha256": "d2f14e2153daccd424b9a99795ead982447e3f64237a14229bfeecfd162e382e"
+  }
+}

@@ -129,7 +129,28 @@ public class AiModelFactoryImpl implements AiModelFactory {
 
     @Override
     public void evict(Long providerId, String modelCode) {
-        cache.remove(providerId + ":" + modelCode);
+        String key = providerId + ":" + modelCode;
+        cache.keySet().removeIf(k -> k.equals(key) || k.startsWith(key + ":snapshot:"));
+    }
+
+    @Override
+    public ChatModel getChatModelForSnapshot(Long providerId, AiModel snapshot) {
+        if (providerId == null || snapshot == null || StringUtils.isBlank(snapshot.getModelCode()))
+            throw new BizException("固定模型配置不能为空");
+        AiProvider provider = providerMapper.selectById(providerId);
+        AiModel current = modelMapper.selectOne(new LambdaQueryWrapper<AiModel>()
+                .eq(AiModel::getProviderId, providerId).eq(AiModel::getModelCode, snapshot.getModelCode()));
+        if (provider == null || !Integer.valueOf(1).equals(provider.getStatus()) || current == null
+                || !Integer.valueOf(1).equals(current.getStatus()) || !"CHAT".equals(current.getModelType()))
+            throw new BizException("固定模型使用的提供商或模型已停用");
+        String fingerprint;
+        try {
+            byte[] encoded = objectMapper.writeValueAsBytes(snapshot);
+            fingerprint = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(encoded));
+        } catch (Exception e) { throw new BizException("固定模型配置序列化失败"); }
+        String key = providerId + ":" + snapshot.getModelCode() + ":snapshot:" + fingerprint;
+        return cache.computeIfAbsent(key, ignored -> new CircuitBreakerChatModel(build(provider, snapshot), provider.getProviderName(),
+                provider.getEnableBreaker(), provider.getBreakerThreshold(), provider.getBreakerTimeout()));
     }
 
     private ChatModel build(AiProvider provider, AiModel model) {

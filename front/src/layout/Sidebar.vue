@@ -83,6 +83,10 @@
           <el-icon><Collection /></el-icon>
           <template #title>AI Skills</template>
         </el-menu-item>
+        <el-menu-item index="/system/agent">
+          <el-icon><ChatDotRound /></el-icon>
+          <template #title>Agent 配置</template>
+        </el-menu-item>
       </el-menu>
     </el-scrollbar>
 
@@ -135,7 +139,8 @@ import {
   Cpu,
   Operation,
   Collection,
-  Brush
+  Brush,
+  ChatDotRound
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

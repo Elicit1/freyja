@@ -1,8 +1,9 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { taskCenterApi, type TaskCenterItem } from '@/api/task-center'
+import type { AgentEvent } from '@/types/agent'
 
-const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RENDERING'])
+const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RENDERING', 'WAITING_TASK', 'WAITING_USER', 'CANCELLING'])
 
 export interface PromptEvent {
   taskId: string
@@ -25,6 +26,28 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
   type AiListener = (event: PromptEvent) => void
   type ListenerState = { afterSeq: number; pending: Map<number, PromptEvent> }
   const promptSubscriptions = new Map<string, Map<AiListener, ListenerState>>()
+  type AgentListener = (event: AgentEvent) => void
+  const agentSubscriptions = new Map<string, Map<AgentListener, { afterSeq: number; pending: Map<number, AgentEvent> }>>()
+
+  function sendAgentSubscription(sessionId: string, afterSeq: number) {
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ event: 'AGENT_SUBSCRIBE', sessionId, afterSeq }))
+  }
+
+  function subscribeAgent(sessionId: string, listener: AgentListener, afterSeq = 0) {
+    let entry = agentSubscriptions.get(sessionId)
+    if (!entry) { entry = new Map(); agentSubscriptions.set(sessionId, entry) }
+    entry.set(listener, { afterSeq, pending: new Map() })
+    sendAgentSubscription(sessionId, afterSeq)
+    start()
+    return () => {
+      const current = agentSubscriptions.get(sessionId)
+      current?.delete(listener)
+      if (current?.size === 0) {
+        agentSubscriptions.delete(sessionId)
+        if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ event: 'AGENT_UNSUBSCRIBE', sessionId }))
+      }
+    }
+  }
 
   function sendPromptSubscription(taskId: string, afterSeq: number) {
     if (socket?.readyState === WebSocket.OPEN) {
@@ -145,6 +168,22 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
         window.dispatchEvent(new CustomEvent('task-center-render-event', { detail: msg.data }))
         break
 
+      case 'AGENT_EVENT': {
+        const event = msg.data as AgentEvent
+        const entry = agentSubscriptions.get(event?.sessionId)
+        if (!entry || !Number.isSafeInteger(event?.seq)) break
+        entry.forEach((state, listener) => {
+          if (event.seq <= state.afterSeq) return
+          state.pending.set(event.seq, event)
+          while (state.pending.has(state.afterSeq + 1)) {
+            const next = state.pending.get(state.afterSeq + 1)!
+            state.pending.delete(next.seq); state.afterSeq = next.seq
+            try { listener(next) } catch (error) { console.warn('Agent 事件处理失败', error) }
+          }
+        })
+        break
+      }
+
       case 'PONG':
         // 心跳响应
         break
@@ -203,6 +242,9 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
         promptSubscriptions.forEach((entry, taskId) => {
           const oldestCursor = Math.min(...Array.from(entry.values(), state => state.afterSeq))
           sendPromptSubscription(taskId, oldestCursor)
+        })
+        agentSubscriptions.forEach((entry, sessionId) => {
+          sendAgentSubscription(sessionId, Math.min(...Array.from(entry.values(), state => state.afterSeq)))
         })
       }
 
@@ -334,6 +376,7 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
     markRead,
     getTask,
     subscribePrompt,
-    subscribeAi: subscribePrompt
+    subscribeAi: subscribePrompt,
+    subscribeAgent
   }
 })

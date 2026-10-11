@@ -35,6 +35,7 @@
 - 👥 **全流程人物视觉一致性维护 (Character Consistency)**：采用“角色身份层 (`ResCharacter`) + 造型层 (`ResCharacterLook`)”双层资产架构，配合跨集实体消歧流水线与 Character Blackboard 看板，确保角色在不同集数、多场景变换中面部外观、服装发型与设定的高保真视觉一致；
 - ✍️ **构建符合 MiniMax H3 规范的专业提示词 (H3 Prompt Architecture)**：基于视听导演语言体系，将镜头剧本、角色动作与机位调度自动智能转译为标准的 MiniMax H3 双轨提示词（包含机位运镜、主体动作、环境光影、伴生声效与音乐的三段式/六段式结构），彻底告别传统生硬的关键字正则猜谜；
 - 🧩 **Agent Skill 领域知识按需迭代与装载 (Iterative Agent Skills)**：内置标准化 Agent Skill 知识包（电影摄影构图、运镜机位、角色消歧与 H3 提示词编写规范），创作者可根据短剧题材与风格需要自由发布新版本、持续迭代优化正文规约，驱动大模型根据需要动态加载与进化。
+- 💬 **Agent 基础助手**：独立配置页 `/system/agent` 可设置模型、指令、工具、Skills、记忆、预算与 Codex Pet 精灵图宠物与 ZIP 导入；提供持久化聊天、项目/资产/分镜查询、明确规则保存、任务进度、取消及失败恢复。启用和数据库升级步骤见 [Agent 使用与 API](docs/agent-api.md)。小说制作准备业务 Profile 为后续接入阶段。
 
 ## 💻 运行环境与硬件配置要求 (System Requirements)
 

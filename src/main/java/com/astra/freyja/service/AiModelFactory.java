@@ -22,6 +22,9 @@ public interface AiModelFactory {
      */
     ChatModel getChatModel(Long providerId, String modelCode);
 
+    /** 使用固定的非凭据模型参数，提供商连接与密钥仍从现有提供商中心读取。 */
+    ChatModel getChatModelForSnapshot(Long providerId, com.astra.freyja.entity.AiModel modelSnapshot);
+
     /**
      * 获取指定提供商+模型对应的 ChatModel，支持兜底策略：
      * 若 providerId 为 null，则自动获取系统首个启用中的提供商；

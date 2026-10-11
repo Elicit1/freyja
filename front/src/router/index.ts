@@ -66,6 +66,12 @@ const routes: RouteRecordRaw[] = [
         name: 'AiSkills',
         component: () => import('@/views/system/skills/index.vue'),
         meta: { title: 'AI Skills 技能管理' }
+      },
+      {
+        path: 'system/agent',
+        name: 'AgentConfig',
+        component: () => import('@/views/system/agent/index.vue'),
+        meta: { title: 'Agent 配置' }
       }
     ]
   },

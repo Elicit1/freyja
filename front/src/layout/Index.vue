@@ -28,6 +28,7 @@
       />
     </el-container>
 
+    <AgentAvatarWidget />
   </el-container>
 </template>
 
@@ -36,6 +37,7 @@ import { computed } from 'vue'
 import { useAppStore } from '@/store/app'
 import Sidebar from './Sidebar.vue'
 import Header from './Header.vue'
+import AgentAvatarWidget from '@/components/agent/AgentAvatarWidget.vue'
 
 const appStore = useAppStore()
 

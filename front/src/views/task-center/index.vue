@@ -222,6 +222,10 @@ async function refresh() {
 
 async function openTask(task: TaskCenterItem) {
   store.markRead(task.taskId, task.sourceType)
+  if (task.resumeAction === 'AGENT_CHAT' && task.targetId) {
+    window.dispatchEvent(new CustomEvent('agent-open-chat', { detail: { sessionId: task.targetId, runId: task.taskId } }))
+    return
+  }
   if ((task.resumeAction === 'SHOT_PROMPT_DERIVE' || task.resumeAction === 'SHOT_RENDER' || task.resumeAction === 'SHOT_DETAIL') && task.shotId) {
     await router.push({
       path: '/drama',
@@ -241,7 +245,7 @@ function cleanQuery(values: Record<string, string | undefined>) {
 }
 
 function canCancel(task: TaskCenterItem) {
-  return (task.sourceType === 'RENDER_TASK' || task.sourceType === 'AI_TASK') && isActive(task.status)
+  return ['RENDER_TASK', 'AI_TASK', 'AGENT_RUN'].includes(task.sourceType) && isActive(task.status)
 }
 
 async function cancelTask(task: TaskCenterItem) {
@@ -256,9 +260,9 @@ async function cancelTask(task: TaskCenterItem) {
   }
 }
 
-function isActive(status: string) { return ['QUEUED', 'PENDING', 'RUNNING', 'RETRYING'].includes(status) }
-function getCategoryLabel(category?: string) { return category === 'AI_ANALYSIS' ? 'AI 分析' : category === 'MEDIA_PROCESS' ? '视频处理' : '渲染' }
-function statusLabel(status: string) { return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '失败', CANCELLED: '已取消', CANCEL_UNCONFIRMED: '请求已中断（上游未确认）' } as Record<string, string>)[status] || status }
+function isActive(status: string) { return ['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'WAITING_TASK', 'WAITING_USER', 'CANCELLING'].includes(status) }
+function getCategoryLabel(category?: string) { return category === 'AGENT' ? 'Agent' : category === 'AI_ANALYSIS' ? 'AI 分析' : category === 'MEDIA_PROCESS' ? '视频处理' : '渲染' }
+function statusLabel(status: string) { return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', WAITING_TASK: '等待任务结果', WAITING_USER: '等待回答', CANCELLING: '正在取消', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '失败', CANCELLED: '已取消', CANCEL_UNCONFIRMED: '请求已中断（上游未确认）' } as Record<string, string>)[status] || status }
 function statusTone(status: string): string { return status === 'SUCCESS' ? 'success' : status === 'FAILED' ? 'danger' : status === 'CANCEL_UNCONFIRMED' ? 'warning' : isActive(status) ? 'processing' : 'disabled' }
 function getContextLabel(task: TaskCenterItem) { return [task.dramaTitle, task.episodeName, task.sceneName, task.shotName || (task.shotNo ? `镜头 ${task.shotNo}` : undefined)].filter(Boolean).join(' / ') || `任务 ID ${task.taskId}` }
 function formatDate(value?: string) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '刚刚提交' }
