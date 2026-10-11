@@ -18,7 +18,7 @@ import java.util.*;
 
 @Service @RequiredArgsConstructor
 public class ProductionJobs {
-    public static final String PROFILE = "production-preparation";
+    public static final String PROFILE = com.astra.freyja.agent.profile.AgentProfileRegistry.ASSISTANT_CODE;
     private final AgentPreparationJobMapper jobs;
     private final DramaMapper dramas;
     private final DramaShotMapper shots;
@@ -40,7 +40,7 @@ public class ProductionJobs {
         if (!Set.of("9:16", "16:9", "1:1", "4:3").contains(input.getAspectRatio())) throw new BizException("画幅不合法");
         if (!Set.of("AUTO", "FAST_PACED", "COMPACT", "STANDARD", "CINEMATIC_LONG").contains(input.getPacingPreset())) throw new BizException("节奏不合法");
         if (input.getDramaId() != null && dramas.selectById(input.getDramaId()) == null) throw new BizException("项目不存在");
-        if (configs.lockByCode(PROFILE) == null) throw new BizException("请先配置并启用分镜制作准备 Agent");
+        if (configs.lockByCode(PROFILE) == null) throw new BizException("请先配置并启用 FREYJA 助手");
         var request = new CreateSession(); request.setAgentCode(PROFILE); request.setDramaId(input.getDramaId());
         request.setTitle(ProductionAssets.text(input.getDramaTitle()) ? input.getDramaTitle() : "小说制作准备");
         var session = store().createSession(request, "NORMAL", "production:" + input.getClientRequestId());

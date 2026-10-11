@@ -32,7 +32,7 @@ class AgentConfigServiceTest {
     AiModel model;
     @BeforeEach void setup() {
         AgentTestSupport.metadata();
-        CoreAssistantProfile profile = new CoreAssistantProfile();
+        CoreAssistantProfile profile = AgentTestSupport.profile();
         var profiles = new AgentProfileRegistry(List.of(profile));
         List<AgentTool<?>> entries = new ArrayList<>();
         for (String name : profile.allowedTools()) {
@@ -98,5 +98,46 @@ class AgentConfigServiceTest {
         var media = new AgentConfigDTO.StateMedia(); media.setUrl("javascript:alert(1)"); media.setContentType("image/gif");
         assertFalse(AgentConfigValidator.validMedia(media));
         media.setUrl("/media/idle.gif"); assertTrue(AgentConfigValidator.validMedia(media));
+    }
+    private AgentConfig stored(AgentConfigDTO dto, int version) {
+        var row = new AgentConfig(); row.setId(123L); row.setAgentCode(dto.getAgentCode()); row.setProfileVersion(version);
+        row.setDisplayName(dto.getDisplayName()); row.setDescription(dto.getDescription()); row.setEnabled(dto.isEnabled()); row.setRevision(8);
+        row.setSystemPrompt(dto.getInstructions().getSystemPrompt()); row.setModelOptionsJson(json.write(dto.getModel()));
+        row.setToolPolicyJson(json.write(dto.getTools())); row.setSkillPolicyJson(json.write(dto.getSkills()));
+        row.setMemoryPolicyJson(json.write(dto.getMemory())); row.setRuntimePolicyJson(json.write(dto.getRuntime())); row.setAvatarConfigJson(json.write(dto.getAvatar()));
+        return row;
+    }
+    @Test void upgradeCombinesCapabilitiesButKeepsPrimaryModelAndPet() {
+        config.setDisplayName("我的助手"); config.setEnabled(false); config.getInstructions().setSystemPrompt("保持原文对白");
+        config.getAvatar().getPet().setSpritesheetUrl("https://example.test/my-pet.webp");
+        config.getTools().setNames(List.of("list_project_assets", "get_shot_detail"));
+        var primary = stored(config, 1);
+        var legacy = json.copy(config, AgentConfigDTO.class); legacy.setAgentCode("production-preparation"); legacy.setEnabled(true);
+        legacy.getModel().setProviderId(999L); legacy.getModel().setModelCode("other-model");
+        legacy.getAvatar().getPet().setSpritesheetUrl("https://example.test/other-pet.webp");
+        legacy.getInstructions().setSystemPrompt("角色造型保持一致");
+        when(mapper.selectOne(any())).thenReturn(primary, stored(legacy, 1)); when(mapper.lockByCode("core-assistant")).thenReturn(primary);
+        var result = service.get("core-assistant");
+        assertEquals("我的助手", result.getDisplayName()); assertTrue(result.isEnabled()); assertEquals(9, result.getRevision());
+        assertEquals(config.getModel().getProviderId(), result.getModel().getProviderId()); assertEquals(config.getModel().getModelCode(), result.getModel().getModelCode());
+        assertEquals(config.getAvatar().getPet().getSpritesheetUrl(), result.getAvatar().getPet().getSpritesheetUrl());
+        assertTrue(result.getTools().getNames().containsAll(List.of("list_project_assets", "start_script_decomposition", "inspect_preparation")));
+        assertEquals(48000, result.getMemory().getContextTokens()); assertEquals(60, result.getRuntime().getMaxModelTurns());
+        assertTrue(result.getInstructions().getSystemPrompt().contains("角色造型保持一致"));
+        verify(mapper, times(1)).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
+    }
+    @Test void legacyIdentifierResolvesOneConfigurationAndNewSnapshotsUseUnifiedCode() {
+        when(mapper.selectOne(any())).thenReturn(stored(config, 2));
+        assertEquals("core-assistant", service.get("production-preparation").getAgentCode());
+        verify(mapper, never()).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
+        var snapshot = service.snapshot("production-preparation", config, "NORMAL");
+        assertEquals("core-assistant", snapshot.agentCode()); assertEquals(2, snapshot.profileVersion());
+        assertEquals("core-assistant", snapshot.config().getAgentCode());
+    }
+    @Test void oneRegisteredAssistantHasQueryAndProductionCapabilities() {
+        var profile = AgentTestSupport.profile(); var registry = new AgentProfileRegistry(List.of(profile));
+        assertEquals(1, registry.all().size()); assertSame(profile, registry.require("production-preparation"));
+        assertEquals("FREYJA 助手", profile.defaults().getDisplayName());
+        assertTrue(profile.allowedTools().containsAll(List.of("list_project_assets", "ensure_text_assets", "prepare_shot_prompts")));
     }
 }

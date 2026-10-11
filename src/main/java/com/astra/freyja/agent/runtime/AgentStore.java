@@ -55,7 +55,7 @@ public class AgentStore {
         if (!"CONFIG_TEST".equals(type) && !configs.get(request.getAgentCode()).isEnabled())
             throw new BizException("请先在 Agent 配置页启用助手");
         AgentSession session = new AgentSession();
-        session.setAgentCode(request.getAgentCode()); session.setDramaId(request.getDramaId());
+        session.setAgentCode(AgentProfileRegistry.canonicalCode(request.getAgentCode())); session.setDramaId(request.getDramaId());
         session.setTitle(request.getTitle() == null || request.getTitle().isBlank() ? "新的 Agent 会话" : request.getTitle().trim());
         if (session.getTitle().length() > 200) throw new BizException("会话标题过长");
         session.setSessionType(type); session.setTestRequestId(testRequestId); session.setNextSeq(1); session.setCoveredThroughSeq(0); session.setSummaryVersion(0);

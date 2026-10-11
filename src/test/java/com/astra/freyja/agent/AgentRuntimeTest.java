@@ -51,7 +51,7 @@ class AgentRuntimeTest {
             return true;
         });
         doAnswer(call -> { run.setStatus("COMPLETED"); return null; }).when(store).complete(anyLong(), anyString(), anyInt(), anyString(), anyString());
-        runtime = new AgentRuntime(store, gateway, context, tools, registry, new AgentProfileRegistry(List.of(new CoreAssistantProfile())), json);
+        runtime = new AgentRuntime(store, gateway, context, tools, registry, new AgentProfileRegistry(List.of(AgentTestSupport.profile())), json);
     }
     @Test void toolCallsAreDurableBeforeExecutionAndObservedByNextModelTurn() {
         when(gateway.call(any(), anyList(), anyList(), anyLong())).thenReturn(

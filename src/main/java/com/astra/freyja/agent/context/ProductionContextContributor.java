@@ -9,7 +9,7 @@ import org.springframework.stereotype.Component;
 @Component @RequiredArgsConstructor
 public class ProductionContextContributor implements ContextContributor {
     private final ProductionJobs jobs;
-    public boolean supports(String code) { return ProductionJobs.PROFILE.equals(code); }
+    public boolean supports(String code) { return ProductionJobs.PROFILE.equals(com.astra.freyja.agent.profile.AgentProfileRegistry.canonicalCode(code)); }
     public String contribute(AgentSession s, Snapshot snapshot) {
         var job = s.getActiveRunId() == null ? null : jobs.find(s.getActiveRunId());
         return job == null ? "当前是制作会话的后续咨询。查询真实项目事实，用户明确要求镜头修改时再写入。"

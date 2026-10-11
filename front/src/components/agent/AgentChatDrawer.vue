@@ -39,9 +39,6 @@
   <ProductionStartDialog v-model="productionVisible" />
   <el-dialog v-model="newSessionVisible" title="新建 Agent 会话" width="480px" append-to-body>
     <el-form label-position="top">
-      <el-form-item label="Agent"><el-select v-model="store.selectedAgentCode" class="w-full">
-        <el-option v-for="profile in store.profiles" :key="profile.agentCode" :label="profile.displayName" :value="profile.agentCode" />
-      </el-select></el-form-item>
       <el-form-item label="绑定项目（可选）"><el-select v-model="dramaId" clearable filterable class="w-full" placeholder="通用会话">
         <el-option v-for="project in projects" :key="String(project.id)" :label="project.title" :value="String(project.id)" />
       </el-select></el-form-item>

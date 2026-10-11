@@ -12,7 +12,7 @@ import org.springframework.stereotype.Component;
 public class ProjectContextContributor implements ContextContributor {
     private final DramaMapper dramas;
     private final AgentJson json;
-    public boolean supports(String agentCode) { return "core-assistant".equals(agentCode); }
+    public boolean supports(String agentCode) { return "core-assistant".equals(com.astra.freyja.agent.profile.AgentProfileRegistry.canonicalCode(agentCode)); }
     public String contribute(AgentSession session, Snapshot snapshot) {
         if (session.getDramaId() == null) return "当前会话未绑定项目，项目查询工具不可用。";
         var project = dramas.selectById(session.getDramaId());

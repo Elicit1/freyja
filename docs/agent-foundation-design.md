@@ -93,7 +93,7 @@ flowchart TD
 
 ### 4.1 AgentProfile
 
-首版采用“代码注册能力模板 + 数据库保存可编辑配置 + 独立配置页面”。Profile 决定可用能力的边界，AgentConfig 决定这个 Agent 的实际配置。首版提供 core-assistant，后续注册 production-preparation 后在同一页面出现制作 Agent 的配置。
+采用“代码注册能力模板 + 数据库保存可编辑配置 + 独立配置页面”。系统只提供 core-assistant，聊天、查询与制作准备能力统一接入该助手。AgentConfig 保存其模型、指令、工具和形象配置，不按业务功能拆成多个配置。
 
 Profile 内容包括：
 
@@ -322,7 +322,7 @@ STEER 在下一模型或工具安全边界生效，更新目标约束版本；�
 
 ### 11.1 独立 Agent 配置页
 
-配置页是基础架构的首版交付内容。页面使用左侧 Agent 列表、右侧配置表单。列表显示名称、启停状态、默认模型和配置是否有效；首版只有 core-assistant，后续业务模板自动进入同一列表。切换 Agent 时提示处理未保存修改，保存按钮显示当前版本和保存结果。
+配置页提供唯一助手的完整配置表单，不显示 Agent 切换列表。页面显示名称、启停状态、默认模型和配置校验结果，保存按钮显示当前版本和保存结果。离开或重新加载时提示处理未保存修改。
 
 | 分区 | 可配置内容 | 交互与边界 |
 | --- | --- | --- |
@@ -366,7 +366,7 @@ stateMedia 仅兼容旧配置和历史快照，前端不再消费 GIF。新上�
 
 模型下拉只列出启用提供商的启用 CHAT 模型。有工具的 Agent 必须使用支持 Tool Calling 的模型；paramsJson.capabilities.toolCalling 明确为 false 时不可选择，未声明时显示“能力待验证”，需在模型中心确认能力，不默认视为支持。模型中心维护该能力声明；保存时检查模型归属、状态、类型和已知能力，运行时仍处理真实协议错误。
 
-工具和 Skill 选择受 Profile 上限约束。动态加载只允许配置范围内已启用的 Skill，Run 固定具体发布版本；不能通过提示词临时加载任意工具。制作 Profile 接入后，其目录只包含准备工作的能力，不包含图片生成和视频渲染工具。
+工具和 Skill 选择受 Profile 上限约束。动态加载只允许配置范围内已启用的 Skill，Run 固定具体发布版本；不能通过提示词临时加载任意工具。统一助手的目录包含查询、明确记忆与制作准备工具，不包含图片生成和视频渲染工具。
 
 配置保存校验覆盖必填字段、枚举、JSON DTO、模型归属、必需工具/Skill、版本可用性、参数范围和预算。停用配置允许暂不选择模型；启用配置缺少必要项时拒绝保存并返回字段级问题。摘要关闭后若完整历史无法放入上下文预算，返回明确上下文限制，不静默丢弃未配对的工具记录。
 
@@ -374,7 +374,7 @@ stateMedia 仅兼容旧配置和历史快照，前端不再消费 GIF。新上�
 
 | 方法与路径 | 用途 |
 | --- | --- |
-| GET /system/agent/configs | 列出已注册 Agent 的保存配置摘要及校验状态 |
+| GET /system/agent/configs | 返回唯一助手的保存配置 |
 | GET /system/agent/configs/{agentCode} | 读取表单、revision、模板默认值和固定约束 |
 | PUT /system/agent/configs/{agentCode} | 校验并保存配置，携带 expectedRevision，返回新 revision |
 | GET /system/agent/configs/{agentCode}/catalog | 读取该模板允许的工具、Skill 和字段约束 |
@@ -389,14 +389,14 @@ AgentConfigDTO 按 model、instructions、tools、skills、memory、runtime、av
 
 ## 12. 后续业务扩展方式
 
-第二阶段已注册 production-preparation Profile，实际实现见 [制作设计](agent-production-preparation-design.md) 与 [API](agent-api.md)。新增其他业务 Agent 可沿用同样方式，提供：
+第二阶段制作能力已合并到唯一 core-assistant，旧 production-preparation 标识仅兼容历史数据，实际实现见 [制作设计](agent-production-preparation-design.md) 与 [API](agent-api.md)。新增业务能力沿用同一助手的扩展机制，提供：
 
 1. Project/Shot/SourceText 等 ContextContributor。
 2. 剧本拆解、幂等入库、文字资产创建、分镜方案应用等 AgentTool。
 3. 分镜准备 CompletionPolicy：检查模式、关联、有效图片与待补需求。
 4. 制作结果 DTO 和前端结果卡片。
 
-该 Profile 使用同一 AgentConfigService 和 /system/agent 配置页，展示制作专属的工具与 Skill 选项；会话、模型、记忆、预算和形象设置沿用基础层协议。
+这些业务能力使用同一 AgentConfigService 和 /system/agent 配置页，工具与 Skill 选项集中展示；会话、模型、记忆、预算和形象设置统一管理。
 
 AgentRun 的 COMPLETED 与分镜 READY / WAITING_ASSET_IMAGES 是不同概念，由业务输出明确体现。基础层无需出现 generationMode、ResKeyframe 等制作专有字段。
 

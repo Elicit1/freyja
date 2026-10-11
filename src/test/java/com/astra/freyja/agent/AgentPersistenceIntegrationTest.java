@@ -54,7 +54,7 @@ class AgentPersistenceIntegrationTest {
         model.setParamsJson("{\"capabilities\":{\"toolCalling\":true}}"); models.insert(model);
         var config = configs.get("core-assistant"); config.setEnabled(true);
         config.getModel().setProviderId(provider.getId()); config.getModel().setModelCode(model.getModelCode());
-        config.getTools().setNames(List.of("save_session_note", "list_session_notes"));
+        // Unified assistant keeps the mandatory preparation tools; fixture responses use only memory tools.
         config.getSkills().setNames(List.of()); configs.save("core-assistant", config);
     }
 

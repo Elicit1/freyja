@@ -33,7 +33,7 @@ public class AgentConfigValidator {
         AgentProfile profile = profiles.require(code);
         List<ValidationIssue> errors = new ArrayList<>(), warnings = new ArrayList<>();
         if (config == null) return new ValidationResult(false, List.of(issue("config", "REQUIRED", "配置不能为空")), warnings);
-        if (config.getAgentCode() != null && !code.equals(config.getAgentCode()))
+        if (config.getAgentCode() != null && !java.util.Objects.equals(AgentProfileRegistry.canonicalCode(code), AgentProfileRegistry.canonicalCode(config.getAgentCode())))
             errors.add(issue("agentCode", "MISMATCH", "Agent 编码不能修改"));
         text(errors, "displayName", config.getDisplayName(), 100);
         if (config.getDescription() != null && config.getDescription().length() > 500)

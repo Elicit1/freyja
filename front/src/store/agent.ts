@@ -16,13 +16,12 @@ export const useAgentStore = defineStore('agent', () => {
   const loading = ref(false)
   const phase = ref<AvatarState>('IDLE')
   const focusRunId = ref<string>()
-  const selectedAgentCode = ref('core-assistant')
   const taskCenter = useTaskCenterStore()
   const subscriptions = new Map<string, () => void>()
   let started = false
   let selectGeneration = 0
   const activeRun = computed(() => selectedSession.value?.activeRunId ? runs.value[selectedSession.value.activeRunId] : undefined)
-  const currentProfile = computed(() => profiles.value.find(p => p.agentCode === selectedSession.value?.agentCode) || profiles.value.find(p => p.agentCode === selectedAgentCode.value) || profiles.value[0])
+  const currentProfile = computed(() => profiles.value[0])
   const unreadCount = computed(() => notifications.value.length)
 
   function mergeMessage(message: AgentMessage) {
@@ -92,7 +91,6 @@ export const useAgentStore = defineStore('agent', () => {
         cursor = page[page.length - 1]!.seq
       }
       if (generation !== selectGeneration) return
-      selectedAgentCode.value = session.agentCode
       const merged = new Map([...loaded, ...messages.value].map(message => [message.seq, message]))
       messages.value = [...merged.values()].sort((a, b) => a.seq - b.seq); focusRunId.value = runId
       subscribe(session)
@@ -108,7 +106,7 @@ export const useAgentStore = defineStore('agent', () => {
     else if (!selectedSession.value && sessions.value[0]) await selectSession(sessions.value[0].id)
   }
   async function createSession(dramaId?: string) {
-    const code = selectedAgentCode.value || currentProfile.value?.agentCode || 'core-assistant'
+    const code = currentProfile.value?.agentCode || 'core-assistant'
     const session = await agentApi.createSession(code, dramaId)
     sessions.value.unshift(session)
     subscribe(session)
@@ -136,6 +134,6 @@ export const useAgentStore = defineStore('agent', () => {
     taskCenter.markRead(id, 'AGENT_RUN')
   }
   return { profiles, sessions, selectedSession, messages, runs, notifications, visible, loading, phase,
-    focusRunId, selectedAgentCode, activeRun, currentProfile, unreadCount, start, stop, open, selectSession, createSession,
+    focusRunId, activeRun, currentProfile, unreadCount, start, stop, open, selectSession, createSession,
     send, cancel, refreshProfiles, refreshRun, markRead }
 })

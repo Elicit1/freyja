@@ -8,16 +8,9 @@
       </template>
     </WorkspaceHeader>
     <div v-loading="loading" class="config-body">
-      <aside class="agent-list">
-        <button v-for="item in configs" :key="item.agentCode" class="agent-list-item" :class="{ selected: selectedCode === item.agentCode }" @click="selectAgent(item.agentCode)">
-          <span class="font-semibold">{{ item.displayName }}</span>
-          <el-tag size="small" :type="item.enabled ? 'success' : 'info'">{{ item.enabled ? '启用' : '停用' }}</el-tag>
-          <small>{{ item.model.modelCode || '尚未选择模型' }}</small>
-        </button>
-      </aside>
       <main v-if="form" class="config-form">
         <div class="config-meta">
-          <span>{{ form.agentCode }} · 配置 v{{ form.revision }}</span>
+          <span>{{ form.displayName }} · 配置 v{{ form.revision }}</span>
           <el-tag v-if="dirty" type="warning" size="small">有未保存修改</el-tag>
         </div>
         <el-alert v-if="validation" :title="validation.valid ? '配置校验通过' : '请修复以下配置问题'" :type="validation.valid ? 'success' : 'error'" :closable="false" class="mb-3">
@@ -137,12 +130,11 @@ import { aiProviderApi } from '@/api/ai-provider'
 import { useAgentStore } from '@/store/agent'
 import type { AgentConfig, AgentCatalog, ValidationResult } from '@/types/agent'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
-const configs = ref<AgentConfig[]>([])
 const form = ref<AgentConfig>()
 const catalog = ref<AgentCatalog>()
 const providers = ref<AiProviderVO[]>([])
 const models = ref<AiModel[]>([])
-const selectedCode = ref('')
+const selectedCode = ref('core-assistant')
 const tab = ref('basic')
 const loading = ref(false), saving = ref(false), validating = ref(false), uploading = ref(false)
 const validation = ref<ValidationResult>()
@@ -174,7 +166,6 @@ async function load(code: string) {
     models.value = config.model.providerId ? await aiProviderApi.getModelList(config.model.providerId, 'CHAT') : []
   } finally { loading.value = false }
 }
-async function selectAgent(code: string) { if (code !== selectedCode.value && await confirmDiscard()) await load(code) }
 async function reload() { if (selectedCode.value && await confirmDiscard()) await load(selectedCode.value) }
 async function providerChanged(value?: string) {
   if (!form.value) return
@@ -203,7 +194,6 @@ async function save() {
     if (!validation.value.valid) return
     const updated = await agentConfigApi.save(selectedCode.value, payload())
     form.value = updated; saved.value = JSON.stringify(updated)
-    configs.value = configs.value.map(item => item.agentCode === updated.agentCode ? updated : item)
     await useAgentStore().refreshProfiles()
     ElMessage.success('Agent 配置已保存')
   } finally { saving.value = false }
@@ -228,19 +218,14 @@ onBeforeRouteLeave(async () => await confirmDiscard())
 onMounted(async () => {
   loading.value = true
   try {
-    const [list, enabled] = await Promise.all([agentConfigApi.list(), aiProviderApi.getListEnabled()])
-    configs.value = list; providers.value = enabled
-    if (list[0]) await load(list[0].agentCode)
+    providers.value = await aiProviderApi.getListEnabled()
+    await load(selectedCode.value)
   } finally { loading.value = false }
 })
 </script>
 <style scoped>
 .agent-config-page { min-height: calc(100vh - 96px); overflow: hidden; display: flex; flex-direction: column; }
-.config-body { display: grid; grid-template-columns: 190px minmax(350px, 1fr); flex: 1; min-height: 600px; }
-.agent-list { padding: 14px; border-right: 1px solid var(--border-default); background: var(--surface-muted); }
-.agent-list-item { width: 100%; padding: 13px; margin-bottom: 8px; text-align: left; display: flex; flex-wrap: wrap; gap: 8px; border: 1px solid var(--border-default); border-radius: 12px; background: var(--surface); color: var(--text-primary); cursor: pointer; }
-.agent-list-item.selected { border-color: var(--brand); background: var(--brand-soft); }
-.agent-list-item small { width: 100%; color: var(--text-secondary); overflow-wrap: anywhere; }
+.config-body { flex: 1; min-height: 600px; }
 .config-form { padding: 18px 22px; min-width: 0; }
 .config-meta { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12px; color: var(--text-secondary); margin-bottom: 15px; }
 .config-footer { padding: 12px 20px; border-top: 1px solid var(--border-default); font-size: 12px; color: var(--text-secondary); }
@@ -255,6 +240,5 @@ onMounted(async () => {
 .avatar-download:hover { text-decoration: underline; }
 .avatar-card { display: flex; flex-direction: column; align-items: center; padding: 12px; border-radius: 12px; border: 1px solid var(--border-default); gap: 7px; text-align: center; }
 .avatar-preview { width: 144px; height: 156px; }
-@media (max-width: 1300px) { .config-body { grid-template-columns: 160px minmax(300px, 1fr); } }
-@media (max-width: 760px) { .config-body { display: block; } .agent-list { display: flex; gap: 10px; } .avatar-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 760px) { .avatar-grid { grid-template-columns: repeat(2, 1fr); } }
 </style>

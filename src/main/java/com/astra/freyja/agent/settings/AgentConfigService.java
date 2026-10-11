@@ -34,7 +34,8 @@ public class AgentConfigService {
     private final AgentJson json;
     private final TransactionTemplate transactions;
 
-    public AgentConfigDTO get(String code) {
+    public AgentConfigDTO get(String requestedCode) {
+        String code = AgentProfileRegistry.canonicalCode(requestedCode);
         profiles.require(code);
         AgentConfig entry = mapper.selectOne(new LambdaQueryWrapper<AgentConfig>().eq(AgentConfig::getAgentCode, code));
         if (entry == null) {
@@ -42,13 +43,58 @@ public class AgentConfigService {
             defaults.setAgentCode(code);
             defaults.setEnabled(false);
             defaults.getTools().setNames(profiles.require(code).allowedTools());
+            var legacy = legacyProductionConfig(code);
+            if (legacy != null) {
+                defaults = fromEntity(legacy); defaults.setAgentCode(code); defaults.setDisplayName("FREYJA 助手");
+                mergeCapabilities(defaults, null, code);
+            }
             entry = toEntity(code, defaults, 1);
             try { mapper.insert(entry); }
             catch (DuplicateKeyException concurrentInitialization) {
                 entry = mapper.selectOne(new LambdaQueryWrapper<AgentConfig>().eq(AgentConfig::getAgentCode, code));
             }
         }
+        if (entry.getProfileVersion() != null && entry.getProfileVersion() < profiles.require(code).version()) {
+            entry = transactions.execute(tx -> {
+                AgentConfig locked = mapper.lockByCode(code);
+                if (locked.getProfileVersion() >= profiles.require(code).version()) return locked;
+                var config = fromEntity(locked); var legacy = legacyProductionConfig(code);
+                mergeCapabilities(config, legacy == null ? null : fromEntity(legacy), code);
+                return persistUpdate(code, locked, config);
+            });
+        }
         return fromEntity(entry);
+    }
+    private AgentConfig legacyProductionConfig(String code) {
+        return AgentProfileRegistry.ASSISTANT_CODE.equals(code) ? mapper.selectOne(new LambdaQueryWrapper<AgentConfig>()
+                .eq(AgentConfig::getAgentCode, AgentProfileRegistry.LEGACY_PRODUCTION_CODE)) : null;
+    }
+    private void mergeCapabilities(AgentConfigDTO config, AgentConfigDTO legacy, String code) {
+        var profile = profiles.require(code); var defaults = profile.defaults();
+        var names = new java.util.LinkedHashSet<>(config.getTools().getNames());
+        if (legacy != null) names.addAll(legacy.getTools().getNames());
+        // Add the new production tools while preserving the existing optional query/memory selections.
+        names.addAll(profile.allowedTools().stream().filter(n -> !List.of("get_project_overview", "list_project_assets", "get_shot_detail",
+                "save_session_note", "list_session_notes", "load_skill", "read_skill_file").contains(n)).toList());
+        config.getTools().setNames(names.stream().filter(profile.allowedTools()::contains).toList());
+        if (legacy != null) {
+            config.setEnabled(config.isEnabled() || legacy.isEnabled());
+            if (config.getModel().getProviderId() == null || !com.astra.freyja.agent.production.ProductionAssets.text(config.getModel().getModelCode()))
+                config.setModel(json.copy(legacy.getModel(), AgentConfigDTO.Model.class));
+            var skills = new java.util.LinkedHashSet<>(config.getSkills().getNames()); skills.addAll(legacy.getSkills().getNames());
+            config.getSkills().setNames(List.copyOf(skills));
+            String extra = legacy.getInstructions().getSystemPrompt();
+            if (extra != null && !extra.isBlank() && !extra.equals(config.getInstructions().getSystemPrompt()))
+                config.getInstructions().setSystemPrompt(config.getInstructions().getSystemPrompt() + "\n" + extra);
+        }
+        var secondary = legacy == null ? defaults : legacy;
+        config.getModel().setMaxTokens(Math.max(config.getModel().getMaxTokens(), Math.max(defaults.getModel().getMaxTokens(), secondary.getModel().getMaxTokens())));
+        config.getMemory().setContextTokens(Math.max(config.getMemory().getContextTokens(), Math.max(defaults.getMemory().getContextTokens(), secondary.getMemory().getContextTokens())));
+        config.getRuntime().setMaxModelTurns(Math.max(config.getRuntime().getMaxModelTurns(), Math.max(defaults.getRuntime().getMaxModelTurns(), secondary.getRuntime().getMaxModelTurns())));
+        config.getRuntime().setMaxToolCalls(Math.max(config.getRuntime().getMaxToolCalls(), Math.max(defaults.getRuntime().getMaxToolCalls(), secondary.getRuntime().getMaxToolCalls())));
+        config.getRuntime().setExecutionTimeoutSeconds(Math.max(config.getRuntime().getExecutionTimeoutSeconds(), Math.max(defaults.getRuntime().getExecutionTimeoutSeconds(), secondary.getRuntime().getExecutionTimeoutSeconds())));
+        if (new AgentConfigDTO().getDescription().equals(config.getDescription())) config.setDescription(defaults.getDescription());
+        config.setAgentCode(code);
     }
     public List<AgentConfigDTO> list() { return profiles.all().stream().map(p -> get(p.code())).toList(); }
     public record Display(String agentCode, String displayName, String description, AgentConfigDTO.Avatar avatar) {}
@@ -66,7 +112,8 @@ public class AgentConfigService {
     public ValidationResult validate(String code, AgentConfigDTO dto, boolean execution) {
         return validator.validate(code, dto, execution);
     }
-    public AgentConfigDTO save(String code, AgentConfigDTO dto) {
+    public AgentConfigDTO save(String requestedCode, AgentConfigDTO dto) {
+        String code = AgentProfileRegistry.canonicalCode(requestedCode);
         ValidationResult result = validator.validate(code, dto, false);
         if (!result.valid()) throw new BizException(400, result.errors().getFirst().field() + ": " + result.errors().getFirst().message());
         get(code);
@@ -74,9 +121,13 @@ public class AgentConfigService {
             AgentConfig current = mapper.lockByCode(code);
             if (dto.getExpectedRevision() == null || !dto.getExpectedRevision().equals(current.getRevision()))
                 throw new BizException(409, "CONFIG_VERSION_CONFLICT: 配置已被修改，请重新加载");
-            if (current.getRevision() == Integer.MAX_VALUE) throw new BizException("配置版本已达到上限");
-            AgentConfig updated = toEntity(code, dto, current.getRevision() + 1);
-            mapper.update(null, new LambdaUpdateWrapper<AgentConfig>()
+            return fromEntity(persistUpdate(code, current, dto));
+        });
+    }
+    private AgentConfig persistUpdate(String code, AgentConfig current, AgentConfigDTO dto) {
+        if (current.getRevision() == Integer.MAX_VALUE) throw new BizException("配置版本已达到上限");
+        AgentConfig updated = toEntity(code, dto, current.getRevision() + 1);
+        mapper.update(null, new LambdaUpdateWrapper<AgentConfig>()
                     .eq(AgentConfig::getId, current.getId()).eq(AgentConfig::getRevision, current.getRevision())
                     .set(AgentConfig::getDisplayName, updated.getDisplayName()).set(AgentConfig::getDescription, updated.getDescription())
                     .set(AgentConfig::getEnabled, updated.getEnabled()).set(AgentConfig::getProviderId, updated.getProviderId())
@@ -85,15 +136,16 @@ public class AgentConfigService {
                     .set(AgentConfig::getSkillPolicyJson, updated.getSkillPolicyJson()).set(AgentConfig::getMemoryPolicyJson, updated.getMemoryPolicyJson())
                     .set(AgentConfig::getRuntimePolicyJson, updated.getRuntimePolicyJson()).set(AgentConfig::getAvatarConfigJson, updated.getAvatarConfigJson())
                     .set(AgentConfig::getRevision, updated.getRevision()).set(AgentConfig::getProfileVersion, updated.getProfileVersion()));
-            return fromEntity(updated);
-        });
+        return updated;
     }
     /** Called inside the run submission transaction; the copied configuration is never read again during recovery. */
-    public Snapshot snapshot(String code, AgentConfigDTO input, String type) {
+    public Snapshot snapshot(String requestedCode, AgentConfigDTO input, String type) {
+        String code = AgentProfileRegistry.canonicalCode(requestedCode);
         var config = json.copy(input, AgentConfigDTO.class);
         if (!"CONFIG_TEST".equals(type) && !config.isEnabled()) throw new BizException("Agent 尚未启用");
         ValidationResult result = validator.validate(code, config, true);
         if (!result.valid()) throw new BizException(400, result.errors().getFirst().message());
+        config.setAgentCode(code);
         var profile = profiles.require(code);
         AiModel model = models.selectOne(new LambdaQueryWrapper<AiModel>()
                 .eq(AiModel::getProviderId, config.getModel().getProviderId()).eq(AiModel::getModelCode, config.getModel().getModelCode()));

@@ -11,7 +11,7 @@
       <span v-else> · {{ (run.promptTokens || 0) + (run.completionTokens || 0) }} Tokens</span>
     </div>
     <el-button v-if="run.status === 'FAILED'" size="small" class="mt-3" @click="resume">重试此任务</el-button>
-    <ProductionReportCard v-if="run.agentCode === 'production-preparation'" :run="run" />
+    <ProductionReportCard :run="run" />
   </div>
 </template>
 <script setup lang="ts">

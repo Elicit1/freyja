@@ -52,7 +52,7 @@ const selected = ref<ProductionPlanView>(), locked = ref<string[]>([])
 const labels: Record<string, string> = { PENDING:'待规划', WAITING_ASSET_IMAGES:'待补图', NEEDS_REFRESH:'需更新', READY:'就绪', ERROR:'需要修复' }
 const lockFields = [{value:'generationMode',label:'生成模式'}, {value:'characterBindings',label:'人物造型'}, {value:'visualAnchor',label:'主视觉基准'}, {value:'propBindings',label:'道具'}, {value:'referenceSlots',label:'参考素材'}, {value:'firstFrameRequirement',label:'首帧方案'}, {value:'lastFrameRequirement',label:'尾帧方案'}, {value:'prompts',label:'提示词'}]
 const needPrompts = computed(() => live.value.filter(s => s.preparationStatus === 'NEEDS_REFRESH').map(s => s.shotId))
-watch(() => [props.run.id, props.run.status], async () => { if (props.run.agentCode === 'production-preparation') report.value = await agentApi.productionReport(props.run.id) }, { immediate: true })
+watch(() => [props.run.id, props.run.status], async () => { report.value = await agentApi.productionReport(props.run.id) }, { immediate: true })
 function status(s: ProductionShot) { return live.value.find(p => p.shotId === s.shotId)?.preparationStatus || s.status }
 function workbench(shotId?: string) { store.visible = false; void router.push({ path: '/drama', query: { dramaId: report.value!.dramaId, resumeShotId: shotId } }) }
 function asset(m: ProductionMaterial) {

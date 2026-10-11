@@ -1,6 +1,6 @@
 # FREYJA 分镜渲染准备 Agent 设计方案
 
-日期：2026-10-11。第二阶段已按本方案接入制作 Profile、三张业务表、文字资产与规划工具、交付卡片和补图刷新。实际接口与部署步骤见 [Agent API](agent-api.md)，验收结果见 [第二阶段验收](agent-phase2-validation.md)。本文保留业务设计依据。
+日期：2026-10-11。第二阶段已接入三张业务表、文字资产与规划工具、交付卡片和补图刷新。制作能力统一由 FREYJA 助手承担，不单独展示制作 Agent。实际接口与部署步骤见 [Agent API](agent-api.md)，验收结果见 [第二阶段验收](agent-phase2-validation.md)。本文保留业务设计依据。
 
 实施顺序按最新确认先建设通用基础层与独立 Agent 配置页，详见 [Agent 基础架构设计](agent-foundation-design.md)。本文描述后续制作业务 Profile 的接入；通用配置、会话、执行协议、状态和恢复规则以基础架构方案为准。
 
@@ -24,7 +24,7 @@
 
 | 能力 | 复用入口 | 新增工作 |
 | --- | --- | --- |
-| Agent 配置 | 通用 AgentConfigService、/system/agent 配置页 | 注册 production-preparation 模板，复用模型、指令、工具/Skill、记忆、预算和形象配置 |
+| Agent 配置 | 通用 AgentConfigService、/system/agent 配置页 | 唯一 core-assistant 配置统一管理查询与制作能力、模型、指令、工具/Skill、记忆、预算和形象 |
 | 模型调用 | AiModelFactory、Spring AI ChatClient | 为 Agent 配置 CHAT 模型，验证 Tool Calling 能力 |
 | 拆解与入库 | ScriptDecomposeService.startDecomposeTask / commit | 包装异步工具，保存草稿与入库检查点，自动调用 commit |
 | 人物身份 | CharacterRegistryService、CharacterResolutionService | 复用身份注册与消歧，避免同一人物重复创建 |
@@ -350,7 +350,7 @@ AgentChatDrawer 包含输入框、原文提交入口、当前项目、任务进�
 
 以下步骤在通用基础层与独立 Agent 配置页完成后推进，各步串成同一条完整链路：
 
-1. 注册制作 Profile 和配置选项，沿用基础层会话、消息、Run/Step、任务中心及恢复机制，打通原文提交、现有拆解与幂等入库。
+1. 将制作能力接入统一助手，沿用基础层会话、消息、Run/Step、任务中心及恢复机制，打通原文提交、现有拆解与幂等入库。
 2. 改造关键图创建/更新与前端表单以支持无图文字资产，实现全剧文字资产整理、ShotProductionPlan、局部应用、素材需求去重和参考槽位解析。
 3. 实现就绪检查、提示词处理、交付报告及用户补图后的局部刷新。
 4. 接入制作专属上下文与结果卡片，扩展缺图清单和准备状态气泡，复用基础层记忆、虚拟形象、聊天抽屉及历史恢复，完成端到端验收。

@@ -10,6 +10,11 @@ import java.util.List;
 import java.util.Map;
 
 final class AgentTestSupport {
+    static com.astra.freyja.agent.profile.CoreAssistantProfile profile() {
+        return new com.astra.freyja.agent.profile.CoreAssistantProfile(
+                org.mockito.Mockito.mock(com.astra.freyja.dao.AgentPreparationJobMapper.class),
+                org.mockito.Mockito.mock(org.springframework.beans.factory.ObjectProvider.class));
+    }
     static final Long SESSION = 2032095628944588801L;
     static final Long RUN = 2032095628944588802L;
     static final Long STEP = 2032095628944588803L;

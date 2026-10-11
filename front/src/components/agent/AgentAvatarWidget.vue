@@ -37,8 +37,8 @@ const dragRow = ref<number>()
 let cleanupDrag: (() => void) | undefined
 const waiting = computed(() => Object.values(store.runs).find(r => r.status === 'WAITING_USER'))
 const missingCounts = ref<Record<string, number | null>>({})
-watch(() => store.notifications.filter(r => r.agentCode === 'production-preparation' && r.status === 'COMPLETED').map(r => r.id).join(','), async () => {
-  await Promise.allSettled(store.notifications.filter(r => r.agentCode === 'production-preparation' && r.status === 'COMPLETED' && missingCounts.value[r.id] === undefined).map(async r => {
+watch(() => store.notifications.filter(r => r.status === 'COMPLETED').map(r => r.id).join(','), async () => {
+  await Promise.allSettled(store.notifications.filter(r => r.status === 'COMPLETED' && missingCounts.value[r.id] === undefined).map(async r => {
     const report = await agentApi.productionReport(r.id)
     missingCounts.value[r.id] = report ? report.missingMaterials.length : null
   }))
