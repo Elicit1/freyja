@@ -20,6 +20,15 @@ class AgentContextBuilderTest {
         AgentMessage row = new AgentMessage(); row.setId((long) seq); row.setSeq(seq); row.setMessageType(type);
         row.setToolCallId(callId); row.setContentJson(json.write(body)); return row;
     }
+    @Test void replacementKeepsHistoryButMarksNewGoalAsReplacingStoppedWork() {
+        var old = row(1, "USER", new MessageBody("旧目标", List.of(), null, null, null, null), null);
+        var latest = row(2, "USER", new MessageBody("新目标", List.of(), Map.of("intent", "REPLACE_RUN"), null, null, null), null);
+        var groups = builder.groups(List.of(old, latest));
+        assertEquals(2, groups.size()); assertTrue(groups.getFirst().messages().getFirst().getText().endsWith("旧目标"));
+        assertTrue(groups.getLast().messages().getFirst().getText().contains("已停止此前的任务"));
+        assertTrue(groups.getLast().messages().getFirst().getText().endsWith("新目标"));
+        assertEquals("新目标", json.read(latest.getContentJson(), MessageBody.class).content());
+    }
     @Test void summaryBoundaryNeverSplitsCallAndResult() {
         var groups = List.of(new AgentContextBuilder.Group(1, 1, List.of(new UserMessage("目标"))),
                 new AgentContextBuilder.Group(2, 4, List.of(new AssistantMessage("调用"))),

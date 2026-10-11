@@ -26,11 +26,14 @@
           :placeholder="store.activeRun?.status === 'WAITING_USER' ? '回答 Agent 的问题…' : store.activeRun ? '补充本次任务的要求…' : '输入目标，Enter 发送，Shift+Enter 换行…'"
           @keydown="keyDown" />
         <div class="flex justify-between items-center mt-3">
-          <el-button v-if="store.activeRun && isActiveRun(store.activeRun.status)" size="small" type="danger" plain @click="cancel">取消任务</el-button>
+          <el-button v-if="store.activeRun && isActiveRun(store.activeRun.status)" size="small" type="danger" plain :disabled="sending" @click="cancel">取消任务</el-button>
           <span v-else class="text-xs text-[var(--text-secondary)]">关闭聊天后，后台任务继续运行</span>
-          <el-button type="primary" :loading="sending" :disabled="!input.trim() || (!store.profiles.length && !store.activeRun)" @click="send">
+          <div class="flex items-center gap-2">
+          <el-button v-if="store.activeRun && isActiveRun(store.activeRun.status)" type="warning" plain :loading="sending && replacing" :disabled="sending || !input.trim() || !store.profiles.length" @click="send('REPLACE_RUN')">停止并发送</el-button>
+          <el-button type="primary" :loading="sending && !replacing" :disabled="sending || !input.trim() || (!store.profiles.length && !store.activeRun)" @click="send()">
             {{ store.activeRun ? store.activeRun.status === 'WAITING_USER' ? '回答并继续' : '补充要求' : '发送' }}
           </el-button>
+          </div>
         </div>
       </div>
     </div>
@@ -60,6 +63,7 @@ const store = useAgentStore()
 const router = useRouter()
 const input = ref('')
 const sending = ref(false)
+const replacing = ref(false)
 const newSessionVisible = ref(false)
 const productionVisible = ref(false)
 const dramaId = ref<string>()
@@ -67,16 +71,19 @@ const projects = ref<{ id: string | number; title: string }[]>([])
 const scrollArea = ref<HTMLElement>()
 const sessionId = computed({ get: () => store.selectedSession?.id, set: () => {} })
 const shownRuns = computed(() => Object.values(store.runs).filter(r => r.sessionId === store.selectedSession?.id).sort((a, b) => (a.createTime || '').localeCompare(b.createTime || '')))
-let pendingRequest: { content: string; sessionId?: string; id: string } | undefined
-async function send() {
+let pendingRequest: { content: string; sessionId?: string; id: string; mode?: 'REPLACE_RUN' } | undefined
+async function send(mode?: 'REPLACE_RUN') {
   const content = input.value.trim()
   if (!content || sending.value) return
   sending.value = true
+  replacing.value = mode === 'REPLACE_RUN'
   try {
     if (!store.selectedSession) await store.createSession()
-    if (!pendingRequest || pendingRequest.content !== content || pendingRequest.sessionId !== store.selectedSession?.id)
-      pendingRequest = { content, sessionId: store.selectedSession?.id, id: crypto.randomUUID() }
-    await store.send(content, pendingRequest.id); input.value = ''; pendingRequest = undefined
+    if (!pendingRequest || pendingRequest.content !== content || pendingRequest.sessionId !== store.selectedSession?.id || pendingRequest.mode !== mode)
+      pendingRequest = { content, sessionId: store.selectedSession?.id, id: crypto.randomUUID(), mode }
+    await store.send(content, pendingRequest.id, mode)
+    if (input.value.trim() === content) input.value = ''
+    pendingRequest = undefined
   }
   finally { sending.value = false }
 }

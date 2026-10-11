@@ -117,4 +117,57 @@ class AgentStoreTest {
         assertEquals(25L, run.getExecutionMillis()); assertFalse(run.getUsageUnknown());
         verify(steps, never()).insert(any(AgentStep.class)); verify(messages, never()).insert(any(AgentMessage.class));
     }
+    SendMessage replacement() {
+        SendMessage request = new SendMessage(); request.setClientRequestId("replace-1");
+        request.setContent("改为查询道具"); request.setIntent("REPLACE_RUN"); request.setExpectedRunId(run.getId());
+        return request;
+    }
+    void replacementConfig() {
+        session.setSessionType("NORMAL");
+        var snapshot = AgentTestSupport.snapshot(List.of("save_session_note"), "NORMAL");
+        when(configs.get("core-assistant")).thenReturn(snapshot.config());
+        when(configs.snapshot(eq("core-assistant"), any(), eq("NORMAL"))).thenReturn(snapshot);
+    }
+    @Test void replacementCancelsOldRunAndPairsCallsBeforeQueuingNewGoal() {
+        replacementConfig();
+        var submitted = store.submit(session.getId(), replacement(), null);
+        assertEquals("CANCELLED", run.getStatus()); assertTrue(run.getCancelRequested()); assertNull(run.getLeaseOwner());
+        assertEquals("CANCELLED", step.getStatus()); assertNotNull(run.getFinishedAt());
+        assertNotEquals(run.getId(), submitted.runId()); assertEquals(submitted.runId(), session.getActiveRunId());
+        verify(runs).insert(argThat((AgentRun next) -> "QUEUED".equals(next.getStatus()) && "改为查询道具".equals(next.getObjective())
+                && next.getSessionId().equals(session.getId()) && !next.getCancelRequested()));
+        verify(messages).insert(argThat((AgentMessage message) -> "TOOL_RESULT".equals(message.getMessageType()) && run.getId().equals(message.getRunId())));
+        verify(messages).insert(argThat((AgentMessage message) -> "USER".equals(message.getMessageType())
+                && "REPLACE_RUN".equals(json.read(message.getContentJson(), MessageBody.class).properties().get("intent"))));
+        assertThrows(AgentStore.LeaseLost.class, () -> store.commitTool(run.getId(), "test-owner", 1, step.getId(), () -> {
+            fail("old task must not commit after replacement"); return null;
+        }, 0));
+    }
+    @Test void replacementRejectsChangedActiveRunWithoutStoppingIt() {
+        session.setActiveRunId(999L);
+        assertThrows(com.astra.freyja.common.BizException.class, () -> store.submit(session.getId(), replacement(), null));
+        assertEquals("RUNNING", run.getStatus()); assertEquals(999L, session.getActiveRunId());
+        verifyNoInteractions(configs); verify(runs, never()).insert(any(AgentRun.class));
+    }
+    @Test void invalidReplacementConfigLeavesOldTaskActive() {
+        replacementConfig();
+        when(configs.snapshot(eq("core-assistant"), any(), eq("NORMAL"))).thenThrow(new com.astra.freyja.common.BizException("模型不可用"));
+        assertThrows(com.astra.freyja.common.BizException.class, () -> store.submit(session.getId(), replacement(), null));
+        assertEquals("RUNNING", run.getStatus()); assertFalse(run.getCancelRequested()); assertEquals(run.getId(), session.getActiveRunId());
+        assertEquals("RUNNING", step.getStatus()); verify(messages, never()).insert(any(AgentMessage.class));
+    }
+    @Test void retriedReplacementReturnsExistingSubmissionWithoutCancellingAnotherRun() {
+        session.setActiveRunId(999L);
+        AgentMessage saved = new AgentMessage(); saved.setId(123L); saved.setRunId(456L);
+        when(messages.selectOne(any())).thenReturn(saved);
+        var submitted = store.submit(session.getId(), replacement(), null);
+        assertEquals(456L, submitted.runId()); assertEquals(999L, session.getActiveRunId());
+        assertEquals("RUNNING", run.getStatus()); verifyNoInteractions(configs);
+        verify(runs, never()).insert(any(AgentRun.class)); verify(messages, never()).insert(any(AgentMessage.class));
+    }
+    @Test void ordinarySendCannotReplaceActiveRun() {
+        SendMessage request = replacement(); request.setIntent("START_RUN");
+        assertThrows(com.astra.freyja.common.BizException.class, () -> store.submit(session.getId(), request, null));
+        assertEquals("RUNNING", run.getStatus()); verifyNoInteractions(configs);
+    }
 }

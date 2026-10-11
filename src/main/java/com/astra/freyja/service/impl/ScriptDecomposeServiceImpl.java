@@ -261,6 +261,11 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 aiTaskService.markFailed(task.getId(), e.getMessage());
                 bridge.sendError(e.getMessage());
             }
+        }, () -> {
+            String message = "拆解任务未启动：创建事务未提交，原文草稿已保留，请重新提交。";
+            aiTaskService.markFailed(task.getId(), message);
+            aiEvents.appendScript(id, "error", message);
+            aiEvents.appendScript(id, "done", "[DONE]");
         });
     }
 

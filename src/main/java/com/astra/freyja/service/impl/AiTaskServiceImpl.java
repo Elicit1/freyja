@@ -305,12 +305,11 @@ public class AiTaskServiceImpl implements AiTaskService {
 
     @Override
     public List<AiTaskDTO> listTasks(AiTaskQueryDTO query) {
-        List<AiTaskDTO> result = new ArrayList<>();
+        var drafts = new java.util.LinkedHashMap<Long, AiTask>();
         if (draftStore != null) {
-            result.addAll(draftStore.listTasks().stream()
-                    .filter(task -> matches(query, task))
-                    .map(this::toDTO).toList());
+            for (AiTask task : draftStore.listTasks()) drafts.put(task.getId(), task);
         }
+        var canonical = new java.util.LinkedHashMap<Long, AiTask>();
         try {
             LambdaQueryWrapper<AiTask> qw = new LambdaQueryWrapper<>();
             if (query != null) {
@@ -325,10 +324,13 @@ public class AiTaskServiceImpl implements AiTaskService {
                 }
             }
             qw.orderByDesc(AiTask::getId);
-            result.addAll(aiTaskMapper.selectList(qw).stream().map(this::toDTO).toList());
+            for (AiTask task : aiTaskMapper.selectList(qw)) canonical.put(task.getId(), task);
         } catch (Exception e) {
             log.warn("[AiTaskService] 查询任务列表失败 (可能 ai_task 表尚未初始化): {}", e.getMessage());
         }
+        // Redis is authoritative while a draft exists. Filter only after replacing stale SQL checkpoints.
+        canonical.putAll(drafts);
+        List<AiTaskDTO> result = new ArrayList<>(canonical.values().stream().filter(task -> matches(query, task)).map(this::toDTO).toList());
         result.sort((left, right) -> Long.compare(right.getId(), left.getId()));
         return result;
     }

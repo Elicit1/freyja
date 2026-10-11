@@ -72,7 +72,7 @@ python scripts/migrate_agent_foundation.py --apply
 | POST / GET | `/agent/sessions` | 创建/列出正式会话 |
 | GET | `/agent/sessions/{id}` | 会话详情和活动 Run |
 | GET | `/agent/sessions/{id}/messages?afterSeq=0` | 消息与事件，按 seq 升序，每页最多 500 条 |
-| POST | `/agent/sessions/{id}/messages` | 提交新目标、补充要求或回答 |
+| POST | `/agent/sessions/{id}/messages` | 提交新目标、停止并发送、补充要求或回答 |
 | GET | `/agent/runs/{id}` | 状态、用量和结果；不返回内部快照及租约 |
 | GET | `/agent/runs/{id}/report` | 最终结构化摘要 |
 | POST | `/agent/runs/{id}/cancel` | 取消并中断本地执行 |
@@ -93,6 +93,14 @@ python scripts/migrate_agent_foundation.py --apply
 ```
 
 返回 `sessionId/messageId/runId`，模型与工具在后台执行。`START_RUN` 可成对提供 `providerId/modelCode` 作为本次模型覆盖；`STEER` 与 `ANSWER` 必须携带 `expectedRunId`，活动任务不能更换模型。`ANSWER` 只用于 `WAITING_USER`，不是 `/resume` 的替代参数。
+
+聊天中的“补充要求”继续同一个 Run，等待中的旧模型结果按约束版本检查后丢弃，不会立即中断正在等待返回的模型调用。“停止并发送”使用 `REPLACE_RUN`，必须携带字符串 `expectedRunId`；服务端先校验新任务配置，再在同一会话锁和事务内取消旧 Run、封闭未完成工具调用并创建新 Run。旧任务取消与新目标接收同时提交，新 Run 使用最新配置，保留原会话、记忆和已提交的业务数据。提交后中断旧任务的本地执行，制作子任务也会结束；上游接口没有取消确认时不承诺远端请求已停止。
+
+```json
+{"clientRequestId":"another-unique-request-id","intent":"REPLACE_RUN","expectedRunId":"2109286509711650817","content":"停止原来的故事，改为回答新问题"}
+```
+
+重复请求返回原 `sessionId/messageId/runId`；任务标识过期返回 `409 / RUN_CHANGED`，不会停止另一个任务。新配置无效时保留原活动任务。Enter 保持原有发送、补充或回答语义，替换任务由“停止并发送”显式触发；提交上一条消息期间输入的新文本不会被清空。前端只在终态 Run 与当前活动 Run 相同时清除会话活动状态，避免旧取消通知覆盖新任务。
 
 主要状态为 `QUEUED`、`RUNNING`、`WAITING_TASK`、`WAITING_USER`、`COMPLETED`、`FAILED`、`CANCELLED`。`PARTIAL_SUCCESS` 保留给业务 Profile；取消在数据库中直接提交 `CANCELLED`。
 
@@ -157,6 +165,8 @@ npm run build
 关键图创建允许省略图片 URL，保存 `TEXT_DRAFT`，需要描述或提示词。更新省略 `frameUrl` 保留旧图片，显式 `clearFrameUrl=true` 清空；后续上传沿用原资产 ID。
 
 拆解、Worker 重试和提示词子任务采用事务提交后启动，恢复复用同一子任务 ID。取消或失败停止尚在运行的子任务；已提交的项目、资产与分镜保留。DeepSeek 推理元数据仅用于多轮协议回传，保留原始空字段及工具配对，不展示在聊天 UI，也不通过 `extraBody` 追加重复 `messages`。
+
+拆解启动事务未提交时，将已保存的 Redis 草稿任务标为 FAILED，并保存错误和结束事件，保留原文草稿。同一任务在 Redis 和 MySQL 中同时存在时，先以 Redis 最新状态覆盖检查点，再过滤状态与去重，防止旧 PENDING 检查点重新进入活跃列表。取消事件已在提交后发布，子任务清理直接启动独立线程；清理覆盖 Redis 中的后代任务，并同步已有 SQL 检查点的终态。
 
 真实页面验收和保留的示例数据见 [第二阶段验收记录](agent-phase2-validation.md)。
 

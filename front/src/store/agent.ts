@@ -36,8 +36,16 @@ export const useAgentStore = defineStore('agent', () => {
     const run = await agentApi.run(id)
     runs.value[id] = run
     const session = sessions.value.find(s => s.id === run.sessionId)
-    if (session) session.activeRunId = isActiveRun(run.status) ? run.id : undefined
-    if (selectedSession.value?.id === run.sessionId) selectedSession.value.activeRunId = isActiveRun(run.status) ? run.id : undefined
+    function syncActive(target: AgentSession) {
+      if (!isActiveRun(run.status)) {
+        if (target.activeRunId === run.id) target.activeRunId = undefined
+      } else {
+        const current = target.activeRunId ? runs.value[target.activeRunId] : undefined
+        if (!current || (current.createTime || '') <= (run.createTime || '')) target.activeRunId = run.id
+      }
+    }
+    if (session) syncActive(session)
+    if (selectedSession.value?.id === run.sessionId) syncActive(selectedSession.value)
     if (run.runType === 'NORMAL' && !isActiveRun(run.status) && !run.readAt) {
       const index = notifications.value.findIndex(n => n.id === run.id)
       if (index >= 0) notifications.value[index] = run
@@ -119,11 +127,12 @@ export const useAgentStore = defineStore('agent', () => {
     await selectSession(session.id)
     return session
   }
-  async function send(content: string, clientRequestId: string, mode?: 'STEER' | 'ANSWER') {
+  async function send(content: string, clientRequestId: string, mode?: 'STEER' | 'ANSWER' | 'REPLACE_RUN') {
     const session = selectedSession.value || await createSession()
     const run = activeRun.value
     const intent = run && isActiveRun(run.status) ? mode || (run.status === 'WAITING_USER' ? 'ANSWER' : 'STEER') : 'START_RUN'
     const submitted = await agentApi.send(session.id, content, intent, clientRequestId, intent === 'START_RUN' ? undefined : run?.id)
+    if (intent === 'REPLACE_RUN' && run) await refreshRun(run.id)
     await refreshRun(submitted.runId)
     if (selectedSession.value?.id === session.id) {
       const last = messages.value.at(-1)?.seq || 0

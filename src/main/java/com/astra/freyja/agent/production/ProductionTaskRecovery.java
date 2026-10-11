@@ -30,16 +30,36 @@ public class ProductionTaskRecovery {
     @PostConstruct void listen() {
         events.addListener(event -> {
             if (event.runId() != null && Set.of("RUN_CANCELLED", "RUN_FAILED").contains(event.type()))
-                AfterCommitTask.start(() -> cancelChildren(event.runId()));
+                // These events already arrive after commit; registering another afterCommit callback here would never run it.
+                Thread.ofVirtual().start(() -> cancelChildren(event.runId()));
         });
     }
     public void cancelChildren(Long runId) {
         var job = jobs.find(runId);
         if (job == null) return;
-        List<Long> ids = new ArrayList<>(); if (job.getDecompositionTaskId() != null) ids.add(job.getDecompositionTaskId());
+        Set<Long> ids = new LinkedHashSet<>(); if (job.getDecompositionTaskId() != null) ids.add(job.getDecompositionTaskId());
         if (job.getDecompositionTaskId() != null) taskMapper.selectList(new LambdaQueryWrapper<AiTask>().eq(AiTask::getParentTaskId, job.getDecompositionTaskId())).stream().map(AiTask::getId).forEach(ids::add);
         plans.selectList(new LambdaQueryWrapper<ShotProductionPlan>().eq(ShotProductionPlan::getRunId, runId)).stream().map(ShotProductionPlan::getPromptTaskId).filter(Objects::nonNull).forEach(ids::add);
-        for (Long id : ids) { var t = tasks.getTaskById(id); if (t != null && Set.of("PENDING", "RUNNING", "RETRYING").contains(t.getStatus())) { AiTaskExecutionRegistry.interrupt(id); tasks.markCancelled(id, true); } }
+        // Workers may still live only in Redis. Include their descendants before stopping the old run.
+        var all = tasks.listTasks(null);
+        boolean added;
+        do {
+            added = false;
+            for (var task : all) if (task.getParentTaskId() != null && ids.contains(task.getParentTaskId())) added |= ids.add(task.getId());
+        } while (added);
+        for (Long id : ids) {
+            var task = tasks.getTaskById(id);
+            if (task == null || !Set.of("PENDING", "RUNNING", "RETRYING").contains(task.getStatus())) continue;
+            tasks.markCancelled(id, "PENDING".equals(task.getStatus()));
+            AiTaskExecutionRegistry.interrupt(id);
+            var stopped = tasks.getTaskById(id);
+            if (stopped == null) continue;
+            // Preserve the terminal status of the SQL recovery checkpoint after the Redis draft expires.
+            taskMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<AiTask>()
+                    .eq(AiTask::getId, id).in(AiTask::getStatus, "PENDING", "RUNNING", "RETRYING")
+                    .set(AiTask::getStatus, stopped.getStatus()).set(AiTask::getFinishedAt, stopped.getFinishedAt())
+                    .set(AiTask::getErrorMessage, stopped.getErrorMessage()));
+        }
     }
     public ToolResult retry(SegmentRetry input, ToolContext ctx, WaitHandle handle) {
         var job = jobs.require(ctx, true);

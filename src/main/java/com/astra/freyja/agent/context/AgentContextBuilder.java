@@ -108,7 +108,9 @@ public class AgentContextBuilder {
         for (AgentMessage row : rows) {
             if ("USER".equals(row.getMessageType())) {
                 MessageBody body = json.read(row.getContentJson(), MessageBody.class);
-                groups.add(new Group(row.getSeq(), row.getSeq(), List.of(new UserMessage("[用户消息 ID: " + row.getId() + "]\n" + body.content()))));
+                String content = body.properties() != null && "REPLACE_RUN".equals(body.properties().get("intent"))
+                        ? "用户已停止此前的任务，请保留历史作为背景，执行以下新目标：\n" + body.content() : body.content();
+                groups.add(new Group(row.getSeq(), row.getSeq(), List.of(new UserMessage("[用户消息 ID: " + row.getId() + "]\n" + content))));
             } else if ("SYSTEM".equals(row.getMessageType())) {
                 MessageBody body = json.read(row.getContentJson(), MessageBody.class);
                 groups.add(new Group(row.getSeq(), row.getSeq(), List.of(new SystemMessage(body.content()))));

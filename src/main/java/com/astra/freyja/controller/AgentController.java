@@ -41,7 +41,13 @@ public class AgentController {
         return R.ok(store.after(id, Math.max(afterSeq, 0)));
     }
     @PostMapping("/sessions/{id}/messages") public R<Submission> send(@PathVariable Long id, @RequestBody SendMessage request) {
-        return R.ok(store.submit(id, request, null));
+        Submission submitted = store.submit(id, request, null);
+        if ("REPLACE_RUN".equals(request.getIntent()) && request.getExpectedRunId() != null) {
+            var previous = store.run(request.getExpectedRunId());
+            // A replayed request must never interrupt a different active run.
+            if (id.equals(previous.getSessionId()) && "CANCELLED".equals(previous.getStatus())) scheduler.interrupt(previous.getId());
+        }
+        return R.ok(submitted);
     }
     @GetMapping("/runs/{id}") public R<RunView> run(@PathVariable Long id) { return R.ok(view(store.run(id))); }
     @GetMapping("/runs/{id}/report") public R<Object> report(@PathVariable Long id) {

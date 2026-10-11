@@ -128,8 +128,15 @@ public class AgentStore {
             AgentMessage duplicate = messages.selectOne(new LambdaQueryWrapper<AgentMessage>().eq(AgentMessage::getSessionId, sessionId)
                     .eq(AgentMessage::getClientRequestId, request.getClientRequestId()));
             if (duplicate != null) return new Submission(sessionId, duplicate.getId(), duplicate.getRunId());
-            if ("START_RUN".equals(request.getIntent())) {
-                if (session.getActiveRunId() != null) throw new BizException(409, "ACTIVE_RUN_EXISTS: 当前会话已有活动任务");
+            if ("START_RUN".equals(request.getIntent()) || "REPLACE_RUN".equals(request.getIntent())) {
+                AgentRun replaced = null;
+                if ("REPLACE_RUN".equals(request.getIntent())) {
+                    if (request.getExpectedRunId() == null || !Objects.equals(session.getActiveRunId(), request.getExpectedRunId()))
+                        throw new BizException(409, "RUN_CHANGED: 当前活动任务已改变，请刷新后重试");
+                    replaced = runs.lockById(request.getExpectedRunId());
+                    if (replaced == null || RunStatus.valueOf(replaced.getStatus()).terminal() || Boolean.TRUE.equals(replaced.getCancelRequested()))
+                        throw new BizException(409, "RUN_CHANGED: 当前任务已结束或正在取消");
+                } else if (session.getActiveRunId() != null) throw new BizException(409, "ACTIVE_RUN_EXISTS: 当前会话已有活动任务");
                 AgentConfigDTO config = testConfig != null ? testConfig : configs.get(session.getAgentCode());
                 config = json.copy(config, AgentConfigDTO.class);
                 if ((request.getProviderId() == null) != (request.getModelCode() == null))
@@ -138,13 +145,20 @@ public class AgentStore {
                     config.getModel().setProviderId(request.getProviderId()); config.getModel().setModelCode(request.getModelCode());
                 }
                 Snapshot snapshot = configs.snapshot(session.getAgentCode(), config, session.getSessionType());
+                // Validate the new execution before cancelling the old one. Both changes share this session lock and transaction.
+                if (replaced != null) {
+                    replaced.setCancelRequested(true);
+                    finishLocked(session, replaced, "CANCELLED", "已停止当前任务并发送新目标；已提交的数据保留。", null);
+                }
                 AgentRun run = new AgentRun();
                 run.setId(IdWorker.getId()); run.setSessionId(sessionId); run.setRunType(session.getSessionType());
                 run.setObjective(request.getContent()); run.setConfigRevision(snapshot.configRevision()); run.setProfileSnapshotJson(json.write(snapshot));
                 run.setStatus("QUEUED"); run.setModelTurns(0); run.setToolCalls(0); run.setNextStepOrder(1); run.setConstraintVersion(0);
                 run.setCancelRequested(false); run.setLeaseEpoch(0); run.setExecutionMillis(0L);
                 run.setPromptTokens(0); run.setCompletionTokens(0); run.setUsageUnknown(false);
-                AgentMessage message = append(session, run, "USER", "USER", MessageBody.text(request.getContent()), null, request.getClientRequestId(), null);
+                MessageBody input = replaced == null ? MessageBody.text(request.getContent())
+                        : new MessageBody(request.getContent(), List.of(), Map.of("intent", "REPLACE_RUN"), null, null, null);
+                AgentMessage message = append(session, run, "USER", "USER", input, null, request.getClientRequestId(), null);
                 run.setObjectiveMessageId(message.getId()); runs.insert(run);
                 setActive(session, run.getId()); event(session, run, "RUN_QUEUED", Map.of("status", "QUEUED"));
                 return new Submission(sessionId, message.getId(), run.getId());
@@ -477,7 +491,7 @@ public class AgentStore {
     private void validateRequest(SendMessage request) {
         if (request == null || request.getClientRequestId() == null || request.getClientRequestId().isBlank()
                 || request.getClientRequestId().length() > 100 || request.getContent() == null || request.getContent().isBlank()
-                || request.getContent().length() > 100000 || !Set.of("START_RUN", "STEER", "ANSWER").contains(request.getIntent()))
+                || request.getContent().length() > 100000 || !Set.of("START_RUN", "REPLACE_RUN", "STEER", "ANSWER").contains(request.getIntent()))
             throw new BizException(400, "请提供有效的请求 ID、输入类型和 1–100000 字的消息");
     }
 }

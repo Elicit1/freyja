@@ -2,13 +2,18 @@ package com.astra.freyja.service;
 
 import com.astra.freyja.dao.AiTaskMapper;
 import com.astra.freyja.dto.script.ScriptDecomposeResultVO;
+import com.astra.freyja.dto.script.AiTaskQueryDTO;
+import com.astra.freyja.dto.script.ScriptDecomposeRequestDTO;
 import com.astra.freyja.entity.AiTask;
 import com.astra.freyja.entity.enums.AiTaskType;
 import com.astra.freyja.service.impl.AiTaskServiceImpl;
+import com.astra.freyja.service.impl.ScriptDecomposeServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Map;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -16,6 +21,44 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 class ScriptDecomposeRedisTaskTest {
+
+    @Test void terminalDraftOverridesPendingSqlCheckpointBeforeActiveFiltering() {
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(new org.apache.ibatis.builder.MapperBuilderAssistant(
+                new com.baomidou.mybatisplus.core.MybatisConfiguration(), ""), AiTask.class);
+        AiTaskMapper mysql = mock(AiTaskMapper.class);
+        ScriptDecomposeDraftStore drafts = mock(ScriptDecomposeDraftStore.class);
+        AiTask checkpoint = new AiTask(); checkpoint.setId(42L); checkpoint.setStatus("PENDING");
+        AiTask draft = new AiTask(); draft.setId(42L); draft.setStatus("CANCELLED");
+        when(mysql.selectList(any())).thenReturn(List.of(checkpoint));
+        when(drafts.listTasks()).thenReturn(List.of(draft));
+        AiTaskServiceImpl service = new AiTaskServiceImpl(mysql);
+        ReflectionTestUtils.setField(service, "draftStore", drafts);
+        assertTrue(service.listTasks(AiTaskQueryDTO.builder().statuses(Set.of("PENDING", "RUNNING")).build()).isEmpty());
+        var history = service.listTasks(null);
+        assertEquals(1, history.size()); assertEquals("CANCELLED", history.getFirst().getStatus());
+    }
+
+    @Test void rolledBackLaunchEndsRedisTaskWithoutRunningInferenceOrDeletingDraft() {
+        var service = mock(ScriptDecomposeServiceImpl.class, CALLS_REAL_METHODS);
+        var tasks = mock(AiTaskService.class); var events = mock(ShotPromptEventStore.class);
+        ReflectionTestUtils.setField(service, "aiTaskService", tasks);
+        ReflectionTestUtils.setField(service, "aiEvents", events);
+        AiTask task = new AiTask(); task.setId(42L);
+        org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(true);
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            ReflectionTestUtils.invokeMethod(service, "launchDecomposeTask", new ScriptDecomposeRequestDTO(), task);
+            var callbacks = org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations();
+            assertEquals(1, callbacks.size());
+            callbacks.getFirst().afterCompletion(org.springframework.transaction.support.TransactionSynchronization.STATUS_ROLLED_BACK);
+            verify(tasks, timeout(3000)).markFailed(eq(42L), contains("创建事务未提交"));
+            verify(events, timeout(3000)).appendScript("42", "done", "[DONE]");
+            verify(tasks, never()).markRunning(anyLong());
+        } finally {
+            org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
+            org.springframework.transaction.support.TransactionSynchronizationManager.setActualTransactionActive(false);
+        }
+    }
 
     @Test
     void parentAndWorkerMetadataStayInRedisUntilCommit() {
