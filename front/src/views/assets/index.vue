@@ -138,6 +138,16 @@ const isShotReturnContext = computed(() => {
 })
 
 onMounted(async () => {
+  if (returnAssetType.value) activeTab.value = returnAssetType.value
+  const assetId = queryValue(route.query.assetId)
+  if (assetId && returnAssetType.value) {
+    await nextTick()
+    if (returnAssetType.value === 'character') await characterListRef.value?.openAsset(assetId)
+    if (returnAssetType.value === 'scene') await sceneListRef.value?.openAsset(assetId)
+    if (returnAssetType.value === 'prop') await propListRef.value?.openAsset(assetId)
+    if (returnAssetType.value === 'keyframe') await keyframeListRef.value?.openAsset(assetId)
+    return
+  }
   if (!isShotReturnContext.value || !returnAssetType.value) return
   activeTab.value = returnAssetType.value
   await nextTick()

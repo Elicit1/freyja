@@ -53,16 +53,25 @@ public class AgentContextBuilder {
         }
         int budget = snapshot.config().getMemory().getContextTokens();
         int keep = snapshot.config().getMemory().getRecentMessages();
-        int historyTokens = estimate(groups.stream().flatMap(g -> g.messages().stream()).toList());
-        if (groups.size() > keep && historyTokens + estimate(context) > budget * 3 / 4) {
+        int outputReserve = snapshot.config().getModel().getMaxTokens();
+        while (needsSummary(groups, context, session.getSummary(), budget, outputReserve, keep)) {
             if (!snapshot.config().getMemory().isSummaryEnabled()) throw new BizException("上下文超过预算，请启用摘要或新建会话");
-            int cut = safeSummaryCut(groups, groups.size() - keep);
+            int cut = safeSummaryCut(groups, Math.max(0, groups.size() - keep));
+            // Recent-message count is a preference. Large tool results may require
+            // fewer recent groups, while every assistant/tool pair remains whole.
+            int available = budget - outputReserve - estimate(context) - estimateText(session.getSummary());
+            for (int requested = Math.max(1, cut); requested < groups.size(); requested++) {
+                int candidate = safeSummaryCut(groups, requested);
+                if (candidate <= 0) continue;
+                cut = candidate;
+                if (estimate(groups.subList(cut, groups.size()).stream().flatMap(g -> g.messages().stream()).toList()) <= available * 3 / 4) break;
+            }
             if (cut == 0) throw new BizException("暂无可完整压缩的历史边界，请提高预算或新建会话");
             List<Group> prefix = groups.subList(0, cut);
             String history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe)
                     .collect(java.util.stream.Collectors.joining("\n"));
             // Each assistant/tool pair is included in full in the summary input.
-            if (estimateText(history) + estimateText(session.getSummary()) > budget)
+            if (estimateText(history) + estimateText(session.getSummary()) + outputReserve > budget)
                 throw new BizException("摘要输入超过上下文预算，请提高预算或新建会话");
             long start = System.nanoTime();
             long remaining = snapshot.config().getRuntime().getExecutionTimeoutSeconds() * 1000L - run.getExecutionMillis();
@@ -81,6 +90,10 @@ public class AgentContextBuilder {
         if (estimate(context) + snapshot.config().getModel().getMaxTokens() > budget)
             throw new BizException("上下文与输出预留超过配置预算，请提高预算或缩短输入");
         return context;
+    }
+    private boolean needsSummary(List<Group> groups, List<Message> context, String summary, int budget, int output, int keep) {
+        int used = estimate(groups.stream().flatMap(g -> g.messages().stream()).toList()) + estimate(context) + estimateText(summary) + output;
+        return used > budget || groups.size() > keep && used > budget * 3 / 4;
     }
     /** Use the latest durable result for each model-step/call pair, including a retried interrupted call. */
     public List<Group> groups(List<AgentMessage> rows) {
@@ -138,7 +151,10 @@ public class AgentContextBuilder {
     private int estimate(List<Message> messages) {
         return messages.stream().mapToInt(message -> {
             int size = estimateText(message.getText()) + 8;
-            if (message instanceof AssistantMessage assistant) size += estimateText(json.write(assistant.getToolCalls()));
+            if (message instanceof AssistantMessage assistant) {
+                size += estimateText(json.write(assistant.getToolCalls()));
+                if (assistant.getMetadata().get("reasoningContent") instanceof String reasoning) size += estimateText(reasoning);
+            }
             if (message instanceof ToolResponseMessage tool) size += estimateText(json.write(tool.getResponses()));
             return size;
         }).sum();

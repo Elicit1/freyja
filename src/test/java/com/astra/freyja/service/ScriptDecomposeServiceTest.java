@@ -37,6 +37,15 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class ScriptDecomposeServiceTest {
 
+    @Test void propReferenceCannotCrossProjects() {
+        var prop = new ResProp(); prop.setId(9L); prop.setDramaId(200L); prop.setStatus(1);
+        when(resPropMapper.selectById(9L)).thenReturn(prop);
+        assertThrows(BizException.class, () -> ReflectionTestUtils.invokeMethod(scriptDecomposeService, "requireExistingPropReference", 9L, 100L));
+        prop.setDramaId(100L); assertSame(prop, ReflectionTestUtils.invokeMethod(scriptDecomposeService, "requireExistingPropReference", 9L, 100L));
+        prop.setDramaId(0L); assertSame(prop, ReflectionTestUtils.invokeMethod(scriptDecomposeService, "requireExistingPropReference", 9L, 100L));
+        prop.setStatus(0); assertThrows(BizException.class, () -> ReflectionTestUtils.invokeMethod(scriptDecomposeService, "requireExistingPropReference", 9L, 100L));
+    }
+
     @Mock
     private AiModelFactory aiModelFactory;
 

@@ -48,13 +48,33 @@ export interface AgentMessage {
 }
 export type AgentRunStatus = 'QUEUED' | 'RUNNING' | 'WAITING_TASK' | 'WAITING_USER' | 'CANCELLING' | 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED' | 'CANCELLED'
 export interface AgentRun {
-  id: string; sessionId: string; runType: string; status: AgentRunStatus; objective: string
+  id: string; sessionId: string; agentCode: string; runType: string; status: AgentRunStatus; objective: string
   modelTurns: number; toolCalls: number; executionMillis: string; promptTokens?: number; completionTokens?: number
   usageUnknown?: boolean; result?: { summary: string; status: string }; errorMessage?: string
   configRevision: number; createTime?: string; finishedAt?: string; readAt?: string
 }
 export interface AgentEvent { sessionId: string; runId?: string; seq: number; type: string; payload: AgentMessage }
 export interface AgentSubmission { sessionId: string; messageId: string; runId: string }
+export interface ProductionStart {
+  clientRequestId: string; dramaId?: string; dramaTitle?: string; chapterTitle?: string; sourceText: string
+  instruction?: string; aspectRatio: string; stylePreset?: string; styleTone?: string; pacingPreset: string
+}
+export interface ProductionShot {
+  shotId: string; shotName: string; shotNo: number; generationMode: string; status: string; decisionReason: string; planRevision: number
+}
+export interface ProductionMaterial {
+  requirementId: string; materialKey: string; sourceType: string; sourceId: string; characterId?: string
+  name: string; description: string; prompt?: string; status: string; shotIds: string[]; purposes: string[]
+}
+export interface ProductionReport {
+  runId: string; dramaId: string; dramaTitle: string; shotCount: number; plannedCount: number; readyCount: number; waitingImageCount: number
+  complete: boolean; message: string; shots: ProductionShot[]; missingMaterials: ProductionMaterial[]
+  assets: { type: string; id: string; characterId?: string; name: string; created: boolean; imageStatus: string }[]
+}
+export interface ProductionPlanView {
+  shotId: string; expectedRevision: number; expectedFingerprint: string; preparationStatus: string; lockedFields: string[]
+  plan?: { generationMode: string; decisionReason: string; characterBindings: unknown[]; visualAnchor?: unknown; propBindings: unknown[]; referenceSlots: unknown[]; firstFrameRequirement?: unknown; lastFrameRequirement?: unknown }
+}
 export const isActiveRun = (status?: string) => !!status && ['QUEUED', 'RUNNING', 'WAITING_TASK', 'WAITING_USER', 'CANCELLING'].includes(status)
 export const agentStatusLabels: Record<string, string> = {
   QUEUED: '等待执行', RUNNING: '正在工作', WAITING_TASK: '等待任务结果', WAITING_USER: '需要你的回答',

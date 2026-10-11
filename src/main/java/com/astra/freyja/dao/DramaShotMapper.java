@@ -13,6 +13,9 @@ import java.util.List;
 @Mapper
 public interface DramaShotMapper extends BaseMapper<DramaShot> {
 
+    @Select("SELECT * FROM drama_shot WHERE id = #{id} AND deleted = 0 FOR UPDATE")
+    DramaShot lockById(@Param("id") Long id);
+
     String ACTIVE_DRAMA_SHOTS = " FROM drama_shot s "
             + "JOIN drama_scene sc ON sc.id = s.scene_id AND sc.deleted = 0 "
             + "JOIN drama_episode ep ON ep.id = s.episode_id AND ep.deleted = 0 "

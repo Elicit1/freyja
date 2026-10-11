@@ -77,6 +77,13 @@ public class AgentStore {
         if (result == null) throw new BizException(404, "Agent 会话不存在");
         return result;
     }
+    /** Called by a fenced, transactional production commit. A session cannot switch projects. */
+    public void bindProject(Long sessionId, Long dramaId) {
+        AgentSession session = lockSession(sessionId);
+        if (session.getDramaId() != null && !Objects.equals(session.getDramaId(), dramaId))
+            throw new BizException(409, "会话已绑定其他项目");
+        session.setDramaId(dramaId); sessions.updateById(session);
+    }
     public AgentRun run(Long id) {
         AgentRun result = runs.selectById(id);
         if (result == null) throw new BizException(404, "Agent 任务不存在");

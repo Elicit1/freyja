@@ -389,7 +389,7 @@ AgentConfigDTO 按 model、instructions、tools、skills、memory、runtime、av
 
 ## 12. 后续业务扩展方式
 
-新增制作 Agent 时注册 production-preparation Profile，提供：
+第二阶段已注册 production-preparation Profile，实际实现见 [制作设计](agent-production-preparation-design.md) 与 [API](agent-api.md)。新增其他业务 Agent 可沿用同样方式，提供：
 
 1. Project/Shot/SourceText 等 ContextContributor。
 2. 剧本拆解、幂等入库、文字资产创建、分镜方案应用等 AgentTool。

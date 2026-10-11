@@ -27,4 +27,6 @@ public interface DramaEpisodeMapper extends BaseMapper<DramaEpisode> {
      */
     @Select("SELECT COALESCE(MAX(episode_no), 0) FROM drama_episode WHERE drama_id = #{dramaId} AND deleted = 0")
     Integer selectMaxEpisodeNoByDramaId(@Param("dramaId") Long dramaId);
+    @Select("SELECT COALESCE(MAX(episode_no), 0) FROM drama_episode WHERE drama_id = #{dramaId}")
+    Integer selectMaxAnyEpisodeNoByDramaId(@Param("dramaId") Long dramaId);
 }

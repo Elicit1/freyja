@@ -46,7 +46,7 @@ public class AgentRuntime {
                 if (lastModel.isPresent() && Objects.equals(lastModel.get().getConstraintVersion(), run.getConstraintVersion())) {
                     ModelReply reply = json.read(lastModel.get().getResultJson(), ModelReply.class);
                     if (reply.toolCalls().isEmpty()) {
-                        var decision = profiles.require(snapshot.agentCode()).checkCompletion(reply, snapshot);
+                        var decision = profiles.require(snapshot.agentCode()).checkCompletion(reply, snapshot, id);
                         if (decision.complete()) { store.complete(id, owner, epoch, "COMPLETED", reply.content()); return; }
                         if (decision.needsUser()) { store.askUser(id, owner, epoch, decision.problem()); return; }
                         store.addCorrection(id, owner, epoch, decision.problem());

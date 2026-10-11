@@ -43,14 +43,16 @@ public class SpringAiAgentModelGateway implements AgentModelGateway {
         // Preserve the pinned model defaults and provider connection options. Spring AI 2 requires
         // concrete provider options; generic ToolCallingChatOptions cannot be cast by OpenAiChatModel.
         if (model.getOptions() instanceof OpenAiChatOptions defaults) {
-            options = defaults.mutate().model(settings.getModelCode()).temperature(settings.getTemperature())
-                    .topP(settings.getTopP()).maxTokens(settings.getMaxTokens()).toolCallbacks(definitions).build();
+            var builder = defaults.mutate().model(settings.getModelCode()).temperature(settings.getTemperature())
+                    .topP(settings.getTopP()).maxTokens(settings.getMaxTokens()).toolCallbacks(definitions);
+            options = builder.build();
         } else if (model.getOptions() instanceof OllamaChatOptions defaults) {
             options = defaults.mutate().model(settings.getModelCode()).temperature(settings.getTemperature())
                     .topP(settings.getTopP()).numPredict(settings.getMaxTokens()).toolCallbacks(definitions).build();
         } else throw new BizException("Agent 模型适配器不支持当前提供商参数类型");
         // Spring AI 2.0 ChatModel.call returns tool requests. No ToolCallAdvisor is installed.
-        Future<org.springframework.ai.chat.model.ChatResponse> pending = agentModelExecutor.submit(() -> model.call(new Prompt(messages, options)));
+        Future<org.springframework.ai.chat.model.ChatResponse> pending = agentModelExecutor.submit(() ->
+                ReasoningReplay.withMessages(messages, () -> model.call(new Prompt(messages, options))));
         try {
             long timeout = Math.min(timeoutMillis, snapshot.config().getRuntime().getModelTimeoutSeconds() * 1000L);
             var response = pending.get(timeout, TimeUnit.MILLISECONDS);

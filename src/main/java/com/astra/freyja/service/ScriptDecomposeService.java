@@ -10,6 +10,8 @@ import com.astra.freyja.dto.script.ScriptDecomposeResultVO;
  */
 public interface ScriptDecomposeService {
     String startDecomposeTask(ScriptDecomposeRequestDTO request);
+    /** Resume an interrupted inference under the existing task ID; never commits business data. */
+    void resumeDecomposeTask(Long taskId, ScriptDecomposeRequestDTO request);
 
     /**
      * 基于 Spring AI 调用大模型进行剧本智能拆解、角色提取、分集分场及分镜对白生成。

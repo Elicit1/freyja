@@ -54,7 +54,8 @@ class SpringAiAgentModelGatewayTest {
             AiModel configured = new AiModel(); configured.setStatus(1); configured.setModelType("CHAT"); when(modelMapper.selectOne(any())).thenReturn(configured);
             var snapshot = AgentTestSupport.snapshot(List.of("get_shot_detail"), "NORMAL");
             var model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder().apiKey("test-key")
-                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").model("test-model").maxRetries(0).build()).build();
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").model("test-model").maxRetries(0).build())
+                    .httpClientBuilderCustomizer(com.astra.freyja.agent.gateway.ReasoningReplay.customizer()).build();
             var factory = mock(AiModelFactory.class); when(factory.getChatModelForSnapshot(anyLong(), any())).thenReturn(model);
             AgentTool<ShotInput> tool = new AgentTool<>() {
                 public String name() { return "get_shot_detail"; }
@@ -70,6 +71,21 @@ class SpringAiAgentModelGatewayTest {
             if (includeUsage) { assertEquals(10, reply.promptTokens()); assertEquals(5, reply.completionTokens()); }
             else { assertNull(reply.promptTokens()); assertNull(reply.completionTokens()); }
             assertTrue(requestBody.get().contains("\"tools\"")); assertTrue(requestBody.get().contains("get_shot_detail"));
+            // Exercise the actual SDK serializer, including a prior empty reasoning field.
+            var empty = org.springframework.ai.chat.messages.AssistantMessage.builder().content("")
+                    .properties(java.util.Map.of("reasoningContent", "")).toolCalls(List.of(new org.springframework.ai.chat.messages.AssistantMessage.ToolCall("old", "function", "get_shot_detail", "{}"))).build();
+            var reasoned = org.springframework.ai.chat.messages.AssistantMessage.builder().content("继续")
+                    .properties(java.util.Map.of("reasoningContent", "protocol fixture")).build();
+            gateway.call(snapshot, List.of(new UserMessage("读取分镜"), empty,
+                    org.springframework.ai.chat.messages.ToolResponseMessage.builder().responses(List.of(new org.springframework.ai.chat.messages.ToolResponseMessage.ToolResponse("old", "get_shot_detail", "{}"))).build(), reasoned), List.of("get_shot_detail"));
+            var strictJson = new com.fasterxml.jackson.databind.ObjectMapper();
+            strictJson.enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
+            var body = strictJson.readTree(requestBody.get());
+            assertEquals("", body.path("messages").get(1).path("reasoning_content").asText("absent"));
+            assertEquals("protocol fixture", body.path("messages").get(3).path("reasoning_content").asText());
+            assertEquals("old", body.path("messages").get(2).path("tool_call_id").asText());
+            gateway.call(snapshot, List.of(new UserMessage("普通查询")), List.of("get_shot_detail"));
+            assertEquals(1, strictJson.readTree(requestBody.get()).path("messages").size(), "replay scope must not leak into the next request");
         } finally { server.stop(0); }
     }
     @Test void actualOllamaHttpAdapterReturnsToolCallsWithoutExecutingThem() throws Exception {

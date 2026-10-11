@@ -337,6 +337,7 @@
 
 #### 3) 新增关键帧
 - **URL**: `POST /res/keyframe`
+- **图片可选**: `frameUrl` 可省略或为空，支持先保存文字关键图；无图时 `description` 或 `prompt` 至少一项非空，默认 `sourceType=TEXT_DRAFT`。获得真实资产 ID 后可用于制作规划，补图前不会作为可用参考图片。
 - **`frameType`**: 关键图在目标视频中的默认 Picture 用途，可选 `FIRST_FRAME`、`KEYFRAME`、`LAST_FRAME`、`EDITED_KEYFRAME`、`COMPOSITION_ANCHOR`、`STORYBOARD_REFERENCE`、`SHOT_PLANNING_REFERENCE`。前四种对应具体画面（`keyframe completion`），后三种用于构图或镜头规划（`reference generation`），不要求目标视频出现完全相同的一帧。未填写时默认 `COMPOSITION_ANCHOR`；显式传入非法用途时返回参数错误。
 - **分镜内覆盖**: 参考图片槽位的 `usageRole` 可为当前分镜选择不同用途；提示词组装优先使用槽位显式用途，未填写时继承资产的 `frameType`，显式非法用途不会回退。关键图 `prompt` 有值时作为文字依据，否则使用 `description`。提示词 AI 不直接查看图片。
 - **Body**:
@@ -360,6 +361,7 @@
 #### 4) 修改关键帧
 - **URL**: `PUT /res/keyframe`
 - **Body**: `ResKeyframeDTO`
+- **图片更新**: 省略 `frameUrl` 保留原图，传入非空 URL 替换，显式 `clearFrameUrl=true` 清空；省略 `dramaId/shotId/sourceType` 保留原归属及来源。编辑文字草稿不要求上传图片。
 
 #### 5) 删除关键帧
 - **URL**: `DELETE /res/keyframe/{id}`
@@ -371,5 +373,4 @@
 #### 7) 关键帧下拉引用选项
 - **URL**: `GET /res/keyframe/options?dramaId=100&shotId=200`
 - **筛选语义**: `dramaId` 返回当前短剧和全局公共库的启用关键帧；额外传入 `shotId` 会只返回归属于该分镜的关键帧。分镜配置及提示词参考图装配仅传 `dramaId`，允许引用公共、未绑定分镜或同剧其他分镜的关键帧，避免已选关键帧被再次筛选后从图片候选池消失。
-
 

@@ -175,7 +175,8 @@ public class AiModelFactoryImpl implements AiModelFactory {
             options.apiKey(apiKey);
         }
         applyOpenAiExtras(options, model.getParamsJson());
-        return OpenAiChatModel.builder().options(options.build()).build();
+        return OpenAiChatModel.builder().options(options.build())
+                .httpClientBuilderCustomizer(com.astra.freyja.agent.gateway.ReasoningReplay.customizer()).build();
     }
 
     private ChatModel buildOllama(AiProvider provider, AiModel model) {

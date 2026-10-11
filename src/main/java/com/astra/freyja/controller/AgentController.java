@@ -22,12 +22,12 @@ public class AgentController {
     private final AgentConfigService configs;
     private final AgentExecutionScheduler scheduler;
     private final AgentJson json;
-    public record RunView(Long id, Long sessionId, String runType, String status, String objective, int modelTurns,
+    public record RunView(Long id, Long sessionId, String agentCode, String runType, String status, String objective, int modelTurns,
                           int toolCalls, Long executionMillis, Integer promptTokens, Integer completionTokens,
                           Boolean usageUnknown, Object result, String errorMessage, int configRevision,
                           LocalDateTime createTime, LocalDateTime finishedAt, LocalDateTime readAt) {}
     public RunView view(AgentRun run) {
-        return new RunView(run.getId(), run.getSessionId(), run.getRunType(), run.getStatus(), run.getObjective(),
+        return new RunView(run.getId(), run.getSessionId(), store.session(run.getSessionId()).getAgentCode(), run.getRunType(), run.getStatus(), run.getObjective(),
                 run.getModelTurns(), run.getToolCalls(), run.getExecutionMillis(), run.getPromptTokens(), run.getCompletionTokens(),
                 run.getUsageUnknown(), run.getFinalResultJson() == null ? null : json.read(run.getFinalResultJson(), Map.class),
                 run.getErrorMessage(), run.getConfigRevision(), run.getCreateTime(), run.getFinishedAt(), run.getReadAt());

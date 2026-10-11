@@ -1,6 +1,6 @@
 # FREYJA 分镜渲染准备 Agent 设计方案
 
-日期：2026-10-11。本文是设计与验收方案，所列新增组件、数据表和接口尚待实现。
+日期：2026-10-11。第二阶段已按本方案接入制作 Profile、三张业务表、文字资产与规划工具、交付卡片和补图刷新。实际接口与部署步骤见 [Agent API](agent-api.md)，验收结果见 [第二阶段验收](agent-phase2-validation.md)。本文保留业务设计依据。
 
 实施顺序按最新确认先建设通用基础层与独立 Agent 配置页，详见 [Agent 基础架构设计](agent-foundation-design.md)。本文描述后续制作业务 Profile 的接入；通用配置、会话、执行协议、状态和恢复规则以基础架构方案为准。
 
@@ -38,7 +38,7 @@
 
 现有 DirectorPlan 负责景别、机位、运镜及 Camera Beats；新增 ShotProductionPlan 负责生成模式、资产与参考素材方案。保留 Planner/Worker 的现有职责，制作规划安排在拆解后执行。
 
-现有 ResKeyframeService.create/update 要求非空 frameUrl。本方案按已确认需求改造：创建接口将图片 URL 改为非必填，允许先创建关键图文字资产并获得真实 ID，再直接关联分镜。更新接口兼容缺图资产的文字编辑。AgentMaterialRequirement 统一记录已有资产的补图需求；关键图与其他资产使用同一生命周期。
+ResKeyframeService.create/update 已按确认需求改造：创建接口图片 URL 非必填，允许先创建关键图文字资产并获得真实 ID，再直接关联分镜。更新省略 URL 保留旧值，显式 clearFrameUrl 清空。AgentMaterialRequirement 统一记录已有资产的补图需求；关键图与其他资产使用同一生命周期。
 
 ## 3. 技术选型
 
@@ -320,17 +320,19 @@ AgentChatDrawer 包含输入框、原文提交入口、当前项目、任务进�
 | GET /agent/sessions/{id}/messages?afterSeq= | 加载历史或断线后增量消息 |
 | POST /agent/sessions/{id}/messages | 发送目标或后续指令，按需创建 Run，立即返回 ID |
 | GET /agent/runs/{id} | 查询阶段、状态和作用域 |
-| GET /agent/runs/{id}/report | 查询已保存的交付报告 |
+| GET /agent/production/runs/{id}/report | 查询已保存的制作交付报告 |
 | POST /agent/runs/{id}/cancel | 取消后续执行 |
-| POST /agent/runs/{id}/retry | 重试指定失败阶段或镜头 |
-| POST /agent/preparation/refresh | 针对补图或修改后的指定镜头局部刷新 |
-| POST /agent/material-requirements/{id}/fulfill | 将用户已上传图片保存到对应已有资产并完成补图关联 |
+| POST /agent/runs/{id}/resume | 恢复失败任务；指定镜头的后续修改通过新聊天目标提交 |
+| POST /agent/production/start | 原文、项目、风格与要求幂等提交 |
+| GET /agent/production/shots/{id}/plan | 查询最新制作规划、锁和准备状态 |
+| PUT /agent/production/shots/{id}/locks | 按版本锁定/解锁规划字段 |
+| POST /agent/production/refresh | 针对补图后的指定镜头局部刷新，不覆盖手工编辑 |
 | POST /agent/runs/{id}/read | 标记完成通知已读 |
 | GET /agent/profiles | 获取可用 Agent 及名称、形象等展示配置，沿用基础层 |
 
 配置读取、保存、校验和测试统一使用基础层 /system/agent/configs/** 接口。Codex Pet 虚拟形象通过独立配置页维护，不另设一份形象配置或业务专用配置表。
 
-已有 WebSocket 通道扩展 Agent 订阅。事件携带 sessionId、runId、seq、type 和 payload，类型包括 stage_changed、message_chunk、step_completed、material_required、run_completed、run_failed。断线重连先按持久化游标补齐，再继续实时接收；完成报告和可通知事件在事务提交后发布。
+已有 WebSocket 通道扩展 Agent 订阅。事件携带 sessionId、runId、seq、type 和 payload，实际沿用基础层 MODEL_STARTED、TOOL_STARTED、TOOL_COMPLETED、MESSAGE_SAVED、WAITING_TASK、RUN_COMPLETED、RUN_FAILED 等事件，完整回答在保存后推送。断线重连先按持久化游标补齐，再继续实时接收；完成报告和可通知事件在事务提交后发布。素材图片继续通过既有资产编辑接口上传/更新，无需独立 fulfill 接口。
 
 前端与 JSON 中所有 Snowflake ID 使用字符串。序列号用于排序，与业务 ID 分开处理。局部应用请求区分“省略字段”和“显式清空”，沿用现有分镜 DTO 语义。
 
@@ -369,4 +371,4 @@ AgentChatDrawer 包含输入框、原文提交入口、当前项目、任务进�
 - 后续对话能读取明确项目规则和最新业务事实，不串项目记忆。
 - Agent 工具集合不包含图片生成或视频渲染，本次交付到分镜渲染准备为止。
 
-实现阶段针对上述业务边界编写必要测试，并按 AGENTS.md 使用 JDK 26 + Maven Wrapper 验证后端，使用指定 Node 运行前端构建。本设计文档本身不涉及代码或依赖变更。
+实现沿用 JDK 26、Maven Wrapper 和指定 Node 验证，未新增运行时依赖。当前候选查询上限为 200 个角色及其造型、200 场景、200 道具和 200 关键图；大规模项目的候选分页、跨实例广播及逐 Token 文字流属于后续增强。

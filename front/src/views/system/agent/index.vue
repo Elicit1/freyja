@@ -149,6 +149,9 @@ const validation = ref<ValidationResult>()
 const saved = ref('')
 const dirty = computed(() => !!form.value && JSON.stringify(form.value) !== saved.value)
 const toolNames: Record<string, string> = {
+  start_script_decomposition: '拆解小说', retry_decomposition_segment: '重试失败段落', commit_decomposition: '保存拆解结果',
+  list_preparation_shots: '读取制作分镜', get_reference_candidates: '盘点参考素材', ensure_text_assets: '保存文字资产',
+  save_shot_production_plans: '应用制作方案', prepare_shot_prompts: '准备分镜提示词', inspect_preparation: '检查并保存报告', get_preparation_report: '读取交付报告',
   get_project_overview: '读取项目概要', list_project_assets: '查询资产', get_shot_detail: '查询分镜',
   save_session_note: '保存明确规则', list_session_notes: '读取规则', load_skill: '加载技能', read_skill_file: '读取技能参考'
 }

@@ -1,5 +1,6 @@
 import { request } from './request'
 import type { AgentConfig, AgentCatalog, ValidationResult, AgentProfile, AgentSession, AgentMessage, AgentRun, AgentSubmission, AgentPet } from '@/types/agent'
+import type { ProductionStart, ProductionReport, ProductionPlanView } from '@/types/agent'
 
 export const agentConfigApi = {
   list: () => request<AgentConfig[]>({ url: '/system/agent/configs', method: 'get' }),
@@ -17,6 +18,11 @@ export const agentConfigApi = {
   }
 }
 export const agentApi = {
+  startProduction: (data: ProductionStart) => request<AgentSubmission>({ url: '/agent/production/start', method: 'post', data }),
+  productionReport: (id: string) => request<ProductionReport | null>({ url: `/agent/production/runs/${id}/report`, method: 'get' }),
+  productionPlan: (id: string) => request<ProductionPlanView>({ url: `/agent/production/shots/${id}/plan`, method: 'get' }),
+  refreshProduction: (dramaId: string, shotIds: string[]) => request<ProductionPlanView[]>({ url: '/agent/production/refresh', method: 'post', data: { dramaId, shotIds } }),
+  lockProduction: (id: string, expectedRevision: number, fields: string[]) => request<ProductionPlanView>({ url: `/agent/production/shots/${id}/locks`, method: 'put', data: { expectedRevision, fields } }),
   profiles: () => request<AgentProfile[]>({ url: '/agent/profiles', method: 'get' }),
   sessions: () => request<AgentSession[]>({ url: '/agent/sessions', method: 'get' }),
   session: (id: string) => request<AgentSession>({ url: `/agent/sessions/${id}`, method: 'get' }),

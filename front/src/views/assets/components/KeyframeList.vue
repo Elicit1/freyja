@@ -109,7 +109,7 @@
                 />
                 <div v-else class="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)] gap-1">
                   <el-icon class="text-3xl opacity-40"><PictureFilled /></el-icon>
-                  <span class="text-[11px] font-mono opacity-60">暂无关键图图像</span>
+                  <span class="text-[11px] font-mono opacity-60">待补图 · 文字设定已保存</span>
                 </div>
               </div>
 
@@ -429,7 +429,9 @@ onMounted(async () => {
   await fetchList()
 })
 
+async function openAsset(id: string) { handleEdit(await keyframeApi.getById(id)) }
 defineExpose({
+  openAsset,
   openCreate: handleCreate,
   fetchList
 })

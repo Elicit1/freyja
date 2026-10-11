@@ -427,5 +427,6 @@ onMounted(() => {
   fetchData()
 })
 
-defineExpose({ fetchData, handleCreate })
+async function openAsset(id: string) { handleEdit(await propApi.getById(id)) }
+defineExpose({ fetchData, handleCreate, openAsset })
 </script>

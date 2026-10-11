@@ -137,8 +137,8 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
         if (StringUtils.isBlank(dto.getName())) {
             throw new BizException("关键帧名称不能为空");
         }
-        if (StringUtils.isBlank(dto.getFrameUrl())) {
-            throw new BizException("关键帧图片URL不能为空");
+        if (StringUtils.isBlank(dto.getFrameUrl()) && StringUtils.isBlank(dto.getDescription()) && StringUtils.isBlank(dto.getPrompt())) {
+            throw new BizException("未提供图片时，请填写关键图文字描述或提示词");
         }
 
         Long dramaId = dto.getDramaId() != null ? dto.getDramaId() : 0L;
@@ -162,7 +162,10 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
         entity.setDramaId(dramaId);
         entity.setShotId(shotId);
         entity.setFrameType(resolveFrameType(entity.getFrameType()));
-        if (StringUtils.isBlank(entity.getSourceType())) {
+        entity.setFrameUrl(StringUtils.trimToNull(dto.getFrameUrl()));
+        if (entity.getFrameUrl() == null) {
+            entity.setSourceType("TEXT_DRAFT");
+        } else if (StringUtils.isBlank(entity.getSourceType())) {
             entity.setSourceType("MANUAL_UPLOAD");
         }
         if (entity.getSortOrder() == null) {
@@ -191,12 +194,9 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
         if (StringUtils.isBlank(dto.getName())) {
             throw new BizException("关键帧名称不能为空");
         }
-        if (StringUtils.isBlank(dto.getFrameUrl())) {
-            throw new BizException("关键帧图片URL不能为空");
-        }
 
-        Long dramaId = dto.getDramaId() != null ? dto.getDramaId() : 0L;
-        Long shotId = dto.getShotId();
+        Long dramaId = dto.getDramaId() != null ? dto.getDramaId() : existing.getDramaId();
+        Long shotId = dto.getShotId() != null ? dto.getShotId() : existing.getShotId();
 
         if (shotId != null && shotId > 0) {
             DramaShot shot = dramaShotMapper.selectById(shotId);
@@ -208,12 +208,23 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
             }
         }
 
+        String frameUrl = existing.getFrameUrl();
+        String sourceType = existing.getSourceType();
         BeanUtils.copyProperties(dto, existing);
+        if (dto.getSourceType() == null) existing.setSourceType(sourceType);
+        existing.setFrameUrl(Boolean.TRUE.equals(dto.getClearFrameUrl()) ? null
+                : StringUtils.isBlank(dto.getFrameUrl()) ? frameUrl : dto.getFrameUrl().trim());
+        if (existing.getFrameUrl() == null) existing.setSourceType("TEXT_DRAFT");
+        else if ("TEXT_DRAFT".equals(existing.getSourceType())) existing.setSourceType("MANUAL_UPLOAD");
         existing.setFrameType(resolveFrameType(existing.getFrameType()));
         existing.setDramaId(dramaId);
         existing.setShotId(shotId);
 
         resKeyframeMapper.updateById(existing);
+        if (Boolean.TRUE.equals(dto.getClearFrameUrl())) {
+            resKeyframeMapper.update(null, new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ResKeyframe>()
+                    .eq(ResKeyframe::getId, existing.getId()).set(ResKeyframe::getFrameUrl, null));
+        }
         log.info("[ResKeyframeService] 成功更新关键帧: id={}, name={}", existing.getId(), existing.getName());
     }
 

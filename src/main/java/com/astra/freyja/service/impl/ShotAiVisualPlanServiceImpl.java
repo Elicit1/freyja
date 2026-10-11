@@ -1524,8 +1524,22 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             markPromptTaskFailed(task.getId(), "提示词事件缓存写入失败");
             throw new BizException("提示词事件缓存写入失败，请稍后重试");
         }
-        Thread.ofVirtual().start(() -> runPromptTask(dto, task, null));
+        com.astra.freyja.util.AfterCommitTask.start(() -> runPromptTask(dto, task, null));
         return taskId;
+    }
+
+    @Override
+    public void resumePromptTask(Long taskId) {
+        if (com.astra.freyja.service.AiTaskExecutionRegistry.isActive(taskId)) return;
+        var saved = aiTaskService.getTaskById(taskId);
+        if (saved == null || !java.util.Set.of("PENDING", "RUNNING").contains(saved.getStatus())) return;
+        try {
+            var dto = objectMapper.readValue(saved.getInputPayload(), ShotPromptDeriveDTO.class);
+            prepareDirectorPlan(dto);
+            AiTask task = new AiTask(); org.springframework.beans.BeanUtils.copyProperties(saved, task);
+            aiTaskService.updateTaskPayload(taskId, "PENDING", null, null);
+            com.astra.freyja.util.AfterCommitTask.start(() -> runPromptTask(dto, task, null));
+        } catch (Exception e) { throw new BizException("无法恢复提示词子任务: " + e.getMessage()); }
     }
 
     private void publishPromptEvent(Long taskId, ConcurrentSseBridge bridge, String type, String data) {

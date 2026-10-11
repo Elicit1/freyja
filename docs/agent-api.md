@@ -2,7 +2,7 @@
 
 更新日期：2026-10-11。第一阶段已实现通用 `core-assistant`，包括独立配置页、持久化会话与执行循环、明确记忆、任务中心进度、聊天窗口及 Codex Pet 精灵图虚拟形象与 ZIP 导入。
 
-小说拆解、分镜模式调整、文字资产创建及参考素材关联属于后续 `production-preparation` Profile，参见 [业务设计](agent-production-preparation-design.md)。当前助手提供项目、资产、分镜查询和明确规则保存，不提交生图或视频渲染任务。
+第二阶段已接入 `production-preparation` Profile：小说拆解与自动入库、文字资产创建/复用、分镜模式与参考素材选择、提示词准备和缺图报告。`core-assistant` 保留原查询与明确记忆能力。两个 Profile 都不提交生图或视频渲染任务。业务约束见 [制作设计](agent-production-preparation-design.md)。
 
 ## 1. 数据库升级
 
@@ -20,6 +20,8 @@ python scripts/migrate_agent_foundation.py --apply
 脚本支持 `MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_USER`、`MYSQL_PASSWORD`、`MYSQL_DATABASE` 环境变量覆盖。重复执行不会重建表；已有 Agent 表缺少当前必需列时会停止并报告，避免跳过不完整升级。
 
 新增表：`agent_config`、`agent_session`、`agent_message`、`agent_run`、`agent_step`、`agent_memory`。没有增加运行时依赖或向量数据库。MySQL 是消息与检查点的权威来源，首版 Agent 事件通过后端进程内发布到既有 WebSocket，不依赖 Redis 缓存恢复。
+
+第二阶段已有数据库使用 `scripts/migrate_agent_production.py`（默认只读预检查，`--apply` 执行），或增量 SQL `src/main/resources/sql/agent-production-preparation.sql`。新增 `agent_preparation_job`、`shot_production_plan`、`agent_material_requirement` 三表，将 `res_keyframe.frame_url` 改为可空。增量迁移不删除已有数据；新数据库初始化脚本包含两个阶段的表。制作拆解复用 Redis 草稿，并将原文、请求、完整预览及子任务检查点持久化到 MySQL。
 
 ## 2. 启用与试用
 
@@ -119,6 +121,38 @@ npm run build
 ```
 
 新增业务时注册 `AgentProfile`、有类型输入的 `AgentTool`、`ContextContributor` 和完成检查。工具必须声明项目约束、效果、版本和恢复模式，写入工具不能使用默认只读重放策略。后续制作 Profile 在此接口上接入既有拆解 Service、资产 Service 和制作规划验收，无需改写通用 Runtime。
+
+## 7. 小说制作准备
+
+在 Agent 配置页选择“分镜制作准备”，独立启用并设置支持 Tool Calling 的 CHAT 模型。点击宠物打开聊天，点击“小说制作准备”，填写原文、项目、风格和制作要求。可新建项目，也可在已有项目中追加新剧集；不会覆盖旧剧集。提交返回后可关闭聊天，后台继续处理。
+
+流程为：拆解 → 完整结果入库 → 资产盘点 → 缺少资产保存文字 → 每镜模式与槽位规划 → 素材齐全时生成最终提示词 → 保存交付报告。模型选择 `FIRST_LAST_FRAME` 或 `REFERENCE_MODE` 并给出理由；服务端校验项目、造型归属、关键图用途、主基准互斥和最多 9 张参考图。首帧模式先创建真实 `FIRST_FRAME` 文字关键图；缺图/过时造型图不进入 `refImagesJson`。
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| POST | `/agent/production/start` | 提交原文；`clientRequestId` 幂等 |
+| GET | `/agent/production/runs/{id}/report` | 制作交付快照，尚未交付返回 null |
+| GET | `/agent/production/shots/{id}/plan` | 当前规划、版本、指纹、锁和准备状态 |
+| POST | `/agent/production/refresh` | 指定 `dramaId/shotIds`，读取最新素材并安全刷新，单次最多 100 镜 |
+| PUT | `/agent/production/shots/{id}/locks` | `expectedRevision/fields`，锁定或解锁规划字段 |
+
+`start` 输入包含 `clientRequestId/sourceText`，可选 `dramaId/dramaTitle/chapterTitle/instruction/stylePreset/styleTone`，默认 `aspectRatio=9:16`、`pacingPreset=AUTO`。原文最长 100000 字；同标识的不同内容返回 409。所有业务 ID 均为字符串。
+
+制作工具为 `start_script_decomposition`、`retry_decomposition_segment`、`commit_decomposition`、`list_preparation_shots`、`get_reference_candidates`、`ensure_text_assets`、`save_shot_production_plans`、`prepare_shot_prompts`、`inspect_preparation`、`get_preparation_report`。每页最多 12 镜，每批保存最多 10 镜；候选目前最多 200 个角色及其造型、200 场景、200 道具和 200 关键图。公共库只读复用，模型通过真实 ID 选择。
+
+实际模型执行建议每批处理 1–4 项文字资产、保存 1–3 镜详细规划，避免工具 JSON 超过输出预算；参数截断时应缩小批次。
+
+`ensure_text_assets` 可用 `existingId + updateText=true + description + prompt` 补齐本项目原资产的文字，保留 ID、图片和其他设定，由既有资产服务处理图文一致性；公共库不能修改。拆解生成的默认造型若缺少描述，`inspect_preparation` 返回 `incompleteTextAssets`，模型必须补齐文字并重新查询指纹后继续规划。交付资产清单按类型和 ID 去重。近期消息数量是保留偏好，工具结果过大时会自动减少完整轮次，以满足上下文与输出预算。
+
+`COMPLETED` 表示准备任务交付，分镜 `WAITING_ASSET_IMAGES` 表示文字方案已保存且待补图；这可以是正常交付。`READY` 还要求有效图片和对应当前输入的提示词。`NEEDS_REFRESH` 表示输入或素材改变，`PENDING/ERROR` 不能交付。最终回答前重新核对当前规划与报告版本，防止旧报告掩盖并发修改。
+
+报告展示模式、依据、资产清单和按资产身份去重的补图需求，可直接跳转具体分镜或资产。在现有资产编辑页生成或上传图片后，点击“刷新准备状态”，再用“补齐后更新提示词”创建指定分镜的后续任务。历史报告保持原交付快照，当前状态单独显示。手工修改分镜内容、模式、关联或提示词后，刷新不会覆盖，需要明确重新规划。锁定字段保持当前值，Agent 修改时受版本与指纹约束。
+
+关键图创建允许省略图片 URL，保存 `TEXT_DRAFT`，需要描述或提示词。更新省略 `frameUrl` 保留旧图片，显式 `clearFrameUrl=true` 清空；后续上传沿用原资产 ID。
+
+拆解、Worker 重试和提示词子任务采用事务提交后启动，恢复复用同一子任务 ID。取消或失败停止尚在运行的子任务；已提交的项目、资产与分镜保留。DeepSeek 推理元数据仅用于多轮协议回传，保留原始空字段及工具配对，不展示在聊天 UI，也不通过 `extraBody` 追加重复 `messages`。
+
+真实页面验收和保留的示例数据见 [第二阶段验收记录](agent-phase2-validation.md)。
 
 ### 本次验证记录
 

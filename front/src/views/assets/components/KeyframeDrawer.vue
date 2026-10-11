@@ -208,7 +208,8 @@
                         {{ formData.frameUrl ? '重新上传关键图' : '上传关键图图像' }}
                       </el-button>
                     </el-upload>
-                    <div class="text-xs text-slate-400">支持 JPG/PNG/WebP 格式</div>
+                    <div class="text-xs text-slate-400">支持 JPG/PNG/WebP。可先保存文字设定，后续补图。</div>
+                    <el-button v-if="formData.frameUrl" text type="danger" @click="formData.frameUrl = ''; imageCleared = true">移除图片</el-button>
                   </div>
                 </div>
 
@@ -316,9 +317,6 @@ const formRules: FormRules = {
     { required: true, message: '请输入关键图名称', trigger: 'blur' },
     { min: 2, max: 100, message: '长度在 2 到 100 个字符', trigger: 'blur' }
   ],
-  frameUrl: [
-    { required: true, message: '请上传关键图图像', trigger: 'change' }
-  ],
   frameType: [
     { required: true, message: '请选择关键图类型', trigger: 'change' }
   ],
@@ -326,6 +324,7 @@ const formRules: FormRules = {
     { required: true, message: '请输入画面动作描述', trigger: 'blur' }
   ]
 }
+const imageCleared = ref(false)
 
 function getFrameTypeLabel(type: string): string {
   return keyImageRoleLabel(type)
@@ -396,6 +395,7 @@ async function open(row?: ResKeyframe, defaultDramaId?: any, defaultFrameUrl?: a
   const safeDramaId = (defaultDramaId && typeof defaultDramaId !== 'object') ? defaultDramaId : undefined
   const safeFrameUrl = (typeof defaultFrameUrl === 'string') ? defaultFrameUrl : ''
   const safeShotId = (defaultShotId && typeof defaultShotId !== 'object') ? defaultShotId : undefined
+  imageCleared.value = false
 
   if (row && row.id) {
     isEdit.value = true
@@ -475,6 +475,9 @@ async function handleSubmit() {
       saving.value = true
       const payload: any = {
         ...formData,
+        frameUrl: formData.frameUrl.trim() || undefined,
+        clearFrameUrl: imageCleared.value && !formData.frameUrl.trim(),
+        sourceType: formData.frameUrl.trim() ? formData.sourceType === 'TEXT_DRAFT' ? 'MANUAL_UPLOAD' : formData.sourceType : 'TEXT_DRAFT',
         dramaId: formData.dramaId === '0' ? 0 : formData.dramaId,
         shotId: formData.shotId ? formData.shotId : undefined
       }

@@ -11,11 +11,13 @@
       <span v-else> · {{ (run.promptTokens || 0) + (run.completionTokens || 0) }} Tokens</span>
     </div>
     <el-button v-if="run.status === 'FAILED'" size="small" class="mt-3" @click="resume">重试此任务</el-button>
+    <ProductionReportCard v-if="run.agentCode === 'production-preparation'" :run="run" />
   </div>
 </template>
 <script setup lang="ts">
 import { agentApi } from '@/api/agent'
 import { agentStatusLabels, type AgentRun } from '@/types/agent'
+import ProductionReportCard from './ProductionReportCard.vue'
 const props = defineProps<{ run?: AgentRun }>()
 const emit = defineEmits<{ refreshed: [] }>()
 async function resume() { if (props.run) { await agentApi.resume(props.run.id); emit('refreshed') } }

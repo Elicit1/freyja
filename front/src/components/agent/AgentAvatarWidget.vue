@@ -19,6 +19,7 @@
 import { computed, ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { ChatDotRound } from '@element-plus/icons-vue'
 import { useAgentStore } from '@/store/agent'
+import { agentApi } from '@/api/agent'
 import type { AvatarState } from '@/types/agent'
 import AgentAvatarMedia from './AgentAvatarMedia.vue'
 import AgentChatDrawer from './AgentChatDrawer.vue'
@@ -35,19 +36,30 @@ let moved = false
 const dragRow = ref<number>()
 let cleanupDrag: (() => void) | undefined
 const waiting = computed(() => Object.values(store.runs).find(r => r.status === 'WAITING_USER'))
+const missingCounts = ref<Record<string, number | null>>({})
+watch(() => store.notifications.filter(r => r.agentCode === 'production-preparation' && r.status === 'COMPLETED').map(r => r.id).join(','), async () => {
+  await Promise.allSettled(store.notifications.filter(r => r.agentCode === 'production-preparation' && r.status === 'COMPLETED' && missingCounts.value[r.id] === undefined).map(async r => {
+    const report = await agentApi.productionReport(r.id)
+    missingCounts.value[r.id] = report ? report.missingMaterials.length : null
+  }))
+}, { immediate: true })
 const bubble = computed(() => {
   if (waiting.value && store.currentProfile?.avatar.notifications.needsAttention)
-    return { id: waiting.value.id + '/waiting', runId: waiting.value.id, sessionId: waiting.value.sessionId, text: '需要你的回答，点击继续' }
+    return { id: waiting.value.id + '/waiting', runId: waiting.value.id, sessionId: waiting.value.sessionId, text: '需要你的回答，点击继续', state: 'ATTENTION' as AvatarState }
   const notice = store.notifications.find(run => run.status !== 'CANCELLED' && !dismissed.value.has(run.id + '/' + run.finishedAt))
   if (!notice) return undefined
-  const avatar = store.currentProfile?.avatar
+  const avatar = store.profiles.find(p => p.agentCode === notice.agentCode)?.avatar || store.currentProfile?.avatar
   if (notice.status === 'FAILED' && !avatar?.notifications.failed) return undefined
   if (notice.status === 'COMPLETED' && !avatar?.notifications.completed) return undefined
-  return { id: notice.id + '/' + notice.finishedAt, runId: notice.id, sessionId: notice.sessionId, text: notice.status === 'FAILED' ? '任务遇到问题，点击查看' : '任务已完成，点击查看结果' }
+  const missing = missingCounts.value[notice.id]
+  const attention = typeof missing === 'number' && missing > 0
+  return { id: notice.id + '/' + notice.finishedAt, runId: notice.id, sessionId: notice.sessionId,
+    text: notice.status === 'FAILED' ? '任务遇到问题，点击查看' : attention ? `分镜规划已完成，${missing} 项资产需要补图` : missing === 0 ? '分镜准备完成，点击查看' : '任务已完成，点击查看结果',
+    state: (notice.status === 'FAILED' ? 'ERROR' : attention ? 'ATTENTION' : 'SUCCESS') as AvatarState }
 })
 const displayState = computed<AvatarState>(() => {
   if (waiting.value) return 'ATTENTION'
-  if (bubble.value) return store.notifications.find(n => n.id === bubble.value?.runId)?.status === 'FAILED' ? 'ERROR' : 'SUCCESS'
+  if (bubble.value) return bubble.value.state
   const active = Object.values(store.runs).filter(r => ['QUEUED', 'RUNNING', 'WAITING_TASK'].includes(r.status))
   if (!active.length) return 'IDLE'
   if (active.some(r => r.status === 'WAITING_TASK')) return 'WORKING'

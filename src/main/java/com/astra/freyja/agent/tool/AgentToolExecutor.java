@@ -48,8 +48,13 @@ public class AgentToolExecutor {
         var context = new ToolContext(run.getSessionId(), run.getId(), original.getId(), session.getDramaId(),
                 run.getObjectiveMessageId(), original.getIdempotencyKey(), snapshot);
         Supplier<ToolResult> operation = () -> invoke(tool, input, context, recover, wait);
-        if (tool.recoveryMode() == RecoveryMode.TRANSACTIONAL)
-            return store.commitTool(run.getId(), owner, epoch, original.getId(), operation, 0);
+        if (tool.recoveryMode() == RecoveryMode.TRANSACTIONAL) {
+            try { return store.commitTool(run.getId(), owner, epoch, original.getId(), operation, 0); }
+            catch (com.astra.freyja.common.BizException invalid) {
+                // Business writes have rolled back. Commit only the validation feedback in a new fenced transaction.
+                return store.commitTool(run.getId(), owner, epoch, original.getId(), () -> ToolResult.error("BUSINESS_VALIDATION", invalid.getMessage()), 0);
+            }
+        }
         long start = System.nanoTime();
         // External failures remain recoverable; no uncertain write is retried here.
         ToolResult result = operation.get();

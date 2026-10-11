@@ -10,6 +10,8 @@ import org.springframework.ai.chat.messages.*;
 import java.util.List;
 import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.*;
 
 class AgentContextBuilderTest {
     AgentJson json = new AgentJson();
@@ -51,5 +53,30 @@ class AgentContextBuilderTest {
     @Test void eventRowsNeverEnterModelHistory() {
         AgentMessage event = new AgentMessage(); event.setMessageType("EVENT"); event.setContentJson("{\"status\":\"RUNNING\"}");
         assertTrue(builder.groups(List.of(event)).isEmpty());
+    }
+    @Test void oversizedRecentToolResultsAreCompactedWithCompletePairsAndReasoning() {
+        var snapshot = AgentTestSupport.snapshot(List.of(), "NORMAL");
+        snapshot.config().getMemory().setContextTokens(8000); snapshot.config().getMemory().setRecentMessages(10);
+        snapshot.config().getModel().setMaxTokens(1000);
+        var run = AgentTestSupport.run(snapshot, json);
+        var session = new com.astra.freyja.entity.AgentSession(); session.setId(run.getSessionId()); session.setCoveredThroughSeq(0);
+        var store = mock(com.astra.freyja.agent.runtime.AgentStore.class);
+        var memory = mock(com.astra.freyja.agent.memory.AgentMemoryService.class);
+        var summarizer = mock(com.astra.freyja.agent.memory.AgentMemorySummarizer.class);
+        when(store.snapshot(run)).thenReturn(snapshot); when(store.session(session.getId())).thenReturn(session);
+        var assistant = row(2, "ASSISTANT", new MessageBody("", List.of(new ToolCall("a", "read", "{}")), Map.of("reasoningContent", "r".repeat(3600)), null, null, 10L), null);
+        var result = row(3, "TOOL_RESULT", new MessageBody(null, List.of(), Map.of(), "read", ToolResult.success("x".repeat(3600)), 10L), "a");
+        var latest = row(4, "ASSISTANT", new MessageBody("继续", List.of(), Map.of("reasoningContent", "latest reasoning"), null, null, 11L), null);
+        when(store.modelHistory(session.getId(), 0)).thenReturn(List.of(row(1, "USER", MessageBody.text("目标"), null), assistant, result, latest));
+        var summary = new ModelReply("已完成查询，继续按目标处理。", List.of(), Map.of(), 1, 1, null);
+        when(summarizer.summarize(eq(snapshot), any(), anyString(), anyLong())).thenReturn(summary);
+        doAnswer(i -> { session.setSummary(summary.content()); session.setCoveredThroughSeq(i.getArgument(4)); return null; })
+                .when(store).saveSummary(anyLong(), anyString(), anyInt(), anyInt(), anyInt(), any(), anyLong());
+        var compacting = new AgentContextBuilder(store, json, memory, summarizer, null, null, List.of());
+        var messages = compacting.build(run, "test-owner", 1);
+        assertEquals(3, session.getCoveredThroughSeq(), "assistant and result must be summarized together");
+        assertTrue(messages.stream().anyMatch(m -> m.getText() != null && m.getText().contains(summary.content())));
+        assertEquals("latest reasoning", messages.getLast().getMetadata().get("reasoningContent"));
+        verify(summarizer).summarize(eq(snapshot), any(), contains("TOOL_RESULTS"), anyLong());
     }
 }

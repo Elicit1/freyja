@@ -11,7 +11,7 @@
           {{ toolLabel(message.body.toolName) }} · {{ message.body.result?.errorCode ? message.body.result.message : '已完成' }}
         </span>
         <details v-if="message.body.result?.data" class="tool-details">
-          <summary>查看查询结果</summary>
+          <summary>查看操作结果</summary>
           <pre>{{ JSON.stringify(message.body.result.data, null, 2) }}</pre>
         </details>
       </template>
@@ -23,6 +23,9 @@
 import type { AgentMessage } from '@/types/agent'
 defineProps<{ messages: AgentMessage[] }>()
 const toolNames: Record<string, string> = {
+  start_script_decomposition: '拆解小说', commit_decomposition: '保存拆解结果', list_preparation_shots: '读取制作分镜',
+  get_reference_candidates: '盘点参考素材', ensure_text_assets: '保存文字资产', save_shot_production_plans: '应用分镜制作方案',
+  prepare_shot_prompts: '准备分镜提示词', inspect_preparation: '检查并保存交付报告', get_preparation_report: '读取交付报告',
   get_project_overview: '读取项目概要', list_project_assets: '查询资产', get_shot_detail: '查询分镜',
   save_session_note: '保存明确规则', list_session_notes: '读取规则', load_skill: '加载技能', read_skill_file: '读取技能参考'
 }

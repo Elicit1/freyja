@@ -155,7 +155,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
 
         ConcurrentSseBridge sseBridge = new ConcurrentSseBridge(emitter);
 
-        Thread.ofVirtual().start(() -> {
+        com.astra.freyja.util.AfterCommitTask.start(() -> {
             try {
                 BiConsumer<String, String> channelChunkConsumer = (channel, content) -> {
                     if ("SKILL_EVENT".equals(channel)) sseBridge.sendSkillEvent(content);
@@ -210,7 +210,27 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             aiTaskService.markFailed(task.getId(), "Redis 草稿写入失败");
             throw new BizException("Redis 草稿写入失败: " + e.getMessage());
         }
-        Thread.ofVirtual().start(() -> {
+        launchDecomposeTask(request, task);
+        return id;
+    }
+
+    @Override
+    public void resumeDecomposeTask(Long taskId, ScriptDecomposeRequestDTO request) {
+        if (com.astra.freyja.service.AiTaskExecutionRegistry.isActive(taskId)) return;
+        var saved = aiTaskService.getTaskById(taskId);
+        if (saved == null || "CANCELLED".equals(saved.getStatus())) throw new BizException("拆解任务不存在或已取消");
+        if ("SUCCESS".equals(saved.getStatus()) || "PARTIAL_SUCCESS".equals(saved.getStatus())) return;
+        prepareSkillRequest(request);
+        AiTask task = new AiTask();
+        org.springframework.beans.BeanUtils.copyProperties(saved, task);
+        aiTaskService.updateTaskPayload(taskId, "PENDING", null, null);
+        draftStore.saveRequest(taskId, request);
+        launchDecomposeTask(request, task);
+    }
+
+    private void launchDecomposeTask(ScriptDecomposeRequestDTO request, AiTask task) {
+        String id = String.valueOf(task.getId());
+        com.astra.freyja.util.AfterCommitTask.start(() -> {
             ConcurrentSseBridge bridge = new ConcurrentSseBridge((type, data) -> aiEvents.appendScript(id, type, data));
             BiConsumer<String, String> channel = (name, content) -> {
                 if ("SKILL_EVENT".equals(name)) bridge.sendSkillEvent(content);
@@ -242,7 +262,6 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 bridge.sendError(e.getMessage());
             }
         });
-        return id;
     }
 
     /**
@@ -830,6 +849,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             for (DecomposedPropVO propVO : commitDTO.getProps()) {
                 if (StringUtils.isBlank(propVO.getName())) continue;
                 Long pId = propVO.getExistingPropId();
+                if (pId != null) requireExistingPropReference(pId, dramaId);
                 if (pId == null) {
                     ResProp existingProp = resPropMapper.selectOne(new LambdaQueryWrapper<ResProp>()
                             .eq(ResProp::getDramaId, dramaId)
@@ -1399,7 +1419,9 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 if (resPropMapper != null) {
                     ResProp existing = resPropMapper.selectOne(new LambdaQueryWrapper<ResProp>()
                             .eq(ResProp::getName, propVO.getName().trim())
-                            .and(dramaId != null, w -> w.eq(ResProp::getDramaId, dramaId).or().eq(ResProp::getDramaId, 0L))
+                            .eq(ResProp::getStatus, 1)
+                            .and(w -> { if (dramaId != null) w.eq(ResProp::getDramaId, dramaId).or();
+                                w.eq(ResProp::getDramaId, 0L).or().isNull(ResProp::getDramaId); })
                             .last("LIMIT 1"));
                     if (existing != null) {
                         propVO.setExistingPropId(existing.getId());
@@ -1410,6 +1432,13 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             }
         }
         return result;
+    }
+    private ResProp requireExistingPropReference(Long propId, Long dramaId) {
+        ResProp prop = resPropMapper.selectById(propId);
+        boolean shared = prop != null && (prop.getDramaId() == null || Objects.equals(prop.getDramaId(), 0L));
+        if (prop == null || !Objects.equals(prop.getStatus(), 1) || !shared && !Objects.equals(prop.getDramaId(), dramaId))
+            throw new BizException(400, "道具 ID 不存在或不属于当前短剧/公共库: " + propId);
+        return prop;
     }
 
     private void prepareSkillRequest(ScriptDecomposeRequestDTO request) {

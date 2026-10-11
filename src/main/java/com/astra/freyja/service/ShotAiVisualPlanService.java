@@ -25,6 +25,8 @@ public interface ShotAiVisualPlanService {
 
     /** Create a recoverable task and return its Snowflake ID before inference starts. */
     String startPromptTask(ShotPromptDeriveDTO dto);
+    /** Resume interrupted inference with the persisted request and same task ID. */
+    void resumePromptTask(Long taskId);
 
     /**
      * 构建并导出完整的分镜任务 Prompt 任务包（零模型开销，可直接复制到外部 AI）。

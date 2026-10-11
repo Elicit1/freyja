@@ -26,6 +26,9 @@ public class ResKeyframeDTO {
     /** 关键帧图片URL (MinIO URL) */
     private String frameUrl;
 
+    /** 明确撤回图片；省略 frameUrl 的文字编辑保留原图片。 */
+    private Boolean clearFrameUrl;
+
     /** 关键帧生图/视觉控制Prompt (英文提示词) */
     private String prompt;
 

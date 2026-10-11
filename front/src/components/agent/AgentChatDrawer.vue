@@ -8,6 +8,7 @@
           <el-option v-for="session in store.sessions" :key="session.id" :label="session.title" :value="session.id" />
         </el-select>
         <el-button @click="newSessionVisible = true" :disabled="sending || !store.profiles.length">新会话</el-button>
+        <el-button type="primary" plain @click="productionVisible = true" :disabled="sending">小说制作准备</el-button>
         <el-button text @click="configure">配置</el-button>
       </div>
       <el-alert v-if="!store.profiles.length" title="请先在 Agent 配置页选择模型并启用助手。" type="info" :closable="false" class="mb-3" />
@@ -35,6 +36,7 @@
     </div>
   </section>
   </Teleport>
+  <ProductionStartDialog v-model="productionVisible" />
   <el-dialog v-model="newSessionVisible" title="新建 Agent 会话" width="480px" append-to-body>
     <el-form label-position="top">
       <el-form-item label="Agent"><el-select v-model="store.selectedAgentCode" class="w-full">
@@ -56,11 +58,13 @@ import { useAgentStore } from '@/store/agent'
 import { agentStatusLabels, isActiveRun } from '@/types/agent'
 import AgentMessageList from './AgentMessageList.vue'
 import AgentRunCard from './AgentRunCard.vue'
+import ProductionStartDialog from './ProductionStartDialog.vue'
 const store = useAgentStore()
 const router = useRouter()
 const input = ref('')
 const sending = ref(false)
 const newSessionVisible = ref(false)
+const productionVisible = ref(false)
 const dramaId = ref<string>()
 const projects = ref<{ id: string | number; title: string }[]>([])
 const scrollArea = ref<HTMLElement>()

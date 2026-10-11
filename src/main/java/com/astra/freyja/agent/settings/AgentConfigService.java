@@ -38,7 +38,7 @@ public class AgentConfigService {
         profiles.require(code);
         AgentConfig entry = mapper.selectOne(new LambdaQueryWrapper<AgentConfig>().eq(AgentConfig::getAgentCode, code));
         if (entry == null) {
-            var defaults = new AgentConfigDTO();
+            var defaults = profiles.require(code).defaults();
             defaults.setAgentCode(code);
             defaults.setEnabled(false);
             defaults.getTools().setNames(profiles.require(code).allowedTools());
@@ -61,7 +61,7 @@ public class AgentConfigService {
         var profile = profiles.require(code);
         return Map.of("tools", tools.catalog(profile.allowedTools()), "requiredTools", profile.requiredTools(),
                 "skills", skills.getEnabledCatalog(), "fixedInstructions", profile.fixedInstructions(),
-                "defaults", new AgentConfigDTO(), "profileVersion", profile.version());
+                "defaults", profile.defaults(), "profileVersion", profile.version());
     }
     public ValidationResult validate(String code, AgentConfigDTO dto, boolean execution) {
         return validator.validate(code, dto, execution);

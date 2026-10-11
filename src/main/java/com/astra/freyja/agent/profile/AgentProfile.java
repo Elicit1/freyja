@@ -12,6 +12,14 @@ public interface AgentProfile {
     String fixedInstructions();
     List<String> allowedTools();
     default List<String> requiredTools() { return List.of(); }
+    default com.astra.freyja.dto.agent.AgentConfigDTO defaults() {
+        var dto = new com.astra.freyja.dto.agent.AgentConfigDTO();
+        dto.setAgentCode(code()); dto.getTools().setNames(allowedTools());
+        return dto;
+    }
+    default CompletionDecision checkCompletion(ModelReply reply, Snapshot snapshot, Long runId) {
+        return checkCompletion(reply, snapshot);
+    }
     default CompletionDecision checkCompletion(ModelReply reply, Snapshot snapshot) {
         return reply.content() == null || reply.content().isBlank()
                 ? new CompletionDecision(false, "请给出面向用户的非空结果。", false)

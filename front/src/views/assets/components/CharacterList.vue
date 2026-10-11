@@ -663,5 +663,6 @@ function getDramaLabel(dramaId?: string | number): string {
   return found ? found.title : `短剧#${dramaId}`
 }
 
-defineExpose({ fetchData, handleCreate })
+async function openAsset(id: string) { handleEdit(await characterApi.getById(id)) }
+defineExpose({ fetchData, handleCreate, openAsset })
 </script>

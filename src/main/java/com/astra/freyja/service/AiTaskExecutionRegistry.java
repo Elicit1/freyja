@@ -22,6 +22,10 @@ public final class AiTaskExecutionRegistry {
     public static Long currentTaskId() {
         return CURRENT.get().peek();
     }
+    public static boolean isActive(Long taskId) {
+        Set<Thread> threads = THREADS.get(taskId);
+        return threads != null && threads.stream().anyMatch(Thread::isAlive);
+    }
 
     public static void unregister(Long taskId) {
         if (taskId == null) return;
