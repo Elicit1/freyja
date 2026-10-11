@@ -169,6 +169,15 @@ class TestGatewayOffline(unittest.TestCase):
         self.assertEqual(req_5s.calculate_minimax_length(), 124)
         self.assertEqual((124 - 5) % 17, 0)
 
+        # Compact shot estimates are aligned without being padded to 4 or 5 seconds.
+        for seconds, expected_frames in [(3.0, 73), (3.5, 90), (4.5, 124)]:
+            with self.subTest(duration=seconds):
+                frames = ImageGenerationRequest(prompt="test", duration=seconds).calculate_minimax_length()
+                self.assertEqual(frames, expected_frames)
+                self.assertEqual((frames - 5) % 17, 0)
+                self.assertGreaterEqual(frames / 24, seconds)
+                self.assertLess(frames / 24 - seconds, 17 / 24)
+
         # Explicit length override
         req_explicit = ImageGenerationRequest(prompt="test", length=200)
         self.assertEqual(req_explicit.calculate_minimax_length(), 200)

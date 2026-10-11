@@ -35,7 +35,7 @@ public class ScriptDecomposeRequestDTO {
     /** 期望拆解集数 (可选，为空则由 AI 自动规划) */
     private Integer targetEpisodes;
 
-    /** 单集目标时长 (秒，默认 300) */
+    /** 单集规划参考时长 (秒，默认 300)，不用于填充动作或拉长单镜 */
     private Integer targetDurationPerEpisode;
 
     /** 画幅比例 (9:16 / 16:9 / 1:1 / 4:3，默认 9:16) */
@@ -48,11 +48,12 @@ public class ScriptDecomposeRequestDTO {
     private String styleTone;
 
     /**
-     * 剪辑节奏与镜头粒度偏好:
-     * - AUTO: 默认，提供三个节奏挡位供 Worker 根据剧情选择参考
-     * - STANDARD: 标准工业短剧 (5~8s/镜, 动作单元聚合, 对白过肩中景承载)
-     * - CINEMATIC_LONG: 电影感长镜头 (7~12s/镜, 极少切镜, 运镜平稳连贯, 单场仅2~3镜)
-     * - FAST_PACED: 快节奏高冲突 (2~4s/镜, 紧凑切镜, 密集反应与特写)
+     * 镜头节奏偏好（区间为参考，完整对白或长动作可延长）:
+     * - AUTO: 自动，按剧情估时，普通完整动作优先 3~5s（默认）
+     * - FAST_PACED: 快速，参考 2~4s/镜，保留关键动作与反应
+     * - COMPACT: 紧凑，优先将普通完整动作组织在 3~5s 内，连续动作优先合镜
+     * - STANDARD: 常规，参考 5~8s/镜，保持动作单元完整
+     * - CINEMATIC_LONG: 长镜头，参考 7~12s/镜，保留完整连续表演
      */
     private String pacingPreset = "AUTO";
 

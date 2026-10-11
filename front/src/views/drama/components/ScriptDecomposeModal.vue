@@ -151,29 +151,20 @@
             </el-form-item>
           </div>
 
-          <!-- 剪辑节奏与镜头粒度偏好 (防碎镜头) -->
-          <el-form-item label="剪辑节奏与镜头粒度" class="!mb-2">
-            <el-select v-model="form.pacingPreset" placeholder="选择镜头节奏" class="w-full" :disabled="isStreaming">
-              <el-option value="AUTO" label="自动 (默认 · AI 参考三个挡位选择节奏)" />
-              <el-option value="STANDARD" label="⚡ 标准工业短剧 (5~8s/镜，动作单元聚合)">
-                <div class="flex items-center justify-between">
-                  <span class="font-medium text-slate-800">⚡ 标准工业短剧</span>
-                  <span class="text-[11px] text-emerald-600 font-mono">5~8s/镜 · 动作聚合防碎</span>
-                </div>
-              </el-option>
-              <el-option value="CINEMATIC_LONG" label="🎬 电影感长镜头 (7~12s/镜，极少切镜，重运镜空间)">
-                <div class="flex items-center justify-between">
-                  <span class="font-medium text-slate-800">🎬 电影感长镜头</span>
-                  <span class="text-[11px] text-blue-600 font-mono">7~12s/镜 · 极少切镜</span>
-                </div>
-              </el-option>
-              <el-option value="FAST_PACED" label="💥 快节奏紧凑剪辑 (2~4s/镜，紧凑切镜，密集反应)">
-                <div class="flex items-center justify-between">
-                  <span class="font-medium text-slate-800">💥 快节奏紧凑剪辑</span>
-                  <span class="text-[11px] text-amber-600 font-mono">2~4s/镜 · 高频冲突</span>
-                </div>
-              </el-option>
-            </el-select>
+          <!-- 镜头节奏偏好 -->
+          <el-form-item label="镜头节奏" class="!mb-2">
+            <div class="w-full space-y-1">
+              <el-select v-model="form.pacingPreset" placeholder="选择镜头节奏" class="w-full" :disabled="isStreaming">
+                <el-option value="AUTO" label="自动（按剧情估时）" />
+                <el-option value="FAST_PACED" label="快速（2–4 秒）" />
+                <el-option value="COMPACT" label="紧凑（3–5 秒）" />
+                <el-option value="STANDARD" label="常规（5–8 秒）" />
+                <el-option value="CINEMATIC_LONG" label="长镜头（7–12 秒）" />
+              </el-select>
+              <p class="text-xs text-gray-400 leading-relaxed">
+                自动按剧情估时，普通动作优先 3–5 秒。各区间为单镜参考，完整对白或长动作可延长。
+              </p>
+            </div>
           </el-form-item>
 
           <!-- 视觉风格基调与导演风格指南 (Worker 原生融合) -->
@@ -202,20 +193,29 @@
             </div>
           </el-form-item>
 
-          <div class="mb-3 rounded-lg border border-indigo-100 bg-indigo-50/40 p-3 space-y-3">
-            <div class="text-xs font-semibold text-slate-700">🧩 拆解阶段 AI Skills</div>
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
-              <div class="space-y-2">
-                <div class="flex items-center justify-between text-xs"><span>Planner · 整章分段</span><el-switch v-model="plannerDynamicSkills" :disabled="isStreaming" size="small" active-text="按需调用" /></div>
-                <SkillSelector v-model="plannerRequiredSkills" mode="API" :disabled="isStreaming" :dynamic-enabled="plannerDynamicSkills" />
+          <details class="group mb-3 rounded-lg border border-indigo-100 bg-indigo-50/40 p-3">
+            <summary class="flex items-center justify-between gap-2 cursor-pointer list-none select-none text-xs font-semibold text-slate-700 [&::-webkit-details-marker]:hidden">
+              <span>🧩 拆解阶段 AI Skills</span>
+              <span class="flex items-center gap-1 text-[11px] font-normal text-slate-500">
+                <span class="group-open:hidden">展开</span>
+                <span class="hidden group-open:inline">收起</span>
+                <span aria-hidden="true" class="transition-transform group-open:rotate-90">▸</span>
+              </span>
+            </summary>
+            <div class="mt-3 space-y-3">
+              <div class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between text-xs"><span>Planner · 整章分段</span><el-switch v-model="plannerDynamicSkills" :disabled="isStreaming" size="small" active-text="按需调用" /></div>
+                  <SkillSelector v-model="plannerRequiredSkills" mode="API" :disabled="isStreaming" :dynamic-enabled="plannerDynamicSkills" />
+                </div>
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between text-xs"><span>Worker · 各段分镜</span><el-switch v-model="workerDynamicSkills" :disabled="isStreaming" size="small" active-text="按需调用" /></div>
+                  <SkillSelector v-model="workerRequiredSkills" mode="API" :disabled="isStreaming" :dynamic-enabled="workerDynamicSkills" />
+                </div>
               </div>
-              <div class="space-y-2">
-                <div class="flex items-center justify-between text-xs"><span>Worker · 各段分镜</span><el-switch v-model="workerDynamicSkills" :disabled="isStreaming" size="small" active-text="按需调用" /></div>
-                <SkillSelector v-model="workerRequiredSkills" mode="API" :disabled="isStreaming" :dynamic-enabled="workerDynamicSkills" />
-              </div>
+              <p class="text-[11px] text-slate-500">必用 Skill 在模型调用前加载；开启按需调用后，AI 可在执行中加载目录里的其他 Skill。</p>
             </div>
-            <p class="text-[11px] text-slate-500">必用 Skill 在模型调用前加载；开启按需调用后，AI 可在执行中加载目录里的其他 Skill。</p>
-          </div>
+          </details>
 
           <!-- 文件导入卡片 (支持拖拽 / 点击上传 TXT / MD) -->
           <div class="mb-2">
@@ -280,34 +280,22 @@
           <!-- 原始故事文本输入区 -->
           <el-form-item class="!mb-3">
             <template #label>
-              <div class="flex items-center justify-between w-full">
+              <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 w-full">
                 <span class="font-bold text-gray-800">原始剧本 / 小说故事文本</span>
-                <span
-                  v-if="textLengthStatus.type !== 'empty'"
-                  :class="['text-[11px] px-2 py-0.5 rounded-full border font-mono transition-all', textLengthStatus.badgeClass]"
-                >
-                  {{ rawTextLength.toLocaleString() }} 字 · {{ textLengthStatus.label }}
-                </span>
-                <span v-else class="text-xs text-gray-400 font-mono">0 字</span>
+                <div class="flex items-center gap-2">
+                  <span
+                    v-if="textLengthStatus.type !== 'empty'"
+                    :class="['text-[11px] px-2 py-0.5 rounded-full border font-mono transition-all', textLengthStatus.badgeClass]"
+                  >
+                    {{ rawTextLength.toLocaleString() }} 字 · {{ textLengthStatus.label }}
+                  </span>
+                  <span v-else class="text-xs text-gray-400 font-mono">0 字</span>
+                  <el-button link type="info" size="small" :disabled="isStreaming" @click="handleClearText">
+                    清空
+                  </el-button>
+                </div>
               </div>
             </template>
-
-            <!-- 快捷填充示例 -->
-            <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
-              <span class="text-[11px] text-gray-500">快捷填充:</span>
-              <el-button link type="primary" size="small" :disabled="isStreaming" @click="fillSample('wargod')">
-                战神赘婿
-              </el-button>
-              <el-button link type="primary" size="small" :disabled="isStreaming" @click="fillSample('ceo')">
-                霸总甜宠
-              </el-button>
-              <el-button link type="primary" size="small" :disabled="isStreaming" @click="fillSample('suspense')">
-                都市悬疑
-              </el-button>
-              <el-button link type="info" size="small" :disabled="isStreaming" @click="handleClearText">
-                清空
-              </el-button>
-            </div>
 
             <el-input
               v-model="form.rawText"
@@ -809,28 +797,26 @@
             />
           </div>
 
-          <!-- 碎片率与镜头节奏健康指标横幅 (ShotDurationRule 统计) -->
+          <!-- 中性时长分布；短镜头本身不表示叙事过碎 -->
           <div
             v-if="result.fragmentationStats"
-            class="px-5 py-2 border-b text-xs flex items-center justify-between transition-colors"
-            :class="result.fragmentationStats.isHighFragmentation ? 'bg-amber-50/90 border-amber-200 text-amber-900' : 'bg-emerald-50/70 border-emerald-200 text-emerald-900'"
+            class="px-5 py-2 border-b text-xs flex items-center justify-between bg-slate-50 border-slate-200 text-slate-700"
           >
             <div class="flex items-center gap-2 flex-wrap">
-              <span v-if="result.fragmentationStats.isHighFragmentation" class="text-sm">⚠️</span>
-              <span v-else class="text-sm">🛡️</span>
-              <span class="font-bold">
-                {{ result.fragmentationStats.isHighFragmentation ? '镜头碎片率警示' : '影视镜头节奏健康' }}:
-              </span>
+              <span class="font-bold">镜头时长分布：</span>
               <span>
-                {{ result.fragmentationStats.warningMessage || `总分镜 ${result.fragmentationStats.totalShots} 镜 | 平均时长 ${result.fragmentationStats.averageDuration}s | 标准镜头 (5~8s) 占比 ${(result.fragmentationStats.totalShots ? result.fragmentationStats.normalShots / result.fragmentationStats.totalShots * 100 : 0).toFixed(0)}%` }}
+                总分镜 {{ result.fragmentationStats.totalShots }} 镜 | 平均时长 {{ result.fragmentationStats.averageDuration }}s
               </span>
             </div>
             <div class="flex items-center gap-2.5 font-mono text-[11px] flex-shrink-0">
               <span class="bg-white/90 px-2 py-0.5 rounded border border-slate-200/80 shadow-xs">
-                短镜头(&lt;5s): <strong :class="result.fragmentationStats.isHighFragmentation ? 'text-rose-600 font-bold' : 'text-amber-600'">{{ result.fragmentationStats.shortShots }}</strong> 镜 ({{ (result.fragmentationStats.shortShotRatio * 100).toFixed(0) }}%)
+                &lt;5s: <strong>{{ result.fragmentationStats.shortShots }}</strong> 镜 ({{ (result.fragmentationStats.shortShotRatio * 100).toFixed(0) }}%)
               </span>
               <span class="bg-white/90 px-2 py-0.5 rounded border border-slate-200/80 shadow-xs">
-                标准镜头(5~8s): <strong class="text-emerald-600 font-bold">{{ result.fragmentationStats.normalShots }}</strong> 镜
+                5~8s: <strong>{{ result.fragmentationStats.normalShots }}</strong> 镜
+              </span>
+              <span class="bg-white/90 px-2 py-0.5 rounded border border-slate-200/80 shadow-xs">
+                &gt;8s: <strong>{{ result.fragmentationStats.longShots }}</strong> 镜
               </span>
             </div>
           </div>
@@ -2931,31 +2917,6 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
-
-function fillSample(type: 'wargod' | 'ceo' | 'suspense') {
-  if (type === 'wargod') {
-    form.rawText = `苏氏集团顶层会议室，气氛剑拔弩张。
-苏明宇一把将财务报表摔在苏清雪面前，冷笑道：“苏清雪，三天内拿不出五千万填补亏损，就给我交出总裁位置，乖乖嫁给赵公子联姻！”
-苏清雪眼眶通红，咬紧牙关：“这是你挪用公款陷害我，我绝不同意！”
-就在全场亲戚出言嘲弄之时，会议室大门被猛然推开。
-身着一袭素衣的林晨大步跨入，眼神如刀锋般锐利。
-苏明宇见状勃然大怒，拍桌喝道：“林晨，你个倒插门吃软饭的窝囊废，这里是苏家高层会议，也是你配进来的？滚出去！”
-林晨面色冷峻，负手而立，从怀中掷出一张通体漆黑、散发着金色龙纹的至尊黑卡：“五千万算什么？这张卡里有一百个亿，苏氏集团，从今天起由我全资接管！”
-全场瞬间倒吸一口凉气，鸦雀无声。`
-  } else if (type === 'ceo') {
-    form.rawText = `暴雨倾盆的盛世华庭酒店门外，沈漫漫被淋得浑身湿透，怀中紧紧抱着母亲的病历单。
-继母恶狠狠地夺过她的项链扔进雨水里：“一个小三生的野种，也配跟我们争遗产？滚得越远越好！”
-一辆漆黑的劳斯莱斯幻影疾驰而至，溅起水花停在台阶前。
-身着定制西装、气场尊贵的顾北冥撑着黑色大伞缓缓走下车，俯身将沈漫漫抱入怀中。
-顾北冥眼神冷冽刺骨，扫向众人：“动我顾北冥的隐婚妻子，你们沈家是活腻了？”`
-  } else {
-    form.rawText = `午夜一点的迷雾码头，集装箱投下阴森的黑影。
-刑警队长陆远握紧配枪，悄无声息地贴着锈迹斑驳的铁皮柜前进。
-对讲机里传来搭档急促的喘息声：“陆队，内鬼已经把交易地点泄露了，有埋伏，快撤！”
-一声刺耳的枪响撕破夜空，陆远猛然侧身翻滚，子弹擦着耳边击穿集装箱。
-浓雾深处，一个戴着黑色面具的神秘人缓缓走出：“陆队长，查了三年，你终于找到我了。”`
-  }
 }
 
 function applyDecomposeResult(res: ScriptDecomposeResult) {

@@ -159,6 +159,7 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
         BeanOutputConverter<PlannerDecomposeResultVO> converter = new BeanOutputConverter<>(PlannerDecomposeResultVO.class);
 
         String systemPrompt = sysConfigService.getConfigValue("ai.prompt.planner_system", DEFAULT_PLANNER_SYSTEM_PROMPT);
+        systemPrompt += "\n\n【紧凑事件边界】Segment 是完整剧情事件，不是动作步骤。准备→执行→结果、走近→放慢→停步、行走时低头观察再抬头都优先保留在同一 Segment。动作进入下一阶段或原文换段不构成独立分段理由；保留有独立叙事价值的呼唤、相认、目标改变及明确时空跳变。summary 简洁提炼事件和必要继承状态，不扩写微动作或重复环境；全章明确要求的第一人称等观察约束和贯穿性速度要求应在各段 summary 中简短保留，不自行设计摄影。targetDurationPerEpisode 仅作章节规划参考，不得为凑时长添加事件、停顿或重复动作。";
         systemPrompt += "\n\n【分段连续性上下文输出】基于全章原文一次性为每个 Segment 生成简短 previousStateHint、currentEventHint、nextEventHint。previousStateHint 只记录该段起点必须继承的人物位置、动作、道具持有和空间关系；currentEventHint 只概括本段核心事实；nextEventHint 仅提示下一段即将发生的事件，不提前完成。无可靠事实填 null。不得生成 normalizedContent，该字段交给 Story Normalizer。";
         if (scriptSkillRuntime == null || request.getSkillPolicy() == null
                 || request.getSkillPolicy().getPlanner() == null

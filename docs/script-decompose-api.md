@@ -7,7 +7,7 @@
 
 ## 1. 架构定位：整章并行分段解析 (Parallel Segmented Decomposition Architecture)
 
-为解决超长小说章节解析时模型上下文退化、漏情节、镜头时长碎片化 (1~3s) 等问题，本系统采用 **Planner AI (1次宏观分段) + Story Normalizer × N + Worker AI × N + Java 确定性合并与规则体检**：
+为解决超长小说章节解析时模型上下文退化、漏情节和同一连续动作被过度拆分等问题，本系统采用 **Planner AI (1次宏观分段) + Story Normalizer × N + Worker AI × N + Java 确定性合并与时长统计**：
 
 ```text
 一章小说全文 (3000~8000+ 字)
@@ -20,7 +20,7 @@
     ↓
 4. Java 确定性合并 (ShotMergeService, 0 次 AI 调用): 严格按 segment.sequence 排序，重排 Scene/ShotGroup/Shot 全局连续编号，透传剧本字段
     ↓
-5. Java 连续性体检与防碎片统计 (ContinuityRuleEngine + ShotDurationRule, 0 次 AI 调用): 校验 10 大确定性连续性规则与镜头时长，碎片率 > 30% 预警
+5. Java 时长分布统计 (0 次 AI 调用): 保留有效 Worker 估时，缺失、非正数或非有限时长统一兜底 3 秒；不依据秒数推测剧情是否过碎
     ↓
 6. 后续专属视觉总监 AI / ShotAiVisualPlanService: 以小说原文与镜头剧本 (scriptContent) 为双重权威参考，精准推导生成高质量首帧与视频 Prompt
     ↓
@@ -50,9 +50,9 @@
 
 新增的 `character-disambiguation` 包位于 `src/main/resources/skills/character-disambiguation/`，可通过系统「AI Skills」页面上传同目录下的 ZIP 包启用。已有数据库执行 `src/main/resources/sql/upgrade_planner_character_disambiguation.sql` 后，Planner 系统提示词会使用 Skill 职责说明并清理旧的独立角色消歧配置。
 
-Worker 默认系统提示词与 `init.sql` 初始配置只规定原文忠实、镜头结构和字段契约；提供 `load_skill` 且启用目录包含 `camera-direction` 时，要求模型先加载该 Skill，由它指导景别、运镜、相邻镜头衔接与可行时长。未启用 Skill 时，Worker 根据原文动作和对白选择简洁、可完成的镜头，不套用固定秒数。已有数据库中的 `ai.prompt.shot_worker_system` 需要在系统参数配置中同步更新，运行时不覆盖已保存的自定义提示词。
+Worker 默认提示词和 `camera-direction` 负责剧情事件、动作聚合、连续性和自然估时，摄影字段仅输出 AUTO 占位，景别、运镜与 Prompt 交给后续导演阶段。Normalizer 简洁整理必要事实，不展开微动作清单或反复复述起止状态；Planner 不仅因准备、执行、结果阶段变化而分段。同一连续动作优先一镜，有独立叙事价值的转折可以切镜。
 
-当前 `load_skill` 只返回 Skill 的 `SKILL.md` 正文；`camera-direction` 中列出的 `references/` 文件尚未提供给 Worker，详细参考资料不会随本次调用自动加载。
+`load_skill` 返回入口 `SKILL.md`，Worker 可通过 `read_skill_file` 按需读取包内 `refs/`。已有环境需要同步更新 `ai.prompt.planner_system`、`ai.prompt.story_normalizer_system`、`ai.prompt.shot_worker_system`，并通过 `POST /system/skills/upload` 发布更新后的 `skills/camera-direction.zip`。内置初始化器会跳过已有发布版本，单独重启不会更新生效技能。新任务使用新版本快照；历史任务的单段重试仍沿用旧快照，效果比较应新建拆解任务。
 
 任务推送 `skill_event`，包含 `stage`、`segmentId`、`attempt`、`name`、`versionId`、`version`、`contentHash`、`source` (`REQUIRED` / `TOOL`) 和 `status`，不包含 Skill 正文。Worker 自动重试会推送 `channel_reset` 清除该分段先前的部分流式输出。最终结果的 `skillEvents` 保存实际加载记录。人工单段重试的 `WorkerRetryDTO.skillPolicyOverride` 可覆盖 Worker 策略；未填写则继承父任务设置，仍使用父任务版本快照。
 
@@ -73,7 +73,9 @@ Worker 默认系统提示词与 `init.sql` 初始配置只规定原文忠实、�
   "pacingPreset": "AUTO"
 }
 ```
-- `pacingPreset` 默认 `AUTO`；省略或传空值时，Worker 会收到 `STANDARD`（5~8 秒/镜）、`CINEMATIC_LONG`（7~12 秒/镜）、`FAST_PACED`（2~4 秒/镜）三个参考挡位，并按原文剧情、动作与对白选择适合的节奏。挡位时长仅作参考，不强制每镜落入区间。也可显式选择其中一个挡位作为节奏偏好。
+- `pacingPreset` 默认 `AUTO`；省略或传空值时，普通完整动作优先参考 3~5 秒，简短反应可更短，长对白、明确长距离和复杂事件按实际需要延长。先组织完整事件，再按原文要求的自然表演速度估算主动动作和对白的关键路径；并行动作共享时间，环境、持物状态和衣摆花瓣不另加秒数，不加保险缓冲，不为目标集时长填充动作。
+- “镜头节奏”可显式选择 `FAST_PACED` 快速（2~4 秒）、`COMPACT` 紧凑（3~5 秒）、`STANDARD` 常规（5~8 秒）、`CINEMATIC_LONG` 长镜头（7~12 秒）。`COMPACT` 优先将普通完整动作组织在 3~5 秒内，同一目标下连续动作优先合镜。所有区间都是单镜参考，完整对白或长动作可延长，不能为满足区间截断动作或台词；第一人称等创作者要求以及原文明示的速度保持有效。`targetDurationPerEpisode` 仅为规划参考。
+- `fragmentationStats` 保留历史字段和分桶：`shortShots` <5 秒、`normalShots` 5~8 秒、`longShots` >8 秒，`shortShotRatio` 只表示短时长占比。`isHighFragmentation`、`warningMessage` 已停用，新结果分别返回 false、空值；界面仅显示时长分布，不对短时长作健康判断。
 - **返回结构 (`ScriptDecomposeResultVO`)**:
 ```json
 {

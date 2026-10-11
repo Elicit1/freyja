@@ -218,7 +218,7 @@ class ScriptPipelineIntegrationTest {
                       "groupLocalId": "G001",
                       "groupName": "葛明进入办公室并发现杜宁",
                       "sequence": 1,
-                      "duration": 5.5,
+                      "duration": 4.0,
                       "scriptContent": "葛明推门进入办公室，神色冷峻，皮鞋踏在木地板上发出沉闷声响。",
                       "action": "葛明推门进入办公室",
                       "characterIds": ["葛明"],
@@ -234,7 +234,7 @@ class ScriptPipelineIntegrationTest {
                       "groupLocalId": "G001",
                       "groupName": "葛明进入办公室并发现杜宁",
                       "sequence": 2,
-                      "duration": 5.0,
+                      "duration": 3.0,
                       "scriptContent": "葛明脚步微微一顿，抬眼发现杜宁正背对着他迅速整理办公桌上的散落文件。",
                       "action": "葛明停下，发现杜宁正在整理桌上的文件",
                       "characterIds": ["葛明", "杜宁"],
@@ -250,7 +250,7 @@ class ScriptPipelineIntegrationTest {
                       "groupLocalId": "G001",
                       "groupName": "葛明进入办公室并发现杜宁",
                       "sequence": 3,
-                      "duration": 5.0,
+                      "duration": 8.0,
                       "scriptContent": "葛明大步走到杜宁面前居高临下开口质问，杜宁神情一滞，默默将文件夹合上扣在桌上。",
                       "action": "葛明走到杜宁面前开口询问，杜宁沉默放下文件",
                       "dialogueSpeaker": "葛明",
@@ -297,9 +297,9 @@ class ScriptPipelineIntegrationTest {
         DecomposedShotGroupVO g1 = scenes.get(0).getShotGroups().get(0);
         assertEquals(3, g1.getShots().size());
 
-        // 3. 验证无 1s 碎镜头，镜头时长符合标准节奏下限 (>= 5s)，镜头剧本已生成
+        // 3. Valid compact and longer estimates pass through without a floor or cap.
+        assertEquals(List.of(4.0, 3.0, 8.0), g1.getShots().stream().map(DecomposedShotVO::getDuration).toList());
         for (DecomposedShotVO s : g1.getShots()) {
-            assertTrue(s.getDuration() >= 5.0, "镜头时长应大于等于 5 秒，杜绝 1s 碎镜头");
             assertNotNull(s.getScriptContent(), "Worker 拆解必须生成镜头剧本 scriptContent");
         }
     }

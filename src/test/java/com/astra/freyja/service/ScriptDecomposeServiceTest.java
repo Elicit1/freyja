@@ -13,6 +13,8 @@ import com.astra.freyja.service.prompt.impl.PromptBuilderImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -162,9 +164,12 @@ class ScriptDecomposeServiceTest {
         assertThrows(BizException.class, () -> scriptDecomposeService.decompose(req));
     }
 
-    @Test
-    void testDecomposeSuccessWithParallelPipeline() {
+    @ParameterizedTest
+    @CsvSource({"AUTO, 3~5", "COMPACT, 3~5", "FAST_PACED, 2~4", "STANDARD, 5~8", "CINEMATIC_LONG, 7~12"})
+    void testDecomposeSuccessWithParallelPipeline(String pacingPreset, String expectedDurationReference) {
         ScriptDecomposeRequestDTO req = new ScriptDecomposeRequestDTO();
+        assertEquals("AUTO", req.getPacingPreset());
+        req.setPacingPreset(pacingPreset);
         req.setProviderId(1L);
         req.setModelCode("deepseek-chat");
         req.setRawText("葛明推门进入办公室，看见杜宁正在收拾桌上的文件。葛明停下脚步，望着她。");
@@ -247,7 +252,7 @@ class ScriptDecomposeServiceTest {
                       "groupLocalId": "G001",
                       "groupName": "葛明进入办公室并发现杜宁",
                       "sequence": 2,
-                      "duration": 4.0,
+                      "duration": 9.0,
                       "scriptContent": "葛明停下脚步，望向正在收拾桌上文件的杜宁，目光审视。",
                       "action": "葛明停下脚步，望向正在收拾桌上文件的杜宁",
                       "characterIds": ["葛明", "杜宁"],
@@ -272,11 +277,17 @@ class ScriptDecomposeServiceTest {
 
         ScriptDecomposeResultVO result = scriptDecomposeService.decompose(req);
 
-        assertEquals("AUTO", req.getPacingPreset());
         ArgumentCaptor<Prompt> promptCaptor = ArgumentCaptor.forClass(Prompt.class);
         verify(mockChatModel, times(2)).call(promptCaptor.capture());
-        assertTrue(promptCaptor.getAllValues().get(1).toString().contains("剪辑节奏偏好:"));
-        assertTrue(promptCaptor.getAllValues().get(1).toString().contains("请参考以下三个剪辑节奏挡位"));
+        String workerPrompt = promptCaptor.getAllValues().get(1).toString();
+        assertTrue(workerPrompt.contains("pacingPreset: " + pacingPreset));
+        String pacingDescription = workerPrompt.lines()
+                .filter(line -> line.startsWith("镜头节奏偏好:"))
+                .findFirst().orElseThrow();
+        assertTrue(pacingDescription.contains(expectedDurationReference + " 秒"));
+        if ("COMPACT".equals(pacingPreset)) {
+            assertTrue(pacingDescription.contains("COMPACT 紧凑节奏"));
+        }
 
         assertNotNull(result);
         assertEquals("都市风云", result.getDramaTitle());
@@ -300,10 +311,13 @@ class ScriptDecomposeServiceTest {
         assertEquals("AUTO", shot1.getShotType());
         assertEquals("AUTO", shot1.getCameraMovement());
         assertNotNull(shot1.getScriptContent());
+        assertEquals(4.5, shot1.getDuration());
+        assertEquals(9.0, sc.getShots().get(1).getDuration(), "节奏参考不得截断有效 Worker 时长");
 
         assertNotNull(result.getFragmentationStats());
         assertEquals(2, result.getFragmentationStats().getTotalShots());
-        assertEquals(2, result.getFragmentationStats().getShortShots());
+        assertEquals(1, result.getFragmentationStats().getShortShots());
+        assertEquals(1, result.getFragmentationStats().getLongShots());
     }
 
     @Test
@@ -343,12 +357,11 @@ class ScriptDecomposeServiceTest {
                 .build();
         DecomposedShotVO shot2 = DecomposedShotVO.builder()
                 .shotNo(2)
-                .duration(5.0)
                 .actionDescription("张三坐下")
                 .build();
         DecomposedShotVO shot3 = DecomposedShotVO.builder()
                 .shotNo(3)
-                .duration(5.0)
+                .duration(-2.0)
                 .actionDescription("会议开始")
                 .build();
 
@@ -411,6 +424,7 @@ class ScriptDecomposeServiceTest {
         ArgumentCaptor<DramaShot> shotCaptor = ArgumentCaptor.forClass(DramaShot.class);
         verify(shotMapper, times(3)).insert(shotCaptor.capture());
         List<DramaShot> savedShots = shotCaptor.getAllValues();
+        assertEquals(List.of(4.0, 3.0, 3.0), savedShots.stream().map(s -> s.getDuration().doubleValue()).toList());
         assertEquals(List.of("REFERENCE_MODE", "FIRST_LAST_FRAME", "REFERENCE_MODE"),
                 savedShots.stream().map(DramaShot::getGenerationMode).toList());
         assertEquals(List.of(4001L, 4001L, 4002L),
@@ -433,13 +447,13 @@ class ScriptDecomposeServiceTest {
                 .shotName("S01-01")
                 .shotType("CLOSE_UP")
                 .shotTypeLocked(true)
-                .duration(5.0)
+                .duration(8.5)
                 .actionDescription("主角眼神冷冽，握紧拳头")
                 .characterNames(List.of("张三"))
                 .build();
         DecomposedShotVO newShot2 = DecomposedShotVO.builder()
                 .shotNo(2)
-                .duration(5.0)
+                .duration(0.0)
                 .actionDescription("冲突继续")
                 .build();
 
@@ -490,6 +504,7 @@ class ScriptDecomposeServiceTest {
         ArgumentCaptor<DramaShot> shotCaptor = ArgumentCaptor.forClass(DramaShot.class);
         verify(shotMapper, times(2)).insert(shotCaptor.capture());
         List<DramaShot> savedShots = shotCaptor.getAllValues();
+        assertEquals(List.of(8.5, 3.0), savedShots.stream().map(s -> s.getDuration().doubleValue()).toList());
         assertEquals(List.of("REFERENCE_MODE", "FIRST_LAST_FRAME"),
                 savedShots.stream().map(DramaShot::getGenerationMode).toList());
         assertEquals(List.of(11, 12), savedShots.stream().map(DramaShot::getShotNo).toList());

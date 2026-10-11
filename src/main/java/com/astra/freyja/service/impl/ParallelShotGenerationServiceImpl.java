@@ -11,6 +11,7 @@ import com.astra.freyja.service.ParallelShotGenerationService;
 import com.astra.freyja.service.SysConfigService;
 import com.astra.freyja.service.StoryNormalizerService;
 import com.astra.freyja.skill.service.ScriptSkillRuntime;
+import com.astra.freyja.util.ShotDurationUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -303,7 +304,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                             for (WorkerShotResult.WorkerShotVO sh : sc.getShots()) {
                                 previewSb.append(String.format("  - 镜 %s [%.1fs]: %s",
                                         sh.getSequence() != null ? sh.getSequence().toString() : "",
-                                        sh.getDuration() != null ? sh.getDuration() : 5.0,
+                                        ShotDurationUtil.resolve(sh.getDuration()),
                                         StringUtils.defaultIfBlank(sh.getAction(), "")));
                                 if (StringUtils.isNotBlank(sh.getDialogue())) {
                                     previewSb.append(String.format(" 【对白 (%s): %s】",
@@ -361,13 +362,13 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
         BeanOutputConverter<WorkerShotResult> converter = new BeanOutputConverter<>(WorkerShotResult.class);
 
         String pacingDesc = switch (StringUtils.defaultIfBlank(request.getPacingPreset(), "AUTO")) {
-            case "CINEMATIC_LONG" -> "倾向保留完整的连续动作和空间关系，减少无必要的切镜；具体时长按镜头可行性决定";
-            case "FAST_PACED" -> "节奏紧凑，优先保留关键动作与反应；不得为追求快节奏截断动作或对白";
-            case "STANDARD" -> "标准工业短剧节奏，单镜以 5~8 秒为参考；按原文叙事节奏拆解，保持动作完整，避免无意义的碎镜头";
-            default -> "请参考以下三个剪辑节奏挡位，结合本段原文的动作、对白和叙事重点，自主选择适合的挡位；不同镜头可按剧情需要调整，不要机械套用时长，确保动作和对白完整："
-                    + "STANDARD 标准工业短剧（5~8 秒/镜，动作单元聚合）；"
-                    + "CINEMATIC_LONG 电影感长镜头（7~12 秒/镜，保留连续动作与空间关系，减少切镜）；"
-                    + "FAST_PACED 快节奏紧凑剪辑（2~4 秒/镜，聚焦关键动作与反应）";
+            case "CINEMATIC_LONG" -> "长镜头节奏，以 7~12 秒为参考，保留完整连续动作和空间关系，减少无必要的切镜；具体时长按镜头可行性决定";
+            case "FAST_PACED" -> "快速节奏，以 2~4 秒为参考，优先保留关键动作与反应；不得为追求快节奏截断动作或对白";
+            case "COMPACT" -> "COMPACT 紧凑节奏：优先将普通完整动作组织在 3~5 秒内，同一目标下的连续动作优先一镜完成，保留有独立叙事价值的转折。"
+                    + "按自然表演速度估时，不增加停顿或慢动作；完整对白、明确长动作或复杂事件确实需要更久时允许延长，不为满足区间截断内容";
+            case "STANDARD" -> "常规节奏，单镜以 5~8 秒为参考；按原文叙事节奏拆解，保持动作完整，避免无意义的碎镜头";
+            default -> "AUTO 自动紧凑节奏：普通完整动作优先 3~5 秒，简短反应可更短；长对白、明确长距离移动或确实需要更久的事件按实际需要延长。"
+                    + "同一连续动作优先一镜完成，保留有独立叙事价值的转折；不要为了适配 5 秒上限截断动作或对白，也不要退回按三个挡位挑选较长时长";
         };
 
         StringBuilder taskInput = new StringBuilder();
@@ -401,7 +402,10 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                         ? String.join(", ", segment.getPropIds())
                         : segment.getImportantPropIds() != null && !segment.getImportantPropIds().isEmpty()
                                 ? String.join(", ", segment.getImportantPropIds()) : "未提供").append("\n");
-        taskInput.append("剪辑节奏偏好: ").append(pacingDesc).append("\n");
+        taskInput.append("pacingPreset: ").append(StringUtils.defaultIfBlank(request.getPacingPreset(), "AUTO")).append("\n")
+                .append("镜头节奏偏好: ").append(pacingDesc).append("\n")
+                .append("【时长可行性】`duration` 按原文要求的自然表演速度和必须依次完成的动作、对白估算；并行动作共享时间，环境、持物状态、衣摆花瓣不另加时间。不得增加保险缓冲、等待或慢动作来凑时长，目标集时长仅作规划参考。\n")
+                .append("【紧凑拆镜】同一目标下的准备、执行、结果优先一镜；走近后停步、行走中低头看玉佩再抬头不能仅按动作阶段拆开。有独立叙事价值的转折可以切镜。scriptContent 写一段简洁的动作链，只保留执行所需的连续性信息，避免反复列举完整起止状态。保留原文对白、速度和用户明确的摄影要求。\n");
         taskInput.append("originalContent（最高事实来源）: \n")
                 .append(StringUtils.defaultString(segment.getRawText())).append("\n\n")
                 .append("normalizedContent（主要拆解执行输入；为空则使用 originalContent）: \n")

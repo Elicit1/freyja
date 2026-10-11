@@ -52,7 +52,7 @@ public class GlobalStoryContext implements Serializable {
     /** 视觉风格基调/导演风格指南（自然语言融入，如光影、色调、镜头质感） */
     private String styleTone;
 
-    /** 剪辑节奏预设 (AUTO, STANDARD, CINEMATIC_LONG, FAST_PACED) */
+    /** 镜头节奏预设 (AUTO, FAST_PACED, COMPACT, STANDARD, CINEMATIC_LONG) */
     @Builder.Default
     private String pacingPreset = "AUTO";
 

@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.io.Serializable;
 
 /**
- * 镜头时长与碎片率统计指标 (FragmentationStatsVO)。
+ * 镜头时长分布。保留历史字段名与分桶边界，短时长不代表剧情过碎。
  */
 @Data
 @Builder
@@ -28,11 +28,11 @@ public class FragmentationStatsVO implements Serializable {
     @Builder.Default
     private Integer shortShots = 0;
 
-    /** 标准镜头数 (5~8s) */
+    /** 中等时长镜头数 (5~8s)，不是推荐时长 */
     @Builder.Default
     private Integer normalShots = 0;
 
-    /** 长镜头/复杂镜头数 (> 8s) */
+    /** 较长时长镜头数 (> 8s) */
     @Builder.Default
     private Integer longShots = 0;
 
@@ -40,14 +40,14 @@ public class FragmentationStatsVO implements Serializable {
     @Builder.Default
     private Double averageDuration = 0.0;
 
-    /** 短镜头碎片率 (shortShots / totalShots) */
+    /** 短时长镜头占比 (shortShots / totalShots)，不作碎片率判断 */
     @Builder.Default
     private Double shortShotRatio = 0.0;
 
-    /** 是否触发过碎预警 (shortShotRatio > 30%) */
+    /** 已停用的历史兼容字段；新结果固定 false，不由时长猜测叙事边界 */
     @Builder.Default
     private Boolean isHighFragmentation = false;
 
-    /** 预警提示信息 */
+    /** 已停用的历史兼容字段；新结果为空 */
     private String warningMessage;
 }

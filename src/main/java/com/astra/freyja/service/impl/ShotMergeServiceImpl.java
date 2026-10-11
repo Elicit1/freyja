@@ -2,6 +2,7 @@ package com.astra.freyja.service.impl;
 
 import com.astra.freyja.dto.script.*;
 import com.astra.freyja.service.ShotMergeService;
+import com.astra.freyja.util.ShotDurationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -117,12 +118,8 @@ public class ShotMergeServiceImpl implements ShotMergeService {
                         shotVO.setShotTypeLocked(false);
                         shotVO.setCameraMovementLocked(false);
 
-                        // 镜头时长 (默认 5~8s 规范)
-                        Double duration = rawShot.getDuration();
-                        if (duration == null || duration <= 0) {
-                            duration = 5.0;
-                        }
-                        shotVO.setDuration(duration);
+                        // Preserve valid Worker estimates; all decomposition paths share one fallback.
+                        shotVO.setDuration(ShotDurationUtil.resolve(rawShot.getDuration()));
 
                         String scriptContent = rawShot.getScriptContent();
                         String action = StringUtils.firstNonBlank(rawShot.getAction(), scriptContent, "主体角色在场中");
@@ -346,7 +343,7 @@ public class ShotMergeServiceImpl implements ShotMergeService {
         double totalDuration = 0.0;
 
         for (DecomposedShotVO s : shots) {
-            double dur = (s.getDuration() != null && s.getDuration() > 0) ? s.getDuration() : 5.0;
+            double dur = ShotDurationUtil.resolve(s.getDuration());
             totalDuration += dur;
 
             if (dur < 5.0) {
@@ -360,10 +357,6 @@ public class ShotMergeServiceImpl implements ShotMergeService {
 
         double avgDuration = Math.round((totalDuration / total) * 10.0) / 10.0;
         double shortRatio = Math.round(((double) shortCount / total) * 1000.0) / 1000.0;
-        boolean isHigh = shortRatio > 0.30;
-        String warnMsg = isHigh
-                ? String.format("⚠️ 当前章节短镜头比例偏高 (%.1f%% > 30%%)，建议将碎片动作镜头合并以保证 5~8s 影视叙事沉浸感", shortRatio * 100)
-                : null;
 
         return FragmentationStatsVO.builder()
                 .totalShots(total)
@@ -372,8 +365,8 @@ public class ShotMergeServiceImpl implements ShotMergeService {
                 .longShots(longCount)
                 .averageDuration(avgDuration)
                 .shortShotRatio(shortRatio)
-                .isHighFragmentation(isHigh)
-                .warningMessage(warnMsg)
+                .isHighFragmentation(false)
+                .warningMessage(null)
                 .build();
     }
 }

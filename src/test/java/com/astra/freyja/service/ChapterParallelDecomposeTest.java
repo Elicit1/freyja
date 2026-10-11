@@ -291,7 +291,6 @@ class ChapterParallelDecomposeTest {
             Prompt prompt = inv.getArgument(0);
             String promptStr = prompt.getContents();
             assertTrue(promptStr.contains("时长可行性"));
-            assertTrue(promptStr.contains("camera-direction"));
             assertTrue(promptStr.contains("原文摄影要求（用户明确指定）"));
             assertTrue(promptStr.contains("道具资产种类"));
             assertTrue(promptStr.contains("`duration`"));
@@ -395,7 +394,7 @@ class ChapterParallelDecomposeTest {
     }
 
     @Test
-    @DisplayName("测试 4: ShotDurationRule 与碎片率统计 (短镜头 > 30% 触发 HIGH_FRAGMENTATION 告警)")
+    @DisplayName("测试 4: 保留时长分布兼容字段，短镜头占比不触发剧情过碎告警")
     void testShotDurationRuleAndFragmentationStats() {
         List<DecomposedShotVO> shots = List.of(
                 DecomposedShotVO.builder().shotNo(1).shotName("S01-01").duration(2.0).actionDescription("葛明拿笔").shotType("MEDIUM_SHOT").build(),
@@ -409,8 +408,8 @@ class ChapterParallelDecomposeTest {
         assertEquals(2, stats.getShortShots());
         assertEquals(1, stats.getNormalShots());
         assertTrue(stats.getShortShotRatio() > 0.60);
-        assertTrue(stats.getIsHighFragmentation());
-        assertNotNull(stats.getWarningMessage());
+        assertFalse(stats.getIsHighFragmentation());
+        assertNull(stats.getWarningMessage());
     }
 
     @Test
@@ -495,7 +494,7 @@ class ChapterParallelDecomposeTest {
 
         for (DecomposedEpisodeSceneVO sc : ep.getScenes()) {
             for (DecomposedShotVO s : sc.getShots()) {
-                assertTrue(s.getDuration() >= 5.0);
+                assertEquals(5.0, s.getDuration());
                 assertEquals("葛明站在办公室中神色凝重，推开门环视四周。", s.getScriptContent());
             }
         }

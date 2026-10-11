@@ -114,6 +114,7 @@ class AiImageApiServiceImplTest {
         DramaShot shot = new DramaShot();
         shot.setPrompt("cinematic shot");
         shot.setSeed(1234L);
+        shot.setDuration(new java.math.BigDecimal("3.5"));
         DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
         request.setProviderId(5L);
         request.setWorkflowTemplateId("minimax-h3-fl2va");
@@ -127,6 +128,7 @@ class AiImageApiServiceImplTest {
         ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
         verify(objectMapper).writeValueAsString(payload.capture());
         assertEquals(5678L, ((Map<?, ?>) payload.getValue()).get("seed"));
+        assertEquals(3.5, ((Map<?, ?>) payload.getValue()).get("duration"));
     }
 
     @Test

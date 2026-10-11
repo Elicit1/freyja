@@ -16,6 +16,7 @@ import com.astra.freyja.engine.sse.ConcurrentSseBridge;
 import com.astra.freyja.service.*;
 import com.astra.freyja.service.prompt.PromptBuilder;
 import com.astra.freyja.skill.service.ScriptSkillRuntime;
+import com.astra.freyja.util.ShotDurationUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -437,7 +438,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         ensureTaskNotCancelled(taskId);
 
         // 4. Java Merge Engine: 按 segment.sequence 排序、合并 Scene 与 ShotGroup、全局重编 Shot ID
-        stepLogger.accept("\n[5/6] 🧩 Java Merge Engine 确定性合并与连续性体检 (ShotDurationRule) (0 次额外 AI 调用)...");
+        stepLogger.accept("\n[5/6] 🧩 Java Merge Engine 确定性合并与时长分布统计 (0 次额外 AI 调用)...");
         ScriptDecomposeResultVO mergedResult = shotMergeService.mergeSegmentResults(
                 segmentResults, plannerResult, globalContext, stepLogger
         );
@@ -453,16 +454,12 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         List<DecomposedShotVO> allFlattenedShots = new ArrayList<>();
         int totalShots = processScenesAndShots(mergedResult, registeredNames, scenes, props, request.getStylePreset(), allFlattenedShots, stepLogger);
 
-        // 6. 计算镜头时长分布与碎片率指标 (防碎镜检测)
+        // 6. 时长分布只作统计，不据此推断叙事边界是否合理。
         FragmentationStatsVO fragStats = shotMergeService.calculateFragmentationStats(allFlattenedShots);
         mergedResult.setFragmentationStats(fragStats);
 
-        if (Boolean.TRUE.equals(fragStats.getIsHighFragmentation())) {
-            stepLogger.accept(String.format("     ↳ %s", fragStats.getWarningMessage()));
-        } else {
-            stepLogger.accept(String.format("     ↳ 📊 镜头时长健康度良好 (平均时长: %.1fs, 短镜头占比: %.1f%%)",
-                    fragStats.getAverageDuration(), fragStats.getShortShotRatio() * 100));
-        }
+        stepLogger.accept(String.format("     ↳ 📊 镜头时长分布 (平均时长: %.1fs, 小于 5 秒占比: %.1f%%)",
+                fragStats.getAverageDuration(), fragStats.getShortShotRatio() * 100));
 
         long elapsedMs = System.currentTimeMillis() - startTime;
         stepLogger.accept(String.format("\n========================================================================\n" +
@@ -598,9 +595,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                                 if (StringUtils.isBlank(s.getGroupId())) {
                                     s.setGroupId(String.format("G%03d", group.getGroupNo()));
                                 }
-                                if (s.getDuration() == null || s.getDuration() <= 0) {
-                                    s.setDuration(5.0);
-                                }
+                                s.setDuration(ShotDurationUtil.resolve(s.getDuration()));
                             }
 
                             // 直接使用 AI 产出的高质量首帧生图词 (firstFrameVisual) 与视频运镜词 (videoPrompt)，杜绝机械硬拼装
@@ -961,8 +956,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                                         appendedShotCount++;
                                         int currentShotNo = baseShotNo + appendedShotCount;
                                         DecomposedShotVO shotVO = gVO.getShots().get(shotIdx);
-                                        BigDecimal duration = shotVO.getDuration() != null
-                                                ? BigDecimal.valueOf(shotVO.getDuration()) : BigDecimal.valueOf(5.0);
+                                        BigDecimal duration = BigDecimal.valueOf(ShotDurationUtil.resolve(shotVO.getDuration()));
 
                                         String charRefsJson = buildCharacterRefsJson(shotVO.getCharacterNames(), characterNameToId, characterNameToLookId);
                                         String propRefsJson = buildPropRefsJson(shotVO.getPropIds(), propRefToId, commitDTO.getProps());
@@ -1147,8 +1141,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                                             totalShotIndex++;
                                             DecomposedShotVO shotVO = gVO.getShots().get(shotIdx);
                                             int shotNo = shotVO.getShotNo() != null ? shotVO.getShotNo() : totalShotIndex;
-                                            BigDecimal duration = shotVO.getDuration() != null
-                                                    ? BigDecimal.valueOf(shotVO.getDuration()) : BigDecimal.valueOf(5.0);
+                                            BigDecimal duration = BigDecimal.valueOf(ShotDurationUtil.resolve(shotVO.getDuration()));
                                             episodeActualDuration = episodeActualDuration.add(duration);
 
                                             String charRefsJson = buildCharacterRefsJson(shotVO.getCharacterNames(), characterNameToId, characterNameToLookId);

@@ -81,10 +81,10 @@ public class WorkerShotResult implements Serializable {
         @JsonPropertyDescription("段内镜头序号，从 1 开始递增")
         private Integer sequence;
 
-        @JsonPropertyDescription("预估镜头时长（秒）；按完整剧情动作与对白能否在指定时长内完成来判断，不考虑摄影机设计")
+        @JsonPropertyDescription("预估镜头时长（秒）；AUTO 按剧情估时，普通完整动作优先 3~5 秒；COMPACT 优先将普通完整动作组织在 3~5 秒内；完整对白或长动作可延长。按自然表演速度估算必须依次完成的动作和对白，并行动作共享时间，环境和持物状态不计时，不加保险缓冲；显式其他 pacingPreset 时遵循对应偏好")
         private Double duration;
 
-        @JsonPropertyDescription("本镜头剧情剧本：描述可观察的人物位置、行为、互动、表情、事件顺序及道具状态。若原文明确提出摄影要求，原样放在‘原文摄影要求（用户明确指定）’段落中；不得添加自己的摄影设计")
+        @JsonPropertyDescription("本镜头剧情剧本：用一段简洁的连续动作链描述人物行为、互动、必要空间和道具状态变化，不反复复述完整起止状态。若原文明确提出摄影要求，原样放在‘原文摄影要求（用户明确指定）’段落中；不得添加自己的摄影设计")
         private String scriptContent;
 
         @JsonPropertyDescription("摄影参数占位对象。Worker 不设计摄影；shotSize 和 movement 必须都输出 AUTO")
