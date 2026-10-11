@@ -2,6 +2,7 @@ package com.astra.freyja.agent;
 
 import com.astra.freyja.agent.event.AgentEventPublisher;
 import com.astra.freyja.agent.model.AgentJson;
+import com.astra.freyja.agent.model.UserQuestions;
 import com.astra.freyja.agent.model.AgentProtocol.*;
 import com.astra.freyja.agent.profile.AgentProfileRegistry;
 import com.astra.freyja.agent.runtime.AgentStore;
@@ -54,6 +55,45 @@ class AgentStoreTest {
         assertEquals(1, writes.get()); assertEquals("SUCCEEDED", step.getStatus());
         assertTrue(json.write(replay).contains("2032095628944588805"));
         verify(messages, times(2)).insert(any(AgentMessage.class)); // one result plus its progress event
+    }
+    void waitForQuestions() {
+        step.setToolName("request_user_input");
+        step.setInputJson(json.write(new ToolCall("ask-1", "request_user_input", json.write(RequestUserInputToolTest.questions()))));
+        store.commitTool(run.getId(), "test-owner", 1, step.getId(), () -> ToolResult.needUser(RequestUserInputToolTest.questions()), 0);
+    }
+    SendMessage questionAnswer() {
+        var request = new SendMessage(); request.setClientRequestId("answer-1"); request.setIntent("ANSWER");
+        request.setExpectedRunId(run.getId()); request.setContent("ignored text"); request.setQuestionStepId(step.getId());
+        request.setAnswers(List.of(new UserQuestions.Answer("genre", "奇幻", null), new UserQuestions.Answer("protagonist", null, "喜欢星空")));
+        return request;
+    }
+    @Test void questionsAreDurableAndAnswersContinueTheSameRunWithPairedResult() {
+        waitForQuestions();
+        assertEquals("WAITING_USER", run.getStatus()); assertNull(run.getLeaseOwner());
+        var event = org.mockito.ArgumentCaptor.forClass(AgentMessage.class); verify(messages).insert(event.capture());
+        assertEquals("WAITING_USER", event.getValue().getEventType());
+        assertTrue(event.getValue().getContentJson().contains("questionStepId")); assertTrue(event.getValue().getContentJson().contains("genre"));
+        var submission = store.submit(session.getId(), questionAnswer(), null);
+        assertEquals(run.getId(), submission.runId()); assertEquals("QUEUED", run.getStatus());
+        assertEquals("SUCCEEDED", step.getStatus()); assertEquals(1, run.getToolCalls()); assertEquals(1, run.getConstraintVersion());
+        assertTrue(run.getObjective().contains("题材：奇幻")); assertFalse(run.getObjective().contains("ignored text"));
+        assertTrue(step.getResultJson().contains("answers")); verify(runs, never()).insert(any(AgentRun.class));
+    }
+    @Test void staleQuestionCannotResumeAnotherWait() {
+        waitForQuestions(); var request = questionAnswer(); request.setQuestionStepId(step.getId() + 1);
+        var error = assertThrows(com.astra.freyja.common.BizException.class, () -> store.submit(session.getId(), request, null));
+        assertEquals(409, error.getCode()); assertEquals("WAITING_USER", run.getStatus()); assertEquals(0, run.getConstraintVersion());
+        verify(messages, times(1)).insert(any(AgentMessage.class));
+    }
+    @Test void incompleteStructuredAnswersDoNotResumeWait() {
+        waitForQuestions(); var request = questionAnswer(); request.setAnswers(List.of(new UserQuestions.Answer("genre", "奇幻", null)));
+        assertThrows(com.astra.freyja.common.BizException.class, () -> store.submit(session.getId(), request, null));
+        assertEquals("WAITING_USER", run.getStatus()); assertEquals("WAITING_USER", step.getStatus());
+    }
+    @Test void plainTextStillAnswersQuestionsAndOldClientsRemainCompatible() {
+        waitForQuestions(); var request = questionAnswer(); request.setQuestionStepId(null); request.setAnswers(null); request.setContent("请自主决定，主角喜欢星空");
+        store.submit(session.getId(), request, null);
+        assertEquals("QUEUED", run.getStatus()); assertTrue(step.getResultJson().contains("请自主决定"));
     }
     @Test void cancellationFencesEveryLateWrite() {
         run.setStatus("CANCELLED"); run.setCancelRequested(true);

@@ -11,10 +11,10 @@ import java.util.List;
 public class CoreAssistantProfile extends ProductionPreparationProfile {
     public CoreAssistantProfile(AgentPreparationJobMapper jobs, ObjectProvider<ProductionPlans> plans) { super(jobs, plans); }
     public String code() { return AgentProfileRegistry.ASSISTANT_CODE; }
-    public int version() { return 2; }
+    public int version() { return 3; }
     @Override public AgentConfigDTO defaults() {
         var c = super.defaults(); c.setDisplayName("FREYJA 助手");
-        c.setDescription("聊天、查询项目与资产、保存明确规则，自动完成小说拆解与分镜制作准备"); return c;
+        c.setDescription("小说创作、需求澄清、查询项目与资产、保存明确规则，以及小说转视频准备"); return c;
     }
     public String fixedInstructions() {
         return """
@@ -22,11 +22,20 @@ public class CoreAssistantProfile extends ProductionPreparationProfile {
                 项目作用域由系统绑定，工具参数不得扩大范围。无明确事实时保持未知。
                 只在用户明确要求记住、修改或撤回规则时调用 save_session_note，
                 该工具需要引用对应用户消息 ID，不把推测保存为用户规则。
-                同一个助手负责聊天、项目查询、明确记忆与分镜制作准备，不调用生图或视频渲染。
+                你是 Freyja agent。同一个助手负责小说创作、聊天、项目查询、明确记忆与小说转视频准备。
+                用户可以直接在聊天中创作小说、续写、润色和讨论大纲，不需要使用“小说转视频准备”。
+                写作内容通过聊天回复交付并保留在会话中。只有用户明确要求转视频并提交制作原文时才启动制作工具；不要把小说创作自动当作分镜制作任务。
+                关键需求不清楚、存在多种重要选择或无法在当前作用域继续时，调用 request_user_input，按需一次询问 1–3 个问题。
+                提问应包含简洁选项及推荐理由，也允许自由回答；用户答复后继续同一任务，必要时再提问。
+                已明确的条件无需再问。用户授权自行决定时使用合理假设推进，并简要说明；轻微不确定项无需逐一确认。
+                不调用生图或视频渲染。
                 不展示内部推理过程，回复结果、操作摘要和必要的简要依据。
                 """ + super.fixedInstructions();
     }
     public List<String> allowedTools() {
-        var names = new java.util.ArrayList<>(super.allowedTools()); names.add("list_project_assets"); return List.copyOf(names);
+        var names = new java.util.ArrayList<>(super.allowedTools()); names.add("list_project_assets"); names.add("request_user_input"); return List.copyOf(names);
+    }
+    @Override public List<String> requiredTools() {
+        var names = new java.util.ArrayList<>(super.requiredTools()); names.add("request_user_input"); return List.copyOf(names);
     }
 }

@@ -1,6 +1,6 @@
 <template>
   <div v-if="report" class="production-report mt-3">
-    <strong>{{ report.dramaTitle }} · 制作准备</strong>
+    <strong>{{ report.dramaTitle }} · 小说转视频准备</strong>
     <p class="mt-2">已规划 {{ report.plannedCount }} / {{ report.shotCount }} 镜 · 交付时 {{ report.readyCount }} 镜就绪 · {{ report.waitingImageCount }} 镜待补图</p>
     <div class="flex flex-wrap gap-2 my-3">
       <el-button size="small" @click="workbench()">打开分镜工作台</el-button>

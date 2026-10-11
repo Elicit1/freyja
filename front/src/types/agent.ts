@@ -41,9 +41,15 @@ export interface AgentSession {
   nextSeq: number; activeRunId?: string; updateTime?: string
 }
 export interface ToolResult { kind: string; data?: unknown; errorCode?: string; message?: string }
+export interface AgentQuestion {
+  id: string; header: string; question: string
+  options: { label: string; description: string; recommended: boolean }[]
+}
+export interface AgentAnswer { questionId: string; optionLabel?: string; customAnswer?: string }
+export interface AgentQuestionReply { questionStepId: string; answers: AgentAnswer[] }
 export interface AgentMessage {
   id: string; sessionId: string; runId?: string; seq: number; messageType: string; eventType?: string; toolCallId?: string
-  body: { content?: string; toolCalls?: { id: string; name: string; arguments: string }[]; toolName?: string; result?: ToolResult; status?: string; question?: string; summary?: string; tool?: string; message?: string; hasError?: boolean }
+  body: { content?: string; toolCalls?: { id: string; name: string; arguments: string }[]; toolName?: string; result?: ToolResult; status?: string; question?: string; questions?: AgentQuestion[]; questionStepId?: string; summary?: string; tool?: string; message?: string; hasError?: boolean }
   createTime?: string
 }
 export type AgentRunStatus = 'QUEUED' | 'RUNNING' | 'WAITING_TASK' | 'WAITING_USER' | 'CANCELLING' | 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED' | 'CANCELLED'

@@ -2,6 +2,7 @@ package com.astra.freyja.agent.runtime;
 
 import com.astra.freyja.agent.event.AgentEventPublisher;
 import com.astra.freyja.agent.model.AgentJson;
+import com.astra.freyja.agent.model.UserQuestions;
 import com.astra.freyja.agent.model.AgentProtocol.*;
 import com.astra.freyja.agent.profile.AgentProfileRegistry;
 import com.astra.freyja.agent.settings.AgentConfigService;
@@ -171,13 +172,22 @@ public class AgentStore {
             if (request.getProviderId() != null || request.getModelCode() != null) throw new BizException("活动任务不能更换模型");
             if ("ANSWER".equals(request.getIntent()) && !"WAITING_USER".equals(run.getStatus()))
                 throw new BizException("当前任务未等待用户回答");
+            if (request.getQuestionStepId() != null) {
+                var waiting = steps(run.getId()).stream().filter(s -> "WAITING_USER".equals(s.getStatus())
+                        && Objects.equals(s.getId(), request.getQuestionStepId()) && "request_user_input".equals(s.getToolName()))
+                        .findFirst().orElseThrow(() -> new BizException(409, "QUESTION_CHANGED: 当前等待的问题已改变"));
+                var call = json.read(waiting.getInputJson(), ToolCall.class);
+                request.setContent(json.read(call.arguments(), UserQuestions.class).answerText(request.getAnswers()));
+            }
             AgentMessage message = append(session, run, "USER", "USER", MessageBody.text(request.getContent()), null, request.getClientRequestId(), null);
             run.setObjective(run.getObjective() + "\n用户补充：" + request.getContent()); run.setConstraintVersion(run.getConstraintVersion() + 1);
             run.setObjectiveMessageId(message.getId());
             if ("WAITING_USER".equals(run.getStatus())) {
                 for (AgentStep step : steps(run.getId())) {
                     if ("WAITING_USER".equals(step.getStatus())) {
-                        step.setStatus("SUCCEEDED"); step.setResultJson(json.write(ToolResult.success(Map.of("userAnswer", request.getContent()))));
+                        Object answer = request.getQuestionStepId() == null ? Map.of("userAnswer", request.getContent())
+                                : Map.of("userAnswer", request.getContent(), "questionStepId", String.valueOf(request.getQuestionStepId()), "answers", request.getAnswers());
+                        step.setStatus("SUCCEEDED"); step.setResultJson(json.write(ToolResult.success(answer)));
                         steps.updateById(step);
                         toolMessage(session, run, step, json.read(step.getResultJson(), ToolResult.class));
                         run.setToolCalls(run.getToolCalls() + 1);
@@ -311,7 +321,11 @@ public class AgentStore {
                 }
                 case "NEED_USER" -> {
                     step.setStatus("WAITING_USER"); run.setStatus("WAITING_USER"); releaseLease(run);
-                    event(session, run, "WAITING_USER", Map.of("question", result.message(), "status", "WAITING_USER"));
+                    var payload = new java.util.LinkedHashMap<String, Object>();
+                    payload.put("question", Objects.toString(result.message(), "需要你的回答"));
+                    payload.put("status", "WAITING_USER"); payload.put("questionStepId", String.valueOf(step.getId()));
+                    if (result.data() != null) payload.put("questions", json.read(json.write(result.data()), UserQuestions.class).validated().questions());
+                    event(session, run, "WAITING_USER", payload);
                 }
                 case "IMMEDIATE" -> {
                     step.setStatus("SUCCEEDED"); run.setToolCalls(run.getToolCalls() + 1);
@@ -493,5 +507,8 @@ public class AgentStore {
                 || request.getClientRequestId().length() > 100 || request.getContent() == null || request.getContent().isBlank()
                 || request.getContent().length() > 100000 || !Set.of("START_RUN", "REPLACE_RUN", "STEER", "ANSWER").contains(request.getIntent()))
             throw new BizException(400, "请提供有效的请求 ID、输入类型和 1–100000 字的消息");
+        if ((request.getQuestionStepId() == null) != (request.getAnswers() == null)
+                || request.getQuestionStepId() != null && !"ANSWER".equals(request.getIntent()))
+            throw new BizException("结构化回答需要同时提供 questionStepId 和 answers，且 intent=ANSWER");
     }
 }

@@ -1,6 +1,6 @@
 import { request } from './request'
 import type { AgentConfig, AgentCatalog, ValidationResult, AgentProfile, AgentSession, AgentMessage, AgentRun, AgentSubmission, AgentPet } from '@/types/agent'
-import type { ProductionStart, ProductionReport, ProductionPlanView } from '@/types/agent'
+import type { ProductionStart, ProductionReport, ProductionPlanView, AgentQuestionReply } from '@/types/agent'
 
 export const agentConfigApi = {
   list: () => request<AgentConfig[]>({ url: '/system/agent/configs', method: 'get' }),
@@ -28,8 +28,8 @@ export const agentApi = {
   session: (id: string) => request<AgentSession>({ url: `/agent/sessions/${id}`, method: 'get' }),
   createSession: (agentCode: string, dramaId?: string, title?: string) => request<AgentSession>({ url: '/agent/sessions', method: 'post', data: { agentCode, dramaId: dramaId || undefined, title } }),
   messages: (id: string, afterSeq = 0) => request<AgentMessage[]>({ url: `/agent/sessions/${id}/messages`, method: 'get', params: { afterSeq } }),
-  send: (id: string, content: string, intent: 'START_RUN' | 'REPLACE_RUN' | 'STEER' | 'ANSWER', clientRequestId: string, expectedRunId?: string) =>
-    request<AgentSubmission>({ url: `/agent/sessions/${id}/messages`, method: 'post', data: { content, intent, clientRequestId, expectedRunId } }),
+  send: (id: string, content: string, intent: 'START_RUN' | 'REPLACE_RUN' | 'STEER' | 'ANSWER', clientRequestId: string, expectedRunId?: string, reply?: AgentQuestionReply) =>
+    request<AgentSubmission>({ url: `/agent/sessions/${id}/messages`, method: 'post', data: { content, intent, clientRequestId, expectedRunId, ...reply } }),
   run: (id: string) => request<AgentRun>({ url: `/agent/runs/${id}`, method: 'get' }),
   notifications: () => request<AgentRun[]>({ url: '/agent/notifications', method: 'get' }),
   cancel: (id: string) => request<void>({ url: `/agent/runs/${id}/cancel`, method: 'post' }),

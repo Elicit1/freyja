@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="小说制作准备" width="680px" append-to-body :close-on-click-modal="false">
+  <el-dialog v-model="visible" title="小说转视频准备" width="min(680px, calc(100vw - 32px))" append-to-body align-center :close-on-click-modal="false">
     <el-alert title="Agent 会自动拆解并保存分镜、整理文字资产、选择模式和参考素材。缺少的图片会列入交付清单。" type="info" :closable="false" class="mb-4" />
     <el-alert v-if="!available" title="请在 Agent 配置中选择模型并启用助手。" type="warning" :closable="false" class="mb-4" />
     <el-form label-position="top" :disabled="busy">
@@ -17,7 +17,7 @@
       <el-form-item label="视觉风格"><el-input v-model="form.styleTone" placeholder="例如：温暖的手绘动画风格，柔和光影" maxlength="2000" /></el-form-item>
       <el-form-item label="制作要求"><el-input v-model="form.instruction" type="textarea" :rows="2" maxlength="4000" placeholder="保留原文对白、角色造型要求、镜头偏好等" /></el-form-item>
     </el-form>
-    <template #footer><el-button :disabled="busy" @click="visible = false">关闭</el-button><el-button type="primary" :loading="busy" :disabled="!available || !form.sourceText.trim()" @click="submit">开始制作准备</el-button></template>
+    <template #footer><el-button :disabled="busy" @click="visible = false">关闭</el-button><el-button type="primary" :loading="busy" :disabled="!available || !form.sourceText.trim()" @click="submit">开始转视频准备</el-button></template>
   </el-dialog>
 </template>
 <script setup lang="ts">

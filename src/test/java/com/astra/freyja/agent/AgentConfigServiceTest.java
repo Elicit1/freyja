@@ -127,11 +127,11 @@ class AgentConfigServiceTest {
         verify(mapper, times(1)).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
     }
     @Test void legacyIdentifierResolvesOneConfigurationAndNewSnapshotsUseUnifiedCode() {
-        when(mapper.selectOne(any())).thenReturn(stored(config, 2));
+        when(mapper.selectOne(any())).thenReturn(stored(config, 3));
         assertEquals("core-assistant", service.get("production-preparation").getAgentCode());
         verify(mapper, never()).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
         var snapshot = service.snapshot("production-preparation", config, "NORMAL");
-        assertEquals("core-assistant", snapshot.agentCode()); assertEquals(2, snapshot.profileVersion());
+        assertEquals("core-assistant", snapshot.agentCode()); assertEquals(3, snapshot.profileVersion());
         assertEquals("core-assistant", snapshot.config().getAgentCode());
     }
     @Test void oneRegisteredAssistantHasQueryAndProductionCapabilities() {
@@ -139,5 +139,18 @@ class AgentConfigServiceTest {
         assertEquals(1, registry.all().size()); assertSame(profile, registry.require("production-preparation"));
         assertEquals("FREYJA 助手", profile.defaults().getDisplayName());
         assertTrue(profile.allowedTools().containsAll(List.of("list_project_assets", "ensure_text_assets", "prepare_shot_prompts")));
+    }
+    @Test void questionsUpgradePreservesExistingSettingsWithoutMergingLegacyAgain() {
+        config.setEnabled(false); config.getRuntime().setMaxModelTurns(12); config.getMemory().setContextTokens(16000);
+        config.getTools().setNames(AgentTestSupport.profile().allowedTools().stream().filter(n -> !List.of("request_user_input", "list_project_assets").contains(n)).toList());
+        var stored = stored(config, 2);
+        when(mapper.selectOne(any())).thenReturn(stored); when(mapper.lockByCode("core-assistant")).thenReturn(stored);
+        var upgraded = service.get("core-assistant");
+        assertFalse(upgraded.isEnabled()); assertEquals(12, upgraded.getRuntime().getMaxModelTurns());
+        assertEquals(16000, upgraded.getMemory().getContextTokens()); assertEquals(config.getModel(), upgraded.getModel());
+        assertEquals(config.getAvatar(), upgraded.getAvatar());
+        assertTrue(upgraded.getTools().getNames().contains("request_user_input"));
+        assertFalse(upgraded.getTools().getNames().contains("list_project_assets"));
+        verify(mapper, times(1)).selectOne(any());
     }
 }

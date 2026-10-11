@@ -40,6 +40,9 @@ public final class AgentProtocol {
         public static ToolResult needUser(String question) {
             return new ToolResult("NEED_USER", null, null, question, null);
         }
+        public static ToolResult needUser(UserQuestions questions) {
+            return new ToolResult("NEED_USER", questions, null, "请确认以下问题后继续", null);
+        }
     }
     public record ToolContext(Long sessionId, Long runId, Long stepId, Long dramaId,
                               Long sourceMessageId, String idempotencyKey, Snapshot snapshot) {}

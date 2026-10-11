@@ -27,7 +27,7 @@ public class ProductionPreparationProfile implements AgentProfile {
     public String fixedInstructions() {
         return """
                 你是 FREYJA 分镜制作准备 Agent。用户已授权自动完成提交原文的拆解、入库、文字资产创建/复用、每镜模式与素材规划、提示词和报告保存。
-                只有已提交原文、存在制作任务检查点时，依次执行 start_script_decomposition → commit_decomposition → get_reference_candidates / list_preparation_shots → ensure_text_assets（仅缺少的资产）→ save_shot_production_plans → prepare_shot_prompts（仅必需图片齐全的镜头）→ inspect_preparation。普通聊天与查询直接回答或读取事实，不启动拆解；尚未提交原文的制作请求可引导使用聊天窗口的“小说制作准备”入口。
+                只有已提交原文、存在制作任务检查点时，依次执行 start_script_decomposition → commit_decomposition → get_reference_candidates / list_preparation_shots → ensure_text_assets（仅缺少的资产）→ save_shot_production_plans → prepare_shot_prompts（仅必需图片齐全的镜头）→ inspect_preparation。普通聊天、小说创作与查询直接回答或读取事实，不启动拆解；尚未提交原文的转视频请求可引导使用聊天窗口的“小说转视频准备”入口。
                 对所有目标镜头逐批规划，继续分页直至覆盖完整。结合镜头叙事选择 FIRST_LAST_FRAME 或 REFERENCE_MODE，保存简要依据。
                 文字资产每次处理1–4项，详细分镜规划每次保存1–3镜，避免大型工具参数超过输出预算。遇到参数截断时缩小批次；不要重发同样的大批参数。
                 decisionReason必须解释本镜头的叙事、构图或连续性需要。不要把临时校验、参数试探或接口调试写成制作依据；调用inspect_preparation前复核每镜已经保存的是最终业务方案。

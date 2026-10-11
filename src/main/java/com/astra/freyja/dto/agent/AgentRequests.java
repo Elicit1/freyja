@@ -16,6 +16,8 @@ public final class AgentRequests {
         private Long expectedRunId;
         private Long providerId;
         private String modelCode;
+        private Long questionStepId;
+        private java.util.List<com.astra.freyja.agent.model.UserQuestions.Answer> answers;
     }
     @Data public static class TestRun {
         private AgentConfigDTO config;

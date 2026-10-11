@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { agentApi } from '@/api/agent'
 import { useTaskCenterStore } from '@/store/taskCenter'
 import { isActiveRun } from '@/types/agent'
-import type { AgentEvent, AgentProfile, AgentSession, AgentMessage, AgentRun, AvatarState } from '@/types/agent'
+import type { AgentEvent, AgentProfile, AgentSession, AgentMessage, AgentRun, AvatarState, AgentQuestionReply } from '@/types/agent'
 
 export const useAgentStore = defineStore('agent', () => {
   const profiles = ref<AgentProfile[]>([])
@@ -127,11 +127,12 @@ export const useAgentStore = defineStore('agent', () => {
     await selectSession(session.id)
     return session
   }
-  async function send(content: string, clientRequestId: string, mode?: 'STEER' | 'ANSWER' | 'REPLACE_RUN') {
+  async function send(content: string, clientRequestId: string, mode?: 'STEER' | 'ANSWER' | 'REPLACE_RUN', reply?: AgentQuestionReply) {
     const session = selectedSession.value || await createSession()
     const run = activeRun.value
+    if (reply && run?.status !== 'WAITING_USER') throw new Error('当前问题已结束，请刷新后重试')
     const intent = run && isActiveRun(run.status) ? mode || (run.status === 'WAITING_USER' ? 'ANSWER' : 'STEER') : 'START_RUN'
-    const submitted = await agentApi.send(session.id, content, intent, clientRequestId, intent === 'START_RUN' ? undefined : run?.id)
+    const submitted = await agentApi.send(session.id, content, intent, clientRequestId, intent === 'START_RUN' ? undefined : run?.id, reply)
     if (intent === 'REPLACE_RUN' && run) await refreshRun(run.id)
     await refreshRun(submitted.runId)
     if (selectedSession.value?.id === session.id) {

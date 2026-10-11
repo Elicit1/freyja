@@ -42,7 +42,7 @@ public class ProductionJobs {
         if (input.getDramaId() != null && dramas.selectById(input.getDramaId()) == null) throw new BizException("项目不存在");
         if (configs.lockByCode(PROFILE) == null) throw new BizException("请先配置并启用 FREYJA 助手");
         var request = new CreateSession(); request.setAgentCode(PROFILE); request.setDramaId(input.getDramaId());
-        request.setTitle(ProductionAssets.text(input.getDramaTitle()) ? input.getDramaTitle() : "小说制作准备");
+        request.setTitle(ProductionAssets.text(input.getDramaTitle()) ? input.getDramaTitle() : "小说转视频准备");
         var session = store().createSession(request, "NORMAL", "production:" + input.getClientRequestId());
         var old = jobs.selectOne(new LambdaQueryWrapper<AgentPreparationJob>().eq(AgentPreparationJob::getSessionId, session.getId()).orderByAsc(AgentPreparationJob::getId).last("LIMIT 1"));
         if (old != null) {
@@ -63,7 +63,7 @@ public class ProductionJobs {
     }
     public AgentPreparationJob require(ToolContext ctx, boolean lock) {
         var job = lock ? jobs.lockByRunId(ctx.runId()) : find(ctx.runId());
-        if (job == null) throw new BizException("请先通过“小说制作准备”提交原文");
+        if (job == null) throw new BizException("请先通过“小说转视频准备”提交原文");
         if (!Objects.equals(job.getSessionId(), ctx.sessionId())) throw new BizException("任务作用域错误");
         if (job.getDramaId() != null && !Objects.equals(job.getDramaId(), store().session(ctx.sessionId()).getDramaId()))
             throw new BizException("项目作用域已改变");

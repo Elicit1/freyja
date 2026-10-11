@@ -313,7 +313,8 @@ STEER 在下一模型或工具安全边界生效，更新目标约束版本；�
 前端新增：
 
 - store/agent.ts：Session、活动 Run、条目、临时文字、游标和已读通知。
-- AgentChatDrawer.vue：会话历史、输入、工具进度、继续与取消。
+- AgentChatDrawer.vue：居中的非模态 Freyja agent 聊天窗口，会话历史、输入、工具进度、继续与取消。
+- AgentQuestionCard.vue：AI 通过 request_user_input 生成 1–3 个结构化问题，支持推荐选项和自定义回答，持久化 WAITING_USER 后等待用户明确回答。
 - AgentAvatarWidget.vue：全局入口和 IDLE / THINKING / WORKING / SUCCESS / ATTENTION / ERROR 精灵图状态动画。
 - AgentRunCard.vue：通用运行结果；业务 Profile 后续扩展自己的结果卡片。
 - views/system/agent/index.vue：独立 Agent 配置管理页，路由 /system/agent，侧栏“管理 → Agent 配置”。
@@ -342,7 +343,7 @@ STEER 在下一模型或工具安全边界生效，更新目标约束版本；�
 
 形象协议采用 Codex Pet v1/v2：每格 192 × 208、8 列，v1 为 9 行，v2 为 11 行。前九行分别为 idle、running-right、running-left、waving、jumping、failed、waiting、running、review；v2 方向帧保留但当前页面不消费。上传组件只接受 ZIP，上限 20 MB；后端不落盘解压，校验清单、相对路径、条目数、展开体积、静态 PNG/WebP 画布和透明通道，仅归档被清单引用的精灵图。
 
-前端通过 CSS 背景位置和标准逐帧停留时间播放，使用不同精灵行表示运行状态；同状态重复进度不重启动画。尊重系统减少动画设置。加载失败回退默认宠物，默认图也失败时使用入口图标。任务完成与气泡显示以持久化事件为准，不等待动画结束。宠物层级高于非模态聊天窗口，同时低于配置弹窗和选择器。
+前端通过 CSS 背景位置和标准逐帧停留时间播放，使用不同精灵行表示运行状态；同状态重复进度不重启动画。尊重系统减少动画设置。加载失败回退默认宠物，默认图也失败时使用入口图标。任务完成与气泡显示以持久化事件为准，不等待动画结束。桌面宠物层级高于非模态聊天窗口，同时低于配置弹窗和选择器。窄屏聊天层高于宠物，防止宠物遮挡输入，关闭聊天后恢复宠物入口。
 
 avatarConfigJson 示例：
 

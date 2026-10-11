@@ -1,14 +1,14 @@
 <template>
   <Teleport to="body">
-  <section v-if="store.visible" class="agent-chat-window" role="dialog" aria-label="与 Agent 聊天" aria-modal="false" @keydown.esc="store.visible = false">
-    <header class="chat-heading"><strong>与 Agent 聊天</strong><el-button text aria-label="关闭 Agent 聊天" @click="store.visible = false">×</el-button></header>
+  <section v-if="store.visible" class="agent-chat-window" role="dialog" aria-label="Freyja agent" aria-modal="false" @keydown.esc="store.visible = false">
+    <header class="chat-heading"><strong>Freyja agent</strong><el-button text aria-label="关闭 Freyja agent" @click="store.visible = false">×</el-button></header>
     <div class="chat-layout">
       <div class="flex gap-2 items-center flex-wrap mb-3">
         <el-select v-model="sessionId" placeholder="选择历史会话" class="flex-1 min-w-40" :disabled="sending" @change="select">
           <el-option v-for="session in store.sessions" :key="session.id" :label="session.title" :value="session.id" />
         </el-select>
         <el-button @click="newSessionVisible = true" :disabled="sending || !store.profiles.length">新会话</el-button>
-        <el-button type="primary" plain @click="productionVisible = true" :disabled="sending">小说制作准备</el-button>
+        <el-button type="primary" plain @click="productionVisible = true" :disabled="sending">小说转视频准备</el-button>
         <el-button text @click="configure">配置</el-button>
       </div>
       <el-alert v-if="!store.profiles.length" title="请先在 Agent 配置页选择模型并启用助手。" type="info" :closable="false" class="mb-3" />
@@ -17,15 +17,17 @@
         <span v-if="store.activeRun"> · {{ agentStatusLabels[store.activeRun.status] }}</span>
       </div>
       <div ref="scrollArea" v-loading="store.loading" class="chat-history">
-        <el-empty v-if="!store.messages.length" description="告诉 Agent 你希望完成什么" :image-size="70" />
+        <el-empty v-if="!store.messages.length" description="可以直接创作小说、讨论剧情，或准备小说转视频" :image-size="70" />
         <AgentMessageList :messages="store.messages" />
         <AgentRunCard v-for="run in shownRuns" :key="run.id" :run="run" class="mt-3" @refreshed="store.refreshRun(run.id)" />
+        <AgentQuestionCard v-if="waitingQuestion?.body.questions?.length" :key="waitingQuestion.id"
+          :questions="waitingQuestion.body.questions" :busy="sending" @answer="answerQuestions" />
       </div>
       <div class="chat-input">
         <el-input v-model="input" type="textarea" :rows="3" :maxlength="100000"
-          :placeholder="store.activeRun?.status === 'WAITING_USER' ? '回答 Agent 的问题…' : store.activeRun ? '补充本次任务的要求…' : '输入目标，Enter 发送，Shift+Enter 换行…'"
+          :placeholder="store.activeRun?.status === 'WAITING_USER' ? '可以使用问题卡片，也可以在这里直接回答…' : store.activeRun ? '补充本次任务的要求…' : '输入小说创作或其他目标，Enter 发送，Shift+Enter 换行…'"
           @keydown="keyDown" />
-        <div class="flex justify-between items-center mt-3">
+        <div class="flex justify-between items-center flex-wrap gap-2 mt-3">
           <el-button v-if="store.activeRun && isActiveRun(store.activeRun.status)" size="small" type="danger" plain :disabled="sending" @click="cancel">取消任务</el-button>
           <span v-else class="text-xs text-[var(--text-secondary)]">关闭聊天后，后台任务继续运行</span>
           <div class="flex items-center gap-2">
@@ -40,7 +42,7 @@
   </section>
   </Teleport>
   <ProductionStartDialog v-model="productionVisible" />
-  <el-dialog v-model="newSessionVisible" title="新建 Agent 会话" width="480px" append-to-body>
+  <el-dialog v-model="newSessionVisible" title="新建 Agent 会话" width="min(480px, calc(100vw - 32px))" append-to-body align-center>
     <el-form label-position="top">
       <el-form-item label="绑定项目（可选）"><el-select v-model="dramaId" clearable filterable class="w-full" placeholder="通用会话">
         <el-option v-for="project in projects" :key="String(project.id)" :label="project.title" :value="String(project.id)" />
@@ -58,7 +60,9 @@ import { useAgentStore } from '@/store/agent'
 import { agentStatusLabels, isActiveRun } from '@/types/agent'
 import AgentMessageList from './AgentMessageList.vue'
 import AgentRunCard from './AgentRunCard.vue'
+import AgentQuestionCard from './AgentQuestionCard.vue'
 import ProductionStartDialog from './ProductionStartDialog.vue'
+import type { AgentAnswer } from '@/types/agent'
 const store = useAgentStore()
 const router = useRouter()
 const input = ref('')
@@ -71,6 +75,23 @@ const projects = ref<{ id: string | number; title: string }[]>([])
 const scrollArea = ref<HTMLElement>()
 const sessionId = computed({ get: () => store.selectedSession?.id, set: () => {} })
 const shownRuns = computed(() => Object.values(store.runs).filter(r => r.sessionId === store.selectedSession?.id).sort((a, b) => (a.createTime || '').localeCompare(b.createTime || '')))
+const waitingQuestion = computed(() => store.activeRun?.status === 'WAITING_USER'
+  ? [...store.messages].reverse().find(m => m.runId === store.activeRun?.id && m.eventType === 'WAITING_USER') : undefined)
+let pendingAnswer: { identity: string; id: string } | undefined
+async function answerQuestions(answers: AgentAnswer[]) {
+  const question = waitingQuestion.value
+  if (sending.value || !question?.body.questionStepId || !question.body.questions) return
+  const reply = { questionStepId: question.body.questionStepId, answers }
+  const identity = JSON.stringify({ sessionId: store.selectedSession?.id, runId: question.runId, ...reply })
+  if (pendingAnswer?.identity !== identity) pendingAnswer = { identity, id: crypto.randomUUID() }
+  const content = question.body.questions.map(q => {
+    const answer = answers.find(a => a.questionId === q.id)
+    return `${q.header}：${answer?.customAnswer || answer?.optionLabel || ''}`
+  }).join('\n')
+  sending.value = true; replacing.value = false
+  try { await store.send(content, pendingAnswer.id, 'ANSWER', reply); pendingAnswer = undefined }
+  finally { sending.value = false }
+}
 let pendingRequest: { content: string; sessionId?: string; id: string; mode?: 'REPLACE_RUN' } | undefined
 async function send(mode?: 'REPLACE_RUN') {
   const content = input.value.trim()
@@ -95,14 +116,16 @@ async function create() { await store.createSession(dramaId.value); newSessionVi
 async function cancel() { await store.cancel(); ElMessage.success('已停止后续操作') }
 function configure() { store.visible = false; void router.push('/system/agent') }
 watch(() => store.messages.length, async () => { await nextTick(); scrollArea.value?.scrollTo({ top: scrollArea.value.scrollHeight, behavior: 'smooth' }) })
+watch(() => waitingQuestion.value?.id, async id => { await nextTick(); if (id) scrollArea.value?.querySelector('.question-card')?.scrollIntoView({ block: 'start' }) })
 watch(() => store.focusRunId, async id => { await nextTick(); if (id) document.getElementById(`agent-run-${id}`)?.scrollIntoView({ block: 'center' }) })
 watch(newSessionVisible, async visible => { if (visible) projects.value = await dramaApi.getOptions() })
 </script>
 <style scoped>
-.agent-chat-window { position: fixed; z-index: 1990; right: 340px; bottom: 28px; width: min(600px, calc(100vw - 370px)); height: min(740px, calc(100dvh - 100px)); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border-default); border-radius: 18px; box-shadow: 0 16px 60px rgba(0,0,0,.18); padding: 16px 20px; }
+.agent-chat-window { position: fixed; z-index: 1990; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(760px, calc(100vw - 32px)); height: min(840px, calc(100dvh - 48px)); display: flex; flex-direction: column; background: var(--surface-raised); backdrop-filter: blur(20px); border: 1px solid var(--border-default); border-radius: 18px; box-shadow: 0 16px 60px rgba(0,0,0,.18); padding: 16px 20px; }
 .chat-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .chat-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .chat-history { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 4px 18px; }
 .chat-input { padding-top: 14px; border-top: 1px solid var(--border-default); }
-@media (max-width: 900px) { .agent-chat-window { right: 16px; bottom: 310px; width: calc(100vw - 32px); height: min(620px, calc(100dvh - 330px)); padding: 12px; } }
+@media (max-width: 1050px) { .agent-chat-window { z-index: 1996; } }
+@media (max-width: 600px) { .agent-chat-window { height: calc(100dvh - 24px); padding: 12px; } }
 </style>

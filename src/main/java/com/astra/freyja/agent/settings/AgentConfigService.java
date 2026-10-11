@@ -58,8 +58,16 @@ public class AgentConfigService {
             entry = transactions.execute(tx -> {
                 AgentConfig locked = mapper.lockByCode(code);
                 if (locked.getProfileVersion() >= profiles.require(code).version()) return locked;
-                var config = fromEntity(locked); var legacy = legacyProductionConfig(code);
-                mergeCapabilities(config, legacy == null ? null : fromEntity(legacy), code);
+                var config = fromEntity(locked);
+                if (locked.getProfileVersion() < 2) {
+                    var legacy = legacyProductionConfig(code);
+                    mergeCapabilities(config, legacy == null ? null : fromEntity(legacy), code);
+                } else {
+                    // A capability upgrade must preserve the user's model, optional tools and budgets.
+                    var names = new java.util.LinkedHashSet<>(config.getTools().getNames());
+                    names.addAll(profiles.require(code).requiredTools());
+                    config.getTools().setNames(List.copyOf(names));
+                }
                 return persistUpdate(code, locked, config);
             });
         }
