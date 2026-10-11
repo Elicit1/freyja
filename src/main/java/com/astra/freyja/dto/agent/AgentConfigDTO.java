@@ -28,6 +28,8 @@ public class AgentConfigDTO {
         private Double temperature;
         private Double topP;
         private Integer maxTokens = 4096;
+        // Missing in legacy configurations and snapshots: preserve complete-response behavior.
+        private String outputMode = "COMPLETE";
     }
     @Data public static class Instructions {
         private String systemPrompt = "你是 FREYJA 创作助手。根据用户目标读取项目事实，使用工具完成工作。需要补充信息时明确说明，使用中文回答。";

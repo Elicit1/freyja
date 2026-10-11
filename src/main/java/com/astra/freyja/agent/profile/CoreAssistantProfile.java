@@ -14,6 +14,7 @@ public class CoreAssistantProfile extends ProductionPreparationProfile {
     public int version() { return 3; }
     @Override public AgentConfigDTO defaults() {
         var c = super.defaults(); c.setDisplayName("FREYJA 助手");
+        c.getModel().setOutputMode("STREAM");
         c.setDescription("小说创作、需求澄清、查询项目与资产、保存明确规则，以及小说转视频准备"); return c;
     }
     public String fixedInstructions() {

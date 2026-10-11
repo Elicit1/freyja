@@ -9,4 +9,6 @@ public interface AgentModelGateway {
         return call(snapshot, messages, tools, snapshot.config().getRuntime().getModelTimeoutSeconds() * 1000L);
     }
     ModelReply call(Snapshot snapshot, List<Message> messages, List<String> tools, long timeoutMillis);
+    ModelReply stream(Snapshot snapshot, List<Message> messages, List<String> tools, long timeoutMillis,
+                      java.util.function.Consumer<String> onText);
 }

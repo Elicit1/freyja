@@ -39,12 +39,16 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
     private final Map<WebSocketSession, Set<String>> promptSubscriptions = new ConcurrentHashMap<>();
     private final Map<WebSocketSession, Set<String>> agentSubscriptions = new ConcurrentHashMap<>();
     private com.astra.freyja.agent.runtime.AgentStore agentStore;
+    private com.astra.freyja.agent.event.AgentStreamPublisher agentStreams;
 
     @org.springframework.beans.factory.annotation.Autowired
     public void registerAgentEvents(com.astra.freyja.agent.runtime.AgentStore store,
-                                    com.astra.freyja.agent.event.AgentEventPublisher publisher) {
+                                    com.astra.freyja.agent.event.AgentEventPublisher publisher,
+                                    com.astra.freyja.agent.event.AgentStreamPublisher streams) {
         this.agentStore = store;
         publisher.addListener(this::broadcastAgentEvent);
+        this.agentStreams = streams;
+        streams.addListener(this::broadcastAgentStream);
     }
 
     public TaskCenterWebSocketHandler(ObjectMapper objectMapper, @Lazy TaskCenterService taskCenterService,
@@ -102,6 +106,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
                                 cursor = item.seq();
                             }
                         }
+                        for (var preview : agentStreams.current(sessionId)) sendAgentStream(session, preview);
                     }
                     return;
                 }
@@ -246,6 +251,18 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
 
     private void sendAgentEvent(WebSocketSession session, com.astra.freyja.agent.model.AgentProtocol.Event event) throws IOException {
         if (session.isOpen()) session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of("event", "AGENT_EVENT", "data", event))));
+    }
+    private void broadcastAgentStream(com.astra.freyja.agent.model.AgentProtocol.StreamEvent event) {
+        agentSubscriptions.forEach((session, ids) -> {
+            if (!ids.contains(String.valueOf(event.sessionId()))) return;
+            synchronized (session) {
+                try { sendAgentStream(session, event); }
+                catch (IOException error) { agentSubscriptions.remove(session); }
+            }
+        });
+    }
+    private void sendAgentStream(WebSocketSession session, com.astra.freyja.agent.model.AgentProtocol.StreamEvent event) throws IOException {
+        if (session.isOpen()) session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of("event", "AGENT_STREAM", "data", event))));
     }
 
     private void sendPromptEvent(WebSocketSession session, ShotPromptEventStore.Event event) throws IOException {

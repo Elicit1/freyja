@@ -37,6 +37,8 @@ python scripts/migrate_agent_foundation.py --apply
 
 配置分为基本信息、模型、系统指令、工具与 Skills、记忆、执行参数、虚拟形象七个分区。保存使用 `expectedRevision` 乐观锁；配置冲突返回 `409 / CONFIG_VERSION_CONFLICT`。已有 Run 使用创建时的配置、指令、工具和 Skill 版本快照；更新配置只影响新 Run。形象配置保存后立即刷新展示。
 
+模型分区的“回复方式”支持 `model.outputMode=STREAM`（流式输出）或 `COMPLETE`（完整回复）。新安装默认流式；旧配置和旧 Run 快照缺少该字段时保持完整回复，升级不覆盖用户模型及其他设置。保存后对新 Run 生效，包括“停止并发送”创建的新任务；现有任务与用户回答后的续跑保持原快照。历史摘要始终使用完整调用，不显示摘要生成过程。
+
 形象使用 Codex Pet v1/v2 标准包。`avatar.pet` 保存 id、displayName、description、spritesheetUrl、contentType、objectPath、spriteVersionNumber、frameWidth、frameHeight、columns、rows。前九行驱动待机、移动、招手、完成、失败、等待、工作与思考动画。旧 `stateMedia` 仅供历史 JSON 读取，新配置清空该字段并使用默认宠物。
 
 配置页支持“上传 ZIP”“恢复默认”和下载默认包，保存后立即生效。ZIP 上限 20 MB；仅归档清单引用的静态透明 PNG/WebP 精灵图，拒绝不安全路径和解压超限。单格 192 × 208，v1 8×9，v2 8×11。悬浮宠物约 224 × 243 CSS 像素，透明无边框；点击切换非模态聊天，拖动播放左右移动动作，任务气泡进入对应会话。素材说明见 [Agent 形象](agent-avatar/README.md)。
@@ -118,7 +120,17 @@ python scripts/migrate_agent_foundation.py --apply
 {"event":"AGENT_EVENT","data":{"sessionId":"2032095628944588801","runId":"2032095628944588802","seq":3,"type":"MESSAGE_SAVED","payload":{"id":"2032095628944588803","sessionId":"2032095628944588801","runId":"2032095628944588802","seq":3,"messageType":"ASSISTANT","body":{"content":"回答正文","toolCalls":[],"properties":{}}}}}
 ```
 
-`payload` 是权威消息视图。事件包括 `RUN_QUEUED/RUN_STARTED/MODEL_STARTED/MODEL_RETRY/TOOL_STARTED/TOOL_COMPLETED/WAITING_TASK/WAITING_USER/MESSAGE_SAVED/USER_INPUT_SAVED/RUN_COMPLETED/RUN_FAILED/RUN_CANCELLED`。事务提交后推送，订阅先读取固定高水位再回放，前端按连续 seq 合并去重，断线后从游标补齐。当前版本推送完整回答与步骤进度，尚未提供逐 Token 文字流。
+`payload` 是权威消息视图。事件包括 `RUN_QUEUED/RUN_STARTED/MODEL_STARTED/MODEL_RETRY/TOOL_STARTED/TOOL_COMPLETED/WAITING_TASK/WAITING_USER/MESSAGE_SAVED/USER_INPUT_SAVED/RUN_COMPLETED/RUN_FAILED/RUN_CANCELLED`。事务提交后推送，订阅先读取固定高水位再回放，前端按连续 seq 合并去重，断线后从游标补齐。
+
+流式模式使用同一 WebSocket 的独立临时事件，绝不占用持久消息 `seq`：
+
+```json
+{"event":"AGENT_STREAM","data":{"sessionId":"2032095628944588801","runId":"2032095628944588802","modelStepId":"2032095628944588803","streamId":"a-request-local-uuid","sequence":1,"type":"SNAPSHOT","text":"正在逐步生成的公开回复"}}
+```
+
+`text` 是本次尝试的累计公开文字，最多每约 100ms 推送一次；`sequence` 仅在同一 `streamId` 内递增。内部推理、工具参数与元数据不进入预览。工具参数由适配器合并，整轮流式完成后才保存模型回复、累计用量并执行工具。请求超时或中断会释放流式订阅；缺少结束标记的响应进入重试，不保存半截回复。
+
+预览仅驻留当前后端内存，收到 `CLOSED` 清除；模型重试、补充要求、取消、任务替换、租约换代以及最终 `ASSISTANT` 消息落库都会清除旧预览。补充要求会停止展示旧推断，但继续收取结果以记账，随后按新要求调用模型。订阅/重连在持久事件回放之后补发当前预览快照；完整回复落库后以 `modelStepId` 对齐并替换预览，不重复展示。后端进程重启后沿既有检查点恢复，不回放已丢弃的半截文字。完成后的历史和两种模式一致。
 
 任务中心通过 `AGENT_RUN` 展示摘要，`COMPLETED` 映射为任务中心的 `SUCCESS`；点击任务可定位聊天中的对应 Run。
 

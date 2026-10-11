@@ -24,6 +24,7 @@ public class AgentRuntime {
     private final AgentToolRegistry registry;
     private final AgentProfileRegistry profiles;
     private final AgentJson json;
+    private final com.astra.freyja.agent.event.AgentStreamPublisher streams;
 
     public void execute(Long id, String owner, int epoch) {
         try {
@@ -67,8 +68,15 @@ public class AgentRuntime {
                                 .filter(n -> !registry.require(n).projectRequired() || session.getDramaId() != null).toList();
                         long remaining = budget.getExecutionTimeoutSeconds() * 1000L - store.run(id).getExecutionMillis()
                                 - unrecordedElapsed(id, recordedBefore, start);
-                        ModelReply reply = gateway.call(snapshot, input, allowed, remaining);
-                        store.saveModel(id, owner, epoch, modelStep, reply, unrecordedElapsed(id, recordedBefore, start));
+                        if ("STREAM".equals(snapshot.config().getModel().getOutputMode())) {
+                            try (var stream = streams.open(id, run.getSessionId(), owner, epoch, modelStep)) {
+                                ModelReply reply = gateway.stream(snapshot, input, allowed, remaining, stream);
+                                store.saveModel(id, owner, epoch, modelStep, reply, unrecordedElapsed(id, recordedBefore, start));
+                            }
+                        } else {
+                            ModelReply reply = gateway.call(snapshot, input, allowed, remaining);
+                            store.saveModel(id, owner, epoch, modelStep, reply, unrecordedElapsed(id, recordedBefore, start));
+                        }
                         break;
                     } catch (AgentStore.LeaseLost lost) { throw lost; }
                     catch (java.util.concurrent.CancellationException cancelled) { throw cancelled; }

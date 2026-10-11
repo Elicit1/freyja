@@ -17,6 +17,32 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class TaskCenterAgentReplayTest {
+    @Test void reconnectSendsCumulativePreviewAfterDurableReplayWithoutAllocatingMessageSequence() throws Exception {
+        var store = mock(AgentStore.class);
+        var session = new AgentSession(); session.setNextSeq(3); when(store.session(1L)).thenReturn(session);
+        when(store.after(1L, 0)).thenReturn(List.of(message(1L, 1), message(1L, 2)));
+        var runs = mock(com.astra.freyja.dao.AgentRunMapper.class);
+        var run = new com.astra.freyja.entity.AgentRun(); run.setId(9L); run.setSessionId(1L); run.setStatus("RUNNING");
+        run.setLeaseOwner("owner"); run.setLeaseEpoch(1); run.setConstraintVersion(0); run.setLeaseUntil(java.time.LocalDateTime.now().plusSeconds(30));
+        when(runs.selectById(9L)).thenReturn(run);
+        var events = new AgentEventPublisher(mock(ApplicationEventPublisher.class));
+        var streams = new com.astra.freyja.agent.event.AgentStreamPublisher(runs, events);
+        var handler = new TaskCenterWebSocketHandler(new ObjectMapper(), mock(TaskCenterService.class), mock(AiTaskService.class), mock(ShotPromptEventStore.class));
+        handler.registerAgentEvents(store, events, streams);
+        var step = new com.astra.freyja.entity.AgentStep(); step.setId(8L); step.setConstraintVersion(0);
+        var socket = mock(WebSocketSession.class); when(socket.isOpen()).thenReturn(true);
+        var sent = new java.util.ArrayList<String>();
+        doAnswer(call -> { sent.add(((TextMessage) call.getArgument(0)).getPayload()); return null; }).when(socket).sendMessage(any(TextMessage.class));
+        try (var channel = streams.open(9L, 1L, "owner", 1, step)) {
+            channel.accept("灯塔");
+            handler.handleTextMessage(socket, new TextMessage("{\"event\":\"AGENT_SUBSCRIBE\",\"sessionId\":\"1\",\"afterSeq\":0}"));
+            var mapper = new ObjectMapper();
+            assertEquals(List.of("AGENT_EVENT", "AGENT_EVENT", "AGENT_STREAM"), sent.stream().map(text -> mapper.readTree(text).path("event").asText()).toList());
+            assertEquals("灯塔", mapper.readTree(sent.getLast()).path("data").path("text").asText());
+            assertFalse(mapper.readTree(sent.getLast()).path("data").has("seq"));
+            assertEquals(3, session.getNextSeq());
+        }
+    }
     @Test void replayUsesDurableHighWaterThenSendsLiveEventsAndUnsubscribeStopsThem() throws Exception {
         Long id = 2032095628944588801L;
         AgentStore store = mock(AgentStore.class);
@@ -28,7 +54,8 @@ class TaskCenterAgentReplayTest {
         doAnswer(call -> { sent.add(((TextMessage) call.getArgument(0)).getPayload()); return null; }).when(socket).sendMessage(any(TextMessage.class));
         AgentEventPublisher events = new AgentEventPublisher(mock(ApplicationEventPublisher.class));
         TaskCenterWebSocketHandler handler = new TaskCenterWebSocketHandler(new ObjectMapper(), mock(TaskCenterService.class), mock(AiTaskService.class), mock(ShotPromptEventStore.class));
-        handler.registerAgentEvents(store, events);
+        handler.registerAgentEvents(store, events, new com.astra.freyja.agent.event.AgentStreamPublisher(
+                mock(com.astra.freyja.dao.AgentRunMapper.class), events));
         CountDownLatch replayStarted = new CountDownLatch(1), liveAttempted = new CountDownLatch(1);
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
             when(store.after(id, 1)).thenAnswer(call -> {

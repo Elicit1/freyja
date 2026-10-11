@@ -14,6 +14,9 @@ public final class ReasoningReplay {
     private ReasoningReplay() {}
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final ThreadLocal<List<Map<String, Object>>> ORIGINAL = new ThreadLocal<>();
+    // Request-local transport field, stripped by the interceptor before any bytes reach the provider.
+    // Async SDK interceptors cannot read the caller's ThreadLocal.
+    public static final String STREAM_REPLAY_FIELD = "__freyja_reasoning_replay_messages";
     public static <T> T withMessages(List<Message> messages, Supplier<T> call) {
         if (!needed(messages)) return call.get();
         var previous = ORIGINAL.get();
@@ -24,13 +27,15 @@ public final class ReasoningReplay {
     public static OpenAiHttpClientBuilderCustomizer customizer() {
         return builder -> builder.interceptor(chain -> {
             var request = chain.request(); var original = ORIGINAL.get();
-            if (original == null || request.body() == null) return chain.proceed(request);
+            if (request.body() == null) return chain.proceed(request);
             var buffer = new Buffer(); request.body().writeTo(buffer);
             ObjectNode body = (ObjectNode) JSON.readTree(buffer.readUtf8());
+            var replay = body.remove(STREAM_REPLAY_FIELD);
+            if (replay == null && original == null) return chain.proceed(request);
             if (!body.has("messages")) return chain.proceed(request);
             // extraBody adds duplicate SDK fields instead of replacing them. Replace the
             // single serialized field at the transport boundary, preserving all options.
-            body.set("messages", JSON.valueToTree(original));
+            body.set("messages", replay == null ? JSON.valueToTree(original) : replay);
             return chain.proceed(request.newBuilder().removeHeader("Content-Length")
                     .method(request.method(), RequestBody.create(JSON.writeValueAsBytes(body), request.body().contentType())).build());
         });

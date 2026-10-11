@@ -3,13 +3,15 @@ import { defineStore } from 'pinia'
 import { agentApi } from '@/api/agent'
 import { useTaskCenterStore } from '@/store/taskCenter'
 import { isActiveRun } from '@/types/agent'
-import type { AgentEvent, AgentProfile, AgentSession, AgentMessage, AgentRun, AvatarState, AgentQuestionReply } from '@/types/agent'
+import type { AgentEvent, AgentStreamEvent, AgentProfile, AgentSession, AgentMessage, AgentRun, AvatarState, AgentQuestionReply } from '@/types/agent'
 
 export const useAgentStore = defineStore('agent', () => {
   const profiles = ref<AgentProfile[]>([])
   const sessions = ref<AgentSession[]>([])
   const selectedSession = ref<AgentSession>()
   const messages = ref<AgentMessage[]>([])
+  const previews = ref<Record<string, AgentStreamEvent>>({})
+  const streamPreview = computed(() => selectedSession.value ? previews.value[selectedSession.value.id] : undefined)
   const runs = ref<Record<string, AgentRun>>({})
   const notifications = ref<AgentRun[]>([])
   const visible = ref(false)
@@ -25,8 +27,26 @@ export const useAgentStore = defineStore('agent', () => {
   const currentProfile = computed(() => profiles.value[0])
   const unreadCount = computed(() => notifications.value.length)
   watch(avatarCollapsed, value => localStorage.setItem('freyja-agent-collapsed', String(value)), { flush: 'sync' })
+  watch(() => taskCenter.connected, connected => { if (!connected) previews.value = {} })
+
+  function clearPreview(sessionId: string, runId?: string, stepId?: string) {
+    const preview = previews.value[sessionId]
+    if (preview && (!runId || preview.runId === runId) && (!stepId || preview.modelStepId === stepId)) delete previews.value[sessionId]
+  }
+  function receiveStream(event: AgentStreamEvent) {
+    const existing = previews.value[event.sessionId]
+    if (event.type === 'CLOSED') {
+      if (existing?.streamId === event.streamId) clearPreview(event.sessionId, event.runId)
+      return
+    }
+    if (runs.value[event.runId] && !isActiveRun(runs.value[event.runId]!.status)) return
+    if (selectedSession.value?.id === event.sessionId && messages.value.some(m => m.messageType === 'ASSISTANT' && m.body.modelStepId === event.modelStepId)) return
+    if (existing?.streamId === event.streamId && event.sequence <= existing.sequence) return
+    previews.value[event.sessionId] = event
+  }
 
   function mergeMessage(message: AgentMessage) {
+    if (message.messageType === 'ASSISTANT') clearPreview(message.sessionId, message.runId, message.body.modelStepId)
     const existing = messages.value.findIndex(item => item.seq === message.seq)
     if (existing >= 0) messages.value[existing] = message
     else messages.value.push(message)
@@ -35,6 +55,7 @@ export const useAgentStore = defineStore('agent', () => {
   async function refreshRun(id: string) {
     const run = await agentApi.run(id)
     runs.value[id] = run
+    if (!isActiveRun(run.status)) clearPreview(run.sessionId, id)
     const session = sessions.value.find(s => s.id === run.sessionId)
     function syncActive(target: AgentSession) {
       if (!isActiveRun(run.status)) {
@@ -55,6 +76,7 @@ export const useAgentStore = defineStore('agent', () => {
     return run
   }
   function receive(event: AgentEvent) {
+    if (['RUN_STARTED', 'USER_INPUT_SAVED', 'MODEL_RETRY', 'RUN_COMPLETED', 'RUN_FAILED', 'RUN_CANCELLED'].includes(event.type)) clearPreview(event.sessionId, event.runId)
     const message = event.payload
     if (selectedSession.value?.id === event.sessionId) mergeMessage(message)
     if (event.type === 'MODEL_STARTED') phase.value = 'THINKING'
@@ -69,7 +91,7 @@ export const useAgentStore = defineStore('agent', () => {
   }
   function subscribe(session: AgentSession) {
     if (subscriptions.has(session.id)) return
-    subscriptions.set(session.id, taskCenter.subscribeAgent(session.id, receive, Math.max(0, session.nextSeq - 1)))
+    subscriptions.set(session.id, taskCenter.subscribeAgent(session.id, receive, Math.max(0, session.nextSeq - 1), receiveStream))
   }
   async function refreshProfiles({ revealAvatar = false }: { revealAvatar?: boolean } = {}) {
     const avatarWasVisible = !!currentProfile.value?.avatar.visible
@@ -87,6 +109,7 @@ export const useAgentStore = defineStore('agent', () => {
     } catch { started = false }
   }
   function stop() {
+    previews.value = {}
     subscriptions.forEach(unsubscribe => unsubscribe()); subscriptions.clear(); started = false
   }
   async function selectSession(id: string, runId?: string) {
@@ -107,6 +130,8 @@ export const useAgentStore = defineStore('agent', () => {
       if (generation !== selectGeneration) return
       const merged = new Map([...loaded, ...messages.value].map(message => [message.seq, message]))
       messages.value = [...merged.values()].sort((a, b) => a.seq - b.seq); focusRunId.value = runId
+      const preview = previews.value[id]
+      if (preview && messages.value.some(m => m.messageType === 'ASSISTANT' && m.body.modelStepId === preview.modelStepId)) clearPreview(id, preview.runId)
       subscribe(session)
       const relevant = runId || session.activeRunId || loaded.filter(m => !!m.runId).at(-1)?.runId
       if (relevant) await refreshRun(relevant)
@@ -149,7 +174,7 @@ export const useAgentStore = defineStore('agent', () => {
     notifications.value = notifications.value.filter(n => n.id !== id)
     taskCenter.markRead(id, 'AGENT_RUN')
   }
-  return { profiles, sessions, selectedSession, messages, runs, notifications, visible, avatarCollapsed, loading, phase,
+  return { profiles, sessions, selectedSession, messages, streamPreview, runs, notifications, visible, avatarCollapsed, loading, phase,
     focusRunId, activeRun, currentProfile, unreadCount, start, stop, open, selectSession, createSession,
     send, cancel, refreshProfiles, refreshRun, markRead }
 })

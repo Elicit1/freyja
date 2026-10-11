@@ -36,6 +36,13 @@
                   :value="model.modelCode" :disabled="capability(model) === false && form.tools.names.length > 0" />
               </el-select></el-form-item>
               <p class="field-hint mb-4">提供商密钥在 AI 提供商页面维护。请选择支持工具调用的模型。</p>
+              <el-form-item label="回复方式">
+                <el-radio-group v-model="form.model.outputMode">
+                  <el-radio-button value="STREAM">流式输出</el-radio-button>
+                  <el-radio-button value="COMPLETE">完整回复</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+              <p class="field-hint mb-4">流式输出会逐步显示回复，完整回复会在生成结束后一次展示。保存后对新任务生效。</p>
               <div class="grid grid-cols-2 gap-4">
                 <el-form-item label="Temperature"><el-input-number v-model="form.model.temperature" :min="0" :max="2" :step="0.1" /></el-form-item>
                 <el-form-item label="Top P"><el-input-number v-model="form.model.topP" :min="0.01" :max="1" :step="0.05" /></el-form-item>

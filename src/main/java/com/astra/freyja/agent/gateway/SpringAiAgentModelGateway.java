@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.MessageAggregator;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.ollama.api.OllamaChatOptions;
 import org.springframework.stereotype.Component;
@@ -29,6 +31,14 @@ public class SpringAiAgentModelGateway implements AgentModelGateway {
     private final ExecutorService agentModelExecutor;
 
     public ModelReply call(Snapshot snapshot, List<Message> messages, List<String> tools, long timeoutMillis) {
+        return invoke(snapshot, messages, tools, timeoutMillis, null);
+    }
+    public ModelReply stream(Snapshot snapshot, List<Message> messages, List<String> tools, long timeoutMillis,
+                             java.util.function.Consumer<String> onText) {
+        return invoke(snapshot, messages, tools, timeoutMillis, java.util.Objects.requireNonNull(onText));
+    }
+    private ModelReply invoke(Snapshot snapshot, List<Message> messages, List<String> tools, long timeoutMillis,
+                              java.util.function.Consumer<String> onText) {
         if (timeoutMillis <= 0) throw new BizException("Agent 执行时限已用尽");
         var settings = snapshot.config().getModel();
         var provider = providers.selectById(settings.getProviderId());
@@ -45,14 +55,41 @@ public class SpringAiAgentModelGateway implements AgentModelGateway {
         if (model.getOptions() instanceof OpenAiChatOptions defaults) {
             var builder = defaults.mutate().model(settings.getModelCode()).temperature(settings.getTemperature())
                     .topP(settings.getTopP()).maxTokens(settings.getMaxTokens()).toolCallbacks(definitions);
+            if (onText != null) {
+                builder.streamUsage(true);
+                if (ReasoningReplay.needed(messages)) {
+                    var extra = new java.util.LinkedHashMap<String, Object>();
+                    if (defaults.getExtraBody() != null) extra.putAll(defaults.getExtraBody());
+                    extra.put(ReasoningReplay.STREAM_REPLAY_FIELD, ReasoningReplay.messages(messages));
+                    builder.extraBody(extra);
+                }
+            }
             options = builder.build();
         } else if (model.getOptions() instanceof OllamaChatOptions defaults) {
             options = defaults.mutate().model(settings.getModelCode()).temperature(settings.getTemperature())
                     .topP(settings.getTopP()).numPredict(settings.getMaxTokens()).toolCallbacks(definitions).build();
         } else throw new BizException("Agent 模型适配器不支持当前提供商参数类型");
         // Spring AI 2.0 ChatModel.call returns tool requests. No ToolCallAdvisor is installed.
-        Future<org.springframework.ai.chat.model.ChatResponse> pending = agentModelExecutor.submit(() ->
-                ReasoningReplay.withMessages(messages, () -> model.call(new Prompt(messages, options))));
+        Future<ChatResponse> pending = agentModelExecutor.submit(() -> {
+            var prompt = new Prompt(messages, options);
+            if (onText == null) return ReasoningReplay.withMessages(messages, () -> model.call(prompt));
+            var complete = new java.util.concurrent.atomic.AtomicReference<ChatResponse>();
+            // Provider adapters assemble fragmented tool calls; aggregate the entire turn before checkpointing.
+            // blockLast disposes the subscription when this virtual thread is interrupted.
+            new MessageAggregator().aggregate(model.stream(prompt).doOnNext(chunk -> {
+                if (chunk.getResult() == null) return;
+                var output = chunk.getResult().getOutput();
+                if (Boolean.parseBoolean(java.util.Objects.toString(output.getMetadata().get("isThought"), "false"))) return;
+                String text = output.getText();
+                if (text != null && !text.isEmpty()) onText.accept(text);
+            }), complete::set).blockLast();
+            var response = complete.get();
+            if (response == null || response.getResult() == null
+                    || response.getResult().getMetadata().getFinishReason() == null
+                    || response.getResult().getMetadata().getFinishReason().isBlank())
+                throw new BizException("模型流式响应提前中断，请重试");
+            return response;
+        });
         try {
             long timeout = Math.min(timeoutMillis, snapshot.config().getRuntime().getModelTimeoutSeconds() * 1000L);
             var response = pending.get(timeout, TimeUnit.MILLISECONDS);

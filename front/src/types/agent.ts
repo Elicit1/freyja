@@ -13,7 +13,7 @@ export interface AgentAvatar {
 export interface AgentConfig {
   agentCode: string; displayName: string; description: string; enabled: boolean
   revision: number; expectedRevision: number
-  model: { providerId?: string | null; modelCode?: string | null; temperature?: number | null; topP?: number | null; maxTokens: number }
+  model: { providerId?: string | null; modelCode?: string | null; temperature?: number | null; topP?: number | null; maxTokens: number; outputMode: 'STREAM' | 'COMPLETE' }
   instructions: { systemPrompt: string }
   tools: { names: string[] }
   skills: { names: string[]; dynamicLoading: boolean }
@@ -49,7 +49,7 @@ export interface AgentAnswer { questionId: string; optionLabel?: string; customA
 export interface AgentQuestionReply { questionStepId: string; answers: AgentAnswer[] }
 export interface AgentMessage {
   id: string; sessionId: string; runId?: string; seq: number; messageType: string; eventType?: string; toolCallId?: string
-  body: { content?: string; toolCalls?: { id: string; name: string; arguments: string }[]; toolName?: string; result?: ToolResult; status?: string; question?: string; questions?: AgentQuestion[]; questionStepId?: string; summary?: string; tool?: string; message?: string; hasError?: boolean }
+  body: { content?: string; modelStepId?: string; toolCalls?: { id: string; name: string; arguments: string }[]; toolName?: string; result?: ToolResult; status?: string; question?: string; questions?: AgentQuestion[]; questionStepId?: string; summary?: string; tool?: string; message?: string; hasError?: boolean }
   createTime?: string
 }
 export type AgentRunStatus = 'QUEUED' | 'RUNNING' | 'WAITING_TASK' | 'WAITING_USER' | 'CANCELLING' | 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED' | 'CANCELLED'
@@ -60,6 +60,10 @@ export interface AgentRun {
   configRevision: number; createTime?: string; finishedAt?: string; readAt?: string
 }
 export interface AgentEvent { sessionId: string; runId?: string; seq: number; type: string; payload: AgentMessage }
+export interface AgentStreamEvent {
+  sessionId: string; runId: string; modelStepId: string; streamId: string
+  sequence: number; type: 'SNAPSHOT' | 'CLOSED'; text: string
+}
 export interface AgentSubmission { sessionId: string; messageId: string; runId: string }
 export interface ProductionStart {
   clientRequestId: string; dramaId?: string; dramaTitle?: string; chapterTitle?: string; sourceText: string

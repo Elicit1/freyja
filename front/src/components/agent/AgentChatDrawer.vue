@@ -18,7 +18,7 @@
       </div>
       <div ref="scrollArea" v-loading="store.loading" class="chat-history">
         <el-empty v-if="!store.messages.length" description="可以直接创作小说、讨论剧情，或准备小说转视频" :image-size="70" />
-        <AgentMessageList :messages="store.messages" />
+        <AgentMessageList :messages="store.messages" :preview="store.streamPreview" />
         <AgentRunCard v-for="run in shownRuns" :key="run.id" :run="run" class="mt-3" @refreshed="store.refreshRun(run.id)" />
         <AgentQuestionCard v-if="waitingQuestion?.body.questions?.length" :key="waitingQuestion.id"
           :questions="waitingQuestion.body.questions" :busy="sending" @answer="answerQuestions" />
@@ -116,6 +116,12 @@ async function create() { await store.createSession(dramaId.value); newSessionVi
 async function cancel() { await store.cancel(); ElMessage.success('已停止后续操作') }
 function configure() { store.visible = false; void router.push('/system/agent') }
 watch(() => store.messages.length, async () => { await nextTick(); scrollArea.value?.scrollTo({ top: scrollArea.value.scrollHeight, behavior: 'smooth' }) })
+watch(() => store.streamPreview?.text, async () => {
+  const area = scrollArea.value
+  const nearBottom = area && area.scrollHeight - area.scrollTop - area.clientHeight < 160
+  await nextTick()
+  if (nearBottom && area) area.scrollTop = area.scrollHeight
+})
 watch(() => waitingQuestion.value?.id, async id => { await nextTick(); if (id) scrollArea.value?.querySelector('.question-card')?.scrollIntoView({ block: 'start' }) })
 watch(() => store.focusRunId, async id => { await nextTick(); if (id) document.getElementById(`agent-run-${id}`)?.scrollIntoView({ block: 'center' }) })
 watch(newSessionVisible, async visible => { if (visible) projects.value = await dramaApi.getOptions() })

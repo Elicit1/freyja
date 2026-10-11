@@ -17,11 +17,15 @@
       </template>
       <span v-else-if="eventLabel(message)" class="event-line">{{ eventLabel(message) }}</span>
     </div>
+    <div v-if="preview?.text" class="message-row assistant stream-preview" aria-live="off">
+      <span class="message-author">Freyja agent · 正在回复</span>
+      <p class="message-content">{{ preview.text }}<span class="stream-cursor" aria-hidden="true">▍</span></p>
+    </div>
   </div>
 </template>
 <script setup lang="ts">
-import type { AgentMessage } from '@/types/agent'
-defineProps<{ messages: AgentMessage[] }>()
+import type { AgentMessage, AgentStreamEvent } from '@/types/agent'
+defineProps<{ messages: AgentMessage[]; preview?: AgentStreamEvent }>()
 const toolNames: Record<string, string> = {
   start_script_decomposition: '拆解小说', commit_decomposition: '保存拆解结果', list_preparation_shots: '读取制作分镜',
   get_reference_candidates: '盘点参考素材', ensure_text_assets: '保存文字资产', save_shot_production_plans: '应用分镜制作方案',
@@ -54,4 +58,7 @@ function eventLabel(message: AgentMessage) {
 .tool-details summary { cursor: pointer; }
 .tool-details pre { max-height: 260px; overflow: auto; padding: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .message-row.system { display: none; }
+.stream-cursor { color: var(--text-secondary); animation: stream-blink 1s step-end infinite; }
+@keyframes stream-blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .stream-cursor { animation: none; } }
 </style>

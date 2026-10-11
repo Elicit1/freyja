@@ -62,6 +62,8 @@ public class AgentConfigValidator {
                 && (names == null || !names.containsAll(List.of("load_skill", "read_skill_file"))))
             errors.add(issue("skills.dynamicLoading", "MISSING_TOOLS", "按需加载 Skill 需要启用两个 Skill 工具"));
         var model = config.getModel();
+        if (!Set.of("STREAM", "COMPLETE").contains(java.util.Objects.toString(model.getOutputMode(), "")))
+            errors.add(issue("model.outputMode", "ENUM", "请选择流式输出或完整回复"));
         boolean hasModel = model.getProviderId() != null || (model.getModelCode() != null && !model.getModelCode().isBlank());
         if (hasModel || config.isEnabled() || forExecution) {
             if (model.getProviderId() == null || model.getModelCode() == null || model.getModelCode().isBlank()) {

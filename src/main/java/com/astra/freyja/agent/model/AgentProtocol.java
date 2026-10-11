@@ -49,6 +49,9 @@ public final class AgentProtocol {
     public record ToolDescriptor(String name, int version, String description, Effect effect,
                                  RecoveryMode recoveryMode, boolean projectRequired, String inputSchema) {}
     public record Event(Long sessionId, Long runId, int seq, String type, Object payload) {}
+    /** Transient cumulative preview; sequence is local to streamId, independent of durable message seq. */
+    public record StreamEvent(Long sessionId, Long runId, Long modelStepId, String streamId,
+                              int sequence, String type, String text) {}
     public record CompletionDecision(boolean complete, String problem, boolean needsUser) {
         public static CompletionDecision done() { return new CompletionDecision(true, null, false); }
     }

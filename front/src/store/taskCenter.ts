@@ -1,7 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { taskCenterApi, type TaskCenterItem } from '@/api/task-center'
-import type { AgentEvent } from '@/types/agent'
+import type { AgentEvent, AgentStreamEvent } from '@/types/agent'
 
 const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RENDERING', 'WAITING_TASK', 'WAITING_USER', 'CANCELLING'])
 
@@ -27,16 +27,16 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
   type ListenerState = { afterSeq: number; pending: Map<number, PromptEvent> }
   const promptSubscriptions = new Map<string, Map<AiListener, ListenerState>>()
   type AgentListener = (event: AgentEvent) => void
-  const agentSubscriptions = new Map<string, Map<AgentListener, { afterSeq: number; pending: Map<number, AgentEvent> }>>()
+  const agentSubscriptions = new Map<string, Map<AgentListener, { afterSeq: number; pending: Map<number, AgentEvent>; onStream?: (event: AgentStreamEvent) => void }>>()
 
   function sendAgentSubscription(sessionId: string, afterSeq: number) {
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ event: 'AGENT_SUBSCRIBE', sessionId, afterSeq }))
   }
 
-  function subscribeAgent(sessionId: string, listener: AgentListener, afterSeq = 0) {
+  function subscribeAgent(sessionId: string, listener: AgentListener, afterSeq = 0, onStream?: (event: AgentStreamEvent) => void) {
     let entry = agentSubscriptions.get(sessionId)
     if (!entry) { entry = new Map(); agentSubscriptions.set(sessionId, entry) }
-    entry.set(listener, { afterSeq, pending: new Map() })
+    entry.set(listener, { afterSeq, pending: new Map(), onStream })
     sendAgentSubscription(sessionId, afterSeq)
     start()
     return () => {
@@ -180,6 +180,14 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
             state.pending.delete(next.seq); state.afterSeq = next.seq
             try { listener(next) } catch (error) { console.warn('Agent 事件处理失败', error) }
           }
+        })
+        break
+      }
+      case 'AGENT_STREAM': {
+        const event = msg.data as AgentStreamEvent
+        if (!event || !Number.isSafeInteger(event.sequence)) break
+        agentSubscriptions.get(event.sessionId)?.forEach(state => {
+          try { state.onStream?.(event) } catch (error) { console.warn('Agent 流式预览处理失败', error) }
         })
         break
       }

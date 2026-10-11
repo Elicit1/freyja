@@ -25,6 +25,7 @@ class AgentRuntimeTest {
     AgentToolExecutor tools = mock(AgentToolExecutor.class);
     AgentToolRegistry registry = mock(AgentToolRegistry.class);
     AgentJson json = new AgentJson();
+    com.astra.freyja.agent.event.AgentStreamPublisher streams;
     List<AgentStep> journal = new ArrayList<>();
     AgentRun run;
     AgentRuntime runtime;
@@ -33,6 +34,10 @@ class AgentRuntimeTest {
         var snapshot = AgentTestSupport.snapshot(List.of(), "NORMAL");
         run = AgentTestSupport.run(snapshot, json);
         when(store.run(run.getId())).thenReturn(run); when(store.snapshot(run)).thenReturn(snapshot);
+        var mapper = mock(com.astra.freyja.dao.AgentRunMapper.class);
+        when(mapper.selectById(run.getId())).thenReturn(run);
+        streams = new com.astra.freyja.agent.event.AgentStreamPublisher(mapper,
+                new com.astra.freyja.agent.event.AgentEventPublisher(mock(org.springframework.context.ApplicationEventPublisher.class)));
         AgentSession session = new AgentSession(); session.setId(run.getSessionId());
         when(store.session(run.getSessionId())).thenReturn(session);
         when(store.steps(run.getId())).thenAnswer(call -> new ArrayList<>(journal));
@@ -51,7 +56,7 @@ class AgentRuntimeTest {
             return true;
         });
         doAnswer(call -> { run.setStatus("COMPLETED"); return null; }).when(store).complete(anyLong(), anyString(), anyInt(), anyString(), anyString());
-        runtime = new AgentRuntime(store, gateway, context, tools, registry, new AgentProfileRegistry(List.of(AgentTestSupport.profile())), json);
+        runtime = new AgentRuntime(store, gateway, context, tools, registry, new AgentProfileRegistry(List.of(AgentTestSupport.profile())), json, streams);
     }
     @Test void toolCallsAreDurableBeforeExecutionAndObservedByNextModelTurn() {
         when(gateway.call(any(), anyList(), anyList(), anyLong())).thenReturn(
@@ -68,6 +73,25 @@ class AgentRuntimeTest {
         order.verify(tools).execute(any(), any(), anyString(), anyInt());
         order.verify(gateway).call(any(), anyList(), anyList(), anyLong());
         assertEquals("COMPLETED", run.getStatus());
+    }
+    @Test void streamingCheckpointsOnlyCompleteReplyAndRetryDiscardsOldPreview() {
+        store.snapshot(run).config().getModel().setOutputMode("STREAM");
+        store.snapshot(run).config().getRuntime().setMaxRetries(1);
+        var seen = new ArrayList<StreamEvent>(); streams.addListener(seen::add);
+        var attempt = new java.util.concurrent.atomic.AtomicInteger();
+        when(gateway.stream(any(), anyList(), anyList(), anyLong(), any())).thenAnswer(call -> {
+            java.util.function.Consumer<String> onText = call.getArgument(4);
+            if (attempt.getAndIncrement() == 0) { onText.accept("中断的尝试"); throw new IllegalStateException("断线"); }
+            assertEquals("CLOSED", seen.getLast().type());
+            onText.accept("完整回复");
+            verify(store, never()).saveModel(anyLong(), anyString(), anyInt(), any(), any(), anyLong());
+            return new ModelReply("完整回复", List.of(), Map.of("reasoningContent", "private"), 10, 5, "streamed");
+        });
+        runtime.execute(run.getId(), "test-owner", 1);
+        verify(gateway, never()).call(any(), anyList(), anyList(), anyLong());
+        verify(store, times(1)).saveModel(anyLong(), anyString(), anyInt(), any(), any(), anyLong());
+        assertEquals("COMPLETED", run.getStatus()); assertTrue(streams.current(run.getSessionId()).isEmpty());
+        assertFalse(seen.stream().anyMatch(e -> e.text().contains("private")));
     }
     @Test void restartWithSavedFinalReplyFinishesWithoutAnotherModelCall() {
         AgentStep step = new AgentStep(); step.setStepType("MODEL"); step.setStatus("SUCCEEDED"); step.setConstraintVersion(0);

@@ -63,6 +63,21 @@ class AgentConfigServiceTest {
         assertFalse(json.write(snapshot).contains("do-not-copy"));
         assertTrue(snapshot.pinnedModel().getParamsJson().contains("42"));
     }
+    @Test void replyModeRoundTripsAndIsPinnedWhileLegacySnapshotsStayComplete() {
+        var legacy = json.read("{\"providerId\":\"2032095628944588804\",\"modelCode\":\"test-model\"}", AgentConfigDTO.Model.class);
+        assertEquals("COMPLETE", legacy.getOutputMode());
+        config.getModel().setOutputMode("STREAM");
+        when(mapper.selectOne(any())).thenReturn(stored(config, 3));
+        assertEquals("STREAM", service.get("core-assistant").getModel().getOutputMode());
+        var snapshot = service.snapshot("core-assistant", config, "NORMAL");
+        config.getModel().setOutputMode("COMPLETE");
+        assertEquals("STREAM", json.copy(snapshot, com.astra.freyja.agent.model.AgentProtocol.Snapshot.class).config().getModel().getOutputMode());
+        assertTrue(validator.validate("core-assistant", config, true).valid());
+        config.getModel().setOutputMode("invalid");
+        assertTrue(validator.validate("core-assistant", config, true).errors().stream().anyMatch(e -> e.field().equals("model.outputMode")));
+        config.getModel().setOutputMode(null);
+        assertFalse(validator.validate("core-assistant", config, true).valid());
+    }
     @Test void configurationTestsRemoveWriteToolsAndProjectMemory() {
         var snapshot = service.snapshot("core-assistant", config, "CONFIG_TEST");
         assertFalse(snapshot.toolVersions().containsKey("save_session_note"));
