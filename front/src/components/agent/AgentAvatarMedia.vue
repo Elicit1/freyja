@@ -6,7 +6,7 @@
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { ChatDotRound } from '@element-plus/icons-vue'
 import type { AgentAvatar, AvatarState } from '@/types/agent'
-import { freyjaDefaultPet, petRows, avatarRows } from './avatarPresets'
+import { freyjaDefaultPet, petRows, avatarRows, petPlaybackRate } from './avatarPresets'
 const props = defineProps<{ avatar?: AgentAvatar; state: AvatarState; label?: string; animationRow?: number }>()
 const frame = ref(0), broken = ref(false), unavailable = ref(false)
 const pet = computed(() => broken.value ? freyjaDefaultPet : props.avatar?.pet || freyjaDefaultPet)
@@ -21,10 +21,12 @@ let loader: HTMLImageElement | undefined
 const reduced = window.matchMedia('(prefers-reduced-motion: reduce)')
 function animate() {
   clearTimeout(timer); frame.value = 0
-  const durations = petRows[row.value]?.durations || petRows[0]!.durations
+  const animation = petRows[row.value] || petRows[0]!
+  const durations = animation.durations
   if (reduced.matches || unavailable.value) return
   function step() {
-    timer = setTimeout(() => { frame.value = (frame.value + 1) % durations.length; step() }, durations[frame.value])
+    const pause = frame.value === durations.length - 1 ? animation.loopPauseMs || 0 : 0
+    timer = setTimeout(() => { frame.value = (frame.value + 1) % durations.length; step() }, durations[frame.value]! / petPlaybackRate + pause)
   }
   step()
 }

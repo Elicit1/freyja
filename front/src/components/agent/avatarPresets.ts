@@ -6,8 +6,9 @@ export const freyjaDefaultPet: AgentPet = {
   frameWidth: 192, frameHeight: 208, columns: 8, rows: 9
 }
 export const freyjaPetDownload = `${base}freyja.codex-pet.zip`
+export const petPlaybackRate = 0.5
 export const petRows = [
-  { name: 'idle', label: '待机', durations: [280, 110, 110, 140, 140, 320] },
+  { name: 'idle', label: '待机', durations: [280, 110, 110, 140, 140, 320], loopPauseMs: 1000 },
   { name: 'running-right', label: '向右移动', durations: [120, 120, 120, 120, 120, 120, 120, 220] },
   { name: 'running-left', label: '向左移动', durations: [120, 120, 120, 120, 120, 120, 120, 220] },
   { name: 'waving', label: '招手', durations: [140, 140, 140, 280] },
