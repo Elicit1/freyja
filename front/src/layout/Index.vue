@@ -21,10 +21,10 @@
         </router-view>
       </el-main>
 
-      <!-- Workspace Page Layer (固定页面层容器，供 FullScreenPage 等业务详情页统一挂载) -->
+      <!-- 工作区详情页独立层叠，内部动态 z-index 不越过全局 pet、聊天窗口及弹窗 -->
       <div
         id="workspace-page-layer"
-        class="absolute top-16 inset-x-0 bottom-0 pointer-events-none overflow-hidden"
+        class="absolute top-16 inset-x-0 bottom-0 z-30 pointer-events-none overflow-hidden"
       />
     </el-container>
 
