@@ -5,7 +5,7 @@ export const freyjaDefaultPet: AgentPet = {
   spritesheetUrl: `${base}spritesheet.webp`, contentType: 'image/webp', spriteVersionNumber: 1,
   frameWidth: 192, frameHeight: 208, columns: 8, rows: 9
 }
-export const freyjaPetDownload = `${base}freyja-smooth.codex-pet.zip`
+export const freyjaPetDownload = `${base}freyja-local-motion.codex-pet.zip`
 export const petPlaybackRate = 0.5
 export const petRows = [
   { name: 'idle', label: '待机', durations: [280, 110, 110, 140, 140, 320], loopPauseMs: 1000 },
@@ -29,8 +29,8 @@ const standardAnimations: PetAnimation[] = petRows.map(animation => ({
   loopPauseMs: animation.loopPauseMs
 }))
 // More poses change too rapidly at the community cadence; keep the default pet calm.
-export const freyjaAnimationDurationScale = 4
-// The built-in pet gets additional drawings. Community ZIPs retain Codex's standard grid/timing.
+export const freyjaAnimationDurationScale = 3.2
+// Local motion frames share fixed base pixels. Community ZIPs retain their standard grid/timing.
 const smoothAnimations: PetAnimation[] = standardAnimations.map((animation, index) => {
   const cycle = petCycleMillis(animation) * freyjaAnimationDurationScale
   const pause = index === 0 ? 1600 * freyjaAnimationDurationScale : 0
@@ -42,7 +42,7 @@ const smoothAnimations: PetAnimation[] = standardAnimations.map((animation, inde
 export function petAnimationSource(pet: AgentPet, smoothAvailable = true): PetAnimationSource {
   const builtin = pet.spritesheetUrl === freyjaDefaultPet.spritesheetUrl
   return builtin && smoothAvailable
-    ? { spritesheetUrl: `${base}spritesheet-smooth-v2.webp`, columns: 16, rows: 9, smooth: true, animations: smoothAnimations }
+    ? { spritesheetUrl: `${base}spritesheet-local-motion-v4.png`, columns: 16, rows: 9, smooth: true, animations: smoothAnimations }
     : { spritesheetUrl: pet.spritesheetUrl, columns: pet.columns, rows: pet.rows, smooth: false, animations: standardAnimations }
 }
 export function petCycleMillis(animation: PetAnimation): number {

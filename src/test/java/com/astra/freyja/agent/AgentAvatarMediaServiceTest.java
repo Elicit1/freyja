@@ -63,6 +63,15 @@ class AgentAvatarMediaServiceTest {
         var pack = service().inspectPackage(file(zip(Map.of("pet.json", manifest("sheet.png", 2), "sheet.png", out.toByteArray()))));
         assertEquals(11, pack.pet().getRows()); assertEquals("image/png", pack.pet().getContentType());
     }
+    @Test void localMotionDownloadUsesTransparentPortablePngAndPreservesPixels() throws Exception {
+        var pack = service().inspectPackage(file(Files.readAllBytes(Path.of("front/public/agent/freyja/freyja-local-motion.codex-pet.zip"))));
+        assertEquals("freyja", pack.pet().getId());
+        assertEquals("image/png", pack.pet().getContentType());
+        assertEquals(1, pack.pet().getSpriteVersionNumber());
+        assertEquals(8, pack.pet().getColumns()); assertEquals(9, pack.pet().getRows());
+        assertEquals(192, pack.pet().getFrameWidth()); assertEquals(208, pack.pet().getFrameHeight());
+        assertArrayEquals(Files.readAllBytes(Path.of("front/public/agent/freyja/spritesheet-local-motion-codex.png")), pack.spritesheet());
+    }
     @Test void unsafeArchiveAndManifestPathsAreRejected() throws Exception {
         for (String path : List.of("../evil", "/evil", "C:/evil", "nested/../evil", "nested\\..\\evil"))
             assertThrows(BizException.class, () -> service().inspectPackage(file(zip(Map.of(path, new byte[]{1})))));

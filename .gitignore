@@ -39,6 +39,7 @@ __pycache__/
 *.zip
 !front/public/agent/freyja/freyja.codex-pet.zip
 !front/public/agent/freyja/freyja-smooth.codex-pet.zip
+!front/public/agent/freyja/freyja-local-motion.codex-pet.zip
 comfy_gateway/static/outputs/
 comfy_gateway/nodes/*local*.yaml
 comfy_gateway/nodes/*local*.yml

@@ -1,0 +1,72 @@
+{
+  "base": "http://localhost",
+  "assets": [
+    {
+      "name": "spritesheet-local-motion-v3.png",
+      "bytes": 1085098,
+      "sha256": "37c56f9ffc638e8c1cde19048fe5df63079303e873c6b592ef1f5f4c6f1bda36",
+      "matchesWorkspace": true
+    },
+    {
+      "name": "spritesheet-local-motion-codex.png",
+      "bytes": 854118,
+      "sha256": "c5b37ec356c4b51b025a3599a1ade0ab6216b9ee0eed162eacfcd56f536b3eef",
+      "matchesWorkspace": true
+    },
+    {
+      "name": "freyja-local-motion.codex-pet.zip",
+      "bytes": 830336,
+      "sha256": "8c85f353e099a72bea8927ec5d33b87f0e5d3744b8be952b7541da5aeb9835bd",
+      "matchesWorkspace": true
+    }
+  ],
+  "renderedSources": [
+    {
+      "row": "0",
+      "image": "url(\"/agent/freyja/spritesheet-local-motion-v3.png\")",
+      "columns": "16"
+    },
+    {
+      "row": "1",
+      "image": "url(\"/agent/freyja/spritesheet-local-motion-v3.png\")",
+      "columns": "16"
+    },
+    {
+      "row": "2",
+      "image": "url(\"/agent/freyja/spritesheet-local-motion-v3.png\")",
+      "columns": "16"
+    },
+    {
+      "row": "3",
+      "image": "url(\"/agent/freyja/spritesheet-local-motion-v3.png\")",
+      "columns": "16"
+    },
+    {
+      "row": "4",
+      "image": "url(\"/agent/freyja/spritesheet-local-motion-v3.png\")",
+      "columns": "16"
+    },
+    {
+      "row": "5",
+      "image": "url(\"/agent/freyja/spritesheet-local-motion-v3.png\")",
+      "columns": "16"
+    },
+    {
+      "row": "6",
+      "image": "url(\"/agent/freyja/spritesheet-local-motion-v3.png\")",
+      "columns": "16"
+    },
+    {
+      "row": "7",
+      "image": "url(\"/agent/freyja/spritesheet-local-motion-v3.png\")",
+      "columns": "16"
+    },
+    {
+      "row": "8",
+      "image": "url(\"/agent/freyja/spritesheet-local-motion-v3.png\")",
+      "columns": "16"
+    }
+  ],
+  "currentAtlasUsed": true,
+  "download": "/agent/freyja/freyja-local-motion.codex-pet.zip"
+}

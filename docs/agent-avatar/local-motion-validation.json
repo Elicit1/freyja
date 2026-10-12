@@ -1,0 +1,1423 @@
+{
+  "tool": "built-in image_gen.imagegen",
+  "frameSize": [
+    192,
+    208
+  ],
+  "atlasSize": [
+    3072,
+    1872
+  ],
+  "format": "lossless PNG",
+  "pixelLockPassed": true,
+  "rows": [
+    {
+      "name": "idle",
+      "motionRegions": [
+        {
+          "ellipse": [
+            83,
+            80,
+            12,
+            8
+          ]
+        },
+        {
+          "ellipse": [
+            111,
+            73,
+            11,
+            8
+          ]
+        }
+      ],
+      "interpolation": "opaque-eye-crossfade",
+      "changedPixelsOutsideRegions": 0,
+      "maxChangedPixels": 611,
+      "structure": [
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        }
+      ],
+      "alignments": [
+        {
+          "score": 8.114504255808603,
+          "dx": -0.25,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.16126063952151,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.269151138716357,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.211410167931907,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.334195997239476,
+          "dx": -0.25,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.20956981826547,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.018863584080975,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 7.94570968484012,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        }
+      ],
+      "portableSelected": [
+        0,
+        2,
+        5,
+        8,
+        10,
+        13
+      ]
+    },
+    {
+      "name": "running-right",
+      "motionRegions": [
+        {
+          "polygon": [
+            [
+              72,
+              168
+            ],
+            [
+              91,
+              155
+            ],
+            [
+              128,
+              155
+            ],
+            [
+              144,
+              168
+            ],
+            [
+              166,
+              180
+            ],
+            [
+              166,
+              204
+            ],
+            [
+              62,
+              204
+            ],
+            [
+              62,
+              180
+            ]
+          ]
+        }
+      ],
+      "interpolation": "hold",
+      "changedPixelsOutsideRegions": 0,
+      "maxChangedPixels": 3028,
+      "structure": [
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        }
+      ],
+      "alignments": [
+        {
+          "score": 6.227552275522755,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.296924969249693,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.3485854858548585,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.208610086100861,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.178105781057811,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.283886838868389,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.276014760147602,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.069372693726938,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        }
+      ],
+      "portableSelected": [
+        0,
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14
+      ]
+    },
+    {
+      "name": "running-left",
+      "motionRegions": {
+        "mirror": "running-right"
+      },
+      "interpolation": "hold",
+      "changedPixelsOutsideRegions": 0,
+      "maxChangedPixels": 3028,
+      "structure": [
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        }
+      ],
+      "alignments": [
+        {
+          "score": 6.227552275522755,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.296924969249693,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.3485854858548585,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.208610086100861,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.178105781057811,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.283886838868389,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.276014760147602,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 6.069372693726938,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        }
+      ],
+      "portableSelected": [
+        0,
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14
+      ]
+    },
+    {
+      "name": "waving",
+      "motionRegions": [
+        {
+          "polygon": [
+            [
+              65,
+              89
+            ],
+            [
+              69,
+              85
+            ],
+            [
+              72,
+              88
+            ],
+            [
+              77,
+              87
+            ],
+            [
+              79,
+              92
+            ],
+            [
+              83,
+              94
+            ],
+            [
+              82,
+              102
+            ],
+            [
+              81,
+              115
+            ],
+            [
+              74,
+              119
+            ],
+            [
+              69,
+              107
+            ],
+            [
+              63,
+              101
+            ],
+            [
+              61,
+              95
+            ]
+          ]
+        }
+      ],
+      "interpolation": "hold",
+      "changedPixelsOutsideRegions": 0,
+      "maxChangedPixels": 483,
+      "structure": [
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        }
+      ],
+      "alignments": [
+        {
+          "score": 8.486829188481675,
+          "dx": -0.25,
+          "dy": 0.25,
+          "scale": 1
+        },
+        {
+          "score": 8.631680846422338,
+          "dx": -0.25,
+          "dy": 0.25,
+          "scale": 1
+        },
+        {
+          "score": 8.681841732111693,
+          "dx": -0.25,
+          "dy": 0.25,
+          "scale": 1
+        },
+        {
+          "score": 8.84632689790576,
+          "dx": -0.25,
+          "dy": 0.25,
+          "scale": 1
+        },
+        {
+          "score": 8.642220222513089,
+          "dx": -0.25,
+          "dy": 0.25,
+          "scale": 1
+        },
+        {
+          "score": 8.68372327661431,
+          "dx": -0.25,
+          "dy": 0.25,
+          "scale": 1
+        },
+        {
+          "score": 8.56464059773124,
+          "dx": -0.25,
+          "dy": 0.25,
+          "scale": 1
+        },
+        {
+          "score": 8.733488765270506,
+          "dx": -0.25,
+          "dy": 0.25,
+          "scale": 1
+        }
+      ],
+      "portableSelected": [
+        0,
+        4,
+        8,
+        12
+      ]
+    },
+    {
+      "name": "jumping",
+      "motionRegions": [
+        {
+          "ellipse": [
+            79.5,
+            103.5,
+            8,
+            12
+          ]
+        },
+        {
+          "ellipse": [
+            126,
+            101.5,
+            8,
+            12
+          ]
+        }
+      ],
+      "interpolation": "hold",
+      "changedPixelsOutsideRegions": 0,
+      "maxChangedPixels": 659,
+      "structure": [
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        }
+      ],
+      "alignments": [
+        {
+          "score": 8.560249307479225,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.314404432132964,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.198984302862419,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.316943674976915,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.39196675900277,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.195983379501385,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.085410895660203,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.178670360110804,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        }
+      ],
+      "portableSelected": [
+        0,
+        3,
+        6,
+        9,
+        12
+      ]
+    },
+    {
+      "name": "failed",
+      "motionRegions": [
+        {
+          "ellipse": [
+            79,
+            84,
+            12,
+            8
+          ]
+        },
+        {
+          "ellipse": [
+            105,
+            76,
+            12,
+            8
+          ]
+        }
+      ],
+      "interpolation": "opaque-eye-crossfade",
+      "changedPixelsOutsideRegions": 0,
+      "maxChangedPixels": 635,
+      "structure": [
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        }
+      ],
+      "alignments": [
+        {
+          "score": 8.05026455026455,
+          "dx": -0.25,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.316956412194507,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.211892164273117,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.297052154195011,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.26209372637944,
+          "dx": -0.25,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.287226001511716,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.164021164021165,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.129755605946082,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        }
+      ],
+      "portableSelected": [
+        0,
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14
+      ]
+    },
+    {
+      "name": "waiting",
+      "motionRegions": [
+        {
+          "ellipse": [
+            84,
+            81,
+            6,
+            6
+          ]
+        },
+        {
+          "ellipse": [
+            111,
+            74,
+            6,
+            6
+          ]
+        }
+      ],
+      "interpolation": "opaque-eye-crossfade",
+      "changedPixelsOutsideRegions": 0,
+      "maxChangedPixels": 248,
+      "structure": [
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        }
+      ],
+      "alignments": [
+        {
+          "score": 8.7575956284153,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.73551912568306,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.954754098360656,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.165245901639345,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.362349726775957,
+          "dx": -0.25,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.630819672131148,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.40983606557377,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 8.309071038251366,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        }
+      ],
+      "portableSelected": [
+        0,
+        2,
+        5,
+        8,
+        10,
+        13
+      ]
+    },
+    {
+      "name": "running",
+      "motionRegions": [
+        {
+          "ellipse": [
+            84,
+            111,
+            8,
+            9
+          ]
+        },
+        {
+          "polygon": [
+            [
+              106,
+              129
+            ],
+            [
+              112,
+              128
+            ],
+            [
+              117,
+              130
+            ],
+            [
+              116,
+              133
+            ],
+            [
+              111,
+              135
+            ],
+            [
+              105,
+              133
+            ]
+          ]
+        }
+      ],
+      "interpolation": "hold",
+      "changedPixelsOutsideRegions": 0,
+      "maxChangedPixels": 317,
+      "structure": [
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        }
+      ],
+      "alignments": [
+        {
+          "score": 9.416615760537569,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.301364284259824,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.364487884341274,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.306251272653228,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.5544695581348,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.49134595805335,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.642028100183262,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.27428222357972,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        }
+      ],
+      "portableSelected": [
+        0,
+        2,
+        5,
+        8,
+        10,
+        13
+      ]
+    },
+    {
+      "name": "review",
+      "motionRegions": [
+        {
+          "ellipse": [
+            80,
+            82,
+            6,
+            6
+          ]
+        },
+        {
+          "ellipse": [
+            106,
+            74,
+            6,
+            6
+          ]
+        }
+      ],
+      "interpolation": "opaque-eye-crossfade",
+      "changedPixelsOutsideRegions": 0,
+      "maxChangedPixels": 246,
+      "structure": [
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        },
+        {
+          "connectedComponents": 1,
+          "edgePixels": 0
+        }
+      ],
+      "alignments": [
+        {
+          "score": 9.482951996410947,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.970390309555855,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 10.0814266487214,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.941004934948408,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 9.923956931359355,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 10.089726334679229,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 10.25347689546882,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        },
+        {
+          "score": 10.283535217586362,
+          "dx": 0,
+          "dy": 0,
+          "scale": 1
+        }
+      ],
+      "portableSelected": [
+        0,
+        2,
+        5,
+        8,
+        10,
+        13
+      ]
+    }
+  ],
+  "spritesheet-local-motion-v4.png": {
+    "bytes": 1081112,
+    "sha256": "54a2a8e5a22db21679efc6de62e6d05ee9b1e14dc97a8151bafb765556ab9041"
+  },
+  "spritesheet-local-motion-codex.png": {
+    "bytes": 878639,
+    "sha256": "1f0c9408946036d7aa3fd6d113a5c604d28d817d17d614d4743ae2794b2394b3"
+  },
+  "freyja-local-motion.codex-pet.zip": {
+    "bytes": 855343,
+    "sha256": "8d90509f907a8a641ec173c188c3d6615020b8c34843f71bc3ed7248b7343795"
+  }
+}
