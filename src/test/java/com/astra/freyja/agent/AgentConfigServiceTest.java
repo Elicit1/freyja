@@ -67,7 +67,7 @@ class AgentConfigServiceTest {
         var legacy = json.read("{\"providerId\":\"2032095628944588804\",\"modelCode\":\"test-model\"}", AgentConfigDTO.Model.class);
         assertEquals("COMPLETE", legacy.getOutputMode());
         config.getModel().setOutputMode("STREAM");
-        when(mapper.selectOne(any())).thenReturn(stored(config, 3));
+        when(mapper.selectOne(any())).thenReturn(stored(config, AgentTestSupport.profile().version()));
         assertEquals("STREAM", service.get("core-assistant").getModel().getOutputMode());
         var snapshot = service.snapshot("core-assistant", config, "NORMAL");
         config.getModel().setOutputMode("COMPLETE");
@@ -142,11 +142,11 @@ class AgentConfigServiceTest {
         verify(mapper, times(1)).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
     }
     @Test void legacyIdentifierResolvesOneConfigurationAndNewSnapshotsUseUnifiedCode() {
-        when(mapper.selectOne(any())).thenReturn(stored(config, 3));
+        when(mapper.selectOne(any())).thenReturn(stored(config, AgentTestSupport.profile().version()));
         assertEquals("core-assistant", service.get("production-preparation").getAgentCode());
         verify(mapper, never()).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
         var snapshot = service.snapshot("production-preparation", config, "NORMAL");
-        assertEquals("core-assistant", snapshot.agentCode()); assertEquals(3, snapshot.profileVersion());
+        assertEquals("core-assistant", snapshot.agentCode()); assertEquals(AgentTestSupport.profile().version(), snapshot.profileVersion());
         assertEquals("core-assistant", snapshot.config().getAgentCode());
     }
     @Test void oneRegisteredAssistantHasQueryAndProductionCapabilities() {
@@ -166,6 +166,22 @@ class AgentConfigServiceTest {
         assertEquals(config.getAvatar(), upgraded.getAvatar());
         assertTrue(upgraded.getTools().getNames().contains("request_user_input"));
         assertFalse(upgraded.getTools().getNames().contains("list_project_assets"));
+        verify(mapper, times(1)).selectOne(any());
+    }
+    @Test void chatDecompositionUpgradeAddsRequiredToolAndPreservesUserConfiguration() {
+        config.setDisplayName("我的助手"); config.setEnabled(false); config.getRuntime().setMaxModelTurns(12);
+        config.getMemory().setContextTokens(16000); config.getInstructions().setSystemPrompt("遵循我的拆解要求");
+        config.getTools().setNames(AgentTestSupport.profile().allowedTools().stream()
+                .filter(n -> !List.of("prepare_script_decomposition", "list_project_assets").contains(n)).toList());
+        var previous = stored(config, 3);
+        when(mapper.selectOne(any())).thenReturn(previous); when(mapper.lockByCode("core-assistant")).thenReturn(previous);
+        var upgraded = service.get("core-assistant");
+        assertTrue(upgraded.getTools().getNames().containsAll(List.of("prepare_script_decomposition", "request_user_input")));
+        assertFalse(upgraded.getTools().getNames().contains("list_project_assets"));
+        assertFalse(upgraded.isEnabled()); assertEquals(config.getModel(), upgraded.getModel());
+        assertEquals(config.getAvatar(), upgraded.getAvatar()); assertEquals(config.getRuntime(), upgraded.getRuntime());
+        assertEquals(config.getMemory(), upgraded.getMemory()); assertEquals(config.getInstructions(), upgraded.getInstructions());
+        assertEquals("我的助手", upgraded.getDisplayName()); assertEquals(9, upgraded.getRevision());
         verify(mapper, times(1)).selectOne(any());
     }
 }

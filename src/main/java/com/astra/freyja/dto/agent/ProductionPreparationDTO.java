@@ -18,6 +18,20 @@ public final class ProductionPreparationDTO {
         private String stylePreset;
         private String styleTone;
         private String pacingPreset = "AUTO";
+        private String workflow = "VIDEO_PREPARATION";
+    }
+    /** Chat input cannot select a different project or create a separate session/run. */
+    @Data public static class ConversationStart {
+        private Long sourceMessageId;
+        private String sourceText;
+        private String dramaTitle;
+        private String chapterTitle;
+        private String instruction;
+        private String aspectRatio = "9:16";
+        private String stylePreset;
+        private String styleTone;
+        private String pacingPreset = "AUTO";
+        private String workflow = "SCRIPT_DECOMPOSITION";
     }
     @Data public static class Asset {
         private String key;

@@ -17,7 +17,7 @@
         <span v-if="store.activeRun"> · {{ agentStatusLabels[store.activeRun.status] }}</span>
       </div>
       <div ref="scrollArea" v-loading="store.loading" class="chat-history">
-        <el-empty v-if="!store.messages.length" description="可以直接创作小说、讨论剧情，或准备小说转视频" :image-size="70" />
+        <el-empty v-if="!store.messages.length" description="可以直接创作小说、拆解剧本或准备小说转视频；缺少信息时助手会向你提问" :image-size="70" />
         <AgentMessageList :messages="store.messages" :preview="store.streamPreview" />
         <AgentRunCard v-for="run in shownRuns" :key="run.id" :run="run" class="mt-3" @refreshed="store.refreshRun(run.id)" />
         <AgentQuestionCard v-if="waitingQuestion?.body.questions?.length" :key="waitingQuestion.id"

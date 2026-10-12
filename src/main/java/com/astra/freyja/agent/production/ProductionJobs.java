@@ -31,15 +31,20 @@ public class ProductionJobs {
     private final AiTaskMapper taskMapper;
     private final AgentConfigMapper configs;
     private final DramaEpisodeMapper episodes;
+    private final AgentMessageMapper messages;
 
-    @Transactional public Submission start(Start input) {
+    private void validate(Start input) {
         if (input == null || !ProductionAssets.text(input.getClientRequestId()) || input.getClientRequestId().length() > 100)
             throw new BizException("需要合法的 clientRequestId");
         if (!ProductionAssets.text(input.getSourceText()) || input.getSourceText().length() > 100000)
             throw new BizException("请输入小说或剧本，最长 100000 字");
-        if (!Set.of("9:16", "16:9", "1:1", "4:3").contains(input.getAspectRatio())) throw new BizException("画幅不合法");
-        if (!Set.of("AUTO", "FAST_PACED", "COMPACT", "STANDARD", "CINEMATIC_LONG").contains(input.getPacingPreset())) throw new BizException("节奏不合法");
+        if (input.getAspectRatio() == null || !Set.of("9:16", "16:9", "1:1", "4:3").contains(input.getAspectRatio())) throw new BizException("画幅不合法");
+        if (input.getPacingPreset() == null || !Set.of("AUTO", "FAST_PACED", "COMPACT", "STANDARD", "CINEMATIC_LONG").contains(input.getPacingPreset())) throw new BizException("节奏不合法");
+        if (input.getWorkflow() == null || !Set.of("SCRIPT_DECOMPOSITION", "VIDEO_PREPARATION").contains(input.getWorkflow())) throw new BizException("请选择剧本拆解或完整视频准备流程");
         if (input.getDramaId() != null && dramas.selectById(input.getDramaId()) == null) throw new BizException("项目不存在");
+    }
+    @Transactional public Submission start(Start input) {
+        validate(input);
         if (configs.lockByCode(PROFILE) == null) throw new BizException("请先配置并启用 FREYJA 助手");
         var request = new CreateSession(); request.setAgentCode(PROFILE); request.setDramaId(input.getDramaId());
         request.setTitle(ProductionAssets.text(input.getDramaTitle()) ? input.getDramaTitle() : "小说转视频准备");
@@ -58,12 +63,48 @@ public class ProductionJobs {
         job.setRequestJson(json.write(input)); job.setShotIdsJson("[]"); job.setAssetsJson("[]"); jobs.insert(job);
         return submitted;
     }
+    /** Runs inside the existing fenced tool transaction, including retries after a restart. */
+    public ToolResult prepare(ConversationStart input, ToolContext ctx) {
+        if ("CONFIG_TEST".equals(ctx.snapshot().runType())) return ToolResult.error("READ_ONLY_TEST", "测试对话不能启动剧本拆解");
+        var session = store().session(ctx.sessionId());
+        if (!Objects.equals(session.getDramaId(), ctx.dramaId())) throw new BizException("项目作用域已改变");
+        if (input.getSourceMessageId() != null && ProductionAssets.text(input.getSourceText()))
+            return ToolResult.error("INVALID_SOURCE", "sourceMessageId 与 sourceText 只需提供一个");
+        var options = new Start(); org.springframework.beans.BeanUtils.copyProperties(input, options);
+        options.setClientRequestId("chat:" + ctx.runId()); options.setDramaId(session.getDramaId());
+        if (input.getSourceMessageId() != null) {
+            var source = messages.selectById(input.getSourceMessageId());
+            if (source == null || !"USER".equals(source.getMessageType()) || !Objects.equals(source.getSessionId(), ctx.sessionId()))
+                return ToolResult.error("INVALID_SOURCE", "原文来源必须是当前会话的真实用户消息");
+            options.setSourceText(json.read(source.getContentJson(), MessageBody.class).content());
+        }
+        if (!ProductionAssets.text(options.getSourceText()))
+            return ToolResult.needUser("请把需要拆解的小说或剧本原文发给我；有章节范围或拆解要求也可以一起告诉我。");
+        validate(options);
+        var old = jobs.lockByRunId(ctx.runId());
+        if (old != null) {
+            require(ctx, true);
+            // Creating the project at commit changes the session scope, not the original request.
+            options.setDramaId(options(old).getDramaId());
+            if (!Objects.equals(json.write(options(old)), json.write(options)))
+                throw new BizException(409, "当前任务已有原文和拆解配置，请继续原任务；新原文请作为新的聊天任务提交");
+            return prepared(old);
+        }
+        var job = new AgentPreparationJob(); job.setRunId(ctx.runId()); job.setSessionId(ctx.sessionId());
+        job.setDramaId(session.getDramaId()); job.setStatus("NEW"); job.setSourceText(options.getSourceText());
+        job.setRequestJson(json.write(options)); job.setShotIdsJson("[]"); job.setAssetsJson("[]"); jobs.insert(job);
+        return prepared(job);
+    }
+    private ToolResult prepared(AgentPreparationJob job) {
+        return ToolResult.success(Map.of("status", job.getStatus(), "workflow", options(job).getWorkflow(),
+                "next", "start_script_decomposition", "message", "原文已保存，继续当前会话的拆解任务，无需重新提交。"));
+    }
     public AgentPreparationJob find(Long run) {
         return jobs.selectOne(new LambdaQueryWrapper<AgentPreparationJob>().eq(AgentPreparationJob::getRunId, run));
     }
     public AgentPreparationJob require(ToolContext ctx, boolean lock) {
         var job = lock ? jobs.lockByRunId(ctx.runId()) : find(ctx.runId());
-        if (job == null) throw new BizException("请先通过“小说转视频准备”提交原文");
+        if (job == null) throw new BizException("尚未保存拆解原文。已提供原文时先调用 prepare_script_decomposition；缺少必要信息时调用 request_user_input 向用户提问，然后继续当前任务。");
         if (!Objects.equals(job.getSessionId(), ctx.sessionId())) throw new BizException("任务作用域错误");
         if (job.getDramaId() != null && !Objects.equals(job.getDramaId(), store().session(ctx.sessionId()).getDramaId()))
             throw new BizException("项目作用域已改变");
@@ -141,7 +182,8 @@ public class ProductionJobs {
         job.setAssetsJson(json.write(registry)); jobs.updateById(job); return committed(job);
     }
     private ToolResult committed(AgentPreparationJob job) {
-        return ToolResult.success(Map.of("dramaId", job.getDramaId(), "shotIds", targets(job), "status", "COMMITTED", "next", "list_preparation_shots 和 get_reference_candidates"));
+        return ToolResult.success(Map.of("dramaId", job.getDramaId(), "shotIds", targets(job), "status", "COMMITTED", "next",
+                "SCRIPT_DECOMPOSITION".equals(options(job).getWorkflow()) ? "剧本拆解已入库，向用户交付项目和分镜结果" : "list_preparation_shots 和 get_reference_candidates"));
     }
     /** Explicit scoped edits create their own delivery scope; conversational queries don't create a job. */
     public AgentPreparationJob editJob(ToolContext ctx, List<Long> ids) {

@@ -148,7 +148,7 @@ class ProductionPreparationTest {
         @SuppressWarnings("unchecked") var provider = (org.springframework.beans.factory.ObjectProvider<ProductionPlans>) mock(org.springframework.beans.factory.ObjectProvider.class);
         var live = mock(ProductionPlans.class); when(provider.getObject()).thenReturn(live);
         var profile = new CoreAssistantProfile(mapper, provider);
-        var job = new AgentPreparationJob(); job.setStatus("COMMITTED"); when(mapper.selectOne(any())).thenReturn(job);
+        var job = new AgentPreparationJob(); job.setStatus("COMMITTED"); job.setRequestJson("{}"); when(mapper.selectOne(any())).thenReturn(job);
         var reply = new ModelReply("全部完成", List.of(), Map.of(), null, null, null);
         assertFalse(profile.checkCompletion(reply, null, 1L).complete()); job.setStatus("PREPARED"); job.setReportJson("{\"complete\":true}");
         assertFalse(profile.checkCompletion(reply, null, 1L).complete(), "an old report cannot complete a changed plan");
