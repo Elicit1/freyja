@@ -1,0 +1,157 @@
+{
+  "frameSize": [
+    192,
+    208
+  ],
+  "denseAtlasSize": [
+    3072,
+    1872
+  ],
+  "portableAtlasSize": [
+    1536,
+    1872
+  ],
+  "rows": [
+    {
+      "name": "idle",
+      "frames": 16,
+      "distinctFrames": 16,
+      "portableFrames": 6,
+      "selected": [
+        0,
+        3,
+        5,
+        8,
+        11,
+        13
+      ]
+    },
+    {
+      "name": "running-right",
+      "frames": 16,
+      "distinctFrames": 16,
+      "portableFrames": 8,
+      "selected": [
+        0,
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14
+      ]
+    },
+    {
+      "name": "running-left",
+      "frames": 16,
+      "distinctFrames": 16,
+      "portableFrames": 8,
+      "selected": [
+        0,
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14
+      ]
+    },
+    {
+      "name": "waving",
+      "frames": 16,
+      "distinctFrames": 16,
+      "portableFrames": 4,
+      "selected": [
+        0,
+        4,
+        8,
+        12
+      ]
+    },
+    {
+      "name": "jumping",
+      "frames": 16,
+      "distinctFrames": 16,
+      "portableFrames": 5,
+      "selected": [
+        0,
+        3,
+        6,
+        10,
+        13
+      ]
+    },
+    {
+      "name": "failed",
+      "frames": 16,
+      "distinctFrames": 16,
+      "portableFrames": 8,
+      "selected": [
+        0,
+        2,
+        4,
+        6,
+        8,
+        10,
+        12,
+        14
+      ]
+    },
+    {
+      "name": "waiting",
+      "frames": 16,
+      "distinctFrames": 16,
+      "portableFrames": 6,
+      "selected": [
+        0,
+        3,
+        5,
+        8,
+        11,
+        13
+      ]
+    },
+    {
+      "name": "running",
+      "frames": 16,
+      "distinctFrames": 16,
+      "portableFrames": 6,
+      "selected": [
+        0,
+        3,
+        5,
+        8,
+        11,
+        13
+      ]
+    },
+    {
+      "name": "review",
+      "frames": 16,
+      "distinctFrames": 16,
+      "portableFrames": 6,
+      "selected": [
+        0,
+        3,
+        5,
+        8,
+        11,
+        13
+      ]
+    }
+  ],
+  "spritesheet-smooth-v2.webp": {
+    "bytes": 7211366,
+    "sha256": "e8cee39a49e96b30357527e9b3d635cc7cb1f97b458ab1436ba7347c9b3dd7a4"
+  },
+  "spritesheet-smooth-codex.webp": {
+    "bytes": 2788278,
+    "sha256": "aef246e77f326c48b3d345bdb7adbc689ae85e522377de95335b2a51a2400e08"
+  },
+  "freyja-smooth.codex-pet.zip": {
+    "bytes": 2789340,
+    "sha256": "36b04cbf49a0283cb5cc1ef429bf4515d757a640baa90a5b3f0b77e036b49580"
+  }
+}

@@ -50,6 +50,14 @@ class AgentAvatarMediaServiceTest {
         var pack = service().inspectPackage(file(zip(Map.of("sample/pet.json", manifest("spritesheet.webp", null), "sample/spritesheet.webp", nativeSprite()))));
         assertEquals(1, pack.pet().getSpriteVersionNumber()); assertEquals("Sample", pack.pet().getDisplayName());
     }
+    @Test void smoothDownloadUsesPortableCodexGridAndPreservesArtwork() throws Exception {
+        var pack = service().inspectPackage(file(Files.readAllBytes(Path.of("front/public/agent/freyja/freyja-smooth.codex-pet.zip"))));
+        assertEquals("freyja", pack.pet().getId());
+        assertEquals(1, pack.pet().getSpriteVersionNumber());
+        assertEquals(8, pack.pet().getColumns()); assertEquals(9, pack.pet().getRows());
+        assertEquals(192, pack.pet().getFrameWidth()); assertEquals(208, pack.pet().getFrameHeight());
+        assertArrayEquals(Files.readAllBytes(Path.of("front/public/agent/freyja/spritesheet-smooth-codex.webp")), pack.spritesheet());
+    }
     @Test void transparentPngVersionTwoIsAccepted() throws Exception {
         var out = new ByteArrayOutputStream(); ImageIO.write(new BufferedImage(1536, 2288, BufferedImage.TYPE_INT_ARGB), "png", out);
         var pack = service().inspectPackage(file(zip(Map.of("pet.json", manifest("sheet.png", 2), "sheet.png", out.toByteArray()))));
