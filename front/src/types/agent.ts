@@ -13,13 +13,17 @@ export interface AgentAvatar {
 export interface AgentConfig {
   agentCode: string; displayName: string; description: string; enabled: boolean
   revision: number; expectedRevision: number
-  model: { providerId?: string | null; modelCode?: string | null; temperature?: number | null; topP?: number | null; maxTokens: number; outputMode: 'STREAM' | 'COMPLETE' }
+  model: { providerId?: string | null; modelCode?: string | null; temperature?: number | null; topP?: number | null; maxTokens: number; outputMode: 'STREAM' | 'COMPLETE'; tokenMode: 'MODEL' | 'CUSTOM'; reasoningMode: string }
   instructions: { systemPrompt: string }
   tools: { names: string[] }
   skills: { names: string[]; dynamicLoading: boolean }
-  memory: { summaryEnabled: boolean; recentMessages: number; contextTokens: number; scopes: string[] }
+  memory: { summaryEnabled: boolean; recentMessages: number; contextTokens: number; scopes: string[]; summary: AgentSummaryConfig }
   runtime: { maxModelTurns: number; maxToolCalls: number; executionTimeoutSeconds: number; modelTimeoutSeconds: number; externalWaitTimeoutSeconds: number; maxRetries: number; maxConcurrentRuns: number }
   avatar: AgentAvatar
+}
+export interface AgentSummaryConfig {
+  providerId?: string | null; modelCode?: string | null; maxTokens: number; retryMaxTokens: number; reasoningMode: string
+  timeoutSeconds: number; targetCharacters: number; maxCharacters: number; maxRetries: number
 }
 export interface AgentToolDescriptor {
   name: string; version: number; description: string; effect: 'READ' | 'WRITE'
@@ -65,13 +69,14 @@ export interface AgentMessage {
   body: { content?: string; modelStepId?: string; toolCalls?: { id: string; name: string; arguments: string }[]; toolName?: string; result?: ToolResult; status?: string; question?: string; questions?: AgentQuestion[]; questionStepId?: string; summary?: string; tool?: string; stepId?: string; taskId?: string; eventTaskId?: string; plan?: AgentTaskPlan; message?: string; hasError?: boolean }
   createTime?: string
 }
-export type AgentRunStatus = 'QUEUED' | 'RUNNING' | 'WAITING_TASK' | 'WAITING_USER' | 'CANCELLING' | 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED' | 'CANCELLED'
+export type AgentRunStatus = 'QUEUED' | 'RUNNING' | 'WAITING_TASK' | 'WAITING_USER' | 'BLOCKED' | 'CANCELLING' | 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED' | 'CANCELLED'
 export interface AgentRun {
   id: string; sessionId: string; agentCode: string; runType: string; status: AgentRunStatus; objective: string
   modelTurns: number; toolCalls: number; executionMillis: string; promptTokens?: number; completionTokens?: number
   usageUnknown?: boolean; result?: { summary: string; status: string }; errorMessage?: string
   configRevision: number; createTime?: string; finishedAt?: string; readAt?: string
   progress?: AgentRunProgress
+  summaryRecoverable?: boolean; summaryConfig?: AgentSummaryConfig; modelProviderId?: string; modelCode?: string
 }
 export interface AgentEvent { sessionId: string; runId?: string; seq: number; type: string; payload: AgentMessage }
 export interface AgentStreamEvent {
@@ -99,8 +104,8 @@ export interface ProductionPlanView {
   shotId: string; expectedRevision: number; expectedFingerprint: string; preparationStatus: string; lockedFields: string[]
   plan?: { generationMode: string; decisionReason: string; characterBindings: unknown[]; visualAnchor?: unknown; propBindings: unknown[]; referenceSlots: unknown[]; firstFrameRequirement?: unknown; lastFrameRequirement?: unknown }
 }
-export const isActiveRun = (status?: string) => !!status && ['QUEUED', 'RUNNING', 'WAITING_TASK', 'WAITING_USER', 'CANCELLING'].includes(status)
+export const isActiveRun = (status?: string) => !!status && ['QUEUED', 'RUNNING', 'WAITING_TASK', 'WAITING_USER', 'BLOCKED', 'CANCELLING'].includes(status)
 export const agentStatusLabels: Record<string, string> = {
   QUEUED: '等待执行', RUNNING: '正在工作', WAITING_TASK: '子任务执行中', WAITING_USER: '需要你的回答',
-  CANCELLING: '正在取消', COMPLETED: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '执行失败', CANCELLED: '已取消'
+  CANCELLING: '正在取消', COMPLETED: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '执行失败', CANCELLED: '已取消', BLOCKED: '需要调整摘要配置'
 }

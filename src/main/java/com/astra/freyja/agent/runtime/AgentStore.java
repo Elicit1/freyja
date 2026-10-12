@@ -93,7 +93,7 @@ public class AgentStore {
     }
     public List<AgentRun> activeRuns() {
         return runs.selectList(new LambdaQueryWrapper<AgentRun>().eq(AgentRun::getRunType, "NORMAL")
-                .in(AgentRun::getStatus, "QUEUED", "RUNNING", "WAITING_TASK", "WAITING_USER", "CANCELLING")
+                .in(AgentRun::getStatus, "QUEUED", "RUNNING", "WAITING_TASK", "WAITING_USER", "BLOCKED", "CANCELLING")
                 .orderByDesc(AgentRun::getCreateTime).last("LIMIT 200"));
     }
     public List<AgentRun> historyRuns(int limit) {
@@ -236,7 +236,7 @@ public class AgentStore {
         return transactions.execute(tx -> {
             AgentSession session = lockSession(current.getSessionId());
             AgentRun run = runs.lockById(id);
-            if (RunStatus.valueOf(run.getStatus()).terminal() || "WAITING_USER".equals(run.getStatus())) return null;
+            if (RunStatus.valueOf(run.getStatus()).terminal() || Set.of("WAITING_USER", "BLOCKED").contains(run.getStatus())) return null;
             boolean wasWaiting = "WAITING_TASK".equals(run.getStatus());
             if (run.getLeaseUntil() != null && run.getLeaseUntil().isAfter(LocalDateTime.now())) return null;
             if (Boolean.TRUE.equals(run.getCancelRequested())) {
@@ -375,6 +375,54 @@ public class AgentStore {
         try { fenced(id, owner, epoch, (session, run) -> { finishLocked(session, run, "FAILED", null, error); return null; }); }
         catch (LeaseLost ignored) { }
     }
+    public void blockSummary(Long id, String owner, int epoch, String reason, String message, long elapsed) {
+        fenced(id, owner, epoch, (session, run) -> {
+            run.setExecutionMillis(run.getExecutionMillis() + elapsed);
+            run.setStatus("BLOCKED"); run.setErrorMessage(message); releaseLease(run);
+            run.setFinalResultJson(json.write(Map.of("summary", message, "status", "BLOCKED", "reason", reason, "recoverableSummary", true)));
+            updateRun(run); event(session, run, "RUN_BLOCKED", Map.of("summary", message, "status", "BLOCKED", "reason", reason)); return null;
+        });
+    }
+    public boolean summaryRecoverable(AgentRun run) {
+        if ("BLOCKED".equals(run.getStatus()) && run.getFinalResultJson() != null)
+            return Boolean.TRUE.equals(json.read(run.getFinalResultJson(), Map.class).get("recoverableSummary"));
+        // Compatibility with the exact historical failure code, not a natural-language classification.
+        return "FAILED".equals(run.getStatus()) && "模型摘要无效，历史消息仍保留".equals(run.getErrorMessage());
+    }
+    public void resumeSummary(Long id, AgentConfigDTO.Summary summary) {
+        if (summary == null) throw new BizException("摘要配置不能为空");
+        AgentRun current = run(id);
+        var original = snapshot(current);
+        var config = json.copy(original.config(), AgentConfigDTO.class);
+        config.getMemory().setSummary(json.copy(summary, AgentConfigDTO.Summary.class));
+        var validationConfig = json.copy(config, AgentConfigDTO.class);
+        // A running MODEL-mode budget is already resolved and pinned; recovery must not re-resolve it.
+        validationConfig.getModel().setTokenMode("CUSTOM");
+        var result = configs.validate(original.agentCode(), validationConfig, true);
+        if (!result.valid()) throw new BizException(result.errors().getFirst().message());
+        var choice = json.copy(summary, AgentConfigDTO.Summary.class);
+        if (choice.getProviderId() == null) { choice.setProviderId(config.getModel().getProviderId()); choice.setModelCode(config.getModel().getModelCode()); }
+        var pinned = configs.pinSummaryModel(choice, original.pinnedModel());
+        var replacement = new Snapshot(original.agentCode(), original.configRevision(), original.profileVersion(), config,
+                original.fixedInstructions(), original.skillVersions(), original.toolVersions(), original.pinnedModel(), original.runType(), pinned);
+        transactions.executeWithoutResult(tx -> {
+            AgentSession session = lockSession(current.getSessionId()); AgentRun run = runs.lockById(id);
+            if (!summaryRecoverable(run)) throw new BizException(409, "任务不处于可恢复的摘要阻塞状态");
+            if (!Objects.equals(run.getProfileSnapshotJson(), current.getProfileSnapshotJson())) throw new BizException(409, "摘要配置已更新，请刷新");
+            if (session.getActiveRunId() != null && !id.equals(session.getActiveRunId())) throw new BizException(409, "当前会话已有其他活动任务");
+            var latest = runs.selectOne(new LambdaQueryWrapper<AgentRun>().eq(AgentRun::getSessionId, session.getId())
+                    .orderByDesc(AgentRun::getCreateTime).orderByDesc(AgentRun::getId).last("LIMIT 1"));
+            if (latest == null || !id.equals(latest.getId())) throw new BizException(409, "会话已有后续任务，请新建目标继续");
+            run.setProfileSnapshotJson(json.write(replacement)); run.setStatus("QUEUED"); run.setErrorMessage(null); run.setFinalResultJson(null);
+            run.setFinishedAt(null); run.setReadAt(null); releaseLease(run); updateRun(run);
+            runs.update(null, new LambdaUpdateWrapper<AgentRun>().eq(AgentRun::getId, id).set(AgentRun::getErrorMessage, null)
+                    .set(AgentRun::getFinalResultJson, null).set(AgentRun::getFinishedAt, null).set(AgentRun::getReadAt, null));
+            for (var step : steps(id)) if ("MODEL".equals(step.getStepType()) && "PENDING".equals(step.getStatus())) { step.setAttempts(0); steps.updateById(step); }
+            setActive(session, id);
+            event(session, run, "SUMMARY_CONFIG_UPDATED", Map.of("summary", summary, "message", "已更新摘要配置，继续当前任务"));
+            event(session, run, "RUN_QUEUED", Map.of("status", "QUEUED", "resumed", true));
+        });
+    }
     public void askUser(Long id, String owner, int epoch, String question) {
         fenced(id, owner, epoch, (session, run) -> {
             run.setStatus("WAITING_USER"); releaseLease(run); updateRun(run);
@@ -445,12 +493,33 @@ public class AgentStore {
             sessions.updateById(session);
             AgentStep step = newStep(run, "SUMMARY", "summary/" + expectedCovered + "/" + through);
             step.setStatus("SUCCEEDED"); step.setResultJson(json.write(summary)); steps.insert(step);
-            run.setExecutionMillis(run.getExecutionMillis() + elapsed);
-            run.setPromptTokens(run.getPromptTokens() + (summary.promptTokens() == null ? 0 : summary.promptTokens()));
-            run.setCompletionTokens(run.getCompletionTokens() + (summary.completionTokens() == null ? 0 : summary.completionTokens()));
-            run.setUsageUnknown(run.getUsageUnknown() || summary.promptTokens() == null || summary.completionTokens() == null);
+            chargeSummary(run, summary, elapsed);
             runs.updateById(run); return null;
         });
+    }
+    public void summaryStarted(Long id, String owner, int epoch, int attempt) {
+        fenced(id, owner, epoch, (session, run) -> { event(session, run, "SUMMARY_STARTED", Map.of("attempt", attempt, "message", "正在压缩历史，任务进度将保留")); return null; });
+    }
+    public void summaryAttemptFailed(Long id, String owner, int epoch, int from, int through, ModelReply reply, long elapsed, String reason, int attempt) {
+        fenced(id, owner, epoch, (session, run) -> {
+            var step = newStep(run, "SUMMARY", "summary-failed/" + from + "/" + through + "/" + run.getNextStepOrder());
+            step.setStatus("FAILED"); step.setAttempts(attempt);
+            Map<String, Object> audit = new java.util.LinkedHashMap<>(); audit.put("reason", reason); audit.put("attempt", attempt);
+            audit.put("fromSeq", from); audit.put("throughSeq", through);
+            if (reply != null) {
+                audit.put("responseId", reply.responseId()); audit.put("finishReason", reply.finishReason());
+                audit.put("promptTokens", reply.promptTokens()); audit.put("completionTokens", reply.completionTokens()); audit.put("reasoningTokens", reply.reasoningTokens());
+                audit.put("contentCharacters", reply.content() == null ? 0 : reply.content().codePointCount(0, reply.content().length()));
+            }
+            step.setResultJson(json.write(audit)); steps.insert(step); chargeSummary(run, reply, elapsed); runs.updateById(run);
+            event(session, run, "SUMMARY_RETRY", Map.of("reason", reason, "attempt", attempt, "message", "历史压缩未通过校验，正在调整策略")); return null;
+        });
+    }
+    private void chargeSummary(AgentRun run, ModelReply reply, long elapsed) {
+        run.setExecutionMillis(run.getExecutionMillis() + elapsed);
+        run.setPromptTokens(run.getPromptTokens() + (reply == null || reply.promptTokens() == null ? 0 : reply.promptTokens()));
+        run.setCompletionTokens(run.getCompletionTokens() + (reply == null || reply.completionTokens() == null ? 0 : reply.completionTokens()));
+        run.setUsageUnknown(run.getUsageUnknown() || reply == null || reply.promptTokens() == null || reply.completionTokens() == null);
     }
     private interface FencedOperation<T> { T apply(AgentSession session, AgentRun run); }
     private <T> T fenced(Long id, String owner, int epoch, FencedOperation<T> operation) {

@@ -74,6 +74,7 @@ export const useAgentStore = defineStore('agent', () => {
     const run = await agentApi.run(id)
     messages.value.filter(message => message.runId === id).forEach(message => applyAgentProgress(run, message))
     runs.value[id] = run
+    if (isActiveRun(run.status)) notifications.value = notifications.value.filter(item => item.id !== id)
     if (!isActiveRun(run.status)) clearPreview(run.sessionId, id)
     const session = sessions.value.find(s => s.id === run.sessionId)
     function syncActive(target: AgentSession) {
@@ -100,11 +101,11 @@ export const useAgentStore = defineStore('agent', () => {
     if (selectedSession.value?.id === event.sessionId) mergeMessage(message)
     if (event.type === 'MODEL_STARTED') phase.value = 'THINKING'
     if (event.type === 'TOOL_STARTED' || event.type === 'WAITING_TASK') phase.value = 'WORKING'
-    if (event.type === 'WAITING_USER') phase.value = 'ATTENTION'
+    if (event.type === 'WAITING_USER' || event.type === 'RUN_BLOCKED') phase.value = 'ATTENTION'
     if (event.type === 'RUN_COMPLETED') phase.value = 'SUCCESS'
     if (event.type === 'RUN_FAILED') phase.value = 'ERROR'
     if (event.type === 'RUN_CANCELLED') phase.value = 'IDLE'
-    if (event.runId && ['RUN_QUEUED', 'RUN_STARTED', 'WAITING_TASK', 'WAITING_USER', 'RUN_COMPLETED', 'RUN_FAILED', 'RUN_CANCELLED'].includes(event.type)) {
+    if (event.runId && ['RUN_QUEUED', 'RUN_STARTED', 'WAITING_TASK', 'WAITING_USER', 'RUN_BLOCKED', 'RUN_COMPLETED', 'RUN_FAILED', 'RUN_CANCELLED'].includes(event.type)) {
       void refreshRun(event.runId).catch(() => {})
     }
   }

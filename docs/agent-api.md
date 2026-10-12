@@ -61,6 +61,24 @@ python scripts/migrate_agent_foundation.py --apply
 
 ### 执行预算
 
+CHAT 模型能力存入模型中心 `paramsJson.capabilities`，字段为 `contextWindow`、`maxOutputTokens`、`recommendedOutputTokens`、`reasoningProtocol`（`NONE`/`DEEPSEEK_CHAT`/`OPENAI`/`OLLAMA`）、`reasoningEfforts`、`outputTokenParameter`（`max_tokens`/`max_completion_tokens`），原 `toolCalling` 字段保留。能力上限独立于模型请求预算 `maxTokens`。模型中心可调用 `GET /ai/provider/{id}/model-capabilities` 读取提供商 `/models` 的显式上下文、输出上限与 effort 列表；接口不保存模型、不会根据模型名称推断思考协议，未返回的字段仍需手动填写。非 OpenAI 兼容提供商可手动维护。
+
+Agent 的 `model.tokenMode=MODEL` 跟随模型建议预算（未声明建议值时沿用模型中心请求预算），`CUSTOM` 使用自定义 `maxTokens`。输出和上下文上限按已声明的模型能力验证，不再固定为 32768/100000。能力未知时保留用户预算并警告。`model.reasoningMode` 为 `INHERIT`/`DISABLED`/`LOW`/`MEDIUM`/`HIGH`/`MAX`，通过声明的协议映射，协议为 NONE 时不注入未知参数并提示无法覆盖默认思考行为。新安装的工作上下文默认 262144 Tokens；“采用长任务建议预算”按模型能力收敛到 65536 输出、262144 上下文，已有自定义设置不自动覆盖。
+
+### 独立摘要与失败恢复
+
+`memory.summary` 单独配置 `{ providerId?, modelCode?, maxTokens, retryMaxTokens, reasoningMode, timeoutSeconds, targetCharacters, maxCharacters, maxRetries }`。提供商和模型都省略时沿用主模型，指定时必须成对提供并启用。默认输出 16384、截断恢复输出 32768、关闭思考、超时 180 秒、正文目标 2500 字、硬上限 4000 字、最多 2 次恢复尝试。预算受摘要模型输出与上下文能力约束，独立于主任务输出和超时；未声明摘要窗口时保守沿用工作上下文。快照固定模型能力与允许参数，不包含提供商密钥。
+
+每次摘要必须是替换旧摘要的完整版本。只有 `finishReason=stop`、非空、无工具调用、未超过字符上限的正文可以更新摘要和覆盖游标；非空但 `length` 截断的正文也被拒绝。旧摘要超过硬上限时主动重新压缩。摘要输入按完整助手/工具结果组收敛，不能裁切原文、拆开工具配对或直接截断摘要；无法容纳完整组时进入可恢复阻塞。
+
+摘要失败独立恢复：截断时提高输出或降低思考强度；重复截断时缩小完整历史批次，无可改变的策略时提前阻塞，避免重复同一请求。超长正文逐次要求更紧凑输出；提供商失败采用有界退避与兼容的低强度回退。每次返回的 Token 用量（包括未通过校验的摘要）累计到 Run，推理 Token 只作诊断、不再次叠加到 completionTokens。未知用量保留 `usageUnknown=true`。失败 SUMMARY 步保存请求 ID、结束原因、推理/输入/补全 Token、正文长度与失败类型，不保存内部推理正文；失败不推进 coveredThroughSeq。
+
+摘要恢复耗尽后 Run 进入非终态 `BLOCKED`，释放租约并保留会话活动任务、计划、历史和已完成步骤，不取消制作子任务、不进入主模型原参数重试。事件为 `SUMMARY_STARTED`、`SUMMARY_RETRY`、`RUN_BLOCKED`。任务中心和聊天显示需要调整摘要配置。
+
+`GET /agent/runs/{id}` 增加 `summaryRecoverable`、`summaryConfig`、`modelProviderId`、`modelCode`。点击“调整摘要配置并继续”提交 `POST /agent/runs/{id}/resume-summary`，请求体为完整 Summary 配置。接口只允许当前会话最新的摘要阻塞任务，兼容历史 FAILED 且错误恰为“模型摘要无效，历史消息仍保留”的任务；以会话锁和快照比较防止重复恢复或覆盖并发更新。只重新固定摘要模型和摘要配置，主模型、工具/Skill 版本、原历史与覆盖游标、已完成步骤和已消费预算不变。更新记录为 `SUMMARY_CONFIG_UPDATED`，随后同一 Run 进入 QUEUED。普通 `/resume` 不负责更新快照。无需数据库迁移，旧快照缺少新字段时兼容读取。
+
+DeepSeek 模型需要在模型中心显式选择 **DeepSeek Chat** 思考控制协议。声明后摘要关闭思考会发送 `thinking.type=disabled` 和 `reasoning_effort=none`，主任务可继续 high 思考；仅设置较大的输出预算不会自动改变思考行为。恢复旧失败任务会重新读取所选摘要模型的能力，不需要重新执行已完成的业务操作。
+
 `runtime.maxModelTurns=0` 表示模型轮数不限制，正数范围仍为 1–100。配置页提供“不限制”开关并提醒注意 API 额度与余额；执行时限、工具调用次数、单次模型超时及并发限制仍生效。有限轮数默认值不变。配置变更只用于新 Run，同一个失败 Run 重试不会清零已消耗预算。
 
 - 一个 Session 同时只允许一个活动 Run。用户请求用 `(sessionId, clientRequestId)` 幂等，重试返回原消息和任务 ID。
@@ -95,6 +113,7 @@ python scripts/migrate_agent_foundation.py --apply
 | GET | `/agent/runs/{id}/report` | 最终结构化摘要 |
 | POST | `/agent/runs/{id}/cancel` | 取消并中断本地执行 |
 | POST | `/agent/runs/{id}/resume` | 重试当前会话最后一个失败 Run |
+| POST | `/agent/runs/{id}/resume-summary` | 更新当前摘要阻塞任务的摘要配置并继续原 Run |
 | POST | `/agent/runs/{id}/read` | 标记终态通知已读 |
 | GET | `/agent/notifications` | 未读的正式终态任务 |
 

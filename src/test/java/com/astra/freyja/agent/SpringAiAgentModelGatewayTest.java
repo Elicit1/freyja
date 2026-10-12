@@ -26,6 +26,40 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class SpringAiAgentModelGatewayTest {
+    @org.junit.jupiter.api.Test void summaryOverridesActualWireThinkingAndRetainsLengthAndReasoningUsage() throws Exception {
+        var requestBody = new AtomicReference<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            byte[] response = """
+                {"id":"summary-exhausted","object":"chat.completion","created":1730000000,"model":"test-model",
+                 "choices":[{"index":0,"message":{"role":"assistant","content":null,"reasoning_content":"private reasoning"},"finish_reason":"length"}],
+                 "usage":{"prompt_tokens":6600,"completion_tokens":8191,"total_tokens":14791,"completion_tokens_details":{"reasoning_tokens":8191}}}
+                """.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json"); exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response); exchange.close();
+        }); server.start();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var providers = mock(AiProviderMapper.class); var models = mock(AiModelMapper.class);
+            var provider = new AiProvider(); provider.setStatus(1); when(providers.selectById(anyLong())).thenReturn(provider);
+            var entry = new AiModel(); entry.setStatus(1); entry.setModelType("CHAT"); when(models.selectOne(any())).thenReturn(entry);
+            var source = AgentTestSupport.snapshot(List.of(), "NORMAL"); source.config().getModel().setMaxTokens(8192);
+            source.pinnedModel().setParamsJson("{\"capabilities\":{\"contextWindow\":1048576,\"maxOutputTokens\":393216,\"reasoningProtocol\":\"DEEPSEEK_CHAT\"}}");
+            var model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder().apiKey("fixture")
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").model("test-model").maxRetries(0)
+                    .extraBody(java.util.Map.of("thinking", java.util.Map.of("type", "enabled"), "reasoning_effort", "high")).build()).build();
+            var factory = mock(AiModelFactory.class); when(factory.getChatModelForSnapshot(anyLong(), any())).thenReturn(model);
+            var gateway = new SpringAiAgentModelGateway(factory, models, providers, new AgentToolRegistry(List.of()), executor);
+            var summarizer = new com.astra.freyja.agent.memory.AgentMemorySummarizer(gateway, new com.astra.freyja.agent.model.AgentJson());
+            var reply = summarizer.summarize(source, "旧摘要", "新历史", 30000);
+            var wireJson = new com.fasterxml.jackson.databind.ObjectMapper().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
+            var request = wireJson.readTree(requestBody.get());
+            assertEquals("disabled", request.path("thinking").path("type").asText()); assertEquals("none", request.path("reasoning_effort").asText());
+            assertEquals(16384, request.path("max_tokens").asInt()); assertEquals("length", reply.finishReason());
+            assertEquals(8191, reply.reasoningTokens()); assertEquals(8191, reply.completionTokens()); assertTrue(reply.properties().isEmpty());
+            assertEquals(8192, source.config().getModel().getMaxTokens());
+        } finally { server.stop(0); }
+    }
     public record ShotInput(String shotId) {}
     @ParameterizedTest @ValueSource(booleans = {true, false})
     void actualSpringAiHttpAdapterReturnsToolCallsWithoutExecutingThem(boolean includeUsage) throws Exception {

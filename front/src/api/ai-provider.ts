@@ -13,6 +13,9 @@ import type {
  * AI 提供商管理接口
  */
 export const aiProviderApi = {
+  getModelCapabilities(providerId: string) {
+    return request<{ modelCode: string; contextWindow?: number; maxOutputTokens?: number; reasoningEfforts: string[] }[]>({ url: `/ai/provider/${providerId}/model-capabilities`, method: 'get' })
+  },
   // 分页查询提供商
   getPage(params?: AiProviderQuery) {
     return request<PageResult<AiProviderVO>>({

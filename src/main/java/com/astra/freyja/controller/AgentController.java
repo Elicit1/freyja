@@ -8,6 +8,7 @@ import com.astra.freyja.common.R;
 import com.astra.freyja.dto.agent.AgentRequests.*;
 import com.astra.freyja.entity.AgentRun;
 import com.astra.freyja.entity.AgentSession;
+import com.astra.freyja.dto.agent.AgentConfigDTO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
@@ -25,12 +26,16 @@ public class AgentController {
     public record RunView(Long id, Long sessionId, String agentCode, String runType, String status, String objective, int modelTurns,
                           int toolCalls, Long executionMillis, Integer promptTokens, Integer completionTokens,
                           Boolean usageUnknown, Object result, String errorMessage, int configRevision,
-                          LocalDateTime createTime, LocalDateTime finishedAt, LocalDateTime readAt, AgentStore.ProgressView progress) {}
+                          LocalDateTime createTime, LocalDateTime finishedAt, LocalDateTime readAt, AgentStore.ProgressView progress,
+                          boolean summaryRecoverable, AgentConfigDTO.Summary summaryConfig, Long modelProviderId, String modelCode) {}
     public RunView view(AgentRun run) {
+        var snapshot = store.snapshot(run);
         return new RunView(run.getId(), run.getSessionId(), store.session(run.getSessionId()).getAgentCode(), run.getRunType(), run.getStatus(), run.getObjective(),
                 run.getModelTurns(), run.getToolCalls(), run.getExecutionMillis(), run.getPromptTokens(), run.getCompletionTokens(),
                 run.getUsageUnknown(), run.getFinalResultJson() == null ? null : json.read(run.getFinalResultJson(), Map.class),
-                run.getErrorMessage(), run.getConfigRevision(), run.getCreateTime(), run.getFinishedAt(), run.getReadAt(), store.progress(run.getId()));
+                run.getErrorMessage(), run.getConfigRevision(), run.getCreateTime(), run.getFinishedAt(), run.getReadAt(), store.progress(run.getId()),
+                store.summaryRecoverable(run), snapshot.config().getMemory().getSummary(),
+                snapshot.config().getModel().getProviderId(), snapshot.config().getModel().getModelCode());
     }
     @GetMapping("/profiles") public R<List<AgentConfigService.Display>> profiles() { return R.ok(configs.enabled()); }
     @PostMapping("/sessions") public R<AgentSession> create(@RequestBody CreateSession request) { return R.ok(store.createSession(request, "NORMAL")); }
@@ -57,5 +62,8 @@ public class AgentController {
         store.cancel(id); scheduler.interrupt(id); return R.ok();
     }
     @PostMapping("/runs/{id}/resume") public R<Void> resume(@PathVariable Long id) { store.resume(id); return R.ok(); }
+    @PostMapping("/runs/{id}/resume-summary") public R<Void> resumeSummary(@PathVariable Long id, @RequestBody AgentConfigDTO.Summary summary) {
+        store.resumeSummary(id, summary); return R.ok();
+    }
     @PostMapping("/runs/{id}/read") public R<Void> read(@PathVariable Long id) { store.run(id); store.markRead(id); return R.ok(); }
 }

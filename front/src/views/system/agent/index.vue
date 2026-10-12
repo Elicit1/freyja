@@ -31,7 +31,7 @@
               <el-form-item label="AI 提供商"><el-select v-model="form.model.providerId" clearable class="w-full" @change="providerChanged">
                 <el-option v-for="provider in providers" :key="String(provider.id)" :label="provider.providerName" :value="String(provider.id)" />
               </el-select></el-form-item>
-              <el-form-item label="CHAT 模型"><el-select v-model="form.model.modelCode" clearable class="w-full" placeholder="选择支持工具调用的对话模型">
+              <el-form-item label="CHAT 模型"><el-select v-model="form.model.modelCode" clearable class="w-full" placeholder="选择支持工具调用的对话模型" @change="adoptModelBudget">
                 <el-option v-for="model in models" :key="String(model.id)" :label="model.modelName + (capability(model) === false ? ' · 不支持工具调用' : capability(model) === undefined ? ' · 能力待验证' : '')"
                   :value="model.modelCode" :disabled="capability(model) === false && form.tools.names.length > 0" />
               </el-select></el-form-item>
@@ -46,8 +46,12 @@
               <div class="grid grid-cols-2 gap-4">
                 <el-form-item label="Temperature"><el-input-number v-model="form.model.temperature" :min="0" :max="2" :step="0.1" /></el-form-item>
                 <el-form-item label="Top P"><el-input-number v-model="form.model.topP" :min="0.01" :max="1" :step="0.05" /></el-form-item>
-                <el-form-item label="最大输出 Tokens"><el-input-number v-model="form.model.maxTokens" :min="1" :max="32768" :step="512" /></el-form-item>
+                <el-form-item label="输出预算来源"><el-select v-model="form.model.tokenMode" @change="adoptModelBudget"><el-option label="跟随模型建议预算" value="MODEL" /><el-option label="自定义预算" value="CUSTOM" /></el-select></el-form-item>
+                <el-form-item label="最大输出 Tokens"><el-input-number v-model="form.model.maxTokens" :disabled="form.model.tokenMode === 'MODEL'" :min="1" :max="selectedCaps.maxOutputTokens || 2147483647" :step="1024" /></el-form-item>
+                <el-form-item label="主任务思考强度"><el-select v-model="form.model.reasoningMode"><el-option v-for="mode in reasoningModes" :key="mode.value" :value="mode.value" :label="mode.label" :disabled="!supportsReasoning(mode.value, selectedCaps)" /></el-select></el-form-item>
               </div>
+              <p class="field-hint">模型上下文能力：{{ selectedCaps.contextWindow || '未声明' }}；最大输出能力：{{ selectedCaps.maxOutputTokens || '未声明' }}。思考 Token 也会占用输出预算，请注意余额。</p>
+              <el-button size="small" class="mt-3" @click="longTaskDefaults">采用长任务建议预算</el-button>
             </el-form>
           </el-tab-pane>
           <el-tab-pane label="系统指令" name="instructions">
@@ -78,10 +82,12 @@
             <el-form label-position="top">
               <el-form-item label="自动压缩历史摘要"><el-switch v-model="form.memory.summaryEnabled" /></el-form-item>
               <el-form-item label="近期历史窗口"><el-input-number v-model="form.memory.recentMessages" :min="4" :max="200" /></el-form-item>
-              <el-form-item label="上下文预算 Tokens"><el-input-number v-model="form.memory.contextTokens" :min="2048" :max="100000" :step="1024" /></el-form-item>
+              <el-form-item label="上下文预算 Tokens"><el-input-number v-model="form.memory.contextTokens" :min="2048" :max="selectedCaps.contextWindow || 2147483647" :step="1024" /></el-form-item>
               <el-form-item label="明确规则作用域"><el-checkbox-group v-model="form.memory.scopes"><el-checkbox value="SESSION">会话规则</el-checkbox><el-checkbox value="PROJECT">当前项目规则</el-checkbox></el-checkbox-group></el-form-item>
               <p class="field-hint">历史与明确规则保存到 MySQL。更改策略不会删除记忆；工具调用及结果始终成对保留。</p>
             </el-form>
+            <el-divider>独立摘要策略</el-divider>
+            <AgentSummarySettings v-model="form.memory.summary" :providers="providers" :main-provider-id="form.model.providerId" :main-model-code="form.model.modelCode" />
           </el-tab-pane>
           <el-tab-pane label="执行参数" name="runtime">
             <el-form label-position="top" class="grid grid-cols-2 gap-x-5">
@@ -137,6 +143,8 @@ import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus
 import { ChatDotRound } from '@element-plus/icons-vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import AgentAvatarMedia from '@/components/agent/AgentAvatarMedia.vue'
+import AgentSummarySettings from '@/components/agent/AgentSummarySettings.vue'
+import { modelCapabilities, reasoningModes, supportsReasoning } from '@/components/agent/modelCapabilities'
 import { freyjaDefaultPet, freyjaPetDownload, petRows } from '@/components/agent/avatarPresets'
 import { agentConfigApi } from '@/api/agent'
 import { aiProviderApi } from '@/api/ai-provider'
@@ -154,6 +162,21 @@ const validation = ref<ValidationResult>()
 const saved = ref('')
 const revealAvatarOnSave = ref(false)
 const dirty = computed(() => !!form.value && JSON.stringify(form.value) !== saved.value)
+const selectedModel = computed(() => models.value.find(model => model.modelCode === form.value?.model.modelCode))
+const selectedCaps = computed(() => modelCapabilities(selectedModel.value))
+function adoptModelBudget() {
+  if (!form.value || form.value.model.tokenMode !== 'MODEL') return
+  const caps = selectedCaps.value
+  const recommended = caps.recommendedOutputTokens || selectedModel.value?.maxTokens || 65536
+  form.value.model.maxTokens = Math.min(recommended, caps.maxOutputTokens || 2147483647, caps.contextWindow ? Math.floor(caps.contextWindow / 4) : 2147483647)
+  form.value.memory.contextTokens = Math.min(caps.contextWindow || 2147483647, Math.max(form.value.memory.contextTokens, form.value.model.maxTokens * 4))
+}
+function longTaskDefaults() {
+  if (!form.value) return
+  form.value.model.tokenMode = 'CUSTOM'
+  form.value.model.maxTokens = Math.min(65536, selectedCaps.value.maxOutputTokens || 2147483647, selectedCaps.value.contextWindow ? Math.floor(selectedCaps.value.contextWindow / 4) : 2147483647)
+  form.value.memory.contextTokens = Math.min(selectedCaps.value.contextWindow || 2147483647, Math.max(262144, form.value.model.maxTokens * 4))
+}
 const lastLimitedModelTurns = ref(60)
 const unlimitedModelTurns = computed({
   get: () => form.value?.runtime.maxModelTurns === 0,
@@ -188,6 +211,7 @@ async function load(code: string) {
     form.value = config; catalog.value = directory; selectedCode.value = code; validation.value = undefined
     saved.value = JSON.stringify(config); revealAvatarOnSave.value = false
     models.value = config.model.providerId ? await aiProviderApi.getModelList(config.model.providerId, 'CHAT') : []
+    if (form.value.model.tokenMode === 'MODEL') adoptModelBudget()
   } finally { loading.value = false }
 }
 async function reload() { if (selectedCode.value && await confirmDiscard()) await load(selectedCode.value) }

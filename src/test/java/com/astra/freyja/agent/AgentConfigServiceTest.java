@@ -63,6 +63,19 @@ class AgentConfigServiceTest {
         assertFalse(json.write(snapshot).contains("do-not-copy"));
         assertTrue(snapshot.pinnedModel().getParamsJson().contains("42"));
     }
+    @Test void modelDrivenBudgetsUseDeclaredCapabilitiesWithoutTheOld32768Ceiling() {
+        model.setMaxTokens(8192);
+        model.setParamsJson("{\"capabilities\":{\"toolCalling\":true,\"contextWindow\":1048576,\"maxOutputTokens\":393216,\"recommendedOutputTokens\":65536,\"reasoningProtocol\":\"DEEPSEEK_CHAT\",\"reasoningEfforts\":[\"low\",\"high\",\"max\"]},\"api_key\":\"never-pin\"}");
+        config.getModel().setTokenMode("MODEL"); config.getModel().setMaxTokens(8192); config.getMemory().setContextTokens(262144);
+        assertTrue(validator.validate("core-assistant", config, true).valid());
+        var snapshot = service.snapshot("core-assistant", config, "NORMAL");
+        assertEquals(65536, snapshot.config().getModel().getMaxTokens()); assertEquals(8192, config.getModel().getMaxTokens());
+        assertTrue(snapshot.pinnedModel().getParamsJson().contains("1048576")); assertFalse(json.write(snapshot).contains("never-pin"));
+        config.getModel().setTokenMode("CUSTOM"); config.getModel().setMaxTokens(393217);
+        assertTrue(validator.validate("core-assistant", config, true).errors().stream().anyMatch(e -> e.field().equals("model.maxTokens")));
+        config.getModel().setMaxTokens(65536); config.getMemory().setContextTokens(1048577);
+        assertTrue(validator.validate("core-assistant", config, true).errors().stream().anyMatch(e -> e.field().equals("memory.contextTokens")));
+    }
     @Test void replyModeRoundTripsAndIsPinnedWhileLegacySnapshotsStayComplete() {
         var legacy = json.read("{\"providerId\":\"2032095628944588804\",\"modelCode\":\"test-model\"}", AgentConfigDTO.Model.class);
         assertEquals("COMPLETE", legacy.getOutputMode());
@@ -108,6 +121,9 @@ class AgentConfigServiceTest {
         assertFalse(validator.validate("core-assistant", config, true).valid());
     }
     @Test void nullNestedValuesAndUnsafeAvatarReferencesReturnFieldErrors() {
+        config.getModel().setTokenMode(null);
+        assertTrue(validator.validate("core-assistant", config, true).errors().stream().anyMatch(e -> e.field().equals("model.tokenMode")));
+        config.getModel().setTokenMode("CUSTOM");
         config.getTools().setNames(new ArrayList<>(java.util.Arrays.asList((String) null)));
         assertFalse(validator.validate("core-assistant", config, true).valid());
         var media = new AgentConfigDTO.StateMedia(); media.setUrl("javascript:alert(1)"); media.setContentType("image/gif");
@@ -137,7 +153,7 @@ class AgentConfigServiceTest {
         assertEquals(config.getModel().getProviderId(), result.getModel().getProviderId()); assertEquals(config.getModel().getModelCode(), result.getModel().getModelCode());
         assertEquals(config.getAvatar().getPet().getSpritesheetUrl(), result.getAvatar().getPet().getSpritesheetUrl());
         assertTrue(result.getTools().getNames().containsAll(List.of("list_project_assets", "start_script_decomposition", "inspect_preparation")));
-        assertEquals(48000, result.getMemory().getContextTokens()); assertEquals(60, result.getRuntime().getMaxModelTurns());
+        assertEquals(262144, result.getMemory().getContextTokens()); assertEquals(60, result.getRuntime().getMaxModelTurns());
         assertTrue(result.getInstructions().getSystemPrompt().contains("角色造型保持一致"));
         verify(mapper, times(1)).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
     }

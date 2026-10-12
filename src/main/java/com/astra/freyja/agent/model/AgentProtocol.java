@@ -7,7 +7,7 @@ import java.util.Map;
 public final class AgentProtocol {
     private AgentProtocol() {}
     public enum RunStatus {
-        QUEUED, RUNNING, WAITING_TASK, WAITING_USER, CANCELLING,
+        QUEUED, RUNNING, WAITING_TASK, WAITING_USER, BLOCKED, CANCELLING,
         COMPLETED, PARTIAL_SUCCESS, FAILED, CANCELLED;
         public boolean terminal() {
             return this == COMPLETED || this == PARTIAL_SUCCESS || this == FAILED || this == CANCELLED;
@@ -18,10 +18,23 @@ public final class AgentProtocol {
     public record Snapshot(String agentCode, int configRevision, int profileVersion,
                            AgentConfigDTO config, String fixedInstructions,
                            Map<String, Long> skillVersions, Map<String, Integer> toolVersions,
-                           com.astra.freyja.entity.AiModel pinnedModel, String runType) {}
+                           com.astra.freyja.entity.AiModel pinnedModel, String runType,
+                           com.astra.freyja.entity.AiModel summaryModel) {
+        public Snapshot(String agentCode, int configRevision, int profileVersion, AgentConfigDTO config,
+                        String fixedInstructions, Map<String, Long> skillVersions, Map<String, Integer> toolVersions,
+                        com.astra.freyja.entity.AiModel pinnedModel, String runType) {
+            this(agentCode, configRevision, profileVersion, config, fixedInstructions, skillVersions, toolVersions, pinnedModel, runType, null);
+        }
+    }
     public record ToolCall(String id, String name, String arguments) {}
     public record ModelReply(String content, List<ToolCall> toolCalls, Map<String, Object> properties,
-                             Integer promptTokens, Integer completionTokens, String responseId) {}
+                             Integer promptTokens, Integer completionTokens, String responseId,
+                             String finishReason, Integer reasoningTokens) {
+        public ModelReply(String content, List<ToolCall> toolCalls, Map<String, Object> properties,
+                          Integer promptTokens, Integer completionTokens, String responseId) {
+            this(content, toolCalls, properties, promptTokens, completionTokens, responseId, null, null);
+        }
+    }
     public record MessageBody(String content, List<ToolCall> toolCalls, Map<String, Object> properties,
                               String toolName, Object result, Long modelStepId) {
         public static MessageBody text(String content) {

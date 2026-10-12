@@ -73,6 +73,7 @@ class AgentContextBuilderTest {
         var memory = mock(com.astra.freyja.agent.memory.AgentMemoryService.class);
         var summarizer = mock(com.astra.freyja.agent.memory.AgentMemorySummarizer.class);
         when(store.snapshot(run)).thenReturn(snapshot); when(store.session(session.getId())).thenReturn(session);
+        when(store.run(run.getId())).thenReturn(run);
         var plan = new com.astra.freyja.agent.model.AgentTaskPlan("仍需保存分镜", List.of(
                 new com.astra.freyja.agent.model.AgentTaskPlan.Item("save", "保存分镜", com.astra.freyja.agent.model.AgentTaskPlan.Status.IN_PROGRESS)));
         when(store.latestTaskPlan(run.getId())).thenReturn(plan);
@@ -80,7 +81,7 @@ class AgentContextBuilderTest {
         var result = row(3, "TOOL_RESULT", new MessageBody(null, List.of(), Map.of(), "read", ToolResult.success("x".repeat(3600)), 10L), "a");
         var latest = row(4, "ASSISTANT", new MessageBody("继续", List.of(), Map.of("reasoningContent", "latest reasoning"), null, null, 11L), null);
         when(store.modelHistory(session.getId(), 0)).thenReturn(List.of(row(1, "USER", MessageBody.text("目标"), null), assistant, result, latest));
-        var summary = new ModelReply("已完成查询，继续按目标处理。", List.of(), Map.of(), 1, 1, null);
+        var summary = new ModelReply("已完成查询，继续按目标处理。", List.of(), Map.of(), 1, 1, null, "stop", null);
         when(summarizer.summarize(eq(snapshot), any(), anyString(), anyLong())).thenReturn(summary);
         doAnswer(i -> { session.setSummary(summary.content()); session.setCoveredThroughSeq(i.getArgument(4)); return null; })
                 .when(store).saveSummary(anyLong(), anyString(), anyInt(), anyInt(), anyInt(), any(), anyLong());

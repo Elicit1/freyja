@@ -3,6 +3,7 @@ package com.astra.freyja.agent.runtime;
 import com.astra.freyja.agent.context.AgentContextBuilder;
 import com.astra.freyja.agent.gateway.AgentModelGateway;
 import com.astra.freyja.agent.model.AgentJson;
+import com.astra.freyja.agent.model.SummaryBlockedException;
 import com.astra.freyja.agent.model.AgentProtocol.*;
 import com.astra.freyja.agent.profile.AgentProfileRegistry;
 import com.astra.freyja.agent.tool.AgentToolExecutor;
@@ -80,6 +81,10 @@ public class AgentRuntime {
                         break;
                     } catch (AgentStore.LeaseLost lost) { throw lost; }
                     catch (java.util.concurrent.CancellationException cancelled) { throw cancelled; }
+                    catch (SummaryBlockedException blocked) {
+                        store.blockSummary(id, owner, epoch, blocked.code(), blocked.getMessage(), unrecordedElapsed(id, recordedBefore, start));
+                        return;
+                    }
                     catch (RuntimeException error) {
                         attempts++;
                         store.modelAttemptFailed(id, owner, epoch, modelStep.getId(), error.getMessage(), unrecordedElapsed(id, recordedBefore, start));

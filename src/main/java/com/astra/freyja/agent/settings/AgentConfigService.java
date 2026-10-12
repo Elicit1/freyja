@@ -1,6 +1,7 @@
 package com.astra.freyja.agent.settings;
 
 import com.astra.freyja.agent.model.AgentJson;
+import com.astra.freyja.agent.model.ChatModelCapabilities;
 import com.astra.freyja.agent.model.AgentProtocol.*;
 import com.astra.freyja.agent.profile.AgentProfileRegistry;
 import com.astra.freyja.agent.tool.AgentToolRegistry;
@@ -158,6 +159,7 @@ public class AgentConfigService {
         var profile = profiles.require(code);
         AiModel model = models.selectOne(new LambdaQueryWrapper<AiModel>()
                 .eq(AiModel::getProviderId, config.getModel().getProviderId()).eq(AiModel::getModelCode, config.getModel().getModelCode()));
+        if ("MODEL".equals(config.getModel().getTokenMode())) config.getModel().setMaxTokens(ChatModelCapabilities.from(model).recommended(model));
         if (config.getModel().getTemperature() == null) config.getModel().setTemperature(model.getTemperature());
         if (config.getModel().getTopP() == null) config.getModel().setTopP(model.getTopP());
         AiModel pinned = new AiModel();
@@ -167,7 +169,7 @@ public class AgentConfigService {
         Map<String, Object> parameters = new LinkedHashMap<>();
         if (model.getParamsJson() != null && !model.getParamsJson().isBlank()) {
             Map<?, ?> original = json.read(model.getParamsJson(), Map.class);
-            for (String key : List.of("frequency_penalty", "presence_penalty", "stop", "seed", "top_k", "repeat_penalty")) {
+            for (String key : List.of("frequency_penalty", "presence_penalty", "stop", "seed", "top_k", "repeat_penalty", "capabilities", "thinking", "reasoning_effort", "think")) {
                 if (original.get(key) != null) parameters.put(key, original.get(key));
             }
         }
@@ -184,7 +186,20 @@ public class AgentConfigService {
         config.getTools().getNames().forEach(name -> toolVersions.put(name, tools.require(name).version()));
         config.setExpectedRevision(null);
         return new Snapshot(code, input.getRevision() == null ? 0 : input.getRevision(), profile.version(), config,
-                profile.fixedInstructions(), Map.copyOf(versions), Map.copyOf(toolVersions), pinned, type);
+                profile.fixedInstructions(), Map.copyOf(versions), Map.copyOf(toolVersions), pinned, type, pinSummaryModel(config.getMemory().getSummary(), pinned));
+    }
+    public AiModel pinSummaryModel(AgentConfigDTO.Summary summary, AiModel main) {
+        if (summary.getProviderId() == null) return main;
+        var entry = models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId, summary.getProviderId()).eq(AiModel::getModelCode, summary.getModelCode()));
+        if (entry == null || !Integer.valueOf(1).equals(entry.getStatus()) || !"CHAT".equals(entry.getModelType())) throw new BizException("摘要模型已不可用");
+        var pinned = new AiModel(); pinned.setProviderId(summary.getProviderId()); pinned.setModelCode(entry.getModelCode()); pinned.setModelType("CHAT"); pinned.setStatus(1);
+        pinned.setTemperature(entry.getTemperature()); pinned.setTopP(entry.getTopP()); pinned.setMaxTokens(summary.getMaxTokens());
+        Map<String, Object> parameters = new LinkedHashMap<>();
+        if (entry.getParamsJson() != null && !entry.getParamsJson().isBlank()) {
+            var original = json.read(entry.getParamsJson(), Map.class);
+            for (String key : List.of("capabilities", "thinking", "reasoning_effort", "think", "seed")) if (original.get(key) != null) parameters.put(key, original.get(key));
+        }
+        pinned.setParamsJson(json.write(parameters)); return pinned;
     }
     private AgentConfig toEntity(String code, AgentConfigDTO dto, int revision) {
         AgentConfig item = new AgentConfig();

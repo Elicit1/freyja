@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { taskCenterApi, type TaskCenterItem } from '@/api/task-center'
 import type { AgentEvent, AgentStreamEvent } from '@/types/agent'
 
-const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RENDERING', 'WAITING_TASK', 'WAITING_USER', 'CANCELLING'])
+const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RENDERING', 'WAITING_TASK', 'WAITING_USER', 'BLOCKED', 'CANCELLING'])
 
 export interface PromptEvent {
   taskId: string

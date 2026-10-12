@@ -139,6 +139,13 @@ class AgentRuntimeTest {
         verify(gateway).call(any(), anyList(), anyList(), anyLong());
         assertEquals("COMPLETED", run.getStatus()); assertEquals(501, run.getModelTurns());
     }
+    @Test void summaryBlockDoesNotRetryMainModelOrFailCompletedBusinessWork() {
+        when(context.build(any(), anyString(), anyInt())).thenThrow(new com.astra.freyja.agent.model.SummaryBlockedException("TRUNCATED", "请调整摘要配置"));
+        runtime.execute(run.getId(), "test-owner", 1);
+        verify(store).blockSummary(eq(run.getId()), eq("test-owner"), eq(1), eq("TRUNCATED"), eq("请调整摘要配置"), anyLong());
+        verify(store, never()).modelAttemptFailed(anyLong(), anyString(), anyInt(), anyLong(), anyString(), anyLong());
+        verify(store, never()).fail(anyLong(), anyString(), anyInt(), anyString()); verifyNoInteractions(gateway, tools);
+    }
     @Test void unlimitedModelTurnsStillRespectExecutionAndToolBudgets() {
         store.snapshot(run).config().getRuntime().setMaxModelTurns(0);
         run.setExecutionMillis(900000L);

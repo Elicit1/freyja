@@ -22,7 +22,8 @@ public class ProductionPreparationProfile implements AgentProfile {
     public AgentConfigDTO defaults() {
         var c = AgentProfile.super.defaults(); c.setDisplayName("分镜制作准备"); c.setDescription("自动拆解小说、整理文字资产、选择分镜模式与参考素材，交付缺图清单");
         c.getRuntime().setMaxModelTurns(60); c.getRuntime().setMaxToolCalls(150); c.getRuntime().setExecutionTimeoutSeconds(1800);
-        c.getMemory().setContextTokens(48000); c.getMemory().setRecentMessages(10); c.getModel().setMaxTokens(8192); return c;
+        c.getMemory().setContextTokens(262144); c.getMemory().setRecentMessages(10);
+        c.getModel().setMaxTokens(65536); c.getModel().setTokenMode("MODEL"); return c;
     }
     public String fixedInstructions() {
         return """

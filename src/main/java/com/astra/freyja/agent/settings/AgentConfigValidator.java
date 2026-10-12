@@ -9,6 +9,7 @@ import com.astra.freyja.dao.AiProviderMapper;
 import com.astra.freyja.dto.agent.AgentConfigDTO;
 import com.astra.freyja.dto.agent.AgentRequests.*;
 import com.astra.freyja.entity.AiModel;
+import com.astra.freyja.agent.model.ChatModelCapabilities;
 import com.astra.freyja.skill.service.SkillCatalogService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +63,7 @@ public class AgentConfigValidator {
                 && (names == null || !names.containsAll(List.of("load_skill", "read_skill_file"))))
             errors.add(issue("skills.dynamicLoading", "MISSING_TOOLS", "按需加载 Skill 需要启用两个 Skill 工具"));
         var model = config.getModel();
+        AiModel selected = null;
         if (!Set.of("STREAM", "COMPLETE").contains(java.util.Objects.toString(model.getOutputMode(), "")))
             errors.add(issue("model.outputMode", "ENUM", "请选择流式输出或完整回复"));
         boolean hasModel = model.getProviderId() != null || (model.getModelCode() != null && !model.getModelCode().isBlank());
@@ -72,6 +74,7 @@ public class AgentConfigValidator {
                 var provider = providers.selectById(model.getProviderId());
                 AiModel entry = models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId, model.getProviderId())
                         .eq(AiModel::getModelCode, model.getModelCode()));
+                selected = entry;
                 if (provider == null || !Integer.valueOf(1).equals(provider.getStatus()) || entry == null
                         || !Integer.valueOf(1).equals(entry.getStatus()) || !"CHAT".equals(entry.getModelType())) {
                     errors.add(issue("model", "INVALID_MODEL", "提供商和 CHAT 模型必须存在且启用"));
@@ -86,12 +89,42 @@ public class AgentConfigValidator {
             errors.add(issue("model.temperature", "RANGE", "temperature 范围为 0–2"));
         if (model.getTopP() != null && (!Double.isFinite(model.getTopP()) || model.getTopP() <= 0 || model.getTopP() > 1))
             errors.add(issue("model.topP", "RANGE", "topP 范围为 (0, 1]"));
-        range(errors, "model.maxTokens", model.getMaxTokens(), 1, 32768);
+        var capabilities = ChatModelCapabilities.from(selected);
+        if (!Set.of("MODEL", "CUSTOM").contains(java.util.Objects.toString(model.getTokenMode(), ""))) errors.add(issue("model.tokenMode", "ENUM", "请选择模型预算或自定义预算"));
+        int output = "MODEL".equals(model.getTokenMode()) ? capabilities.recommended(selected) : model.getMaxTokens() == null ? 0 : model.getMaxTokens();
+        if ("CUSTOM".equals(model.getTokenMode())) range(errors, "model.maxTokens", model.getMaxTokens(), 1, capabilities.outputLimit());
+        validateReasoning(errors, warnings, "model.reasoningMode", model.getReasoningMode(), capabilities);
         var memory = config.getMemory();
         range(errors, "memory.recentMessages", memory.getRecentMessages(), 4, 200);
-        range(errors, "memory.contextTokens", memory.getContextTokens(), 2048, 100000);
-        if (model.getMaxTokens() != null && model.getMaxTokens() >= memory.getContextTokens())
+        range(errors, "memory.contextTokens", memory.getContextTokens(), 2048, capabilities.contextLimit());
+        if (output >= memory.getContextTokens())
             errors.add(issue("memory.contextTokens", "OUTPUT_BUDGET", "上下文预算必须大于最大输出 Token 数"));
+        var summary = memory.getSummary();
+        if (summary == null) errors.add(issue("memory.summary", "REQUIRED", "摘要配置不能为空"));
+        else {
+            AiModel summaryModel = selected;
+            if ((summary.getProviderId() == null) != (summary.getModelCode() == null || summary.getModelCode().isBlank()))
+                errors.add(issue("memory.summary.model", "REQUIRED", "摘要模型需要同时选择提供商和模型"));
+            if (summary.getProviderId() != null) {
+                var provider = providers.selectById(summary.getProviderId());
+                summaryModel = models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId, summary.getProviderId())
+                        .eq(AiModel::getModelCode, summary.getModelCode()));
+                if (provider == null || !Integer.valueOf(1).equals(provider.getStatus()) || summaryModel == null
+                        || !Integer.valueOf(1).equals(summaryModel.getStatus()) || !"CHAT".equals(summaryModel.getModelType()))
+                    errors.add(issue("memory.summary.model", "INVALID_MODEL", "摘要提供商和 CHAT 模型必须启用"));
+            }
+            var summaryCaps = ChatModelCapabilities.from(summaryModel);
+            range(errors, "memory.summary.maxTokens", summary.getMaxTokens(), 1, Integer.MAX_VALUE);
+            range(errors, "memory.summary.retryMaxTokens", summary.getRetryMaxTokens(), summary.getMaxTokens(), Integer.MAX_VALUE);
+            range(errors, "memory.summary.timeoutSeconds", summary.getTimeoutSeconds(), 5, 1800);
+            range(errors, "memory.summary.targetCharacters", summary.getTargetCharacters(), 100, 12000);
+            range(errors, "memory.summary.maxCharacters", summary.getMaxCharacters(), summary.getTargetCharacters(), 24000);
+            range(errors, "memory.summary.maxRetries", summary.getMaxRetries(), 0, 3);
+            validateReasoning(errors, warnings, "memory.summary.reasoningMode", summary.getReasoningMode(), summaryCaps);
+            if (summary.getMaxTokens() > summaryCaps.outputLimit()) warnings.add(issue("memory.summary.maxTokens", "CLAMPED", "摘要输出预算将按模型能力收敛"));
+        }
+        if (selected != null && (capabilities.contextWindow() == null || capabilities.maxOutputTokens() == null))
+            warnings.add(issue("model", "CAPABILITIES_UNKNOWN", "模型能力上限未声明，请在模型中心同步或填写"));
         if (memory.getScopes() == null || memory.getScopes().stream().anyMatch(s -> s == null || !Set.of("SESSION", "PROJECT").contains(s)))
             errors.add(issue("memory.scopes", "ENUM", "仅支持 SESSION/PROJECT 规则"));
         var runtime = config.getRuntime();
@@ -143,6 +176,14 @@ public class AgentConfigValidator {
         } catch (RuntimeException e) { return null; }
     }
     private static ValidationIssue issue(String field, String code, String message) { return new ValidationIssue(field, code, message); }
+    private static void validateReasoning(List<ValidationIssue> errors, List<ValidationIssue> warnings, String field, String mode, ChatModelCapabilities caps) {
+        if (mode == null || !Set.of("INHERIT", "DISABLED", "LOW", "MEDIUM", "HIGH", "MAX").contains(mode)) {
+            errors.add(issue(field, "ENUM", "请选择有效的思考模式")); return;
+        }
+        if (!"INHERIT".equals(mode) && "NONE".equals(caps.reasoningProtocol()))
+            warnings.add(issue(field, "REASONING_UNDECLARED", "模型未声明思考控制协议，无法覆盖其默认思考行为"));
+        try { caps.reasoningExtras(mode); } catch (com.astra.freyja.common.BizException e) { errors.add(issue(field, "UNSUPPORTED", e.getMessage())); }
+    }
     private static void text(List<ValidationIssue> errors, String field, String value, int max) {
         if (value == null || value.isBlank() || value.length() > max)
             errors.add(issue(field, "REQUIRED_OR_SIZE", "不能为空且长度不得超过 " + max));

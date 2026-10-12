@@ -50,6 +50,7 @@ const planLabels = { PENDING: '待执行', IN_PROGRESS: '进行中', COMPLETED: 
 const toolLabels: Record<string, string> = { PENDING: '待执行', RUNNING: '进行中', WAITING_EXTERNAL: '执行中', WAITING_USER: '需要回答', SUCCEEDED: '已完成', FAILED: '失败', CANCELLED: '已停止' }
 const currentOperation = computed(() => {
   if (props.run.status === 'WAITING_USER') return '需要你的回答，之后继续当前计划'
+  if (props.run.status === 'BLOCKED') return '历史压缩需要调整配置，已完成的进度仍保留'
   if (props.run.status === 'QUEUED') return '目标已接收，准备执行'
   if (props.run.status === 'CANCELLING') return '正在停止后续操作'
   const tool = [...tools.value].reverse().find(item => ['RUNNING', 'WAITING_EXTERNAL'].includes(item.status))

@@ -11,17 +11,22 @@
       <span v-if="run.usageUnknown"> · Token 用量不完整</span>
       <span v-else> · {{ (run.promptTokens || 0) + (run.completionTokens || 0) }} Tokens</span>
     </div>
-    <el-button v-if="run.status === 'FAILED'" size="small" class="mt-3" @click="resume">重试此任务</el-button>
+    <el-button v-if="run.summaryRecoverable" size="small" type="primary" class="mt-3" @click="summaryRecoveryVisible = true">调整摘要配置并继续</el-button>
+    <el-button v-else-if="run.status === 'FAILED'" size="small" class="mt-3" @click="resume">重试此任务</el-button>
+    <AgentSummaryRecoveryDialog v-if="run.summaryRecoverable" v-model="summaryRecoveryVisible" :run="run" @refreshed="emit('refreshed')" />
     <ProductionReportCard :run="run" />
   </div>
 </template>
 <script setup lang="ts">
 import { agentApi } from '@/api/agent'
+import { ref } from 'vue'
+import AgentSummaryRecoveryDialog from './AgentSummaryRecoveryDialog.vue'
 import { agentStatusLabels, type AgentRun, type AgentTaskActivity } from '@/types/agent'
 import AgentTaskProgress from './AgentTaskProgress.vue'
 import ProductionReportCard from './ProductionReportCard.vue'
 const props = defineProps<{ run?: AgentRun; activities?: Record<string, AgentTaskActivity> }>()
 const emit = defineEmits<{ refreshed: [] }>()
+const summaryRecoveryVisible = ref(false)
 async function resume() { if (props.run) { await agentApi.resume(props.run.id); emit('refreshed') } }
 </script>
 <style scoped>

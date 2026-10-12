@@ -1,5 +1,7 @@
 # AI 提供商管理接口文档 (ai-provider-api)
 
+对话模型能力新增 `GET /ai/provider/{id}/model-capabilities`：只读查询该已启用提供商的标准 `/models`（404 时尝试 `/v1/models`），返回 `{ modelCode, contextWindow?, maxOutputTokens?, reasoningEfforts }[]`。响应只包含明确返回的能力，不推断未知值、不保存模型。UI 读取后需确认并保存 `paramsJson.capabilities`；思考协议与输出预算参数必须显式选择。字段及 Agent 独立摘要和恢复机制见 [Agent 接口文档](agent-api.md)。
+
 > 供前端及其他 AI 模块对接使用。基路径默认 `http://127.0.0.1:8080`（以实际后端端口为准）。
 > 所有接口统一返回 `R<T>` 结构，详情见"统一返回结构"。
 

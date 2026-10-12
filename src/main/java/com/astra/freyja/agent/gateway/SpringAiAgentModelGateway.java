@@ -1,6 +1,7 @@
 package com.astra.freyja.agent.gateway;
 
 import com.astra.freyja.agent.model.AgentProtocol.*;
+import com.astra.freyja.agent.model.ChatModelCapabilities;
 import com.astra.freyja.agent.tool.AgentToolRegistry;
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.AiModelMapper;
@@ -55,19 +56,36 @@ public class SpringAiAgentModelGateway implements AgentModelGateway {
         if (model.getOptions() instanceof OpenAiChatOptions defaults) {
             var builder = defaults.mutate().model(settings.getModelCode()).temperature(settings.getTemperature())
                     .topP(settings.getTopP()).maxTokens(settings.getMaxTokens()).toolCallbacks(definitions);
+            if ("max_completion_tokens".equals(ChatModelCapabilities.from(snapshot.pinnedModel()).outputTokenParameter()))
+                builder.maxTokens(null).maxCompletionTokens(settings.getMaxTokens());
+            else builder.maxCompletionTokens(null);
+            var extras = new java.util.LinkedHashMap<String, Object>();
+            if (defaults.getExtraBody() != null) extras.putAll(defaults.getExtraBody());
+            extras.putAll(ChatModelCapabilities.from(snapshot.pinnedModel()).reasoningExtras(settings.getReasoningMode()));
+            if (extras.get("reasoning_effort") instanceof String effort) { builder.reasoningEffort(effort); extras.remove("reasoning_effort"); }
+            builder.extraBody(extras);
             if (onText != null) {
                 builder.streamUsage(true);
                 if (ReasoningReplay.needed(messages)) {
                     var extra = new java.util.LinkedHashMap<String, Object>();
-                    if (defaults.getExtraBody() != null) extra.putAll(defaults.getExtraBody());
+                    extra.putAll(extras);
                     extra.put(ReasoningReplay.STREAM_REPLAY_FIELD, ReasoningReplay.messages(messages));
                     builder.extraBody(extra);
                 }
             }
             options = builder.build();
         } else if (model.getOptions() instanceof OllamaChatOptions defaults) {
-            options = defaults.mutate().model(settings.getModelCode()).temperature(settings.getTemperature())
-                    .topP(settings.getTopP()).numPredict(settings.getMaxTokens()).toolCallbacks(definitions).build();
+            var builder = defaults.mutate().model(settings.getModelCode()).temperature(settings.getTemperature())
+                    .topP(settings.getTopP()).numPredict(settings.getMaxTokens()).toolCallbacks(definitions);
+            if (!"INHERIT".equals(settings.getReasoningMode()) && "OLLAMA".equals(ChatModelCapabilities.from(snapshot.pinnedModel()).reasoningProtocol()))
+                switch (settings.getReasoningMode()) {
+                    case "DISABLED" -> builder.disableThinking();
+                    case "LOW" -> builder.thinkLow();
+                    case "MEDIUM" -> builder.thinkMedium();
+                    case "HIGH", "MAX" -> builder.thinkHigh();
+                    default -> builder.enableThinking();
+                }
+            options = builder.build();
         } else throw new BizException("Agent 模型适配器不支持当前提供商参数类型");
         // Spring AI 2.0 ChatModel.call returns tool requests. No ToolCallAdvisor is installed.
         Future<ChatResponse> pending = agentModelExecutor.submit(() -> {
@@ -102,7 +120,9 @@ public class SpringAiAgentModelGateway implements AgentModelGateway {
                     c.id() == null || c.id().isBlank() ? "call_" + java.util.UUID.randomUUID() : c.id(), c.name(), c.arguments())).toList();
             return new ModelReply(output.getText(), calls, output.getMetadata() == null ? Map.of() : output.getMetadata(),
                     knownUsage ? usage.getPromptTokens() : null, knownUsage ? usage.getCompletionTokens() : null,
-                    response.getMetadata() == null ? null : response.getMetadata().getId());
+                    response.getMetadata() == null ? null : response.getMetadata().getId(),
+                    response.getResult().getMetadata().getFinishReason() == null ? null
+                            : response.getResult().getMetadata().getFinishReason().toLowerCase(java.util.Locale.ROOT), reasoningTokens(usage));
         } catch (InterruptedException e) {
             pending.cancel(true); Thread.currentThread().interrupt(); throw new CancellationException("模型请求已中断");
         } catch (TimeoutException e) {
@@ -111,5 +131,11 @@ public class SpringAiAgentModelGateway implements AgentModelGateway {
             Throwable cause = e.getCause();
             throw cause instanceof RuntimeException runtime ? runtime : new BizException("模型调用失败");
         }
+    }
+    private Integer reasoningTokens(org.springframework.ai.chat.metadata.Usage usage) {
+        if (usage == null || usage.getNativeUsage() == null) return null;
+        var node = new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(usage.getNativeUsage());
+        var count = node.path("completion_tokens_details").path("reasoning_tokens");
+        return count.isIntegralNumber() && count.canConvertToInt() ? count.intValue() : null;
     }
 }

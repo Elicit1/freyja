@@ -4,6 +4,7 @@ import com.astra.freyja.agent.memory.AgentMemoryService;
 import com.astra.freyja.agent.memory.AgentMemorySummarizer;
 import com.astra.freyja.agent.model.AgentJson;
 import com.astra.freyja.agent.model.AgentProtocol.*;
+import com.astra.freyja.agent.model.SummaryBlockedException;
 import com.astra.freyja.agent.runtime.AgentStore;
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.entity.AgentMessage;
@@ -56,7 +57,8 @@ public class AgentContextBuilder {
         int budget = snapshot.config().getMemory().getContextTokens();
         int keep = snapshot.config().getMemory().getRecentMessages();
         int outputReserve = snapshot.config().getModel().getMaxTokens();
-        while (needsSummary(groups, context, session.getSummary(), budget, outputReserve, keep)) {
+        boolean oversizedSummary = session.getSummary() != null && session.getSummary().codePointCount(0, session.getSummary().length()) > snapshot.config().getMemory().getSummary().getMaxCharacters();
+        while (oversizedSummary || needsSummary(groups, context, session.getSummary(), budget, outputReserve, keep)) {
             if (!snapshot.config().getMemory().isSummaryEnabled()) throw new BizException("上下文超过预算，请启用摘要或新建会话");
             int cut = safeSummaryCut(groups, Math.max(0, groups.size() - keep));
             // Recent-message count is a preference. Large tool results may require
@@ -68,23 +70,69 @@ public class AgentContextBuilder {
                 cut = candidate;
                 if (estimate(groups.subList(cut, groups.size()).stream().flatMap(g -> g.messages().stream()).toList()) <= available * 3 / 4) break;
             }
-            if (cut == 0) throw new BizException("暂无可完整压缩的历史边界，请提高预算或新建会话");
+            if (cut == 0 && !oversizedSummary) throw new SummaryBlockedException("NO_BOUNDARY", "暂无可完整压缩的历史边界，请调整摘要或上下文配置后继续");
             List<Group> prefix = groups.subList(0, cut);
             String history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe)
                     .collect(java.util.stream.Collectors.joining("\n"));
             // Each assistant/tool pair is included in full in the summary input.
-            if (estimateText(history) + estimateText(session.getSummary()) + outputReserve > budget)
-                throw new BizException("摘要输入超过上下文预算，请提高预算或新建会话");
-            long start = System.nanoTime();
-            long remaining = snapshot.config().getRuntime().getExecutionTimeoutSeconds() * 1000L - run.getExecutionMillis();
-            ModelReply summary = summarizer.summarize(snapshot, session.getSummary(), history, remaining);
-            if (summary.content() == null || summary.content().isBlank() || summary.content().length() > 12000 || !summary.toolCalls().isEmpty())
-                throw new BizException("模型摘要无效，历史消息仍保留");
-            int through = prefix.stream().mapToInt(Group::throughSeq).max().orElseThrow();
-            store.saveSummary(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, summary,
-                    (System.nanoTime() - start) / 1000000);
+            int summaryBudget = AgentMemorySummarizer.contextBudget(snapshot);
+            int reserve = Math.max(AgentMemorySummarizer.outputBudget(snapshot, 0, null), AgentMemorySummarizer.outputBudget(snapshot, 1, "TRUNCATED"));
+            // Fit whole groups into the summarizer's own window. Never split a tool pair or slice raw text.
+            while (estimateText(history) + estimateText(session.getSummary()) + reserve + 512L > summaryBudget && cut > 1) {
+                int smaller = safeSummaryCut(groups, cut - 1);
+                if (smaller <= 0) break;
+                cut = smaller; prefix = groups.subList(0, cut);
+                history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe).collect(java.util.stream.Collectors.joining("\n"));
+            }
+            if (estimateText(history) + estimateText(session.getSummary()) + reserve + 512L > summaryBudget)
+                throw new SummaryBlockedException("INPUT_TOO_LARGE", "完整历史组超过摘要模型上下文，请提高摘要模型容量后继续，历史消息仍保留");
+            int through = prefix.stream().mapToInt(Group::throughSeq).max().orElse(session.getCoveredThroughSeq());
+            String previous = null;
+            boolean saved = false;
+            for (int attempt = 0; attempt <= snapshot.config().getMemory().getSummary().getMaxRetries(); attempt++) {
+                var current = store.run(run.getId());
+                long remaining = snapshot.config().getRuntime().getExecutionTimeoutSeconds() * 1000L - current.getExecutionMillis();
+                if (remaining <= 0) throw new BizException("Agent 执行时限已用尽");
+                store.summaryStarted(run.getId(), owner, epoch, attempt + 1);
+                long start = System.nanoTime();
+                ModelReply summary;
+                try {
+                    summary = attempt == 0 ? summarizer.summarize(snapshot, session.getSummary(), history, remaining)
+                            : summarizer.summarize(snapshot, session.getSummary(), history, remaining, attempt, previous);
+                } catch (AgentStore.LeaseLost | java.util.concurrent.CancellationException e) { throw e; }
+                catch (RuntimeException e) {
+                    long elapsed = (System.nanoTime() - start) / 1000000;
+                    store.summaryAttemptFailed(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, null, elapsed, "PROVIDER_ERROR", attempt + 1);
+                    previous = "PROVIDER_ERROR";
+                    if (attempt == snapshot.config().getMemory().getSummary().getMaxRetries()) break;
+                    try { Thread.sleep(Math.min(2000, 250L << attempt)); }
+                    catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new java.util.concurrent.CancellationException(); }
+                    continue;
+                }
+                long elapsed = (System.nanoTime() - start) / 1000000;
+                previous = invalidSummary(summary, snapshot.config().getMemory().getSummary().getMaxCharacters());
+                if (previous == null && oversizedSummary && cut == 0 && summary.content().length() >= session.getSummary().length()) previous = "NO_PROGRESS";
+                if (previous == null) {
+                    store.saveSummary(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, summary, elapsed); saved = true; break;
+                }
+                store.summaryAttemptFailed(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, summary, elapsed, previous, attempt + 1);
+                if ("TRUNCATED".equals(previous) && attempt < snapshot.config().getMemory().getSummary().getMaxRetries()) {
+                    var caps = com.astra.freyja.agent.model.ChatModelCapabilities.from(snapshot.summaryModel() == null ? snapshot.pinnedModel() : snapshot.summaryModel());
+                    boolean outputCanGrow = AgentMemorySummarizer.outputBudget(snapshot, attempt + 1, previous) > AgentMemorySummarizer.outputBudget(snapshot, attempt, attempt == 0 ? null : previous);
+                    boolean canDisable = attempt == 0 && !"DISABLED".equals(snapshot.config().getMemory().getSummary().getReasoningMode()) && !"NONE".equals(caps.reasoningProtocol());
+                    if (!outputCanGrow && !canDisable) {
+                        int smaller = safeSummaryCut(groups, cut - 1);
+                        if (smaller <= 0) break;
+                        cut = smaller; prefix = groups.subList(0, cut);
+                        history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe).collect(java.util.stream.Collectors.joining("\n"));
+                        through = prefix.stream().mapToInt(Group::throughSeq).max().orElse(session.getCoveredThroughSeq());
+                    }
+                }
+            }
+            if (!saved) throw new SummaryBlockedException(previous == null ? "INVALID" : previous, "历史压缩未完成，请调整摘要配置后继续；历史和已完成步骤仍保留");
             session = store.session(session.getId());
             groups = groups.subList(cut, groups.size());
+            oversizedSummary = false;
         }
         if (session.getSummary() != null && !session.getSummary().isBlank())
             context.add(new SystemMessage("已压缩历史摘要（业务事实仍以当前数据库为准）：\n" + session.getSummary()));
@@ -92,6 +140,15 @@ public class AgentContextBuilder {
         if (estimate(context) + snapshot.config().getModel().getMaxTokens() > budget)
             throw new BizException("上下文与输出预留超过配置预算，请提高预算或缩短输入");
         return context;
+    }
+    public static String invalidSummary(ModelReply summary, int maxCharacters) {
+        if (summary == null) return "EMPTY";
+        if ("length".equals(summary.finishReason())) return "TRUNCATED";
+        if (!"stop".equals(summary.finishReason())) return "INCOMPLETE";
+        if (summary.content() == null || summary.content().isBlank()) return "EMPTY";
+        if (summary.toolCalls() == null || !summary.toolCalls().isEmpty()) return "TOOL_CALLS";
+        if (summary.content().codePointCount(0, summary.content().length()) > maxCharacters) return "OVERSIZED";
+        return null;
     }
     private boolean needsSummary(List<Group> groups, List<Message> context, String summary, int budget, int output, int keep) {
         int used = estimate(groups.stream().flatMap(g -> g.messages().stream()).toList()) + estimate(context) + estimateText(summary) + output;

@@ -170,6 +170,8 @@ public class AiModelFactoryImpl implements AiModelFactory {
                 .topP(model.getTopP())
                 .timeout(Duration.ofSeconds(provider.getTimeout() == null ? 120 : provider.getTimeout()))
                 .maxRetries(provider.getMaxRetries() == null ? 0 : provider.getMaxRetries());
+        if ("max_completion_tokens".equals(com.astra.freyja.agent.model.ChatModelCapabilities.from(model).outputTokenParameter()))
+            options.maxTokens(null).maxCompletionTokens(maxTokens);
         String apiKey = cryptoUtil.decrypt(provider.getApiKey());
         if (StringUtils.isNotBlank(apiKey)) {
             options.apiKey(apiKey);
@@ -222,6 +224,10 @@ public class AiModelFactoryImpl implements AiModelFactory {
             if (seed != null && seed.isNumber()) {
                 builder.seed(seed.asInt());
             }
+            java.util.Map<String, Object> extra = new java.util.LinkedHashMap<>();
+            if (node.path("reasoning_effort").isTextual()) builder.reasoningEffort(node.path("reasoning_effort").asText());
+            for (String key : List.of("thinking")) if (node.has(key)) extra.put(key, objectMapper.convertValue(node.get(key), Object.class));
+            if (!extra.isEmpty()) builder.extraBody(extra);
         } catch (Exception e) {
             log.warn("解析模型额外参数失败: {}", paramsJson, e);
         }
@@ -244,6 +250,7 @@ public class AiModelFactoryImpl implements AiModelFactory {
             if (repeatPenalty != null && repeatPenalty.isNumber()) {
                 builder.repeatPenalty(repeatPenalty.asDouble());
             }
+            if (node.has("think")) { if (node.path("think").asBoolean()) builder.enableThinking(); else builder.disableThinking(); }
         } catch (Exception e) {
             log.warn("解析模型额外参数失败: {}", paramsJson, e);
         }

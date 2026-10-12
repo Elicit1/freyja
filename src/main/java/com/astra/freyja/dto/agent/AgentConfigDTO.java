@@ -28,6 +28,8 @@ public class AgentConfigDTO {
         private Double temperature;
         private Double topP;
         private Integer maxTokens = 4096;
+        private String tokenMode = "CUSTOM";
+        private String reasoningMode = "INHERIT";
         // Missing in legacy configurations and snapshots: preserve complete-response behavior.
         private String outputMode = "COMPLETE";
     }
@@ -47,6 +49,18 @@ public class AgentConfigDTO {
         private int recentMessages = 20;
         private int contextTokens = 16000;
         private List<String> scopes = new ArrayList<>(List.of("SESSION", "PROJECT"));
+        private Summary summary = new Summary();
+    }
+    @Data public static class Summary {
+        private Long providerId;
+        private String modelCode;
+        private int maxTokens = 16384;
+        private int retryMaxTokens = 32768;
+        private String reasoningMode = "DISABLED";
+        private int timeoutSeconds = 180;
+        private int targetCharacters = 2500;
+        private int maxCharacters = 4000;
+        private int maxRetries = 2;
     }
     @Data public static class Runtime {
         private int maxModelTurns = 20; // 0 means unlimited; other execution budgets still apply.

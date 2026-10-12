@@ -661,10 +661,11 @@
           </el-form-item>
         </div>
 
+        <ChatModelCapabilitiesEditor v-if="modelForm.modelType === 'CHAT'" v-model="modelForm.paramsJson" :provider-id="modelForm.providerId" :model-code="modelForm.modelCode" />
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="最大 Tokens" prop="maxTokens">
-              <el-input-number v-model="modelForm.maxTokens" :min="1" :max="1000000" class="!w-full" />
+            <el-form-item label="请求输出预算" prop="maxTokens">
+              <el-input-number v-model="modelForm.maxTokens" :min="1" :max="modelFormCaps.maxOutputTokens || 2147483647" class="!w-full" />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -717,6 +718,8 @@ import {
   Connection
 } from '@element-plus/icons-vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
+import ChatModelCapabilitiesEditor from '@/components/agent/ChatModelCapabilitiesEditor.vue'
+import { modelCapabilities } from '@/components/agent/modelCapabilities'
 import WorkspaceEmptyState from '@/components/workspace/WorkspaceEmptyState.vue'
 import StatusPill from '@/components/status/StatusPill.vue'
 import { aiProviderApi, aiModelApi } from '@/api/ai-provider'
@@ -974,6 +977,7 @@ const handleDeleteModel = async (id?: number | string) => {
 
 // 模型弹窗
 const modelDialogVisible = ref(false)
+const modelFormCaps = computed(() => modelCapabilities(modelForm))
 const modelSubmitting = ref(false)
 const modelFormRef = ref<FormInstance>()
 const modelForm = reactive<AiModelDTO>({

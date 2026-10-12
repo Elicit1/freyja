@@ -1,6 +1,6 @@
 import { request } from './request'
 import type { AgentConfig, AgentCatalog, ValidationResult, AgentProfile, AgentSession, AgentMessage, AgentRun, AgentSubmission, AgentPet } from '@/types/agent'
-import type { ProductionStart, ProductionReport, ProductionPlanView, AgentQuestionReply } from '@/types/agent'
+import type { ProductionStart, ProductionReport, ProductionPlanView, AgentQuestionReply, AgentSummaryConfig } from '@/types/agent'
 
 export const agentConfigApi = {
   list: () => request<AgentConfig[]>({ url: '/system/agent/configs', method: 'get' }),
@@ -34,5 +34,6 @@ export const agentApi = {
   notifications: () => request<AgentRun[]>({ url: '/agent/notifications', method: 'get' }),
   cancel: (id: string) => request<void>({ url: `/agent/runs/${id}/cancel`, method: 'post' }),
   resume: (id: string) => request<void>({ url: `/agent/runs/${id}/resume`, method: 'post' }),
+  resumeSummary: (id: string, summary: AgentSummaryConfig) => request<void>({ url: `/agent/runs/${id}/resume-summary`, method: 'post', data: { ...summary, providerId: summary.providerId || undefined, modelCode: summary.modelCode || undefined } }),
   read: (id: string) => request<void>({ url: `/agent/runs/${id}/read`, method: 'post' })
 }

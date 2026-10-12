@@ -34,6 +34,8 @@ function eventLabel(message: AgentMessage) {
   }
   if (message.eventType === 'WAITING_USER') return message.body.questions?.map(q => q.question).join('\n') || message.body.question || '需要你的回答'
   if (message.eventType === 'MODEL_RETRY') return message.body.message || '模型请求重试中'
+  if (message.eventType === 'SUMMARY_STARTED' || message.eventType === 'SUMMARY_RETRY' || message.eventType === 'SUMMARY_CONFIG_UPDATED') return message.body.message
+  if (message.eventType === 'RUN_BLOCKED') return message.body.summary || '历史压缩需要调整配置'
   if (message.eventType === 'RUN_FAILED') return message.body.summary || '任务失败'
   if (message.eventType === 'TOOL_STARTED') return toolLabel(message.body.tool) + '…'
   if (message.eventType === 'WAITING_TASK') return toolLabel(message.body.tool) + ' · 执行中，进度见任务面板'

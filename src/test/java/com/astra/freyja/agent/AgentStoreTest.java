@@ -56,6 +56,32 @@ class AgentStoreTest {
         assertTrue(json.write(replay).contains("2032095628944588805"));
         verify(messages, times(2)).insert(any(AgentMessage.class)); // one result plus its progress event
     }
+    @Test void rejectedSummaryChargesKnownTokensWithoutAdvancingHistoryOrMarkingUsageUnknown() {
+        session.setCoveredThroughSeq(399); session.setSummary("旧摘要");
+        var reply = new ModelReply(null, List.of(), Map.of("reasoningContent", "private"), 6600, 8191, "request-1", "length", 8191);
+        store.summaryAttemptFailed(run.getId(), "test-owner", 1, 399, 402, reply, 1234, "TRUNCATED", 1);
+        assertEquals(399, session.getCoveredThroughSeq()); assertEquals("旧摘要", session.getSummary());
+        assertEquals(8191, run.getCompletionTokens()); assertEquals(6600, run.getPromptTokens()); assertEquals(1234L, run.getExecutionMillis());
+        assertFalse(run.getUsageUnknown());
+        var audit = org.mockito.ArgumentCaptor.forClass(AgentStep.class); verify(steps).insert(audit.capture());
+        assertEquals("FAILED", audit.getValue().getStatus()); assertTrue(audit.getValue().getResultJson().contains("8191"));
+        assertFalse(audit.getValue().getResultJson().contains("private"));
+    }
+    @Test void recoveryChangesOnlySummarySnapshotAndPreservesCompletedStepsAndBudgets() {
+        var original = store.snapshot(run); run.setModelTurns(38); run.setToolCalls(99); run.setExecutionMillis(780000L);
+        step.setStatus("SUCCEEDED"); session.setCoveredThroughSeq(399); session.setSummary("保留的摘要");
+        store.blockSummary(run.getId(), "test-owner", 1, "TRUNCATED", "摘要截断", 0);
+        when(runs.selectOne(any())).thenReturn(run);
+        when(configs.validate(anyString(), any(), eq(true))).thenReturn(new com.astra.freyja.dto.agent.AgentRequests.ValidationResult(true, List.of(), List.of()));
+        var pinned = original.pinnedModel(); when(configs.pinSummaryModel(any(), any())).thenReturn(pinned);
+        var summary = new com.astra.freyja.dto.agent.AgentConfigDTO.Summary(); summary.setMaxTokens(32768);
+        store.resumeSummary(run.getId(), summary);
+        assertEquals("QUEUED", run.getStatus()); assertEquals(38, run.getModelTurns()); assertEquals(99, run.getToolCalls());
+        assertEquals(780000L, run.getExecutionMillis()); assertEquals("SUCCEEDED", step.getStatus()); assertEquals(399, session.getCoveredThroughSeq());
+        assertEquals("保留的摘要", session.getSummary()); assertEquals(original.config().getModel(), store.snapshot(run).config().getModel());
+        assertEquals(32768, store.snapshot(run).config().getMemory().getSummary().getMaxTokens());
+        assertFalse(store.summaryRecoverable(run)); verify(steps, never()).updateById(step);
+    }
     @Test void publicPlanIsCommittedOnceAndRestoredWithoutModelHistory() {
         var plan = new com.astra.freyja.agent.model.AgentTaskPlan("开始拆解", List.of(
                 new com.astra.freyja.agent.model.AgentTaskPlan.Item("decompose", "拆解小说", com.astra.freyja.agent.model.AgentTaskPlan.Status.IN_PROGRESS),
