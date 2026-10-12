@@ -29,7 +29,7 @@ const standardAnimations: PetAnimation[] = petRows.map(animation => ({
   loopPauseMs: animation.loopPauseMs
 }))
 // More poses change too rapidly at the community cadence; keep the default pet calm.
-export const freyjaAnimationDurationScale = 2
+export const freyjaAnimationDurationScale = 4
 // The built-in pet gets additional drawings. Community ZIPs retain Codex's standard grid/timing.
 const smoothAnimations: PetAnimation[] = standardAnimations.map((animation, index) => {
   const cycle = petCycleMillis(animation) * freyjaAnimationDurationScale
