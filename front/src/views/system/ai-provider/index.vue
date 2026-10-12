@@ -441,6 +441,8 @@
           </div>
         </el-form-item>
 
+        <ChatModelCapabilitiesEditor v-model="providerForm.chatCapabilitiesJson" scope="provider" />
+
         <el-divider content-position="left" class="!my-2 text-xs font-bold text-[var(--text-muted)]">
           调度与熔断保护
         </el-divider>
@@ -661,7 +663,7 @@
           </el-form-item>
         </div>
 
-        <ChatModelCapabilitiesEditor v-if="modelForm.modelType === 'CHAT'" v-model="modelForm.paramsJson" :provider-id="modelForm.providerId" :model-code="modelForm.modelCode" />
+        <ChatModelCapabilitiesEditor v-if="modelForm.modelType === 'CHAT'" v-model="modelForm.paramsJson" :provider-id="modelForm.providerId" :model-code="modelForm.modelCode" :provider-defaults="currentProvider?.chatCapabilitiesJson" />
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="请求输出预算" prop="maxTokens">
@@ -867,6 +869,7 @@ const handleOpenProviderDialog = async (row?: AiProviderVO) => {
       providerForm.apiKey = '' // 安全规范：编辑时默认留空
       providerFormCurrentMaskedKey.value = detail.maskedApiKey || ''
       providerForm.baseUrl = detail.baseUrl || ''
+      providerForm.chatCapabilitiesJson = detail.chatCapabilitiesJson || '{}'
       providerForm.timeout = detail.timeout ?? 30
       providerForm.maxRetries = detail.maxRetries ?? 3
       providerForm.enableBreaker = detail.enableBreaker ?? 1
@@ -879,6 +882,7 @@ const handleOpenProviderDialog = async (row?: AiProviderVO) => {
       providerForm.providerCode = row.providerCode
       providerForm.providerName = row.providerName
       providerForm.providerType = row.providerType
+      providerForm.chatCapabilitiesJson = row.chatCapabilitiesJson || '{}'
       providerForm.apiKey = ''
       providerFormCurrentMaskedKey.value = row.maskedApiKey || ''
       providerForm.baseUrl = row.baseUrl || ''
@@ -898,6 +902,7 @@ const handleOpenProviderDialog = async (row?: AiProviderVO) => {
     providerForm.apiKey = ''
     providerFormCurrentMaskedKey.value = ''
     providerForm.baseUrl = ''
+    providerForm.chatCapabilitiesJson = '{}'
     providerForm.timeout = 30
     providerForm.maxRetries = 3
     providerForm.enableBreaker = 1
@@ -977,7 +982,7 @@ const handleDeleteModel = async (id?: number | string) => {
 
 // 模型弹窗
 const modelDialogVisible = ref(false)
-const modelFormCaps = computed(() => modelCapabilities(modelForm))
+const modelFormCaps = computed(() => modelCapabilities(modelForm, currentProvider.value))
 const modelSubmitting = ref(false)
 const modelFormRef = ref<FormInstance>()
 const modelForm = reactive<AiModelDTO>({

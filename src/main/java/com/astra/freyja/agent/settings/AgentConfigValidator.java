@@ -74,12 +74,12 @@ public class AgentConfigValidator {
                 var provider = providers.selectById(model.getProviderId());
                 AiModel entry = models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId, model.getProviderId())
                         .eq(AiModel::getModelCode, model.getModelCode()));
-                selected = entry;
+                selected = entry == null ? null : ChatModelCapabilities.resolve(entry, provider);
                 if (provider == null || !Integer.valueOf(1).equals(provider.getStatus()) || entry == null
                         || !Integer.valueOf(1).equals(entry.getStatus()) || !"CHAT".equals(entry.getModelType())) {
                     errors.add(issue("model", "INVALID_MODEL", "提供商和 CHAT 模型必须存在且启用"));
                 } else if (names != null && !names.isEmpty()) {
-                    Boolean capable = capability(entry.getParamsJson());
+                    Boolean capable = capability(selected.getParamsJson());
                     if (Boolean.FALSE.equals(capable)) errors.add(issue("model", "TOOL_CALLING_DISABLED", "该模型明确不支持工具调用"));
                     else if (capable == null) warnings.add(issue("model", "UNVERIFIED_TOOL_CALLING", "工具调用能力未声明，请在模型设置中确认其能力"));
                 }
@@ -112,6 +112,7 @@ public class AgentConfigValidator {
                 if (provider == null || !Integer.valueOf(1).equals(provider.getStatus()) || summaryModel == null
                         || !Integer.valueOf(1).equals(summaryModel.getStatus()) || !"CHAT".equals(summaryModel.getModelType()))
                     errors.add(issue("memory.summary.model", "INVALID_MODEL", "摘要提供商和 CHAT 模型必须启用"));
+                if (summaryModel != null) summaryModel = ChatModelCapabilities.resolve(summaryModel, provider);
             }
             var summaryCaps = ChatModelCapabilities.from(summaryModel);
             range(errors, "memory.summary.maxTokens", summary.getMaxTokens(), 1, Integer.MAX_VALUE);
@@ -177,7 +178,7 @@ public class AgentConfigValidator {
     }
     private static ValidationIssue issue(String field, String code, String message) { return new ValidationIssue(field, code, message); }
     private static void validateReasoning(List<ValidationIssue> errors, List<ValidationIssue> warnings, String field, String mode, ChatModelCapabilities caps) {
-        if (mode == null || !Set.of("INHERIT", "DISABLED", "LOW", "MEDIUM", "HIGH", "MAX").contains(mode)) {
+        if (mode == null || !Set.of("INHERIT", "DISABLED", "ENABLED", "LOW", "MEDIUM", "HIGH", "MAX").contains(mode)) {
             errors.add(issue(field, "ENUM", "请选择有效的思考模式")); return;
         }
         if (!"INHERIT".equals(mode) && "NONE".equals(caps.reasoningProtocol()))

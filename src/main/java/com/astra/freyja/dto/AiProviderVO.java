@@ -31,6 +31,9 @@ public class AiProviderVO {
     /** Base URL */
     private String baseUrl;
 
+    /** CHAT 默认能力 JSON，模型未覆盖的字段继承此处。 */
+    private String chatCapabilitiesJson;
+
     /** 请求超时（秒） */
     private Integer timeout;
 

@@ -26,7 +26,8 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class SpringAiAgentModelGatewayTest {
-    @org.junit.jupiter.api.Test void summaryOverridesActualWireThinkingAndRetainsLengthAndReasoningUsage() throws Exception {
+    @ParameterizedTest @ValueSource(strings = {"DEEPSEEK_CHAT", "MIMO_CHAT"})
+    void summaryOverridesActualWireThinkingAndRetainsLengthAndReasoningUsage(String protocol) throws Exception {
         var requestBody = new AtomicReference<String>();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
@@ -44,7 +45,8 @@ class SpringAiAgentModelGatewayTest {
             var provider = new AiProvider(); provider.setStatus(1); when(providers.selectById(anyLong())).thenReturn(provider);
             var entry = new AiModel(); entry.setStatus(1); entry.setModelType("CHAT"); when(models.selectOne(any())).thenReturn(entry);
             var source = AgentTestSupport.snapshot(List.of(), "NORMAL"); source.config().getModel().setMaxTokens(8192);
-            source.pinnedModel().setParamsJson("{\"capabilities\":{\"contextWindow\":1048576,\"maxOutputTokens\":393216,\"reasoningProtocol\":\"DEEPSEEK_CHAT\"}}");
+            source.pinnedModel().setParamsJson("{\"capabilities\":{\"contextWindow\":1048576,\"maxOutputTokens\":131072,\"reasoningProtocol\":\"" + protocol
+                    + "\",\"outputTokenParameter\":\"" + ("MIMO_CHAT".equals(protocol) ? "max_completion_tokens" : "max_tokens") + "\"}}");
             var model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder().apiKey("fixture")
                     .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").model("test-model").maxRetries(0)
                     .extraBody(java.util.Map.of("thinking", java.util.Map.of("type", "enabled"), "reasoning_effort", "high")).build()).build();
@@ -54,8 +56,12 @@ class SpringAiAgentModelGatewayTest {
             var reply = summarizer.summarize(source, "旧摘要", "新历史", 30000);
             var wireJson = new com.fasterxml.jackson.databind.ObjectMapper().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
             var request = wireJson.readTree(requestBody.get());
-            assertEquals("disabled", request.path("thinking").path("type").asText()); assertEquals("none", request.path("reasoning_effort").asText());
-            assertEquals(16384, request.path("max_tokens").asInt()); assertEquals("length", reply.finishReason());
+            assertEquals("disabled", request.path("thinking").path("type").asText());
+            if ("MIMO_CHAT".equals(protocol)) {
+                assertFalse(request.has("reasoning_effort")); assertFalse(request.has("max_tokens"));
+                assertEquals(16384, request.path("max_completion_tokens").asInt());
+            } else { assertEquals("none", request.path("reasoning_effort").asText()); assertEquals(16384, request.path("max_tokens").asInt()); }
+            assertEquals("length", reply.finishReason());
             assertEquals(8191, reply.reasoningTokens()); assertEquals(8191, reply.completionTokens()); assertTrue(reply.properties().isEmpty());
             assertEquals(8192, source.config().getModel().getMaxTokens());
         } finally { server.stop(0); }

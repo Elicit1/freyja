@@ -52,7 +52,7 @@ class AgentConfigServiceTest {
         validator = new AgentConfigValidator(profiles, tools, providers, models, skills, json);
         var manager = mock(PlatformTransactionManager.class);
         when(manager.getTransaction(any())).thenAnswer(call -> new SimpleTransactionStatus());
-        service = new AgentConfigService(mapper, models, profiles, tools, skills, validator, json, new TransactionTemplate(manager));
+        service = new AgentConfigService(mapper, models, providers, profiles, tools, skills, validator, json, new TransactionTemplate(manager));
         config = AgentTestSupport.snapshot(profile.allowedTools(), "NORMAL").config();
     }
     @Test void activeRunUsesDetachedConfigurationAndNoCredentials() {
@@ -62,6 +62,25 @@ class AgentConfigServiceTest {
         assertEquals(0.4, snapshot.pinnedModel().getTemperature());
         assertFalse(json.write(snapshot).contains("do-not-copy"));
         assertTrue(snapshot.pinnedModel().getParamsJson().contains("42"));
+    }
+    @Test void mainAndIndependentSummaryPinInheritedProviderCapabilities() {
+        var provider = providers.selectById(config.getModel().getProviderId());
+        provider.setChatCapabilitiesJson("{\"reasoningProtocol\":\"MIMO_CHAT\",\"outputTokenParameter\":\"max_completion_tokens\",\"maxOutputTokens\":131072,\"recommendedOutputTokens\":65536}");
+        config.getModel().setTokenMode("MODEL"); config.getModel().setReasoningMode("ENABLED");
+        config.getMemory().setContextTokens(262144);
+        config.getMemory().getSummary().setProviderId(config.getModel().getProviderId());
+        config.getMemory().getSummary().setModelCode(config.getModel().getModelCode());
+        var snapshot = service.snapshot("core-assistant", config, "NORMAL");
+        assertEquals(65536, snapshot.config().getModel().getMaxTokens());
+        assertEquals("MIMO_CHAT", com.astra.freyja.agent.model.ChatModelCapabilities.from(snapshot.pinnedModel()).reasoningProtocol());
+        assertEquals("max_completion_tokens", com.astra.freyja.agent.model.ChatModelCapabilities.from(snapshot.summaryModel()).outputTokenParameter());
+        assertEquals("DISABLED", snapshot.config().getMemory().getSummary().getReasoningMode());
+        provider.setChatCapabilitiesJson("{\"reasoningProtocol\":\"NONE\"}");
+        assertEquals("MIMO_CHAT", com.astra.freyja.agent.model.ChatModelCapabilities.from(snapshot.summaryModel()).reasoningProtocol());
+        assertFalse(json.write(snapshot).contains("do-not-copy"));
+        config.getModel().setReasoningMode("HIGH");
+        provider.setChatCapabilitiesJson("{\"reasoningProtocol\":\"MIMO_CHAT\"}");
+        assertTrue(validator.validate("core-assistant", config, true).errors().stream().anyMatch(e -> e.field().equals("model.reasoningMode")));
     }
     @Test void modelDrivenBudgetsUseDeclaredCapabilitiesWithoutTheOld32768Ceiling() {
         model.setMaxTokens(8192);

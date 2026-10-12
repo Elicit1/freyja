@@ -97,6 +97,59 @@ class SpringAiAgentStreamingTest {
             assertEquals(1, json.readTree(request.get()).path("messages").size(), "Request-local replay must not leak");
         } finally { server.stop(0); }
     }
+    @Test void mimoThinkingFragmentsAndToolHistorySurviveTheNextUserTurn() throws Exception {
+        var requests = new CopyOnWriteArrayList<String>();
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            requests.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            if (requests.size() == 1) {
+                exchange.getResponseHeaders().set("Content-Type", "text/event-stream"); exchange.sendResponseHeaders(200, 0);
+                try (var out = exchange.getResponseBody()) {
+                    for (String item : List.of(chunk("{\"role\":\"assistant\",\"reasoning_content\":\"fixture part one; \"}", "null"),
+                            chunk("{\"reasoning_content\":\"fixture part two\"}", "null"),
+                            chunk("{\"tool_calls\":[{\"index\":0,\"id\":\"mimo-tool\",\"type\":\"function\",\"function\":{\"name\":\"get_shot_detail\",\"arguments\":\"{}\"}}]}", "null"),
+                            chunk("{}", "\"tool_calls\""), "data: [DONE]\n\n")) out.write(item.getBytes(StandardCharsets.UTF_8));
+                }
+            } else {
+                byte[] response = """
+                    {"id":"mimo-final","object":"chat.completion","created":1730000000,"model":"test-model",
+                     "choices":[{"index":0,"message":{"role":"assistant","content":"完成"},"finish_reason":"stop"}]}
+                    """.getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json"); exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+            }
+            exchange.close();
+        }); server.start();
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder().apiKey("fixture").maxRetries(0)
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").model("test-model").build())
+                    .httpClientBuilderCustomizer(ReasoningReplay.customizer()).build();
+            var gateway = gateway(model, executor);
+            var snapshot = AgentTestSupport.snapshot(List.of("get_shot_detail"), "NORMAL");
+            snapshot.config().getModel().setReasoningMode("ENABLED");
+            snapshot.pinnedModel().setParamsJson("{\"capabilities\":{\"reasoningProtocol\":\"MIMO_CHAT\",\"outputTokenParameter\":\"max_completion_tokens\"}}");
+            var text = new CopyOnWriteArrayList<String>();
+            var reply = gateway.stream(snapshot, List.of(new UserMessage("查询镜头")), List.of("get_shot_detail"), 5000, text::add);
+            assertEquals("fixture part one; fixture part two", reply.properties().get("reasoningContent"));
+            assertEquals("", String.join("", text), "thinking is never emitted as public answer text");
+            var assistant = AssistantMessage.builder().content(reply.content()).properties(reply.properties())
+                    .toolCalls(reply.toolCalls().stream().map(c -> new AssistantMessage.ToolCall(c.id(), "function", c.name(), c.arguments())).toList()).build();
+            gateway.call(snapshot, List.of(new UserMessage("查询镜头"), assistant,
+                    ToolResponseMessage.builder().responses(List.of(new ToolResponseMessage.ToolResponse("mimo-tool", "get_shot_detail", "{}"))).build(),
+                    new UserMessage("继续检查镜头")), List.of("get_shot_detail"));
+            var json = new com.fasterxml.jackson.databind.ObjectMapper().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
+            for (var encoded : requests) {
+                var request = json.readTree(encoded);
+                assertEquals("enabled", request.path("thinking").path("type").asText());
+                assertTrue(request.has("max_completion_tokens")); assertFalse(request.has("max_tokens")); assertFalse(request.has("reasoning_effort"));
+            }
+            var history = json.readTree(requests.getLast()).path("messages");
+            assertEquals("fixture part one; fixture part two", history.get(1).path("reasoning_content").asText());
+            assertEquals("mimo-tool", history.get(1).path("tool_calls").get(0).path("id").asText());
+            assertEquals("mimo-tool", history.get(2).path("tool_call_id").asText());
+            assertEquals("继续检查镜头", history.get(3).path("content").asText());
+        } finally { server.stop(0); }
+    }
     @Test void actualOllamaStreamAggregatesTextToolAndUsage() throws Exception {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {

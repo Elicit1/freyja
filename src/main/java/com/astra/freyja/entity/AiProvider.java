@@ -27,6 +27,9 @@ public class AiProvider extends BaseEntity {
     /** Base URL */
     private String baseUrl;
 
+    /** CHAT 能力默认值（模型可逐字段覆盖），不包含连接凭据。 */
+    private String chatCapabilitiesJson;
+
     /** 请求超时（秒） */
     private Integer timeout;
 

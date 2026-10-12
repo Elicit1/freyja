@@ -87,6 +87,12 @@ docker compose up -d --build
 已有数据库启用 AI 任务关联渲染取消时，在更新后端容器前执行 `sh docker/mysql/migrations/apply-20260929-render-task-parent-ai-task.sh`。迁移为 `render_task` 增加父 AI 任务 ID 与上游取消状态；脚本可重复执行。全新数据库由初始化 SQL 直接建好这些字段。
 
 ### 4. 访问系统
+已有数据库更新提供商默认对话能力与 MiMo 适配时，先执行 `src/main/resources/sql/provider-chat-capabilities.sql`，再更新前后端镜像。该迁移只新增可空列，可重复执行。现有 Docker MySQL 可用：
+
+```bash
+docker exec -i freyja-mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --default-character-set=utf8mb4 freyja' < src/main/resources/sql/provider-chat-capabilities.sql
+```
+
 服务启动完成后，即可在浏览器打开：
 
 | 服务名称 | 默认访问入口 | 初始账密 / 说明 |

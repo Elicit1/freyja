@@ -48,7 +48,7 @@
                 <el-form-item label="Top P"><el-input-number v-model="form.model.topP" :min="0.01" :max="1" :step="0.05" /></el-form-item>
                 <el-form-item label="输出预算来源"><el-select v-model="form.model.tokenMode" @change="adoptModelBudget"><el-option label="跟随模型建议预算" value="MODEL" /><el-option label="自定义预算" value="CUSTOM" /></el-select></el-form-item>
                 <el-form-item label="最大输出 Tokens"><el-input-number v-model="form.model.maxTokens" :disabled="form.model.tokenMode === 'MODEL'" :min="1" :max="selectedCaps.maxOutputTokens || 2147483647" :step="1024" /></el-form-item>
-                <el-form-item label="主任务思考强度"><el-select v-model="form.model.reasoningMode"><el-option v-for="mode in reasoningModes" :key="mode.value" :value="mode.value" :label="mode.label" :disabled="!supportsReasoning(mode.value, selectedCaps)" /></el-select></el-form-item>
+                <el-form-item label="主任务思考模式"><el-select v-model="form.model.reasoningMode"><el-option v-for="mode in reasoningModes" :key="mode.value" :value="mode.value" :label="mode.label" :disabled="!supportsReasoning(mode.value, selectedCaps)" /></el-select></el-form-item>
               </div>
               <p class="field-hint">模型上下文能力：{{ selectedCaps.contextWindow || '未声明' }}；最大输出能力：{{ selectedCaps.maxOutputTokens || '未声明' }}。思考 Token 也会占用输出预算，请注意余额。</p>
               <el-button size="small" class="mt-3" @click="longTaskDefaults">采用长任务建议预算</el-button>
@@ -163,7 +163,7 @@ const saved = ref('')
 const revealAvatarOnSave = ref(false)
 const dirty = computed(() => !!form.value && JSON.stringify(form.value) !== saved.value)
 const selectedModel = computed(() => models.value.find(model => model.modelCode === form.value?.model.modelCode))
-const selectedCaps = computed(() => modelCapabilities(selectedModel.value))
+const selectedCaps = computed(() => modelCapabilities(selectedModel.value, providers.value.find(p => String(p.id) === form.value?.model.providerId)))
 function adoptModelBudget() {
   if (!form.value || form.value.model.tokenMode !== 'MODEL') return
   const caps = selectedCaps.value
@@ -196,8 +196,7 @@ const toolNames: Record<string, string> = {
 }
 function toolLabel(name: string) { return toolNames[name] || name }
 function capability(model: AiModel): boolean | undefined {
-  try { const value = JSON.parse(model.paramsJson || '{}').capabilities?.toolCalling; return typeof value === 'boolean' ? value : undefined }
-  catch { return undefined }
+  return modelCapabilities(model, providers.value.find(p => String(p.id) === String(model.providerId))).toolCalling
 }
 async function confirmDiscard() {
   if (!dirty.value) return true

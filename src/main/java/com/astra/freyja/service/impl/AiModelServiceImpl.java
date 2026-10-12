@@ -166,7 +166,8 @@ public class AiModelServiceImpl implements AiModelService {
             validateVideoProcessing(modelType, dto.getParamsJson());
         }
         if ("CHAT".equals(modelType)) {
-            var caps = com.astra.freyja.agent.model.ChatModelCapabilities.from(dto.getParamsJson());
+            var declaration = new AiModel(); declaration.setParamsJson(dto.getParamsJson());
+            var caps = com.astra.freyja.agent.model.ChatModelCapabilities.from(declaration, providerMapper.selectById(dto.getProviderId()));
             if (dto.getMaxTokens() != null && (dto.getMaxTokens() < 1 || dto.getMaxTokens() > caps.outputLimit()))
                 throw new BizException("请求输出预算必须为正整数且不超过模型能力上限");
         }

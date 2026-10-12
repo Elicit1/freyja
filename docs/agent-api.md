@@ -61,9 +61,9 @@ python scripts/migrate_agent_foundation.py --apply
 
 ### 执行预算
 
-CHAT 模型能力存入模型中心 `paramsJson.capabilities`，字段为 `contextWindow`、`maxOutputTokens`、`recommendedOutputTokens`、`reasoningProtocol`（`NONE`/`DEEPSEEK_CHAT`/`OPENAI`/`OLLAMA`）、`reasoningEfforts`、`outputTokenParameter`（`max_tokens`/`max_completion_tokens`），原 `toolCalling` 字段保留。能力上限独立于模型请求预算 `maxTokens`。模型中心可调用 `GET /ai/provider/{id}/model-capabilities` 读取提供商 `/models` 的显式上下文、输出上限与 effort 列表；接口不保存模型、不会根据模型名称推断思考协议，未返回的字段仍需手动填写。非 OpenAI 兼容提供商可手动维护。
+CHAT 默认能力可在提供商的 `chatCapabilitiesJson` 设置，模型中心 `paramsJson.capabilities` 按字段覆盖；省略或 null 继承，显式 `NONE` 不继承思考协议。字段为 `contextWindow`、`maxOutputTokens`、`recommendedOutputTokens`、`reasoningProtocol`（`NONE`/`DEEPSEEK_CHAT`/`OPENAI`/`OLLAMA`/`MIMO_CHAT`）、`reasoningEfforts`、`outputTokenParameter`（`max_tokens`/`max_completion_tokens`），原 `toolCalling` 字段保留。能力上限独立于模型请求预算 `maxTokens`。模型中心可调用 `GET /ai/provider/{id}/model-capabilities` 读取提供商 `/models` 的显式上下文、输出上限与 effort 列表；接口不保存模型、不会根据模型名称推断思考协议。主模型与独立摘要模型均在任务提交时解析并固定继承结果。
 
-Agent 的 `model.tokenMode=MODEL` 跟随模型建议预算（未声明建议值时沿用模型中心请求预算），`CUSTOM` 使用自定义 `maxTokens`。输出和上下文上限按已声明的模型能力验证，不再固定为 32768/100000。能力未知时保留用户预算并警告。`model.reasoningMode` 为 `INHERIT`/`DISABLED`/`LOW`/`MEDIUM`/`HIGH`/`MAX`，通过声明的协议映射，协议为 NONE 时不注入未知参数并提示无法覆盖默认思考行为。新安装的工作上下文默认 262144 Tokens；“采用长任务建议预算”按模型能力收敛到 65536 输出、262144 上下文，已有自定义设置不自动覆盖。
+Agent 的 `model.tokenMode=MODEL` 跟随模型建议预算（未声明建议值时沿用模型中心请求预算），`CUSTOM` 使用自定义 `maxTokens`。输出和上下文上限按已声明的模型能力验证，不再固定为 32768/100000。能力未知时保留用户预算并警告。`model.reasoningMode` 为 `INHERIT`/`DISABLED`/`ENABLED`/`LOW`/`MEDIUM`/`HIGH`/`MAX`，通过声明的协议映射；MiMo 仅支持前三种，不发送 `reasoning_effort`，输出使用 `max_completion_tokens`。协议为 NONE 时不注入未知参数并提示无法覆盖默认思考行为。新安装的工作上下文默认 262144 Tokens；“采用长任务建议预算”按模型能力收敛到 65536 输出、262144 上下文，已有自定义设置不自动覆盖。
 
 ### 独立摘要与失败恢复
 

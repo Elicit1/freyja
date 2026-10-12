@@ -1,29 +1,55 @@
 <template>
-  <div class="capability-editor">
-    <div class="flex items-center justify-between mb-3"><strong>对话模型能力</strong><el-button size="small" :loading="loading" :disabled="!providerId || !modelCode" @click="discover">从提供商读取能力</el-button></div>
+  <div class="capability-editor" :data-scope="scope">
+    <div class="flex items-center justify-between gap-2 mb-3">
+      <strong>{{ scope === 'provider' ? '对话模型默认能力' : '对话模型能力' }}</strong>
+      <el-button v-if="scope === 'provider'" size="small" @click="applyMiMoDefaults">采用 MiMo 默认能力</el-button>
+      <el-button v-else size="small" :loading="loading" :disabled="!providerId || !modelCode" @click="discover">从提供商读取能力</el-button>
+    </div>
     <el-row :gutter="16">
-      <el-col :span="12"><el-form-item label="上下文窗口"><el-input-number :model-value="caps.contextWindow" :min="2048" :max="2147483647" :step="1024" @update:model-value="set('contextWindow', $event)" /></el-form-item></el-col>
-      <el-col :span="12"><el-form-item label="最大输出能力"><el-input-number :model-value="caps.maxOutputTokens" :min="1" :max="2147483647" :step="1024" @update:model-value="set('maxOutputTokens', $event)" /></el-form-item></el-col>
-      <el-col :span="12"><el-form-item label="建议输出预算"><el-input-number :model-value="caps.recommendedOutputTokens" :min="1" :max="caps.maxOutputTokens || 2147483647" :step="1024" @update:model-value="set('recommendedOutputTokens', $event)" /></el-form-item></el-col>
-      <el-col :span="12"><el-form-item label="工具调用能力"><el-select :model-value="caps.toolCalling" clearable @update:model-value="set('toolCalling', $event)"><el-option label="支持" :value="true" /><el-option label="不支持" :value="false" /></el-select></el-form-item></el-col>
+      <el-col :span="12"><el-form-item label-position="top" label="上下文窗口"><el-input-number class="!w-full" :model-value="caps.contextWindow" :placeholder="inherited('contextWindow')" :min="2048" :max="2147483647" :step="1024" @update:model-value="set('contextWindow', $event)" /></el-form-item></el-col>
+      <el-col :span="12"><el-form-item label-position="top" label="最大输出能力"><el-input-number class="!w-full" :model-value="caps.maxOutputTokens" :placeholder="inherited('maxOutputTokens')" :min="1" :max="2147483647" :step="1024" @update:model-value="set('maxOutputTokens', $event)" /></el-form-item></el-col>
+      <el-col :span="12"><el-form-item label-position="top" label="建议输出预算"><el-input-number class="!w-full" :model-value="caps.recommendedOutputTokens" :placeholder="inherited('recommendedOutputTokens')" :min="1" :max="effective.maxOutputTokens || 2147483647" :step="1024" @update:model-value="set('recommendedOutputTokens', $event)" /></el-form-item></el-col>
+      <el-col :span="12"><el-form-item label-position="top" label="工具调用能力"><el-select :model-value="caps.toolCalling" clearable :placeholder="effective.toolCalling == null ? '未声明' : '继承：' + (effective.toolCalling ? '支持' : '不支持')" @update:model-value="set('toolCalling', $event)"><el-option label="支持" :value="true" /><el-option label="不支持" :value="false" /></el-select></el-form-item></el-col>
     </el-row>
-    <el-form-item label="思考控制协议"><el-select :model-value="caps.reasoningProtocol || 'NONE'" @update:model-value="set('reasoningProtocol', $event)"><el-option label="未声明 / 模型不支持控制" value="NONE" /><el-option label="DeepSeek Chat" value="DEEPSEEK_CHAT" /><el-option label="OpenAI reasoning_effort" value="OPENAI" /><el-option label="Ollama think" value="OLLAMA" /></el-select></el-form-item>
-    <el-form-item label="输出预算参数"><el-select :model-value="caps.outputTokenParameter || 'max_tokens'" @update:model-value="set('outputTokenParameter', $event)"><el-option label="max_tokens（DeepSeek 与多数兼容接口）" value="max_tokens" /><el-option label="max_completion_tokens（部分 OpenAI 推理模型）" value="max_completion_tokens" /></el-select></el-form-item>
-    <el-form-item label="支持的推理强度"><el-select :model-value="caps.reasoningEfforts || []" multiple @update:model-value="set('reasoningEfforts', $event)"><el-option v-for="value in ['low', 'medium', 'high', 'max']" :key="value" :label="value" :value="value" /></el-select></el-form-item>
-    <p class="text-xs text-[var(--text-secondary)]">能力上限与请求预算独立。读取后仍需保存；提供商未返回的能力可手动填写。思考协议按提供商文档选择，系统不会根据模型名称猜测。</p>
+    <el-form-item label-position="top" label="思考控制协议"><el-select :model-value="caps.reasoningProtocol || (scope === 'provider' ? 'NONE' : 'INHERIT')" @update:model-value="set('reasoningProtocol', $event)">
+      <el-option v-if="scope === 'model'" :label="'跟随提供商（' + protocolLabel + '）'" value="INHERIT" />
+      <el-option v-for="protocol in reasoningProtocols" :key="protocol.value" :label="protocol.label" :value="protocol.value" />
+    </el-select></el-form-item>
+    <el-form-item label-position="top" label="输出预算参数"><el-select :model-value="caps.outputTokenParameter || (scope === 'provider' ? 'max_tokens' : 'INHERIT')" @update:model-value="set('outputTokenParameter', $event)">
+      <el-option v-if="scope === 'model'" :label="'跟随提供商（' + (defaults.outputTokenParameter || 'max_tokens') + '）'" value="INHERIT" />
+      <el-option label="max_tokens" value="max_tokens" /><el-option label="max_completion_tokens（MiMo / 部分 OpenAI 模型）" value="max_completion_tokens" />
+    </el-select></el-form-item>
+    <p v-if="effective.reasoningProtocol === 'MIMO_CHAT'" class="text-xs text-[var(--text-secondary)] mb-3">MiMo 支持跟随、开启和关闭思考，不提供推理强度档位；输出预算包含思考与正文。</p>
+    <el-form-item v-else label="支持的推理强度"><el-select :model-value="caps.reasoningEfforts" multiple clearable :placeholder="defaults.reasoningEfforts?.length ? '继承：' + defaults.reasoningEfforts.join(', ') : '未声明'" @update:model-value="set('reasoningEfforts', $event)"><el-option v-for="value in ['low', 'medium', 'high', 'max']" :key="value" :label="value" :value="value" /></el-select></el-form-item>
+    <p class="text-xs text-[var(--text-secondary)]">{{ scope === 'provider' ? '旗下 CHAT 模型继承这些默认值，模型可逐字段覆盖。仅填写该提供商下通用的能力；默认能力不会改变已开始的任务。' : '未填写的字段跟随提供商；清空覆盖后恢复继承。读取能力后仍需保存，未返回的能力可手动填写。' }}</p>
   </div>
 </template>
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { aiProviderApi } from '@/api/ai-provider'
+import { providerCapabilities, reasoningProtocols } from './modelCapabilities'
 import type { ChatCapabilities } from './modelCapabilities'
-const props = defineProps<{ modelValue?: string; providerId?: string | number; modelCode?: string }>()
+const props = withDefaults(defineProps<{ modelValue?: string; providerId?: string | number; modelCode?: string; scope?: 'provider' | 'model'; providerDefaults?: string }>(), { scope: 'model' })
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const loading = ref(false)
 const root = computed(() => { try { return JSON.parse(props.modelValue || '{}') } catch { return {} } })
-const caps = computed<ChatCapabilities>(() => root.value.capabilities || {})
-function set(key: string, value: unknown) { emit('update:modelValue', JSON.stringify({ ...root.value, capabilities: { ...caps.value, [key]: value === '' ? undefined : value } })) }
+const caps = computed<ChatCapabilities>(() => props.scope === 'provider' ? root.value : root.value.capabilities || {})
+const defaults = computed<ChatCapabilities>(() => props.scope === 'provider' ? {} : providerCapabilities({ chatCapabilitiesJson: props.providerDefaults }))
+const effective = computed<ChatCapabilities>(() => ({ ...defaults.value, ...Object.fromEntries(Object.entries(caps.value).filter(([, value]) => value != null)) }))
+const protocolLabel = computed(() => reasoningProtocols.find(p => p.value === (defaults.value.reasoningProtocol || 'NONE'))?.label || '未声明')
+function inherited(key: keyof ChatCapabilities) { return defaults.value[key] == null ? '未声明' : '继承：' + defaults.value[key] }
+function publish(next: ChatCapabilities) { emit('update:modelValue', JSON.stringify(props.scope === 'provider' ? next : { ...root.value, capabilities: next })) }
+function set(key: keyof ChatCapabilities, value: unknown) {
+  const next = { ...caps.value, [key]: value }
+  if (value === '' || value == null || value === 'INHERIT' || Array.isArray(value) && !value.length) delete next[key]
+  if (key === 'reasoningProtocol' && (next.reasoningProtocol || defaults.value.reasoningProtocol) === 'MIMO_CHAT') next.reasoningEfforts = []
+  publish(next)
+}
+function applyMiMoDefaults() {
+  publish({ ...caps.value, reasoningProtocol: 'MIMO_CHAT', outputTokenParameter: 'max_completion_tokens', maxOutputTokens: 131072, recommendedOutputTokens: 65536, toolCalling: true, reasoningEfforts: [] })
+  ElMessage.success('已采用 MiMo 默认能力，请保存提供商')
+}
 async function discover() {
   if (!props.providerId) return
   loading.value = true
@@ -34,8 +60,8 @@ async function discover() {
     if (data.contextWindow) next.contextWindow = data.contextWindow
     if (data.maxOutputTokens) next.maxOutputTokens = data.maxOutputTokens
     if (data.reasoningEfforts?.length) next.reasoningEfforts = data.reasoningEfforts
-    emit('update:modelValue', JSON.stringify({ ...root.value, capabilities: next }))
-    ElMessage.success('已读取能力，请确认思考协议并保存模型')
+    publish(next)
+    ElMessage.success('已读取能力，请确认并保存模型')
   } finally { loading.value = false }
 }
 </script>

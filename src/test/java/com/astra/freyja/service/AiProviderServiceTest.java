@@ -112,6 +112,7 @@ class AiProviderServiceTest {
         provider.setProviderType(AiModelFactory.TYPE_OPENAI);
         provider.setApiKey("encrypted-key");
         provider.setStatus(1);
+        provider.setChatCapabilitiesJson("{\"reasoningProtocol\":\"MIMO_CHAT\"}");
 
         when(providerMapper.selectById(100L)).thenReturn(provider);
         when(cryptoUtil.decrypt("encrypted-key")).thenReturn("sk-12345678");
@@ -122,6 +123,22 @@ class AiProviderServiceTest {
         assertEquals("openai", vo.getProviderCode());
         assertEquals("****5678", vo.getMaskedApiKey());
         assertTrue(vo.getHasApiKey());
+        assertEquals("{\"reasoningProtocol\":\"MIMO_CHAT\"}", vo.getChatCapabilitiesJson());
+    }
+
+    @Test void updatePreservesOmittedDefaultsAndCanExplicitlyClearThemWithoutChangingTheKey() {
+        var provider = new AiProvider(); provider.setId(100L); provider.setProviderCode("mimo");
+        provider.setApiKey("existing-encrypted-key"); provider.setChatCapabilitiesJson("{\"reasoningProtocol\":\"MIMO_CHAT\"}");
+        when(providerMapper.selectById(100L)).thenReturn(provider);
+        var dto = new AiProviderDTO(); dto.setId(100L); dto.setProviderCode("mimo"); dto.setProviderName("MiMo");
+        dto.setProviderType("OPENAI"); dto.setStatus(1);
+        providerService.update(dto);
+        assertEquals("{\"reasoningProtocol\":\"MIMO_CHAT\"}", provider.getChatCapabilitiesJson());
+        dto.setChatCapabilitiesJson(""); providerService.update(dto);
+        assertEquals("{}", provider.getChatCapabilitiesJson()); assertEquals("existing-encrypted-key", provider.getApiKey());
+        verify(cryptoUtil, never()).encrypt(any());
+        dto.setChatCapabilitiesJson("{\"api_key\":\"not-a-capability\"}");
+        assertThrows(BizException.class, () -> providerService.update(dto));
     }
 
     @Test

@@ -26,6 +26,9 @@ public class AiProviderDTO {
     /** Base URL */
     private String baseUrl;
 
+    /** CHAT 默认能力 JSON；修改时省略保留原值，空字符串清除。 */
+    private String chatCapabilitiesJson;
+
     /** 请求超时（秒） */
     private Integer timeout;
 

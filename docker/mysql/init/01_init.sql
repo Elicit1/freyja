@@ -83,6 +83,7 @@ CREATE TABLE `ai_provider` (
     `provider_type`     VARCHAR(32)   NOT NULL COMMENT '接入类型 OPENAI-OpenAI规范兼容 OLLAMA',
     `api_key`           VARCHAR(1024) DEFAULT NULL COMMENT 'API Key（AES 加密密文，接口返回掩码）',
     `base_url`          VARCHAR(512)  DEFAULT NULL COMMENT 'Base URL',
+    `chat_capabilities_json` TEXT     DEFAULT NULL COMMENT 'CHAT默认能力，模型逐字段覆盖',
     `timeout`           INT           NOT NULL DEFAULT 30 COMMENT '请求超时（秒）',
     `max_retries`       INT           NOT NULL DEFAULT 3 COMMENT '最大重试次数',
     `enable_breaker`    TINYINT       NOT NULL DEFAULT 1 COMMENT '是否熔断 0-关 1-开',

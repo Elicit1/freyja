@@ -45,6 +45,7 @@ export interface AiProviderVO {
   maskedApiKey?: string
   hasApiKey?: boolean
   baseUrl?: string
+  chatCapabilitiesJson?: string
   timeout?: number
   maxRetries?: number
   enableBreaker?: number // 0-关 1-开
@@ -66,6 +67,7 @@ export interface AiProviderDTO {
   providerType: ProviderType
   apiKey?: string
   baseUrl?: string
+  chatCapabilitiesJson?: string
   timeout?: number
   maxRetries?: number
   enableBreaker?: number

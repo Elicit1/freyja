@@ -87,6 +87,7 @@ public class AiProviderServiceImpl implements AiProviderService {
         entity.setProviderType(dto.getProviderType());
         entity.setApiKey(cryptoUtil.encrypt(dto.getApiKey()));
         entity.setBaseUrl(dto.getBaseUrl());
+        entity.setChatCapabilitiesJson(dto.getChatCapabilitiesJson());
         entity.setTimeout(dto.getTimeout() == null ? 30 : dto.getTimeout());
         entity.setMaxRetries(dto.getMaxRetries() == null ? 3 : dto.getMaxRetries());
         entity.setEnableBreaker(dto.getEnableBreaker() == null ? 1 : dto.getEnableBreaker());
@@ -120,6 +121,8 @@ public class AiProviderServiceImpl implements AiProviderService {
             existing.setApiKey(cryptoUtil.encrypt(dto.getApiKey()));
         }
         existing.setBaseUrl(dto.getBaseUrl());
+        if (dto.getChatCapabilitiesJson() != null)
+            existing.setChatCapabilitiesJson(dto.getChatCapabilitiesJson().isBlank() ? "{}" : dto.getChatCapabilitiesJson());
         existing.setTimeout(dto.getTimeout() == null ? 30 : dto.getTimeout());
         existing.setMaxRetries(dto.getMaxRetries() == null ? 3 : dto.getMaxRetries());
         existing.setEnableBreaker(dto.getEnableBreaker() == null ? 1 : dto.getEnableBreaker());
@@ -175,6 +178,7 @@ public class AiProviderServiceImpl implements AiProviderService {
     }
 
     private void validate(AiProviderDTO dto) {
+        com.astra.freyja.agent.model.ChatModelCapabilities.validateDefaults(dto.getChatCapabilitiesJson());
         if (StringUtils.isBlank(dto.getProviderName())) {
             throw new BizException("提供商名称不能为空");
         }
@@ -210,6 +214,7 @@ public class AiProviderServiceImpl implements AiProviderService {
         vo.setMaskedApiKey(StringUtils.isNotBlank(rawKey) ? cryptoUtil.mask(rawKey) : (StringUtils.isNotBlank(entity.getApiKey()) ? "[密钥失效/需重填]" : ""));
         vo.setHasApiKey(StringUtils.isNotBlank(rawKey));
         vo.setBaseUrl(entity.getBaseUrl());
+        vo.setChatCapabilitiesJson(entity.getChatCapabilitiesJson());
         vo.setTimeout(entity.getTimeout());
         vo.setMaxRetries(entity.getMaxRetries());
         vo.setEnableBreaker(entity.getEnableBreaker());

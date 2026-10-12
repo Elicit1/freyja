@@ -31,7 +31,7 @@ watch(() => props.modelValue.providerId || props.mainProviderId, async id => {
   if (current === generation) summaryModels.value = models
 }, { immediate: true })
 const selected = computed(() => summaryModels.value.find(m => m.modelCode === (props.modelValue.providerId ? props.modelValue.modelCode : props.mainModelCode)))
-const caps = computed(() => modelCapabilities(selected.value))
+const caps = computed(() => modelCapabilities(selected.value, props.providers.find(p => String(p.id) === String(props.modelValue.providerId || props.mainProviderId))))
 function set(key: string, value: unknown) { emit('update:modelValue', { ...props.modelValue, [key]: value === '' ? undefined : value }) }
 function providerChanged(value?: string) { emit('update:modelValue', { ...props.modelValue, providerId: value || undefined, modelCode: undefined }) }
 </script>

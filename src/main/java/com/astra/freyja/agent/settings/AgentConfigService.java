@@ -28,6 +28,7 @@ import java.util.Map;
 public class AgentConfigService {
     private final AgentConfigMapper mapper;
     private final AiModelMapper models;
+    private final com.astra.freyja.dao.AiProviderMapper providers;
     private final AgentProfileRegistry profiles;
     private final AgentToolRegistry tools;
     private final SkillCatalogService skills;
@@ -159,6 +160,7 @@ public class AgentConfigService {
         var profile = profiles.require(code);
         AiModel model = models.selectOne(new LambdaQueryWrapper<AiModel>()
                 .eq(AiModel::getProviderId, config.getModel().getProviderId()).eq(AiModel::getModelCode, config.getModel().getModelCode()));
+        model = ChatModelCapabilities.resolve(model, providers.selectById(config.getModel().getProviderId()));
         if ("MODEL".equals(config.getModel().getTokenMode())) config.getModel().setMaxTokens(ChatModelCapabilities.from(model).recommended(model));
         if (config.getModel().getTemperature() == null) config.getModel().setTemperature(model.getTemperature());
         if (config.getModel().getTopP() == null) config.getModel().setTopP(model.getTopP());
@@ -192,6 +194,7 @@ public class AgentConfigService {
         if (summary.getProviderId() == null) return main;
         var entry = models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId, summary.getProviderId()).eq(AiModel::getModelCode, summary.getModelCode()));
         if (entry == null || !Integer.valueOf(1).equals(entry.getStatus()) || !"CHAT".equals(entry.getModelType())) throw new BizException("摘要模型已不可用");
+        entry = ChatModelCapabilities.resolve(entry, providers.selectById(summary.getProviderId()));
         var pinned = new AiModel(); pinned.setProviderId(summary.getProviderId()); pinned.setModelCode(entry.getModelCode()); pinned.setModelType("CHAT"); pinned.setStatus(1);
         pinned.setTemperature(entry.getTemperature()); pinned.setTopP(entry.getTopP()); pinned.setMaxTokens(summary.getMaxTokens());
         Map<String, Object> parameters = new LinkedHashMap<>();

@@ -61,7 +61,7 @@ public class AiModelFactoryImpl implements AiModelFactory {
         if (model == null || !Integer.valueOf(1).equals(model.getStatus())) {
             throw new BizException("AI 模型不存在或已停用");
         }
-        ChatModel delegate = build(provider, model);
+        ChatModel delegate = build(provider, com.astra.freyja.agent.model.ChatModelCapabilities.resolve(model, provider));
         ChatModel wrapped = new CircuitBreakerChatModel(delegate, provider.getProviderName(),
                 provider.getEnableBreaker(), provider.getBreakerThreshold(), provider.getBreakerTimeout());
         ChatModel existing = cache.putIfAbsent(key, wrapped);
@@ -114,7 +114,7 @@ public class AiModelFactoryImpl implements AiModelFactory {
         if (model == null || !Integer.valueOf(1).equals(model.getStatus())) {
             throw new BizException("AI 模型不存在或已停用");
         }
-        ChatModel delegate = build(provider, model);
+        ChatModel delegate = build(provider, com.astra.freyja.agent.model.ChatModelCapabilities.resolve(model, provider));
         ChatModel wrapped = new CircuitBreakerChatModel(delegate, provider.getProviderName(),
                 provider.getEnableBreaker(), provider.getBreakerThreshold(), provider.getBreakerTimeout());
         ChatModel existing = cache.putIfAbsent(key, wrapped);
@@ -161,7 +161,9 @@ public class AiModelFactoryImpl implements AiModelFactory {
     }
 
     private ChatModel buildOpenAi(AiProvider provider, AiModel model) {
-        Integer maxTokens = model.getMaxTokens() != null && model.getMaxTokens() > 0 ? model.getMaxTokens() : 16384;
+        var capabilities = com.astra.freyja.agent.model.ChatModelCapabilities.from(model);
+        Integer maxTokens = model.getMaxTokens() != null && model.getMaxTokens() > 0 ? model.getMaxTokens()
+                : capabilities.recommendedOutputTokens() != null ? capabilities.recommended(model) : 16384;
         OpenAiChatOptions.Builder options = OpenAiChatOptions.builder()
                 .baseUrl(provider.getBaseUrl())
                 .model(model.getModelCode())
@@ -177,6 +179,7 @@ public class AiModelFactoryImpl implements AiModelFactory {
             options.apiKey(apiKey);
         }
         applyOpenAiExtras(options, model.getParamsJson());
+        if ("MIMO_CHAT".equals(capabilities.reasoningProtocol())) options.reasoningEffort(null);
         return OpenAiChatModel.builder().options(options.build())
                 .httpClientBuilderCustomizer(com.astra.freyja.agent.gateway.ReasoningReplay.customizer()).build();
     }

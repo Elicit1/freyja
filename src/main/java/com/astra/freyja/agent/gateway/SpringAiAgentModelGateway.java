@@ -61,7 +61,10 @@ public class SpringAiAgentModelGateway implements AgentModelGateway {
             else builder.maxCompletionTokens(null);
             var extras = new java.util.LinkedHashMap<String, Object>();
             if (defaults.getExtraBody() != null) extras.putAll(defaults.getExtraBody());
-            extras.putAll(ChatModelCapabilities.from(snapshot.pinnedModel()).reasoningExtras(settings.getReasoningMode()));
+            var caps = ChatModelCapabilities.from(snapshot.pinnedModel());
+            // MiMo has a boolean thinking switch and no reasoning_effort parameter.
+            if ("MIMO_CHAT".equals(caps.reasoningProtocol())) { builder.reasoningEffort(null); extras.remove("reasoning_effort"); }
+            extras.putAll(caps.reasoningExtras(settings.getReasoningMode()));
             if (extras.get("reasoning_effort") instanceof String effort) { builder.reasoningEffort(effort); extras.remove("reasoning_effort"); }
             builder.extraBody(extras);
             if (onText != null) {

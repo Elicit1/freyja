@@ -1,6 +1,18 @@
 # AI 提供商管理接口文档 (ai-provider-api)
 
-对话模型能力新增 `GET /ai/provider/{id}/model-capabilities`：只读查询该已启用提供商的标准 `/models`（404 时尝试 `/v1/models`），返回 `{ modelCode, contextWindow?, maxOutputTokens?, reasoningEfforts }[]`。响应只包含明确返回的能力，不推断未知值、不保存模型。UI 读取后需确认并保存 `paramsJson.capabilities`；思考协议与输出预算参数必须显式选择。字段及 Agent 独立摘要和恢复机制见 [Agent 接口文档](agent-api.md)。
+对话模型能力新增 `GET /ai/provider/{id}/model-capabilities`：只读查询该已启用提供商的标准 `/models`（404 时尝试 `/v1/models`），返回 `{ modelCode, contextWindow?, maxOutputTokens?, reasoningEfforts }[]`。响应只包含明确返回的能力，不推断未知值、不保存模型。UI 读取后需确认并保存；模型未填写的字段继承提供商 `chatCapabilitiesJson`，模型 `paramsJson.capabilities` 可逐字段覆盖。字段及 Agent 独立摘要和恢复机制见 [Agent 接口文档](agent-api.md)。
+
+提供商编辑页新增“对话模型默认能力”，适用于旗下 CHAT 模型；创建时省略表示没有默认能力，修改时省略 `chatCapabilitiesJson` 保留已有值，空字符串或 `{}` 清除默认能力。该字段是 JSON 字符串，内容为能力对象，不包含 API Key 或连接参数。模型字段缺失或为 null 时继承；显式 `reasoningProtocol=NONE` 可禁用继承的思考协议，`toolCalling=false` 同样是明确覆盖。更改默认能力会清除该提供商的模型实例缓存；新任务将解析并固定最终能力，已开始的任务继续使用原快照。
+
+MiMo 使用现有 `OPENAI` 接入类型与官方 Base URL `https://api.xiaomimimo.com/v1`。提供商页的“采用 MiMo 默认能力”填入下列通用配置；如某个模型能力不同，在模型页覆盖相应字段：
+
+```json
+{"reasoningProtocol":"MIMO_CHAT","outputTokenParameter":"max_completion_tokens","maxOutputTokens":131072,"recommendedOutputTokens":65536,"toolCalling":true,"reasoningEfforts":[]}
+```
+
+MiMo 协议只发送 `thinking.type=enabled/disabled`，不发送 `reasoning_effort`。Agent 支持“跟随模型 / 开启思考 / 关闭思考”，不提供未经支持的强度档位。摘要可独立关闭思考；输出预算包含思考与正文。上下文窗口未设默认值，需按具体模型声明。配置依据：[官方 Chat 接口](https://mimo.mi.com/docs/zh-CN/api/chat/openai-api)、[深度思考与工具回传说明](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/text-generation/deep-thinking)。
+
+已有数据库在更新后端前执行一次 [provider-chat-capabilities.sql](../src/main/resources/sql/provider-chat-capabilities.sql)，为 `ai_provider` 增加可空的 `chat_capabilities_json` 列。SQL 可重复执行，不重建业务表、不修改模型或历史任务；全新数据库已在两份初始化脚本中包含该列。
 
 > 供前端及其他 AI 模块对接使用。基路径默认 `http://127.0.0.1:8080`（以实际后端端口为准）。
 > 所有接口统一返回 `R<T>` 结构，详情见"统一返回结构"。
@@ -46,6 +58,7 @@
 | providerType | String | 接入类型：`OPENAI`（OpenAI 规范兼容，含 DeepSeek）/ `OLLAMA` |
 | apiKey | String | API Key，**加密密文，返回掩码** |
 | baseUrl | String | Base URL（OLLAMA 缺省 `http://localhost:11434`） |
+| chatCapabilitiesJson | String | CHAT 默认能力 JSON 字符串，模型可逐字段覆盖 |
 | timeout | Integer | 请求超时（秒），默认 30 |
 | maxRetries | Integer | 最大重试次数，默认 3 |
 | enableBreaker | Integer | 是否熔断 0-关 1-开，默认 1 |
