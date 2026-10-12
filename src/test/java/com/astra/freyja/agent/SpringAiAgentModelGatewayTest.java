@@ -49,7 +49,9 @@ class SpringAiAgentModelGatewayTest {
                     + "\",\"outputTokenParameter\":\"" + ("MIMO_CHAT".equals(protocol) ? "max_completion_tokens" : "max_tokens") + "\"}}");
             var model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder().apiKey("fixture")
                     .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").model("test-model").maxRetries(0)
-                    .extraBody(java.util.Map.of("thinking", java.util.Map.of("type", "enabled"), "reasoning_effort", "high")).build()).build();
+                    .reasoningEffort("high").extraBody(java.util.Map.of("thinking", java.util.Map.of("type", "enabled"), "reasoning_effort", "high")).build())
+                    .httpClientBuilderCustomizer(com.astra.freyja.agent.gateway.ReasoningReplay.customizer(
+                            com.astra.freyja.agent.model.ChatModelCapabilities.from(source.pinnedModel()))).build();
             var factory = mock(AiModelFactory.class); when(factory.getChatModelForSnapshot(anyLong(), any())).thenReturn(model);
             var gateway = new SpringAiAgentModelGateway(factory, models, providers, new AgentToolRegistry(List.of()), executor);
             var summarizer = new com.astra.freyja.agent.memory.AgentMemorySummarizer(gateway, new com.astra.freyja.agent.model.AgentJson());
@@ -57,10 +59,11 @@ class SpringAiAgentModelGatewayTest {
             var wireJson = new com.fasterxml.jackson.databind.ObjectMapper().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
             var request = wireJson.readTree(requestBody.get());
             assertEquals("disabled", request.path("thinking").path("type").asText());
+            assertFalse(request.has("reasoning_effort"), "disabled thinking must clear SDK and extra-body defaults");
             if ("MIMO_CHAT".equals(protocol)) {
                 assertFalse(request.has("reasoning_effort")); assertFalse(request.has("max_tokens"));
                 assertEquals(16384, request.path("max_completion_tokens").asInt());
-            } else { assertEquals("none", request.path("reasoning_effort").asText()); assertEquals(16384, request.path("max_tokens").asInt()); }
+            } else { assertEquals(16384, request.path("max_tokens").asInt()); }
             assertEquals("length", reply.finishReason());
             assertEquals(8191, reply.reasoningTokens()); assertEquals(8191, reply.completionTokens()); assertTrue(reply.properties().isEmpty());
             assertEquals(8192, source.config().getModel().getMaxTokens());

@@ -107,7 +107,7 @@ public record ChatModelCapabilities(Integer contextWindow, Integer maxOutputToke
             throw new BizException("模型不支持该推理强度");
         return switch (reasoningProtocol) {
             case "DEEPSEEK_CHAT" -> "none".equals(effort)
-                    ? Map.of("thinking", Map.of("type", "disabled"), "reasoning_effort", "none")
+                    ? Map.of("thinking", Map.of("type", "disabled"))
                     : Map.of("thinking", Map.of("type", "enabled"), "reasoning_effort", effort);
             case "OPENAI" -> Map.of("reasoning_effort", effort);
             case "OLLAMA" -> Map.of("think", !"none".equals(effort));

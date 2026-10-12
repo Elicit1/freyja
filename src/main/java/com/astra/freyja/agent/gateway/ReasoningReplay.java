@@ -25,17 +25,21 @@ public final class ReasoningReplay {
         finally { if (previous == null) ORIGINAL.remove(); else ORIGINAL.set(previous); }
     }
     public static OpenAiHttpClientBuilderCustomizer customizer() {
+        return customizer(null);
+    }
+    public static OpenAiHttpClientBuilderCustomizer customizer(com.astra.freyja.agent.model.ChatModelCapabilities capabilities) {
         return builder -> builder.interceptor(chain -> {
             var request = chain.request(); var original = ORIGINAL.get();
             if (request.body() == null) return chain.proceed(request);
             var buffer = new Buffer(); request.body().writeTo(buffer);
             ObjectNode body = (ObjectNode) JSON.readTree(buffer.readUtf8());
             var replay = body.remove(STREAM_REPLAY_FIELD);
-            if (replay == null && original == null) return chain.proceed(request);
             if (!body.has("messages")) return chain.proceed(request);
+            boolean normalized = OpenAiRequestCompatibility.normalize(body, capabilities);
+            if (replay == null && original == null && !normalized) return chain.proceed(request);
             // extraBody adds duplicate SDK fields instead of replacing them. Replace the
             // single serialized field at the transport boundary, preserving all options.
-            body.set("messages", replay == null ? JSON.valueToTree(original) : replay);
+            if (replay != null || original != null) body.set("messages", replay == null ? JSON.valueToTree(original) : replay);
             return chain.proceed(request.newBuilder().removeHeader("Content-Length")
                     .method(request.method(), RequestBody.create(JSON.writeValueAsBytes(body), request.body().contentType())).build());
         });

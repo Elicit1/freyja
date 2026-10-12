@@ -97,7 +97,8 @@ class SpringAiAgentStreamingTest {
             assertEquals(1, json.readTree(request.get()).path("messages").size(), "Request-local replay must not leak");
         } finally { server.stop(0); }
     }
-    @Test void mimoThinkingFragmentsAndToolHistorySurviveTheNextUserTurn() throws Exception {
+    @ParameterizedTest @ValueSource(strings = {"MIMO_CHAT", "DEEPSEEK_CHAT"})
+    void thinkingFragmentsAndToolHistorySurviveTheNextUserTurn(String protocol) throws Exception {
         var requests = new CopyOnWriteArrayList<String>();
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/", exchange -> {
@@ -121,13 +122,15 @@ class SpringAiAgentStreamingTest {
             exchange.close();
         }); server.start();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder().apiKey("fixture").maxRetries(0)
-                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").model("test-model").build())
-                    .httpClientBuilderCustomizer(ReasoningReplay.customizer()).build();
-            var gateway = gateway(model, executor);
             var snapshot = AgentTestSupport.snapshot(List.of("get_shot_detail"), "NORMAL");
             snapshot.config().getModel().setReasoningMode("ENABLED");
-            snapshot.pinnedModel().setParamsJson("{\"capabilities\":{\"reasoningProtocol\":\"MIMO_CHAT\",\"outputTokenParameter\":\"max_completion_tokens\"}}");
+            snapshot.config().getModel().setTemperature(0.4); snapshot.config().getModel().setTopP(0.8);
+            snapshot.pinnedModel().setParamsJson("{\"capabilities\":{\"reasoningProtocol\":\"" + protocol
+                    + "\",\"outputTokenParameter\":\"" + ("MIMO_CHAT".equals(protocol) ? "max_completion_tokens" : "max_tokens") + "\"}}");
+            var model = OpenAiChatModel.builder().options(OpenAiChatOptions.builder().apiKey("fixture").maxRetries(0)
+                    .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1").model("test-model").build())
+                    .httpClientBuilderCustomizer(ReasoningReplay.customizer(com.astra.freyja.agent.model.ChatModelCapabilities.from(snapshot.pinnedModel()))).build();
+            var gateway = gateway(model, executor);
             var text = new CopyOnWriteArrayList<String>();
             var reply = gateway.stream(snapshot, List.of(new UserMessage("查询镜头")), List.of("get_shot_detail"), 5000, text::add);
             assertEquals("fixture part one; fixture part two", reply.properties().get("reasoningContent"));
@@ -141,7 +144,14 @@ class SpringAiAgentStreamingTest {
             for (var encoded : requests) {
                 var request = json.readTree(encoded);
                 assertEquals("enabled", request.path("thinking").path("type").asText());
-                assertTrue(request.has("max_completion_tokens")); assertFalse(request.has("max_tokens")); assertFalse(request.has("reasoning_effort"));
+                assertFalse(request.has("temperature"));
+                if ("MIMO_CHAT".equals(protocol)) {
+                    assertTrue(request.has("max_completion_tokens")); assertFalse(request.has("max_tokens"));
+                    assertFalse(request.has("reasoning_effort")); assertFalse(request.has("top_p"));
+                } else {
+                    assertTrue(request.has("max_tokens")); assertFalse(request.has("max_completion_tokens"));
+                    assertEquals(0.95, request.path("top_p").asDouble());
+                }
             }
             var history = json.readTree(requests.getLast()).path("messages");
             assertEquals("fixture part one; fixture part two", history.get(1).path("reasoning_content").asText());

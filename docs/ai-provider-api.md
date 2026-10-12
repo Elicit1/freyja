@@ -12,6 +12,14 @@ MiMo 使用现有 `OPENAI` 接入类型与官方 Base URL `https://api.xiaomimim
 
 MiMo 协议只发送 `thinking.type=enabled/disabled`，不发送 `reasoning_effort`。Agent 支持“跟随模型 / 开启思考 / 关闭思考”，不提供未经支持的强度档位。摘要可独立关闭思考；输出预算包含思考与正文。上下文窗口未设默认值，需按具体模型声明。配置依据：[官方 Chat 接口](https://mimo.mi.com/docs/zh-CN/api/chat/openai-api)、[深度思考与工具回传说明](https://mimo.mi.com/docs/zh-CN/quick-start/usage-guide/text-generation/deep-thinking)。
 
+提供商页也支持“采用 DeepSeek 默认能力”，针对当前官方 `deepseek-flash` / `deepseek-v4-pro`，填写以下配置；旧模型或第三方网关应在模型页按实际限制覆盖。这是用户显式选择的预设，不按模型名称推测能力，也不引入外部模型目录同步。
+
+```json
+{"reasoningProtocol":"DEEPSEEK_CHAT","outputTokenParameter":"max_tokens","contextWindow":1048576,"maxOutputTokens":393216,"recommendedOutputTokens":65536,"toolCalling":true,"reasoningEfforts":["low","high","max"]}
+```
+
+两类协议的参数清理在 SDK 合并模型默认值和单次调用参数之后执行，覆盖普通业务调用、Agent 同步/流式调用及独立摘要：DeepSeek 关闭思考时清除 `reasoning_effort`；开启时去除不生效的 `temperature`、`presence_penalty`、`frequency_penalty`，`top_p` 收敛到 0.95–1.0；关闭时去除不生效的 `top_p`。MiMo 始终不发送 `reasoning_effort`，开启思考时去除 `temperature`、`top_p`，关闭后保留采样配置。未指定 `thinking` 时，两类官方协议均按默认开启思考处理。普通模型请求的输出预算按已声明的模型最大输出收敛；不改写数据库中的用户预算。依据：[DeepSeek 思考控制](https://api-docs.deepseek.com/guides/thinking_mode/)、[DeepSeek 模型限制](https://api-docs.deepseek.com/quick_start/pricing/)。
+
 已有数据库在更新后端前执行一次 [provider-chat-capabilities.sql](../src/main/resources/sql/provider-chat-capabilities.sql)，为 `ai_provider` 增加可空的 `chat_capabilities_json` 列。SQL 可重复执行，不重建业务表、不修改模型或历史任务；全新数据库已在两份初始化脚本中包含该列。
 
 > 供前端及其他 AI 模块对接使用。基路径默认 `http://127.0.0.1:8080`（以实际后端端口为准）。

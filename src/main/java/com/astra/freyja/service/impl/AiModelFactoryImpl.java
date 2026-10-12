@@ -164,6 +164,7 @@ public class AiModelFactoryImpl implements AiModelFactory {
         var capabilities = com.astra.freyja.agent.model.ChatModelCapabilities.from(model);
         Integer maxTokens = model.getMaxTokens() != null && model.getMaxTokens() > 0 ? model.getMaxTokens()
                 : capabilities.recommendedOutputTokens() != null ? capabilities.recommended(model) : 16384;
+        maxTokens = Math.min(maxTokens, capabilities.outputLimit());
         OpenAiChatOptions.Builder options = OpenAiChatOptions.builder()
                 .baseUrl(provider.getBaseUrl())
                 .model(model.getModelCode())
@@ -181,7 +182,7 @@ public class AiModelFactoryImpl implements AiModelFactory {
         applyOpenAiExtras(options, model.getParamsJson());
         if ("MIMO_CHAT".equals(capabilities.reasoningProtocol())) options.reasoningEffort(null);
         return OpenAiChatModel.builder().options(options.build())
-                .httpClientBuilderCustomizer(com.astra.freyja.agent.gateway.ReasoningReplay.customizer()).build();
+                .httpClientBuilderCustomizer(com.astra.freyja.agent.gateway.ReasoningReplay.customizer(capabilities)).build();
     }
 
     private ChatModel buildOllama(AiProvider provider, AiModel model) {

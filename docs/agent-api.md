@@ -77,7 +77,7 @@ Agent 的 `model.tokenMode=MODEL` 跟随模型建议预算（未声明建议值�
 
 `GET /agent/runs/{id}` 增加 `summaryRecoverable`、`summaryConfig`、`modelProviderId`、`modelCode`。点击“调整摘要配置并继续”提交 `POST /agent/runs/{id}/resume-summary`，请求体为完整 Summary 配置。接口只允许当前会话最新的摘要阻塞任务，兼容历史 FAILED 且错误恰为“模型摘要无效，历史消息仍保留”的任务；以会话锁和快照比较防止重复恢复或覆盖并发更新。只重新固定摘要模型和摘要配置，主模型、工具/Skill 版本、原历史与覆盖游标、已完成步骤和已消费预算不变。更新记录为 `SUMMARY_CONFIG_UPDATED`，随后同一 Run 进入 QUEUED。普通 `/resume` 不负责更新快照。无需数据库迁移，旧快照缺少新字段时兼容读取。
 
-DeepSeek 模型需要在模型中心显式选择 **DeepSeek Chat** 思考控制协议。声明后摘要关闭思考会发送 `thinking.type=disabled` 和 `reasoning_effort=none`，主任务可继续 high 思考；仅设置较大的输出预算不会自动改变思考行为。恢复旧失败任务会重新读取所选摘要模型的能力，不需要重新执行已完成的业务操作。
+DeepSeek 模型需要显式选择 **DeepSeek Chat** 思考控制协议，可在提供商页采用当前官方默认能力，模型页再按需覆盖。声明后摘要关闭思考只发送 `thinking.type=disabled`，不发送 `reasoning_effort`，并在 SDK 合并默认参数后清除残留强度；主任务可继续 high 思考。思考开启时不发送不生效的温度与惩罚参数，`top_p` 收敛至官方的 0.95–1.0 范围；关闭思考时不发送不生效的 `top_p`。仅设置较大的输出预算不会自动改变思考行为。恢复旧失败任务会重新读取所选摘要模型的能力，不需要重新执行已完成的业务操作。MiMo 思考开启时不发送不生效的 `temperature` 和 `top_p`，关闭后保留用户采样配置。两类模型的历史推理内容仍完整保留用于工具协议回传，不展示在聊天 UI。
 
 `runtime.maxModelTurns=0` 表示模型轮数不限制，正数范围仍为 1–100。配置页提供“不限制”开关并提醒注意 API 额度与余额；执行时限、工具调用次数、单次模型超时及并发限制仍生效。有限轮数默认值不变。配置变更只用于新 Run，同一个失败 Run 重试不会清零已消耗预算。
 
