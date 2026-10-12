@@ -1,6 +1,25 @@
 spring:
   application:
     name: freyja
+  ai:
+    mcp:
+      server:
+        enabled: ${freyja.mcp.enabled:false}
+        protocol: STATELESS
+        type: SYNC
+        name: freyja-digital-studio
+        version: 1.0.0
+        instructions: "FREYJA business operations only. Internal agents, model execution, prompts and skills are not exposed. All business IDs are strings. Read current data before editing and preserve creator locks."
+        tool-callback-converter: false
+        annotation-scanner:
+          enabled: false
+        capabilities:
+          tool: true
+          resource: true
+          prompt: false
+          completion: false
+        streamable-http:
+          mcp-endpoint: /mcp
   mvc:
     async:
       request-timeout: 600000
@@ -40,6 +59,14 @@ server:
   port: ${SERVER_PORT:8080}
 
 freyja:
+  mcp:
+    enabled: ${FREYJA_MCP_ENABLED:false}
+    token: ${FREYJA_MCP_TOKEN:}
+    write-enabled: ${FREYJA_MCP_WRITE_ENABLED:false}
+    allow-all-projects: ${FREYJA_MCP_ALLOW_ALL_PROJECTS:false}
+    allow-create-projects: ${FREYJA_MCP_ALLOW_CREATE_PROJECTS:false}
+    allowed-project-ids: ${FREYJA_MCP_ALLOWED_PROJECT_IDS:}
+    allowed-origins: ${FREYJA_MCP_ALLOWED_ORIGINS:}
   crypto:
     key: ${FREYJA_CRYPTO_KEY:freyja-local-dev-key-please-change-me-0123456789}
   media-tools:

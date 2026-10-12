@@ -1,0 +1,99 @@
+package com.astra.freyja.mcp;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletInputStream;
+import jakarta.servlet.ReadListener;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletRequestWrapper;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.io.ByteArrayInputStream;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+public final class McpAuthenticationFilter extends OncePerRequestFilter {
+    private static final int MAX_BODY_BYTES = 2 * 1024 * 1024;
+    private final byte[] credential;
+    private final Set<String> origins;
+    private final McpPrincipal principal;
+
+    public McpAuthenticationFilter(McpProperties properties) {
+        if (properties.getToken() == null || properties.getToken().length() < 24 || properties.getToken().isBlank())
+            throw new IllegalStateException("开启 MCP 必须配置至少 24 字符的 FREYJA_MCP_TOKEN");
+        credential = properties.getToken().getBytes(StandardCharsets.UTF_8);
+        origins = properties.getAllowedOrigins().stream().filter(s -> !s.isBlank()).collect(Collectors.toUnmodifiableSet());
+        Set<Long> projects = properties.getAllowedProjectIds().stream().filter(s -> !s.isBlank())
+                .map(McpScope::id).collect(Collectors.toUnmodifiableSet());
+        principal = new McpPrincipal(properties.isWriteEnabled(), properties.isAllowAllProjects(), properties.isAllowCreateProjects(), projects);
+    }
+
+    @Override protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getServletPath();
+        return !path.equals("/mcp") && !path.startsWith("/mcp/");
+    }
+
+    @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+            throws ServletException, IOException {
+        String origin = request.getHeader("Origin");
+        if (origin != null && !origins.contains(origin)) { reject(response, 403, "MCP_ORIGIN_DENIED"); return; }
+        if (origin != null) {
+            response.setHeader("Access-Control-Allow-Origin", origin);
+            response.addHeader("Vary", "Origin");
+            response.setHeader("Access-Control-Expose-Headers", "MCP-Protocol-Version");
+        }
+        if ("OPTIONS".equals(request.getMethod()) && request.getHeader("Access-Control-Request-Method") != null) {
+            if (origin == null || !"POST".equals(request.getHeader("Access-Control-Request-Method"))) {
+                reject(response, 403, "MCP_PREFLIGHT_DENIED"); return;
+            }
+            response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+            response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, MCP-Protocol-Version, Mcp-Method, Mcp-Name");
+            response.setStatus(204); return;
+        }
+        String authorization = request.getHeader("Authorization");
+        if (authorization == null || !authorization.regionMatches(true, 0, "Bearer ", 0, 7)
+                || !MessageDigest.isEqual(credential, authorization.substring(7).getBytes(StandardCharsets.UTF_8))) {
+            response.setHeader("WWW-Authenticate", "Bearer realm=\"freyja-mcp\"");
+            reject(response, 401, "MCP_UNAUTHORIZED"); return;
+        }
+        if (request.getContentLengthLong() > MAX_BODY_BYTES) { reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return; }
+        byte[] body = request.getInputStream().readNBytes(MAX_BODY_BYTES + 1);
+        if (body.length > MAX_BODY_BYTES) { reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return; }
+        request.setAttribute(McpPrincipal.CONTEXT_KEY, principal);
+        chain.doFilter(new BufferedRequest(request, body), response);
+    }
+
+    /** Bounded buffering also covers chunked requests; the MCP transport is synchronous. */
+    private static final class BufferedRequest extends HttpServletRequestWrapper {
+        private final byte[] body;
+        private final ServletInputStream stream;
+        private BufferedRequest(HttpServletRequest request, byte[] body) {
+            super(request); this.body = body;
+            ByteArrayInputStream source = new ByteArrayInputStream(body);
+            stream = new ServletInputStream() {
+                @Override public int read() { return source.read(); }
+                @Override public int read(byte[] bytes, int offset, int length) { return source.read(bytes, offset, length); }
+                @Override public boolean isFinished() { return source.available() == 0; }
+                @Override public boolean isReady() { return true; }
+                @Override public void setReadListener(ReadListener listener) { throw new IllegalStateException("MCP uses synchronous request bodies"); }
+            };
+        }
+        @Override public ServletInputStream getInputStream() { return stream; }
+        @Override public BufferedReader getReader() { return new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8)); }
+        @Override public int getContentLength() { return body.length; }
+        @Override public long getContentLengthLong() { return body.length; }
+    }
+
+    private static void reject(HttpServletResponse response, int status, String code) throws IOException {
+        response.setStatus(status);
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        response.getWriter().write("{\"error\":\"" + code + "\"}");
+    }
+}

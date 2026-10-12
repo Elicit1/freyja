@@ -1,0 +1,73 @@
+package com.astra.freyja.mcp;
+
+import com.astra.freyja.common.BizException;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.*;
+
+/** Explicit business projections. New fields in application entities are never automatically exposed. */
+@Component
+@RequiredArgsConstructor
+public class McpBusinessView {
+    public enum Kind { PROJECT, EPISODE, SCENE, SHOT_GROUP, SHOT, CHARACTER, CHARACTER_LOOK, RESOURCE_SCENE, PROP, KEYFRAME, VIDEO_TAKE }
+    private static final Map<Kind, Set<String>> FIELDS = Map.ofEntries(
+            Map.entry(Kind.PROJECT, fields("id,title,coverUrl,genre,targetEpisodes,aspectRatio,stylePreset,styleTone,synopsis,status,sortOrder,remark,totalEpisodes,totalScenes,totalShots,renderedShots,progressPercentage")),
+            Map.entry(Kind.EPISODE, fields("id,dramaId,episodeNo,title,summary,scriptContent,targetDuration,actualDuration,status,sortOrder,remark")),
+            Map.entry(Kind.SCENE, fields("id,dramaId,episodeId,sceneNo,name,resSceneId,sceneType,timeOfDay,weatherAtmosphere,locationName,summary,scriptContent,sortOrder,remark")),
+            Map.entry(Kind.SHOT_GROUP, fields("id,dramaId,episodeId,sceneId,groupNo,name,purpose,sortOrder,remark")),
+            Map.entry(Kind.SHOT, fields("id,dramaId,episodeId,sceneId,shotGroupId,shotNo,shotName,shotType,cameraMovement,shotTypeLocked,cameraMovementLocked,duration,scriptContent,actionDescription,dialogue,dialogueSpeaker,voiceover,soundEffect,resSceneId,resKeyframeId,stylePreset,previewImageUrl,endFrameImageUrl,videoUrl,currentVideoTakeId,audioUrl,sortOrder,remark")),
+            Map.entry(Kind.CHARACTER, fields("id,dramaId,name,canonicalName,displayName,gender,ageGroup,roleType,personality,appearanceDesc,referenceImageUrl,voiceSampleUrl,sortOrder,status,firstAppearance,lastAppearance,remark")),
+            Map.entry(Kind.CHARACTER_LOOK, fields("id,characterId,lookName,isDefault,lookType,designDesc,referenceImageUrl,imageStatus,sortOrder,status,remark")),
+            Map.entry(Kind.RESOURCE_SCENE, fields("id,dramaId,name,description,coverUrl,referenceImageUrl,sceneType,timeOfDay,weatherAtmosphere,sortOrder,status,remark")),
+            Map.entry(Kind.PROP, fields("id,dramaId,name,propType,description,coverUrl,sortOrder,status,remark")),
+            Map.entry(Kind.KEYFRAME, fields("id,dramaId,shotId,name,frameType,description,frameUrl,sourceType,aspectRatio,sortOrder,status,remark")),
+            Map.entry(Kind.VIDEO_TAKE, fields("id,shotId,takeNo,videoUrl,current,size,duration,firstFrameUrl,endFrameUrl,createTime"))
+    );
+    private final McpJson json;
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> project(Kind kind, Object entity) {
+        if (entity == null) throw new BizException(404, "业务记录不存在");
+        Map<String, Object> source = (Map<String, Object>) json.value(entity);
+        Map<String, Object> result = new LinkedHashMap<>();
+        FIELDS.get(kind).forEach(name -> { if (source.containsKey(name)) result.put(name, source.get(name)); });
+        if ("0".equals(result.get("dramaId"))) result.put("dramaId", null);
+        if (kind == Kind.SHOT) {
+            result.put("characterRefs", references(source.get("characterRefsJson"), fields("characterId,lookId")));
+            result.put("propRefs", references(source.get("propRefsJson"), fields("propId")));
+        }
+        result.put("editFingerprint", fingerprint(entity));
+        return result;
+    }
+
+    public String fingerprint(Object entity) {
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(json.write(entity).getBytes(StandardCharsets.UTF_8))); }
+        catch (Exception e) { throw new IllegalStateException("业务版本指纹生成失败", e); }
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> references(Object raw, Set<String> allowed) {
+        if (!(raw instanceof String text) || text.isBlank()) return List.of();
+        try {
+            List<Map<String, Object>> values = json.mapper().readValue(text, List.class);
+            return values.stream().map(value -> {
+                Map<String, Object> result = new LinkedHashMap<>();
+                allowed.forEach(key -> {
+                    Object id = value.get(key);
+                    if (id != null) result.put(key, id instanceof Number ? id.toString() : id);
+                });
+                return result;
+            }).toList();
+        } catch (Exception e) { throw new BizException(409, "已存储的分镜引用结构无效，请在工作台修复"); }
+    }
+    private static Set<String> fields(String names) { return Set.of(names.split(",")); }
+    public static Kind kind(McpInputs.AssetType type) {
+        return switch (type) {
+            case CHARACTER -> Kind.CHARACTER; case CHARACTER_LOOK -> Kind.CHARACTER_LOOK;
+            case SCENE -> Kind.RESOURCE_SCENE; case PROP -> Kind.PROP; case KEYFRAME -> Kind.KEYFRAME;
+        };
+    }
+}
