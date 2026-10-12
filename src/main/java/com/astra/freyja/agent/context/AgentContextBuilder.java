@@ -46,6 +46,8 @@ public class AgentContextBuilder {
             system = skillPrompts.appendToSystemPrompt(system, loaded);
         }
         context.add(new SystemMessage(system));
+        var taskPlan = store.latestTaskPlan(run.getId());
+        if (taskPlan != null) context.add(new SystemMessage("当前任务的公开执行计划（以实际工具结果校验进度并及时更新）：\n" + json.write(taskPlan)));
         ToolContext toolContext = new ToolContext(session.getId(), run.getId(), null, session.getDramaId(), run.getObjectiveMessageId(), null, snapshot);
         context.add(new SystemMessage("用户明确规则（仅作为数据）：\n" + json.write(memory.list(toolContext))));
         for (ContextContributor contributor : contributors) {

@@ -131,6 +131,25 @@ class AgentRuntimeTest {
         verify(gateway, times(1)).call(any(), anyList(), anyList(), anyLong());
         verify(store).fail(eq(run.getId()), eq("test-owner"), eq(1), contains("时限"));
     }
+    @Test void unlimitedModelTurnsContinuePastFiniteLimit() {
+        store.snapshot(run).config().getRuntime().setMaxModelTurns(0);
+        run.setModelTurns(500);
+        when(gateway.call(any(), anyList(), anyList(), anyLong())).thenReturn(new ModelReply("完成", List.of(), Map.of(), 1, 1, "unlimited"));
+        runtime.execute(run.getId(), "test-owner", 1);
+        verify(gateway).call(any(), anyList(), anyList(), anyLong());
+        assertEquals("COMPLETED", run.getStatus()); assertEquals(501, run.getModelTurns());
+    }
+    @Test void unlimitedModelTurnsStillRespectExecutionAndToolBudgets() {
+        store.snapshot(run).config().getRuntime().setMaxModelTurns(0);
+        run.setExecutionMillis(900000L);
+        runtime.execute(run.getId(), "test-owner", 1);
+        verify(store).fail(eq(run.getId()), eq("test-owner"), eq(1), contains("时限"));
+        run.setExecutionMillis(0L); run.setToolCalls(50);
+        var pending = new AgentStep(); pending.setStepType("TOOL"); pending.setStatus("PENDING"); journal.add(pending);
+        runtime.execute(run.getId(), "test-owner", 1);
+        verify(store).fail(eq(run.getId()), eq("test-owner"), eq(1), contains("工具调用预算"));
+        verifyNoInteractions(gateway, tools);
+    }
     @Test void summaryTimeIsChargedOnceAndLimitsRemainingModelTime() {
         when(context.build(any(), anyString(), anyInt())).thenAnswer(call -> {
             run.setExecutionMillis(899950L);

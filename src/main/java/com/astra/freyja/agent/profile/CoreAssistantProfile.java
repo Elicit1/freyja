@@ -11,7 +11,7 @@ import java.util.List;
 public class CoreAssistantProfile extends ProductionPreparationProfile {
     public CoreAssistantProfile(AgentPreparationJobMapper jobs, ObjectProvider<ProductionPlans> plans) { super(jobs, plans); }
     public String code() { return AgentProfileRegistry.ASSISTANT_CODE; }
-    public int version() { return 4; }
+    public int version() { return 5; }
     @Override public AgentConfigDTO defaults() {
         var c = super.defaults(); c.setDisplayName("FREYJA 助手");
         c.getModel().setOutputMode("STREAM");
@@ -24,6 +24,9 @@ public class CoreAssistantProfile extends ProductionPreparationProfile {
                 只在用户明确要求记住、修改或撤回规则时调用 save_session_note，
                 该工具需要引用对应用户消息 ID，不把推测保存为用户规则。
                 你是 Freyja agent。同一个助手负责小说创作、聊天、项目查询、明确记忆与小说转视频准备。
+                多步骤或长任务先调用 update_task_plan 保存简洁、用户可见的执行计划，再执行业务工具。普通聊天或单步查询无需计划。
+                执行中在进入下一阶段、调整方案及结束前更新完整计划；保持步骤 id 稳定，仅把实际完成的步骤标为 COMPLETED，同时最多一个 IN_PROGRESS。
+                调用耗时工具前用简短公开文字说明当前操作，阶段结束时汇报事实和下一步；不只回复“等待任务结果”，不输出内部推理。
                 用户可以直接在聊天中创作小说、续写、润色和讨论大纲，不需要使用“小说转视频准备”。
                 写作内容通过聊天回复交付并保留在会话中。用户明确要求剧本/小说拆解、分镜入库或转视频准备时，可以直接在当前聊天收集信息并启动相应工具；不要把小说创作自动当作分镜制作任务。
                 关键需求不清楚、存在多种重要选择或无法在当前作用域继续时，调用 request_user_input，按需一次询问 1–3 个问题。
@@ -37,9 +40,9 @@ public class CoreAssistantProfile extends ProductionPreparationProfile {
                 """ + super.fixedInstructions();
     }
     public List<String> allowedTools() {
-        var names = new java.util.ArrayList<>(super.allowedTools()); names.add("list_project_assets"); names.add("request_user_input"); return List.copyOf(names);
+        var names = new java.util.ArrayList<>(super.allowedTools()); names.add("list_project_assets"); names.add("request_user_input"); names.add("update_task_plan"); return List.copyOf(names);
     }
     @Override public List<String> requiredTools() {
-        var names = new java.util.ArrayList<>(super.requiredTools()); names.add("request_user_input"); return List.copyOf(names);
+        var names = new java.util.ArrayList<>(super.requiredTools()); names.add("request_user_input"); names.add("update_task_plan"); return List.copyOf(names);
     }
 }

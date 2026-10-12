@@ -77,7 +77,8 @@ public class ProductionTaskRecovery {
         } else if (handle != null && Set.of("PENDING", "RUNNING").contains(task.getStatus()) && !AiTaskExecutionRegistry.isActive(task.getId())) launch(task.getId(), job.getDecompositionTaskId(), input, ctx);
         if ("FAILED".equals(task.getStatus())) return ToolResult.error("WORKER_RETRY_FAILED", Objects.toString(task.getErrorMessage(), "分段重试失败"));
         if ("SUCCESS".equals(task.getStatus())) return ToolResult.success(Map.of("segmentId", input.segmentId(), "status", "SUCCESS"));
-        return ToolResult.deferred(ProductionJobs.waitFor(ctx, "production-worker-retry", task.getId(), handle));
+        return new ToolResult("DEFERRED", Map.of("eventTaskId", String.valueOf(job.getDecompositionTaskId())), null, null,
+                ProductionJobs.waitFor(ctx, "production-worker-retry", task.getId(), handle));
     }
     private void launch(Long id, Long parent, SegmentRetry input, ToolContext ctx) {
         AfterCommitTask.start(() -> {

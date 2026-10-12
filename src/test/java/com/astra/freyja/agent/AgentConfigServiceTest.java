@@ -184,4 +184,16 @@ class AgentConfigServiceTest {
         assertEquals("我的助手", upgraded.getDisplayName()); assertEquals(9, upgraded.getRevision());
         verify(mapper, times(1)).selectOne(any());
     }
+    @Test void progressUpgradeAddsPlanToolAndKeepsUnlimitedTurnsAndOtherSettings() {
+        config.getRuntime().setMaxModelTurns(0); config.setEnabled(false);
+        config.getTools().setNames(config.getTools().getNames().stream().filter(n -> !n.equals("update_task_plan")).toList());
+        var previous = stored(config, 4);
+        when(mapper.selectOne(any())).thenReturn(previous); when(mapper.lockByCode("core-assistant")).thenReturn(previous);
+        var upgraded = service.get("core-assistant");
+        assertTrue(upgraded.getTools().getNames().contains("update_task_plan"));
+        assertEquals(0, upgraded.getRuntime().getMaxModelTurns()); assertFalse(upgraded.isEnabled());
+        assertEquals(config.getModel(), upgraded.getModel()); assertEquals(config.getAvatar(), upgraded.getAvatar());
+        assertTrue(validator.validate("core-assistant", upgraded, false).valid());
+        upgraded.getRuntime().setMaxModelTurns(-1); assertFalse(validator.validate("core-assistant", upgraded, false).valid());
+    }
 }

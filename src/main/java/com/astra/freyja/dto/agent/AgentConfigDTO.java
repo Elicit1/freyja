@@ -49,7 +49,7 @@ public class AgentConfigDTO {
         private List<String> scopes = new ArrayList<>(List.of("SESSION", "PROJECT"));
     }
     @Data public static class Runtime {
-        private int maxModelTurns = 20;
+        private int maxModelTurns = 20; // 0 means unlimited; other execution budgets still apply.
         private int maxToolCalls = 50;
         private int executionTimeoutSeconds = 900;
         private int modelTimeoutSeconds = 120;

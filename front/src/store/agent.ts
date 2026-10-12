@@ -3,7 +3,8 @@ import { defineStore } from 'pinia'
 import { agentApi } from '@/api/agent'
 import { useTaskCenterStore } from '@/store/taskCenter'
 import { isActiveRun } from '@/types/agent'
-import type { AgentEvent, AgentStreamEvent, AgentProfile, AgentSession, AgentMessage, AgentRun, AvatarState, AgentQuestionReply } from '@/types/agent'
+import { applyAgentProgress, applyTaskActivity } from '@/components/agent/agentProgress'
+import type { AgentEvent, AgentStreamEvent, AgentProfile, AgentSession, AgentMessage, AgentRun, AvatarState, AgentQuestionReply, AgentTaskActivity } from '@/types/agent'
 
 export const useAgentStore = defineStore('agent', () => {
   const profiles = ref<AgentProfile[]>([])
@@ -21,6 +22,22 @@ export const useAgentStore = defineStore('agent', () => {
   const focusRunId = ref<string>()
   const taskCenter = useTaskCenterStore()
   const subscriptions = new Map<string, () => void>()
+  const taskActivities = ref<Record<string, AgentTaskActivity>>({})
+  const taskSubscriptions = new Map<string, () => void>()
+  watch(() => visible.value && selectedSession.value ? Object.values(runs.value)
+    .filter(run => run.sessionId === selectedSession.value?.id)
+    .flatMap(run => run.progress?.tools.map(tool => tool.eventTaskId || tool.taskId).filter((id): id is string => !!id) || []) : [], ids => {
+    const wanted = new Set(ids.slice(-40))
+    taskSubscriptions.forEach((unsubscribe, id) => { if (!wanted.has(id)) { unsubscribe(); taskSubscriptions.delete(id) } })
+    wanted.forEach(id => {
+      if (taskSubscriptions.has(id)) return
+      taskActivities.value[id] ||= { afterSeq: 0, logs: [], workers: {}, finished: false }
+      taskSubscriptions.set(id, taskCenter.subscribeAi(id, event => {
+        const activity = taskActivities.value[id]
+        if (activity) applyTaskActivity(activity, event)
+      }, taskActivities.value[id]!.afterSeq))
+    })
+  })
   let started = false
   let selectGeneration = 0
   const activeRun = computed(() => selectedSession.value?.activeRunId ? runs.value[selectedSession.value.activeRunId] : undefined)
@@ -51,9 +68,11 @@ export const useAgentStore = defineStore('agent', () => {
     if (existing >= 0) messages.value[existing] = message
     else messages.value.push(message)
     messages.value.sort((a, b) => a.seq - b.seq)
+    if (message.runId && runs.value[message.runId]) applyAgentProgress(runs.value[message.runId]!, message)
   }
   async function refreshRun(id: string) {
     const run = await agentApi.run(id)
+    messages.value.filter(message => message.runId === id).forEach(message => applyAgentProgress(run, message))
     runs.value[id] = run
     if (!isActiveRun(run.status)) clearPreview(run.sessionId, id)
     const session = sessions.value.find(s => s.id === run.sessionId)
@@ -110,6 +129,8 @@ export const useAgentStore = defineStore('agent', () => {
   }
   function stop() {
     previews.value = {}
+    taskSubscriptions.forEach(unsubscribe => unsubscribe()); taskSubscriptions.clear()
+    taskActivities.value = {}
     subscriptions.forEach(unsubscribe => unsubscribe()); subscriptions.clear(); started = false
   }
   async function selectSession(id: string, runId?: string) {
@@ -174,7 +195,7 @@ export const useAgentStore = defineStore('agent', () => {
     notifications.value = notifications.value.filter(n => n.id !== id)
     taskCenter.markRead(id, 'AGENT_RUN')
   }
-  return { profiles, sessions, selectedSession, messages, streamPreview, runs, notifications, visible, avatarCollapsed, loading, phase,
+  return { profiles, sessions, selectedSession, messages, streamPreview, runs, taskActivities, notifications, visible, avatarCollapsed, loading, phase,
     focusRunId, activeRun, currentProfile, unreadCount, start, stop, open, selectSession, createSession,
     send, cancel, refreshProfiles, refreshRun, markRead }
 })

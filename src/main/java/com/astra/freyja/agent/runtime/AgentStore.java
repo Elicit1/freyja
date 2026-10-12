@@ -2,6 +2,7 @@ package com.astra.freyja.agent.runtime;
 
 import com.astra.freyja.agent.event.AgentEventPublisher;
 import com.astra.freyja.agent.model.AgentJson;
+import com.astra.freyja.agent.model.AgentTaskPlan;
 import com.astra.freyja.agent.model.UserQuestions;
 import com.astra.freyja.agent.model.AgentProtocol.*;
 import com.astra.freyja.agent.profile.AgentProfileRegistry;
@@ -121,6 +122,30 @@ public class AgentStore {
     public Snapshot snapshot(AgentRun run) { return json.read(run.getProfileSnapshotJson(), Snapshot.class); }
     public List<AgentStep> steps(Long runId) {
         return steps.selectList(new LambdaQueryWrapper<AgentStep>().eq(AgentStep::getRunId, runId).orderByAsc(AgentStep::getStepOrder));
+    }
+    public record ToolProgress(Long stepId, String name, String status, String taskId, String eventTaskId) {}
+    public record ProgressView(AgentTaskPlan plan, List<ToolProgress> tools) {}
+    public AgentTaskPlan latestTaskPlan(Long runId) {
+        var message = messages.selectOne(new LambdaQueryWrapper<AgentMessage>().eq(AgentMessage::getRunId, runId)
+                .eq(AgentMessage::getMessageType, "EVENT").eq(AgentMessage::getEventType, "PLAN_UPDATED")
+                .orderByDesc(AgentMessage::getSeq).last("LIMIT 1"));
+        if (message == null) return null;
+        var body = json.read(message.getContentJson(), Map.class);
+        return json.read(json.write(body.get("plan")), AgentTaskPlan.class);
+    }
+    public ProgressView progress(Long runId) {
+        var tools = steps(runId).stream().filter(s -> "TOOL".equals(s.getStepType())).map(step -> {
+            var wait = step.getWaitHandleJson() == null ? null : json.read(step.getWaitHandleJson(), WaitHandle.class);
+            var result = step.getResultJson() == null ? null : json.read(step.getResultJson(), ToolResult.class);
+            String status = "SUCCEEDED".equals(step.getStatus()) && result != null && result.errorCode() != null ? "FAILED" : step.getStatus();
+            return new ToolProgress(step.getId(), step.getToolName(), status, wait == null ? null : wait.taskId(),
+                    wait == null ? null : eventTaskId(result, wait));
+        }).toList();
+        return new ProgressView(latestTaskPlan(runId), tools);
+    }
+    private String eventTaskId(ToolResult result, WaitHandle wait) {
+        return result != null && result.data() instanceof Map<?, ?> data && data.get("eventTaskId") instanceof String id
+                ? id : wait.taskId();
     }
     public Submission submit(Long sessionId, SendMessage request, AgentConfigDTO testConfig) {
         validateRequest(request);
@@ -317,7 +342,8 @@ public class AgentStore {
                     if (firstWait) step.setWaitHandleJson(json.write(handle));
                     step.setStatus("WAITING_EXTERNAL"); run.setStatus("WAITING_TASK"); releaseLease(run);
                     run.setLeaseUntil(LocalDateTime.now().plusSeconds(5));
-                    if (firstWait) event(session, run, "WAITING_TASK", Map.of("tool", step.getToolName(), "status", "WAITING_TASK"));
+                    if (firstWait) event(session, run, "WAITING_TASK", Map.of("tool", step.getToolName(), "status", "WAITING_TASK",
+                            "stepId", String.valueOf(step.getId()), "taskId", handle.taskId(), "eventTaskId", eventTaskId(result, handle)));
                 }
                 case "NEED_USER" -> {
                     step.setStatus("WAITING_USER"); run.setStatus("WAITING_USER"); releaseLease(run);
@@ -329,8 +355,13 @@ public class AgentStore {
                 }
                 case "IMMEDIATE" -> {
                     step.setStatus("SUCCEEDED"); run.setToolCalls(run.getToolCalls() + 1);
+                    if ("update_task_plan".equals(step.getToolName()) && result.errorCode() == null) {
+                        var plan = json.read(json.write(result.data()), AgentTaskPlan.class).validated();
+                        // Use the same locked session object for every message sequence in this checkpoint.
+                        event(session, run, "PLAN_UPDATED", Map.of("plan", plan));
+                    }
                     toolMessage(session, run, step, result);
-                    event(session, run, "TOOL_COMPLETED", Map.of("tool", step.getToolName(), "hasError", result.errorCode() != null));
+                    event(session, run, "TOOL_COMPLETED", Map.of("tool", step.getToolName(), "stepId", String.valueOf(step.getId()), "hasError", result.errorCode() != null));
                 }
                 default -> throw new BizException("工具结果类型无效");
             }

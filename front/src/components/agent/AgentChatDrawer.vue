@@ -16,12 +16,14 @@
         {{ store.currentProfile?.displayName || 'Agent' }} · {{ store.selectedSession.dramaId ? '项目会话' : '通用会话' }}
         <span v-if="store.activeRun"> · {{ agentStatusLabels[store.activeRun.status] }}</span>
       </div>
-      <div ref="scrollArea" v-loading="store.loading" class="chat-history">
+      <div ref="scrollArea" v-loading="store.loading" class="chat-history" @scroll="trackScroll">
+        <div ref="historyContent">
         <el-empty v-if="!store.messages.length" description="可以直接创作小说、拆解剧本或准备小说转视频；缺少信息时助手会向你提问" :image-size="70" />
         <AgentMessageList :messages="store.messages" :preview="store.streamPreview" />
-        <AgentRunCard v-for="run in shownRuns" :key="run.id" :run="run" class="mt-3" @refreshed="store.refreshRun(run.id)" />
+        <AgentRunCard v-for="run in shownRuns" :key="run.id" :run="run" :activities="store.taskActivities" class="mt-3" @refreshed="store.refreshRun(run.id)" />
         <AgentQuestionCard v-if="waitingQuestion?.body.questions?.length" :key="waitingQuestion.id"
           :questions="waitingQuestion.body.questions" :busy="sending" @answer="answerQuestions" />
+        </div>
       </div>
       <div class="chat-input">
         <el-input v-model="input" type="textarea" :rows="3" :maxlength="100000"
@@ -52,7 +54,7 @@
   </el-dialog>
 </template>
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { dramaApi } from '@/api/drama'
@@ -73,6 +75,30 @@ const productionVisible = ref(false)
 const dramaId = ref<string>()
 const projects = ref<{ id: string | number; title: string }[]>([])
 const scrollArea = ref<HTMLElement>()
+const historyContent = ref<HTMLElement>()
+const followingLatest = ref(true)
+let resizeObserver: ResizeObserver | undefined
+let scrollGeneration = 0
+function trackScroll() {
+  const area = scrollArea.value
+  if (area) followingLatest.value = area.scrollHeight - area.scrollTop - area.clientHeight < 80
+}
+async function scrollToLatest(force = false) {
+  await nextTick()
+  if (store.visible && (force || followingLatest.value) && scrollArea.value) scrollArea.value.scrollTop = scrollArea.value.scrollHeight
+}
+watch(() => [store.visible, store.selectedSession?.id] as const, async ([visible]) => {
+  const generation = ++scrollGeneration
+  resizeObserver?.disconnect()
+  if (!visible) return
+  followingLatest.value = true
+  await scrollToLatest(true)
+  if (generation !== scrollGeneration || !historyContent.value) return
+  resizeObserver = new ResizeObserver(() => { void scrollToLatest() })
+  resizeObserver.observe(historyContent.value)
+}, { immediate: true })
+watch(() => store.loading, loading => { if (!loading) void scrollToLatest() })
+onBeforeUnmount(() => { scrollGeneration++; resizeObserver?.disconnect() })
 const sessionId = computed({ get: () => store.selectedSession?.id, set: () => {} })
 const shownRuns = computed(() => Object.values(store.runs).filter(r => r.sessionId === store.selectedSession?.id).sort((a, b) => (a.createTime || '').localeCompare(b.createTime || '')))
 const waitingQuestion = computed(() => store.activeRun?.status === 'WAITING_USER'
@@ -115,13 +141,8 @@ async function select(id: string) { await store.selectSession(id) }
 async function create() { await store.createSession(dramaId.value); newSessionVisible.value = false }
 async function cancel() { await store.cancel(); ElMessage.success('已停止后续操作') }
 function configure() { store.visible = false; void router.push('/system/agent') }
-watch(() => store.messages.length, async () => { await nextTick(); scrollArea.value?.scrollTo({ top: scrollArea.value.scrollHeight, behavior: 'smooth' }) })
-watch(() => store.streamPreview?.text, async () => {
-  const area = scrollArea.value
-  const nearBottom = area && area.scrollHeight - area.scrollTop - area.clientHeight < 160
-  await nextTick()
-  if (nearBottom && area) area.scrollTop = area.scrollHeight
-})
+watch(() => store.messages.length, () => { void scrollToLatest() })
+watch(() => store.streamPreview?.text, () => { void scrollToLatest() })
 watch(() => waitingQuestion.value?.id, async id => { await nextTick(); if (id) scrollArea.value?.querySelector('.question-card')?.scrollIntoView({ block: 'start' }) })
 watch(() => store.focusRunId, async id => { await nextTick(); if (id) document.getElementById(`agent-run-${id}`)?.scrollIntoView({ block: 'center' }) })
 watch(newSessionVisible, async visible => { if (visible) projects.value = await dramaApi.getOptions() })
@@ -130,7 +151,7 @@ watch(newSessionVisible, async visible => { if (visible) projects.value = await 
 .agent-chat-window { position: fixed; z-index: 1990; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(760px, calc(100vw - 32px)); height: min(840px, calc(100dvh - 48px)); display: flex; flex-direction: column; background: var(--surface-raised); backdrop-filter: blur(20px); border: 1px solid var(--border-default); border-radius: 18px; box-shadow: 0 16px 60px rgba(0,0,0,.18); padding: 16px 20px; }
 .chat-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .chat-layout { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chat-history { flex: 1; min-height: 0; overflow-y: auto; padding: 2px 4px 18px; }
+.chat-history { flex: 1; min-height: 0; overflow-y: auto; overflow-anchor: none; padding: 2px 4px 18px; }
 .chat-input { padding-top: 14px; border-top: 1px solid var(--border-default); }
 @media (max-width: 1050px) { .agent-chat-window { z-index: 1996; } }
 @media (max-width: 600px) { .agent-chat-window { height: calc(100dvh - 24px); padding: 12px; } }

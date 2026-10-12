@@ -73,6 +73,9 @@ class AgentContextBuilderTest {
         var memory = mock(com.astra.freyja.agent.memory.AgentMemoryService.class);
         var summarizer = mock(com.astra.freyja.agent.memory.AgentMemorySummarizer.class);
         when(store.snapshot(run)).thenReturn(snapshot); when(store.session(session.getId())).thenReturn(session);
+        var plan = new com.astra.freyja.agent.model.AgentTaskPlan("仍需保存分镜", List.of(
+                new com.astra.freyja.agent.model.AgentTaskPlan.Item("save", "保存分镜", com.astra.freyja.agent.model.AgentTaskPlan.Status.IN_PROGRESS)));
+        when(store.latestTaskPlan(run.getId())).thenReturn(plan);
         var assistant = row(2, "ASSISTANT", new MessageBody("", List.of(new ToolCall("a", "read", "{}")), Map.of("reasoningContent", "r".repeat(3600)), null, null, 10L), null);
         var result = row(3, "TOOL_RESULT", new MessageBody(null, List.of(), Map.of(), "read", ToolResult.success("x".repeat(3600)), 10L), "a");
         var latest = row(4, "ASSISTANT", new MessageBody("继续", List.of(), Map.of("reasoningContent", "latest reasoning"), null, null, 11L), null);
@@ -85,6 +88,7 @@ class AgentContextBuilderTest {
         var messages = compacting.build(run, "test-owner", 1);
         assertEquals(3, session.getCoveredThroughSeq(), "assistant and result must be summarized together");
         assertTrue(messages.stream().anyMatch(m -> m.getText() != null && m.getText().contains(summary.content())));
+        assertTrue(messages.stream().anyMatch(m -> m instanceof SystemMessage && m.getText().contains("仍需保存分镜")));
         assertEquals("latest reasoning", messages.getLast().getMetadata().get("reasoningContent"));
         verify(summarizer).summarize(eq(snapshot), any(), contains("TOOL_RESULTS"), anyLong());
     }

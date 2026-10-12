@@ -95,7 +95,7 @@ public class AgentConfigValidator {
         if (memory.getScopes() == null || memory.getScopes().stream().anyMatch(s -> s == null || !Set.of("SESSION", "PROJECT").contains(s)))
             errors.add(issue("memory.scopes", "ENUM", "仅支持 SESSION/PROJECT 规则"));
         var runtime = config.getRuntime();
-        range(errors, "runtime.maxModelTurns", runtime.getMaxModelTurns(), 1, 100);
+        range(errors, "runtime.maxModelTurns", runtime.getMaxModelTurns(), 0, 100);
         range(errors, "runtime.maxToolCalls", runtime.getMaxToolCalls(), 0, 300);
         range(errors, "runtime.executionTimeoutSeconds", runtime.getExecutionTimeoutSeconds(), 10, 7200);
         range(errors, "runtime.modelTimeoutSeconds", runtime.getModelTimeoutSeconds(), 5, 600);

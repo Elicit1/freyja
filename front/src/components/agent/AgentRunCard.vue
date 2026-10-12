@@ -6,6 +6,7 @@
     </div>
     <p v-if="run.result?.summary" class="whitespace-pre-wrap mt-2">{{ run.result.summary }}</p>
     <p v-if="run.errorMessage" class="text-[var(--danger)] mt-2">{{ run.errorMessage }}</p>
+    <AgentTaskProgress :run="run" :activities="activities" />
     <div class="text-xs text-[var(--text-secondary)] mt-3">{{ run.modelTurns }} 轮模型 · {{ run.toolCalls }} 次工具
       <span v-if="run.usageUnknown"> · Token 用量不完整</span>
       <span v-else> · {{ (run.promptTokens || 0) + (run.completionTokens || 0) }} Tokens</span>
@@ -16,9 +17,10 @@
 </template>
 <script setup lang="ts">
 import { agentApi } from '@/api/agent'
-import { agentStatusLabels, type AgentRun } from '@/types/agent'
+import { agentStatusLabels, type AgentRun, type AgentTaskActivity } from '@/types/agent'
+import AgentTaskProgress from './AgentTaskProgress.vue'
 import ProductionReportCard from './ProductionReportCard.vue'
-const props = defineProps<{ run?: AgentRun }>()
+const props = defineProps<{ run?: AgentRun; activities?: Record<string, AgentTaskActivity> }>()
 const emit = defineEmits<{ refreshed: [] }>()
 async function resume() { if (props.run) { await agentApi.resume(props.run.id); emit('refreshed') } }
 </script>

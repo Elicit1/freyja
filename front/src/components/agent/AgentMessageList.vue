@@ -25,24 +25,19 @@
 </template>
 <script setup lang="ts">
 import type { AgentMessage, AgentStreamEvent } from '@/types/agent'
+import { agentToolLabel as toolLabel } from './agentProgress'
 defineProps<{ messages: AgentMessage[]; preview?: AgentStreamEvent }>()
-const toolNames: Record<string, string> = {
-  prepare_script_decomposition: '保存剧本拆解要求', start_script_decomposition: '拆解小说', commit_decomposition: '保存拆解结果', list_preparation_shots: '读取制作分镜',
-  get_reference_candidates: '盘点参考素材', ensure_text_assets: '保存文字资产', save_shot_production_plans: '应用分镜制作方案',
-  prepare_shot_prompts: '准备分镜提示词', inspect_preparation: '检查并保存交付报告', get_preparation_report: '读取交付报告',
-  get_project_overview: '读取项目概要', list_project_assets: '查询资产', get_shot_detail: '查询分镜',
-  save_session_note: '保存明确规则', list_session_notes: '读取规则', load_skill: '加载技能', read_skill_file: '读取技能参考', request_user_input: '确认需求'
-}
-function toolLabel(name?: string) { return name ? toolNames[name] || name : '工具操作' }
 function eventLabel(message: AgentMessage) {
   const labels: Record<string, string> = {
     RUN_QUEUED: '目标已接收，等待执行', RUN_STARTED: '开始处理', MODEL_STARTED: '正在思考…',
-    WAITING_TASK: '等待任务结果…', RUN_COMPLETED: '本次任务已完成', RUN_CANCELLED: '已取消后续执行'
+    RUN_COMPLETED: '本次任务已完成', RUN_CANCELLED: '已取消后续执行'
   }
   if (message.eventType === 'WAITING_USER') return message.body.questions?.map(q => q.question).join('\n') || message.body.question || '需要你的回答'
   if (message.eventType === 'MODEL_RETRY') return message.body.message || '模型请求重试中'
   if (message.eventType === 'RUN_FAILED') return message.body.summary || '任务失败'
   if (message.eventType === 'TOOL_STARTED') return toolLabel(message.body.tool) + '…'
+  if (message.eventType === 'WAITING_TASK') return toolLabel(message.body.tool) + ' · 执行中，进度见任务面板'
+  if (message.eventType === 'PLAN_UPDATED') return message.body.plan?.explanation || '任务计划已更新'
   return message.eventType ? labels[message.eventType] : undefined
 }
 </script>

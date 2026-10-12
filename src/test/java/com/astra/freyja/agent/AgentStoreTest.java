@@ -56,6 +56,32 @@ class AgentStoreTest {
         assertTrue(json.write(replay).contains("2032095628944588805"));
         verify(messages, times(2)).insert(any(AgentMessage.class)); // one result plus its progress event
     }
+    @Test void publicPlanIsCommittedOnceAndRestoredWithoutModelHistory() {
+        var plan = new com.astra.freyja.agent.model.AgentTaskPlan("开始拆解", List.of(
+                new com.astra.freyja.agent.model.AgentTaskPlan.Item("decompose", "拆解小说", com.astra.freyja.agent.model.AgentTaskPlan.Status.IN_PROGRESS),
+                new com.astra.freyja.agent.model.AgentTaskPlan.Item("commit", "保存分镜", com.astra.freyja.agent.model.AgentTaskPlan.Status.PENDING)));
+        step.setToolName("update_task_plan");
+        store.commitTool(run.getId(), "test-owner", 1, step.getId(), () -> ToolResult.success(plan), 0);
+        store.commitTool(run.getId(), "test-owner", 1, step.getId(), () -> { fail("replayed plan must not emit twice"); return null; }, 0);
+        var captured = org.mockito.ArgumentCaptor.forClass(AgentMessage.class);
+        verify(messages, times(3)).insert(captured.capture());
+        assertEquals(List.of(1, 2, 3), captured.getAllValues().stream().map(AgentMessage::getSeq).toList());
+        var saved = captured.getAllValues().stream().filter(m -> "PLAN_UPDATED".equals(m.getEventType())).toList();
+        assertEquals(1, saved.size()); when(messages.selectOne(any())).thenReturn(saved.getFirst());
+        assertEquals(plan, store.latestTaskPlan(run.getId())); assertEquals(plan, store.progress(run.getId()).plan());
+        assertEquals("EVENT", saved.getFirst().getMessageType());
+    }
+    @Test void waitingProgressCarriesReplaySourceAndStringIds() {
+        var handle = new WaitHandle("production-worker-retry", "2032095628944588810", System.currentTimeMillis() + 10000);
+        store.commitTool(run.getId(), "test-owner", 1, step.getId(), () ->
+                new ToolResult("DEFERRED", Map.of("eventTaskId", "2032095628944588811"), null, null, handle), 0);
+        var tool = store.progress(run.getId()).tools().getFirst();
+        assertEquals("2032095628944588810", tool.taskId()); assertEquals("2032095628944588811", tool.eventTaskId());
+        var captured = org.mockito.ArgumentCaptor.forClass(AgentMessage.class); verify(messages).insert(captured.capture());
+        assertEquals("WAITING_TASK", captured.getValue().getEventType());
+        assertTrue(captured.getValue().getContentJson().contains("\"stepId\":\"" + step.getId() + "\""));
+        assertTrue(captured.getValue().getContentJson().contains("2032095628944588811"));
+    }
     void waitForQuestions() {
         step.setToolName("request_user_input");
         step.setInputJson(json.write(new ToolCall("ask-1", "request_user_input", json.write(RequestUserInputToolTest.questions()))));

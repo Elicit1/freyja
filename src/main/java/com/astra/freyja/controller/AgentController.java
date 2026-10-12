@@ -25,12 +25,12 @@ public class AgentController {
     public record RunView(Long id, Long sessionId, String agentCode, String runType, String status, String objective, int modelTurns,
                           int toolCalls, Long executionMillis, Integer promptTokens, Integer completionTokens,
                           Boolean usageUnknown, Object result, String errorMessage, int configRevision,
-                          LocalDateTime createTime, LocalDateTime finishedAt, LocalDateTime readAt) {}
+                          LocalDateTime createTime, LocalDateTime finishedAt, LocalDateTime readAt, AgentStore.ProgressView progress) {}
     public RunView view(AgentRun run) {
         return new RunView(run.getId(), run.getSessionId(), store.session(run.getSessionId()).getAgentCode(), run.getRunType(), run.getStatus(), run.getObjective(),
                 run.getModelTurns(), run.getToolCalls(), run.getExecutionMillis(), run.getPromptTokens(), run.getCompletionTokens(),
                 run.getUsageUnknown(), run.getFinalResultJson() == null ? null : json.read(run.getFinalResultJson(), Map.class),
-                run.getErrorMessage(), run.getConfigRevision(), run.getCreateTime(), run.getFinishedAt(), run.getReadAt());
+                run.getErrorMessage(), run.getConfigRevision(), run.getCreateTime(), run.getFinishedAt(), run.getReadAt(), store.progress(run.getId()));
     }
     @GetMapping("/profiles") public R<List<AgentConfigService.Display>> profiles() { return R.ok(configs.enabled()); }
     @PostMapping("/sessions") public R<AgentSession> create(@RequestBody CreateSession request) { return R.ok(store.createSession(request, "NORMAL")); }

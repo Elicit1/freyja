@@ -98,7 +98,8 @@ public class AgentConfigService {
         var secondary = legacy == null ? defaults : legacy;
         config.getModel().setMaxTokens(Math.max(config.getModel().getMaxTokens(), Math.max(defaults.getModel().getMaxTokens(), secondary.getModel().getMaxTokens())));
         config.getMemory().setContextTokens(Math.max(config.getMemory().getContextTokens(), Math.max(defaults.getMemory().getContextTokens(), secondary.getMemory().getContextTokens())));
-        config.getRuntime().setMaxModelTurns(Math.max(config.getRuntime().getMaxModelTurns(), Math.max(defaults.getRuntime().getMaxModelTurns(), secondary.getRuntime().getMaxModelTurns())));
+        config.getRuntime().setMaxModelTurns(config.getRuntime().getMaxModelTurns() == 0 || secondary.getRuntime().getMaxModelTurns() == 0
+                ? 0 : Math.max(config.getRuntime().getMaxModelTurns(), Math.max(defaults.getRuntime().getMaxModelTurns(), secondary.getRuntime().getMaxModelTurns())));
         config.getRuntime().setMaxToolCalls(Math.max(config.getRuntime().getMaxToolCalls(), Math.max(defaults.getRuntime().getMaxToolCalls(), secondary.getRuntime().getMaxToolCalls())));
         config.getRuntime().setExecutionTimeoutSeconds(Math.max(config.getRuntime().getExecutionTimeoutSeconds(), Math.max(defaults.getRuntime().getExecutionTimeoutSeconds(), secondary.getRuntime().getExecutionTimeoutSeconds())));
         if (new AgentConfigDTO().getDescription().equals(config.getDescription())) config.setDescription(defaults.getDescription());

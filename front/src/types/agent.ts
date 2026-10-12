@@ -47,9 +47,22 @@ export interface AgentQuestion {
 }
 export interface AgentAnswer { questionId: string; optionLabel?: string; customAnswer?: string }
 export interface AgentQuestionReply { questionStepId: string; answers: AgentAnswer[] }
+export type AgentPlanStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'SKIPPED'
+export interface AgentTaskPlan {
+  explanation?: string
+  steps: { id: string; title: string; status: AgentPlanStatus }[]
+}
+export interface AgentToolProgress { stepId: string; name: string; status: string; taskId?: string; eventTaskId?: string }
+export interface AgentRunProgress { plan?: AgentTaskPlan; tools: AgentToolProgress[] }
+export interface AgentTaskActivity {
+  afterSeq: number
+  logs: { seq: number; text: string; error?: boolean }[]
+  workers: Record<string, { status: string; shotsCount?: number }>
+  finished: boolean
+}
 export interface AgentMessage {
   id: string; sessionId: string; runId?: string; seq: number; messageType: string; eventType?: string; toolCallId?: string
-  body: { content?: string; modelStepId?: string; toolCalls?: { id: string; name: string; arguments: string }[]; toolName?: string; result?: ToolResult; status?: string; question?: string; questions?: AgentQuestion[]; questionStepId?: string; summary?: string; tool?: string; message?: string; hasError?: boolean }
+  body: { content?: string; modelStepId?: string; toolCalls?: { id: string; name: string; arguments: string }[]; toolName?: string; result?: ToolResult; status?: string; question?: string; questions?: AgentQuestion[]; questionStepId?: string; summary?: string; tool?: string; stepId?: string; taskId?: string; eventTaskId?: string; plan?: AgentTaskPlan; message?: string; hasError?: boolean }
   createTime?: string
 }
 export type AgentRunStatus = 'QUEUED' | 'RUNNING' | 'WAITING_TASK' | 'WAITING_USER' | 'CANCELLING' | 'COMPLETED' | 'PARTIAL_SUCCESS' | 'FAILED' | 'CANCELLED'
@@ -58,6 +71,7 @@ export interface AgentRun {
   modelTurns: number; toolCalls: number; executionMillis: string; promptTokens?: number; completionTokens?: number
   usageUnknown?: boolean; result?: { summary: string; status: string }; errorMessage?: string
   configRevision: number; createTime?: string; finishedAt?: string; readAt?: string
+  progress?: AgentRunProgress
 }
 export interface AgentEvent { sessionId: string; runId?: string; seq: number; type: string; payload: AgentMessage }
 export interface AgentStreamEvent {
@@ -87,6 +101,6 @@ export interface ProductionPlanView {
 }
 export const isActiveRun = (status?: string) => !!status && ['QUEUED', 'RUNNING', 'WAITING_TASK', 'WAITING_USER', 'CANCELLING'].includes(status)
 export const agentStatusLabels: Record<string, string> = {
-  QUEUED: '等待执行', RUNNING: '正在工作', WAITING_TASK: '等待任务结果', WAITING_USER: '需要你的回答',
+  QUEUED: '等待执行', RUNNING: '正在工作', WAITING_TASK: '子任务执行中', WAITING_USER: '需要你的回答',
   CANCELLING: '正在取消', COMPLETED: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '执行失败', CANCELLED: '已取消'
 }

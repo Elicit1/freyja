@@ -85,7 +85,12 @@
           </el-tab-pane>
           <el-tab-pane label="执行参数" name="runtime">
             <el-form label-position="top" class="grid grid-cols-2 gap-x-5">
-              <el-form-item label="最多模型轮数"><el-input-number v-model="form.runtime.maxModelTurns" :min="1" :max="100" /></el-form-item>
+              <el-form-item label="最多模型轮数">
+                <div class="flex items-center gap-3 flex-wrap">
+                  <el-input-number v-if="!unlimitedModelTurns" v-model="form.runtime.maxModelTurns" :min="1" :max="100" />
+                  <el-switch v-model="unlimitedModelTurns" active-text="不限制" />
+                </div>
+              </el-form-item>
               <el-form-item label="最多工具调用"><el-input-number v-model="form.runtime.maxToolCalls" :min="0" :max="300" /></el-form-item>
               <el-form-item label="执行时限（秒）"><el-input-number v-model="form.runtime.executionTimeoutSeconds" :min="10" :max="7200" /></el-form-item>
               <el-form-item label="单次模型超时（秒）"><el-input-number v-model="form.runtime.modelTimeoutSeconds" :min="5" :max="600" /></el-form-item>
@@ -93,6 +98,7 @@
               <el-form-item label="失败重试次数"><el-input-number v-model="form.runtime.maxRetries" :min="0" :max="5" /></el-form-item>
               <el-form-item label="Agent 并发上限"><el-input-number v-model="form.runtime.maxConcurrentRuns" :min="1" :max="4" /></el-form-item>
             </el-form>
+            <el-alert v-if="unlimitedModelTurns" title="模型轮数不限制会持续消耗 API 额度，请注意控制余额。执行时限和工具调用次数限制仍然生效。" type="warning" :closable="false" show-icon class="mb-3" />
             <p class="field-hint">等待用户或外部任务时不占用执行线程。全局同时执行最多 4 个会话。</p>
           </el-tab-pane>
           <el-tab-pane label="虚拟形象" name="avatar">
@@ -148,7 +154,17 @@ const validation = ref<ValidationResult>()
 const saved = ref('')
 const revealAvatarOnSave = ref(false)
 const dirty = computed(() => !!form.value && JSON.stringify(form.value) !== saved.value)
+const lastLimitedModelTurns = ref(60)
+const unlimitedModelTurns = computed({
+  get: () => form.value?.runtime.maxModelTurns === 0,
+  set: value => {
+    if (!form.value) return
+    if (value) { lastLimitedModelTurns.value = form.value.runtime.maxModelTurns || 60; form.value.runtime.maxModelTurns = 0 }
+    else form.value.runtime.maxModelTurns = lastLimitedModelTurns.value
+  }
+})
 const toolNames: Record<string, string> = {
+  update_task_plan: '更新任务计划', request_user_input: '确认需求', prepare_script_decomposition: '保存剧本拆解要求',
   start_script_decomposition: '拆解小说', retry_decomposition_segment: '重试失败段落', commit_decomposition: '保存拆解结果',
   list_preparation_shots: '读取制作分镜', get_reference_candidates: '盘点参考素材', ensure_text_assets: '保存文字资产',
   save_shot_production_plans: '应用制作方案', prepare_shot_prompts: '准备分镜提示词', inspect_preparation: '检查并保存报告', get_preparation_report: '读取交付报告',

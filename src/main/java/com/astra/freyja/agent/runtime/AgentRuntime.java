@@ -53,7 +53,7 @@ public class AgentRuntime {
                         store.addCorrection(id, owner, epoch, decision.problem());
                     }
                 }
-                if (run.getModelTurns() >= budget.getMaxModelTurns()) throw new BizException("模型轮数预算已用尽");
+                if (budget.getMaxModelTurns() > 0 && run.getModelTurns() >= budget.getMaxModelTurns()) throw new BizException("模型轮数预算已用尽");
                 AgentStep modelStep = store.prepareModel(id, owner, epoch);
                 int attempts = modelStep.getAttempts();
                 while (true) {
