@@ -67,7 +67,7 @@ const loading = ref(false), busy = ref(false), loadError = ref(''), pendingTool 
 const tab = ref('settings'), keyword = ref(''), effect = ref('ALL'), schemaTool = ref<McpToolInfo | null>(null)
 const form = reactive({ token: '', writeEnabled: false, allowCreateProjects: false, allowAllProjects: false, projectIds: '', origins: '' })
 const connectionUrl = computed(() => new URL('/api/mcp', window.location.origin).toString())
-const clientConfig = computed(() => `[mcp_servers.freyja]\nurl = "${connectionUrl.value}"\nbearer_token_env_var = "FREYJA_MCP_TOKEN"\ntool_timeout_sec = 60`)
+const clientConfig = computed(() => `[mcp_servers.freyja]\nurl = "${connectionUrl.value}"\nbearer_token_env_var = "FREYJA_MCP_TOKEN"\ntool_timeout_sec = 300`)
 const filteredTools = computed(() => settings.value?.tools.filter(t => (effect.value === 'ALL' || t.effect === effect.value) && `${t.name} ${t.description} ${labels[t.name] || ''}`.toLowerCase().includes(keyword.value.toLowerCase())) || [])
 const labels: Record<string, string> = { search_projects: '搜索项目', get_project: '项目详情', get_project_outline: '读取大纲', list_shots: '分镜列表', get_shot: '完整分镜配置', search_assets: '搜索资产', get_asset: '资产详情', list_character_looks: '人物造型', get_business_options: '业务字典', batch_read_records: '批量读取', batch_create_records: '批量创建', batch_update_records: '批量配置', append_storyboard: '追加分镜导入', get_business_operation: '业务请求结果', clone_shot: '复制分镜', set_default_character_look: '设置默认造型', reorder_group_shots: '组内分镜重排', list_shot_video_versions: '视频版本列表', select_shot_video_version: '选择视频版本', upload_asset_image: '上传资产参考图' }
 function accept(value: McpSettings, syncForm = false) {

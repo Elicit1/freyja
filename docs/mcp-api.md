@@ -56,10 +56,10 @@ Compose 已映射环境变量。后端入口为 `http://localhost:8080/mcp`；�
 [mcp_servers.freyja]
 url = "http://localhost:8080/mcp"
 bearer_token_env_var = "FREYJA_MCP_TOKEN"
-tool_timeout_sec = 60
+tool_timeout_sec = 300
 ```
 
-客户端与后端不在同一机器时，更换 `localhost`。其他 MCP 客户端填写相同 URL 与认证头。可使用 MCP Inspector 的 Streamable HTTP 模式验证初始化、发现和调用。
+客户端与后端不在同一机器时，更换 `localhost`。建议工具调用等待时间为 300 秒，以容纳大图上传和批量业务写入；此项是客户端配置，已连接的客户端需要同步修改。客户端超时不代表服务端事务已回滚，写入应使用原 `requestId` 重试或查询 `get_business_operation`。其他 MCP 客户端填写相同 URL 与认证头，并设置相应的工具调用超时。可使用 MCP Inspector 的 Streamable HTTP 模式验证初始化、发现和调用。
 
 ## 工具目录
 
