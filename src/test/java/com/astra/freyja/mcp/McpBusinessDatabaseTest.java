@@ -248,6 +248,60 @@ class McpBusinessDatabaseTest {
         assertEquals(3, count("drama"));
     }
 
+    @Test void optionalSceneEnvironmentStaysEmptyAndExplicitValuesAreReadBack() {
+        var result = create("scene-env-create01", List.of(
+                item("emptyAsset", McpRecordType.RESOURCE_SCENE, Map.of("name", "未指定环境")),
+                item("emptyScene", McpRecordType.SCENE, Map.of("episodeId", "20")),
+                item("river", McpRecordType.RESOURCE_SCENE, Map.of("name", "河畔", "sceneType", "OUTDOOR", "timeOfDay", "NIGHT", "weatherAtmosphere", "薄雾")),
+                item("inherited", McpRecordType.SCENE, Map.of("episodeId", "20", "resSceneId", ref("river")))));
+        var ids = map(result.get("idMap"));
+        ResScene empty = resourceScenes.selectById(McpScope.id((String) ids.get("emptyAsset")));
+        assertNull(empty.getSceneType()); assertNull(empty.getTimeOfDay()); assertNull(empty.getWeatherAtmosphere());
+        DramaScene scene = scenes.selectById(McpScope.id((String) ids.get("emptyScene")));
+        assertNull(scene.getSceneType()); assertNull(scene.getTimeOfDay());
+        var inherited = map(call("get_scene", caller, new McpRecordInputs.Get(ROOT, (String) ids.get("inherited"))));
+        assertEquals("OUTDOOR", inherited.get("sceneType")); assertEquals("NIGHT", inherited.get("timeOfDay"));
+        assertEquals("薄雾", inherited.get("weatherAtmosphere"));
+        Map<String, Object> blank = new LinkedHashMap<>();
+        blank.put("episodeId", "20"); blank.put("resSceneId", ids.get("river"));
+        blank.put("sceneType", null); blank.put("timeOfDay", null); blank.put("weatherAtmosphere", null);
+        var explicit = map(call("create_scene", caller, new McpRecordInputs.Create("scene-env-null01", ROOT, blank)));
+        var saved = map(explicit.get("data"));
+        assertNull(saved.get("sceneType")); assertNull(saved.get("timeOfDay")); assertNull(saved.get("weatherAtmosphere"));
+        for (var entry : Map.of(McpRecordType.SCENE, "inherited", McpRecordType.RESOURCE_SCENE, "river").entrySet()) {
+            String id = (String) ids.get(entry.getValue());
+            BaseEntity current = records.require(caller, entry.getKey(), id, ROOT, false);
+            String tool = entry.getKey() == McpRecordType.SCENE ? "update_scene" : "update_resource_scene";
+            var preserved = map(call(tool, caller, new McpRecordInputs.Update("scene-env-preserve-" + id, ROOT, id,
+                    views.fingerprint(current), Map.of("name", "只改名称"))));
+            assertEquals("OUTDOOR", map(preserved.get("data")).get("sceneType"));
+            assertEquals("NIGHT", map(preserved.get("data")).get("timeOfDay"));
+            Map<String, Object> clear = new LinkedHashMap<>();
+            clear.put("sceneType", null); clear.put("timeOfDay", null); clear.put("weatherAtmosphere", null);
+            call(tool, caller, new McpRecordInputs.Update("scene-env-clear-" + id, ROOT, id,
+                    views.fingerprint(records.require(caller, entry.getKey(), id, ROOT, false)), clear));
+            var read = records.read(caller, entry.getKey(), id, ROOT);
+            assertNull(read.get("sceneType")); assertNull(read.get("timeOfDay")); assertNull(read.get("weatherAtmosphere"));
+        }
+    }
+
+    @Test void comfortableLongShotReadbackPreservesModePromptAndExplicitLook() {
+        character(50L, PROJECT); look(60L, 50L, 1);
+        String prompt = "subject_definitions: <Picture 1> 人物造型。\nnon_diegetic_music: none / no background music";
+        var created = map(call("create_shot", caller, new McpRecordInputs.Create("long-shot-readback", ROOT,
+                Map.of("sceneId", "30", "duration", 7.5, "generationMode", "REFERENCE_MODE", "prompt", prompt,
+                        "characterRefs", List.of(Map.of("characterId", "50", "lookId", "60")),
+                        "refImages", List.of(Map.of("sourceType", "CHARACTER_LOOK", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png"))))));
+        var read = records.read(caller, McpRecordType.SHOT, (String) created.get("recordId"), ROOT);
+        assertEquals(0, new BigDecimal("7.5").compareTo(new BigDecimal(read.get("duration").toString())));
+        assertEquals("REFERENCE_MODE", read.get("generationMode")); assertEquals(prompt, read.get("prompt"));
+        assertEquals("60", map(((List<?>) read.get("characterRefs")).getFirst()).get("lookId"));
+        assertEquals("60", map(((List<?>) read.get("refImages")).getFirst()).get("lookId"));
+        var draft = map(call("create_shot", caller, new McpRecordInputs.Create("draft-camera-empty", ROOT, Map.of("sceneId", "30"))));
+        var saved = map(draft.get("data"));
+        assertNull(saved.get("shotType")); assertNull(saved.get("cameraMovement"));
+    }
+
     @Test void projectCreationGrantsAccessOnlyWhenPermissionRemainsEnabled() {
         McpPrincipal creator = new McpPrincipal(true, false, true, Set.of());
         var input = new McpBatchInputs.Create("new-project-req1", null, List.of(item("project", McpRecordType.PROJECT, Map.of("title", "New project", "aspectRatio", "16:9")),

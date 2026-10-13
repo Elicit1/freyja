@@ -831,8 +831,8 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                     resScene.setDramaId(dramaId);
                     resScene.setName(scVO.getSceneName().trim());
                     resScene.setDescription(scVO.getDescription());
-                    resScene.setSceneType(StringUtils.defaultIfBlank(scVO.getSceneType(), "INDOOR"));
-                    resScene.setTimeOfDay(StringUtils.defaultIfBlank(scVO.getTimeOfDay(), "DAY"));
+                    resScene.setSceneType(StringUtils.trimToNull(scVO.getSceneType()));
+                    resScene.setTimeOfDay(StringUtils.trimToNull(scVO.getTimeOfDay()));
                     resScene.setWeatherAtmosphere(scVO.getWeatherAtmosphere());
                     resScene.setScenePrompt(StringUtils.trimToNull(scVO.getScenePrompt()));
                     resScene.setStatus(1);

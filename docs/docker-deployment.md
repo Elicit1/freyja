@@ -160,6 +160,8 @@ python main.py --listen 0.0.0.0 --port 8188 --enable-cors-header
 
 ## 四、 常用运维管理命令
 
+升级已有数据库的可选环境/摄影字段时，执行 `src/main/resources/sql/upgrade_scene_optional_environment.sql`：将 `res_scene/drama_scene` 的 `scene_type/time_of_day`、`drama_shot` 的 `shot_type/camera_movement` 改为可空且默认 `NULL`，不会修改历史记录。此脚本可重复执行；持久化数据卷不会因更新初始化 SQL 自动升级。新数据库已包含相同定义。
+
 ### 1. 查看容器运行状态与健康检查
 ```bash
 docker compose ps

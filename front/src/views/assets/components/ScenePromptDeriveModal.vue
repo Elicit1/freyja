@@ -54,7 +54,7 @@
           </div>
           <div class="bg-white p-2 rounded border border-slate-100">
             <span class="text-slate-400 block mb-0.5">时段与天气氛围</span>
-            <span class="font-medium text-slate-800">{{ currentContext.timeOfDay || 'DAY' }} · {{ currentContext.weatherAtmosphere || '默认氛围' }}</span>
+            <span class="font-medium text-slate-800">{{ currentContext.timeOfDay || '未指定时段' }} · {{ currentContext.weatherAtmosphere || '未指定氛围' }}</span>
           </div>
           <div class="bg-white p-2 rounded border border-slate-100">
             <span class="text-slate-400 block mb-0.5">场景状态</span>

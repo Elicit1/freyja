@@ -113,7 +113,7 @@ public class DramaSceneServiceImpl implements DramaSceneService {
             scene.setSceneType(null);
         }
         if (StringUtils.isBlank(scene.getTimeOfDay())) {
-            scene.setTimeOfDay("DAY");
+            scene.setTimeOfDay(null);
         }
         if (scene.getSortOrder() == null) {
             scene.setSortOrder(scene.getSceneNo());

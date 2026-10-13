@@ -173,7 +173,7 @@ function openCreate(dramaId: string | number, episodeId: string | number, nextSc
     name: `场次${nextSceneNo}`,
     resSceneId: undefined,
     sceneType: '',
-    timeOfDay: 'DAY',
+    timeOfDay: '',
     weatherAtmosphere: '',
     locationName: '',
     summary: '',

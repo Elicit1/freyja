@@ -116,13 +116,16 @@ public class McpBusinessRecords {
         BeanWrapperImpl bean = new BeanWrapperImpl(dto);
         if (bean.isWritableProperty("dramaId")) bean.setPropertyValue("dramaId", project);
         references(caller, type, dto, project, null, data);
-        return switch (type) {
+        Long id = switch (type) {
             case PROJECT -> dramaService.create((DramaDTO) dto); case EPISODE -> episodeService.create((DramaEpisodeDTO) dto);
             case SCENE -> sceneService.create((DramaSceneDTO) dto); case SHOT_GROUP -> groupService.create((DramaShotGroupDTO) dto);
             case SHOT -> shotService.create((DramaShotDTO) dto); case CHARACTER -> characterService.create((ResCharacterDTO) dto);
             case CHARACTER_LOOK -> lookService.create((ResCharacterLookDTO) dto); case RESOURCE_SCENE -> resourceSceneService.create((ResSceneDTO) dto);
             case PROP -> propService.create((ResPropDTO) dto); case KEYFRAME -> keyframeService.create((ResKeyframeDTO) dto);
         };
+        // An explicitly empty field must override scene-asset inheritance as well as SQL defaults.
+        clearEnvironment(type, id, data);
+        return id;
     }
 
     private <T> T prepareUpdate(McpPrincipal caller, McpRecordType type, BaseEntity current, Long project, Map<String, Object> data, Class<T> dtoClass) {
@@ -198,9 +201,19 @@ public class McpBusinessRecords {
     }
 
     private void clearContent(McpRecordType type, BaseEntity current, Map<String, Object> data) {
+        clearEnvironment(type, current.getId(), data);
         UpdateWrapper<BaseEntity> clear = new UpdateWrapper<BaseEntity>().eq("id", current.getId());
         McpBusinessSchemas.CONTENT_COLUMNS.forEach((field, column) -> {
             if (schemas.fields(type).contains(field) && data.containsKey(field) && data.get(field) == null) clear.set(column, null);
+        });
+        if (clear.getSqlSet() != null) mapper(type).update(null, clear);
+    }
+
+    private void clearEnvironment(McpRecordType type, Long id, Map<String, Object> data) {
+        if (type != McpRecordType.SCENE && type != McpRecordType.RESOURCE_SCENE) return;
+        UpdateWrapper<BaseEntity> clear = new UpdateWrapper<BaseEntity>().eq("id", id);
+        McpBusinessSchemas.ENVIRONMENT_COLUMNS.forEach((field, column) -> {
+            if (data.containsKey(field) && data.get(field) == null) clear.set(column, null);
         });
         if (clear.getSqlSet() != null) mapper(type).update(null, clear);
     }

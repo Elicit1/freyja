@@ -27,6 +27,10 @@
 
 单条修改使用 `update_*`；批量修改按对象拆分，例如 `batch_update_shots / batch_update_characters`。请求需要 `requestId,dramaId`，单条或每个批量项需要 `recordId,expectedFingerprint,data`，不接收 `type`。创建必填字段不要求在补丁中重传；`data` 至少一个字段，省略字段保留原值。引用数组提交时替换整个数组，图和音频按提交顺序保存。
 
+场景环境字段可空，服务端和数据库均不补默认空间类型或日间。`sceneType` 支持 `INDOOR`（室内）、`OUTDOOR`（室外）、`STUDIO`（影棚）、`VIRTUAL`（虚构）；河畔、街道等室外地点按事实显式填 `OUTDOOR`。`timeOfDay` 支持 `DAY/NIGHT/SUNSET/DAWN`，天气为可选自由文本。创建剧情场次时省略环境字段可继承绑定场景资产的明确值，显式 `null` 表示留空；更新省略保留原值，显式 `null` 清空。不要传空字符串或编造未知枚举。
+
+完成关键创建/更新后使用 `get_scene/get_resource_scene/get_shot` 或 `batch_read_records` 读回，核对空间类型、时段、时长、生成模式与对应提示词/媒体字段、人物及造型 ID。写入返回已含持久化结果，批量及默认造型流转后仍需读取最新状态；发现偏差用新 `editFingerprint` 修正后再渲染。草稿时长的兼容默认 3 秒不代表创作意图，完成镜头应显式估算 `duration`。普通动作参考 3–5 秒，舒适长镜头参考 7–8 秒；预计超过 8 秒时主动寻找完整动作、对白轮次或叙事转折进行适度拆镜，减少渲染压力，避免把连续动作切碎，保留创作者明确长镜头要求。服务端不自动按 8 秒拆镜/截断。
+
 单条删除使用 `delete_*`，需要 `requestId,dramaId,recordId,expectedFingerprint`；跨对象批量删除使用 `batch_delete_records`，每项额外需要 `type`。不用填写业务 `data`。先解除引用并先子后父，仅逻辑删除且保留媒体文件。完整工具映射见 [MCP 使用说明](mcp-api.md#各业务对象独立-crud)。配置页“业务 CRUD”根据服务端映射展示 10 类对象的单条 CRUD 和独立批量修改状态。
 
 ## 填写提示词工作台
@@ -37,6 +41,8 @@
 | 首尾帧模式 | `generationMode=FIRST_LAST_FRAME`、`videoPrompt`；需要图片提示词时填写 `firstFramePrompt / endFramePrompt`，有现成图片时填写 `previewImageUrl / endFrameImageUrl` | 参考模式的 `prompt`、多模态媒体数组、导演计划 |
 
 负向提示词、场景补充提示词、人物动作/情绪/站位和道具提示词均按需填写。它们不是创建分镜的必填字段；已有图片可以直接关联，不要求为图片补造英文 Prompt。
+
+视频提示词统一引导无背景音乐，便于后期剪辑：两种模式均保留必需的 `non_diegetic_music` 段落并写 `none / no background music`；`overall_soundscape` 仅写对白、自然环境声和必要音效，不通过正文或 `refAudios` 引入配乐/BGM。此应用约束优先于 Skill 中的配乐示例；接口不自动改写创作者的提示词。
 
 `directorPlan / directorPlanMode` 是兼容手工编辑的可选高级内容。外部 Agent 的常规流程省略两者，直接保存卡片。服务端不会补生成导演计划；修改时省略也不会清除原计划。声音设计如 `overall_soundscape / non_diegetic_music` 由外部 Agent 写入最终提示词正文，无需填写内部提示词生成接口的 DTO、指纹或返回包装。
 

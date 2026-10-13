@@ -124,6 +124,7 @@ public class ResSceneServiceImpl implements ResSceneService {
         if (StringUtils.isBlank(scene.getSceneType())) {
             scene.setSceneType(null);
         }
+        scene.setTimeOfDay(StringUtils.trimToNull(scene.getTimeOfDay()));
         if (scene.getLoraWeight() == null && StringUtils.isNotBlank(scene.getLoraName())) {
             scene.setLoraWeight(new BigDecimal("1.00"));
         }

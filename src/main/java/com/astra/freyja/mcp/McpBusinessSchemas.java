@@ -26,6 +26,8 @@ public class McpBusinessSchemas {
             Map.entry("endFramePrompt", "end_frame_prompt"), Map.entry("negativePrompt", "negative_prompt"), Map.entry("videoPrompt", "video_prompt"),
             Map.entry("customScenePrompt", "custom_scene_prompt"), Map.entry("appearancePrompt", "appearance_prompt"), Map.entry("outfitPrompt", "outfit_prompt"),
             Map.entry("scenePrompt", "scene_prompt"), Map.entry("propPrompt", "prop_prompt"));
+    public static final Map<String, String> ENVIRONMENT_COLUMNS = Map.of(
+            "sceneType", "scene_type", "timeOfDay", "time_of_day", "weatherAtmosphere", "weather_atmosphere");
     private static final Set<String> IDS = Set.of("episodeId", "sceneId", "shotGroupId", "resSceneId", "resKeyframeId", "characterId", "lookId", "propId", "shotId");
     private static final Map<McpRecordType, Set<String>> FIELDS = Map.ofEntries(
             Map.entry(McpRecordType.PROJECT, fields("title,coverUrl,genre,targetEpisodes,aspectRatio,stylePreset,styleTone,synopsis,status,sortOrder,remark")),
@@ -60,6 +62,9 @@ public class McpBusinessSchemas {
                 Object schema = original.get(field);
                 if (IDS.contains(field)) schema = identifier(references, type == McpRecordType.SHOT && Set.of("resSceneId", "resKeyframeId").contains(field));
                 if (CONTENT_COLUMNS.containsKey(field)) schema = Map.of("type", List.of("string", "null"));
+                if (field.equals("sceneType")) schema = Map.of("type", List.of("string", "null"), "enum", Arrays.asList("INDOOR", "OUTDOOR", "STUDIO", "VIRTUAL", null));
+                if (field.equals("timeOfDay")) schema = Map.of("type", List.of("string", "null"), "enum", Arrays.asList("DAY", "NIGHT", "SUNSET", "DAWN", null));
+                if (field.equals("weatherAtmosphere")) schema = Map.of("type", List.of("string", "null"));
                 if (field.equals("characterRefs")) schema = array(30, nested(CharacterShotRefDTO.class, references, List.of("characterId")));
                 if (field.equals("propRefs")) schema = array(30, nested(PropShotRefDTO.class, references, List.of("propId")));
                 if (field.equals("refImages")) schema = described(array(9, nested(ShotRefImageDTO.class, references, List.of("sourceType", "imageUrl"))),
@@ -105,15 +110,19 @@ public class McpBusinessSchemas {
         return Arrays.stream(fields).map(name -> (Object) Map.of("required", List.of(name), "properties", Map.of(name, nonblank()))).toList();
     }
     private static String description(McpRecordType type, String field) {
+        if (field.equals("sceneType")) return "可选：INDOOR(室内)、OUTDOOR(室外)、STUDIO(影棚)、VIRTUAL(虚构)。按创作事实显式填写，河畔、街道等室外地点用 OUTDOOR；未指定为 null，不自动猜测。创建剧情场次时省略可继承绑定场景资产的明确值；显式 null 表示留空，更新省略保留原值。";
+        if (field.equals("timeOfDay")) return "可选：DAY(日间)、NIGHT(夜间)、SUNSET(黄昏)、DAWN(拂晓)。未指定为 null，不默认 DAY；创建剧情场次时省略可继承绑定场景资产，显式 null 留空，更新省略保留原值。";
+        if (field.equals("weatherAtmosphere")) return "可选的天气/氛围自由文本；无明确设定时留空，不由服务端推断。创建剧情场次时省略可继承绑定场景资产，显式 null 留空，更新省略保留原值。";
         if (field.equals("directorPlan")) return "可选的手工导演计划。外部 Agent 通常省略，直接保存提示词工作台内容；服务端不会补生成计划。";
         if (field.equals("directorPlanMode")) return "可选高级编辑；不使用导演计划时省略，更新时保留已有计划。AUTO 仅重置，不启动 AI。";
         if (type == McpRecordType.PROJECT && field.equals("genre")) return "题材为最长64字符的自由文本；drama_genre 字典仅提供建议，可使用已有字典值或自定义题材名称（如都市复仇、悬疑轻喜剧）。未收录的题材直接填写清晰名称，无需编造枚举代码。剧集继承项目题材。";
         if (type == McpRecordType.PROJECT && field.equals("aspectRatio")) return "创建必填；先读取 get_business_options(dictType=drama_aspect_ratio)。用户未指定时请用户选择已有比例，再创建；仅在用户明确交给 AI 决定时优先选启用的16:9，不自行默认9:16或编造比例。修改时省略保留原值。";
         if (type == McpRecordType.SHOT) return switch (field) {
-            case "prompt" -> "REFERENCE_MODE 的最终 H3 六段式视频卡片：subject_definitions、summary、retention_analysis、detailed_description、overall_soundscape、non_diegetic_music。先读取 h3-prompt-writing Skill 及 references/ref-en.txt；<Picture N>/<Audio N> 对应媒体数组第 N 项。";
-            case "videoPrompt" -> "FIRST_LAST_FRAME 的最终 H3 三段式视频卡片：integrated_multimodal_description、overall_soundscape、non_diegetic_music。先读取 h3-prompt-writing Skill 及 references/base-en.txt；不能仅填写图片提示词后宣称视频卡片完成。";
+            case "prompt" -> "REFERENCE_MODE 使用 prompt + refImages：最终 H3 六段式视频卡片含 subject_definitions、summary、retention_analysis、detailed_description、overall_soundscape、non_diegetic_music。保留音乐段落但明确写 none / no background music，不生成背景音乐或配乐，方便后期剪辑；overall_soundscape 仅保留对白、环境声和必要音效，refAudios 不引入 BGM。先读取 h3-prompt-writing Skill 及 references/ref-en.txt；<Picture N>/<Audio N> 对应媒体数组第 N 项。";
+            case "videoPrompt" -> "FIRST_LAST_FRAME 使用 videoPrompt：最终 H3 三段式视频卡片含 integrated_multimodal_description、overall_soundscape、non_diegetic_music。保留音乐段落但明确写 none / no background music，不生成背景音乐或配乐，方便后期剪辑；overall_soundscape 仅保留对白、环境声和必要音效。先读取 h3-prompt-writing Skill 及 references/base-en.txt；不能仅填写图片提示词后宣称视频卡片完成。";
             case "firstFramePrompt", "endFramePrompt" -> "首尾帧模式的图片提示词，可省略；已有图片可直接保存对应 URL。";
-            case "generationMode" -> "创建时默认 FIRST_LAST_FRAME；多模态参考卡片使用 REFERENCE_MODE。";
+            case "generationMode" -> "FIRST_LAST_FRAME 使用 videoPrompt 和首尾帧图片/提示词；REFERENCE_MODE 使用 prompt、refImages，可选 refAudios。制作视频卡片时显式选择；草稿省略兼容默认 FIRST_LAST_FRAME，不根据填写字段猜测模式。写后读回核对模式及对应字段。";
+            case "duration" -> "镜头秒数，按自然表演速度的完整动作与对白显式估算；草稿省略兼容默认3秒。普通动作常参考3–5秒，舒适长镜头参考7–8秒；预计超过8秒时优先在完整动作、对白轮次或叙事转折处分镜，减少单次渲染压力；避免按固定秒数切碎同一动作，不补停顿/慢动作。保留创作者明确长镜头要求，写后读回核对。";
             case "sceneId" -> "创建必填的归属场次；剧集和项目由服务端校验确定。";
             case "shotType", "cameraMovement" -> "基本规格与机位卡片；允许 AUTO（自动），外部 Agent 无明确选择时填写 AUTO，并保持对应 Locked=false；具体枚举读取业务字典。";
             case "characterRefs" -> "出镜人物业务关联：characterId 为人物 ID，lookId 为明确选定的造型 ID；先读取默认造型。动作/情绪/站位由外部 Agent 按剧本填写，不由 Java 猜测。";

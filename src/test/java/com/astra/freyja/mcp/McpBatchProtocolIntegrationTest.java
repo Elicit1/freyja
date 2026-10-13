@@ -70,6 +70,30 @@ class McpBatchProtocolIntegrationTest {
         assertFalse(names.contains("internal_ai_should_remain_private"));
     }
 
+    @Test void publishedEnvironmentAndVideoGuidanceIsExplicit() throws Exception {
+        var init = rpc("initialize", Map.of("protocolVersion", "2025-06-18", "capabilities", Map.of(), "clientInfo", Map.of("name", "guidance-test", "version", "1")));
+        String instructions = init.path("instructions").asText();
+        assertTrue(instructions.contains("7-8 seconds")); assertTrue(instructions.contains("read back"));
+        assertTrue(instructions.contains("no background music"));
+        String guide = rpc("resources/read", Map.of("uri", "freyja://guide")).path("contents").get(0).path("text").asText();
+        assertTrue(guide.contains("7–8 seconds")); assertTrue(guide.contains("batch_read_records"));
+        assertTrue(guide.contains("no background music"));
+        for (var tool : rpc("tools/list", Map.of()).path("tools")) {
+            String name = tool.path("name").asText();
+            var data = tool.path("inputSchema").path("properties").path("data");
+            if (Set.of("create_scene", "update_scene", "create_resource_scene", "update_resource_scene").contains(name)) {
+                assertEquals(Arrays.asList("INDOOR", "OUTDOOR", "STUDIO", "VIRTUAL", null), json.convertValue(data.path("properties").path("sceneType").path("enum"), List.class));
+                assertEquals(Arrays.asList("DAY", "NIGHT", "SUNSET", "DAWN", null), json.convertValue(data.path("properties").path("timeOfDay").path("enum"), List.class));
+                assertTrue(data.path("properties").path("sceneType").path("description").asText().contains("OUTDOOR"));
+            }
+            if (name.equals("create_shot")) {
+                assertTrue(data.path("properties").path("generationMode").path("description").asText().contains("refImages"));
+                for (String field : List.of("prompt", "videoPrompt")) assertTrue(data.path("properties").path(field).path("description").asText().contains("no background music"));
+                assertTrue(data.path("properties").path("duration").path("description").asText().contains("7–8秒"));
+            }
+        }
+    }
+
     @Test void batchCreateAndReplayThroughHttpPreserveIdsAndDatabaseState() throws Exception {
         Map<String, Object> input = Map.of("requestId", "http-import-req1", "dramaId", McpBusinessDatabaseTest.ROOT, "items", List.of(
                 Map.of("clientKey", "ep", "type", "EPISODE", "data", Map.of("title", "HTTP episode")),

@@ -569,6 +569,25 @@ class ScriptDecomposeServiceTest {
         verify(dramaMapper, times(1)).updateById(argThat((Drama d) -> d != null && d.getTargetEpisodes() == 2));
     }
 
+    @ParameterizedTest
+    @CsvSource(value = {"NULL,NULL", "OUTDOOR,NIGHT"}, nullValues = "NULL")
+    void commitDoesNotInventMissingSceneEnvironment(String sceneType, String timeOfDay) {
+        ScriptDecomposeCommitDTO dto = new ScriptDecomposeCommitDTO();
+        dto.setDramaId(100L); dto.setCommitMode("NEW_EPISODE"); dto.setTargetEpisodeNo(2);
+        dto.setScenes(List.of(DecomposedSceneVO.builder().sceneName("河畔").sceneType(sceneType).timeOfDay(timeOfDay).build()));
+        dto.setEpisodes(List.of(DecomposedEpisodeVO.builder().episodeNo(2).build()));
+        when(episodeMapper.selectAnyByDramaIdAndEpisodeNo(100L, 2)).thenReturn(null);
+        when(episodeMapper.selectMaxEpisodeNoByDramaId(100L)).thenReturn(2);
+        when(resSceneMapper.insert(any(ResScene.class))).thenAnswer(invocation -> {
+            ((ResScene) invocation.getArgument(0)).setId(300L); return 1;
+        });
+        scriptDecomposeService.commit(dto);
+        ArgumentCaptor<ResScene> saved = ArgumentCaptor.forClass(ResScene.class);
+        verify(resSceneMapper).insert(saved.capture());
+        assertEquals(sceneType, saved.getValue().getSceneType());
+        assertEquals(timeOfDay, saved.getValue().getTimeOfDay());
+    }
+
     @Test
     void testDecomposeWithExistingDramaPreservesDramaInfo() {
         ScriptDecomposeRequestDTO req = new ScriptDecomposeRequestDTO();
