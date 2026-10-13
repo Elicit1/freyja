@@ -45,7 +45,7 @@
           <p class="hint">剧情场次用于组织剧集，场景资产用于视觉参考。批量创建与批量删除保留跨对象操作；删除需先解除引用、先子后父，媒体文件保留。</p>
           <el-table :data="settings.crudCapabilities" row-key="type" class="crud-table">
             <el-table-column label="业务对象" min-width="150"><template #default="{ row }"><strong>{{ row.label }}</strong><div><code>{{ row.type }}</code></div></template></el-table-column>
-            <el-table-column v-for="operation in crudOperations" :key="operation.key" :label="operation.label" min-width="205">
+            <el-table-column v-for="operation in crudOperations" :key="operation.key" :label="operation.label" min-width="180">
               <template #default="{ row }">
                 <template v-if="toolByName(row[operation.key])">
                   <el-button link type="primary" class="crud-tool-name" @click="schemaTool = toolByName(row[operation.key])!">{{ row[operation.key] }}</el-button>
@@ -150,6 +150,8 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background:
 .tools-table code { color: var(--text-secondary); font-size: 12px; }.tool-description { font-size: 12px; line-height: 1.7; color: var(--text-secondary); margin: 8px 0; }
 .boundary-note { margin-top: 20px; }.schema-preview { max-height: 65vh; overflow: auto; }
 .crud-table { margin-top: 18px; }.crud-table code { color: var(--text-secondary); font-size: 11px; }
-.crud-tool-name { font-size: 11px; }.crud-state { display: flex; align-items: center; gap: 8px; }
+.crud-tool-name { font-size: 11px; height: auto; max-width: 100%; text-align: left; white-space: normal; }
+.crud-tool-name :deep(span) { white-space: normal; overflow-wrap: anywhere; }
+.crud-state { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 900px) { .summary-grid { grid-template-columns: 1fr; }.permission-grid { grid-template-columns: 1fr; }.token-row { flex-wrap: wrap; }.token-row .el-input { flex-basis: 100%; }.mcp-page { padding: 16px; } }
 </style>
