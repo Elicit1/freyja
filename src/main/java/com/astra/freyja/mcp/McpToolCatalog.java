@@ -17,6 +17,8 @@ import java.util.*;
 @RequiredArgsConstructor
 public class McpToolCatalog {
     private final McpJson json;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private McpRuntimeControl control;
     private final DefaultJsonSchemaValidator validator = new DefaultJsonSchemaValidator();
 
     @SuppressWarnings("unchecked")
@@ -36,6 +38,7 @@ public class McpToolCatalog {
         return McpStatelessServerFeatures.SyncToolSpecification.builder().tool(tool).callHandler((context, request) -> {
             long start = System.nanoTime();
             try {
+                if (control != null) control.requireTool(entry.name(), entry.effect());
                 McpPrincipal caller = principal(context);
                 if (entry.effect() == McpTool.Effect.WRITE && !caller.write()) throw new BizException(403, "MCP_WRITE_DISABLED");
                 Map<String, Object> arguments = request.arguments() == null ? Map.of() : request.arguments();

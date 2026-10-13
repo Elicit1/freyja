@@ -9,7 +9,6 @@ import com.astra.freyja.service.ResCharacterLookService;
 import com.astra.freyja.service.ShotVideoTakeService;
 import com.astra.freyja.dto.drama.ShotVideoTakeQuery;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
@@ -18,7 +17,6 @@ import java.util.function.BiFunction;
 /** Batch business adapters for external Agents. No execution is delegated to the internal Agent. */
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "spring.ai.mcp.server.enabled", havingValue = "true")
 public class McpBusinessTools {
     private final McpProperties properties;
     private final McpBusinessRecords records;
@@ -31,19 +29,25 @@ public class McpBusinessTools {
     private final DramaShotGroupService groups;
     private final ResCharacterLookService looks;
     private final ShotVideoTakeService takes;
+    private final McpImageUploads imageUploads;
 
     public List<McpTool<?>> tools() {
+        return allTools().stream().filter(tool -> properties.isWriteEnabled() ||
+                (tool.effect() == McpTool.Effect.READ && !tool.name().equals("get_business_operation"))).toList();
+    }
+    public List<McpTool<?>> allTools() {
         List<McpTool<?>> tools = new ArrayList<>();
-        tools.add(McpTool.read("batch_read_records", "批量读取业务记录，每次最多 100 项。每项返回结果或错误，内部 AI 字段不公开。非资产记录需 dramaId。", McpBatchInputs.Read.class, this::read));
+        tools.add(McpTool.read("batch_read_records", "批量读取业务记录，每次最多 100 项。分镜包含提示词、参考媒体和导演计划数据，不执行内部 AI。非资产记录需 dramaId。", McpBatchInputs.Read.class, this::read));
         tools.add(McpTool.read("list_shot_video_versions", "分页读取分镜已有视频版本，仅返回媒体资产信息，不返回模型、提示词或内部任务。", McpBatchInputs.VideoTakes.class, this::versions));
-        if (properties.isWriteEnabled()) {
-            tools.add(write("batch_create_records", "事务批量创建业务记录，最多 100 项。每项 clientKey 唯一；ID 字段可用 {ref:clientKey} 引用此前新建记录。省略 dramaId 时首项须为 PROJECT，且需新建项目授权。稳定 requestId 防止重试重复创建。", McpBatchInputs.Create.class, schemas.create(), (c, i) -> create(c, i, "batch_create_records")));
+        {
+            tools.add(imageUploads.tool());
+            tools.add(write("batch_create_records", "事务批量创建业务记录，最多 100 项；必填字段见各类型 Schema，人物/造型英文 Prompt 和导演计划均可省略。每项 clientKey 唯一；ID 可用 {ref:clientKey} 引用此前新建记录。省略 dramaId 时首项须为 PROJECT，且需新建权限。稳定 requestId 防止重复创建。", McpBatchInputs.Create.class, schemas.create(), (c, i) -> create(c, i, "batch_create_records")));
             Map<String, Object> appendSchema = new LinkedHashMap<>(schemas.create()); appendSchema.put("required", List.of("requestId", "dramaId", "items"));
             tools.add(write("append_storyboard", "将外部 Agent 已生成的资产、剧集、场次、镜头组和分镜追加到授权项目。与 batch_create_records 相同的有序 items；只新增，不覆盖原剧集，不触发内部拆解或模型调用。", McpBatchInputs.Create.class, appendSchema, (c, i) -> {
                 if (i.dramaId() == null || i.items().stream().anyMatch(item -> item.type() == McpRecordType.PROJECT)) throw new BizException(400, "追加导入必须指定项目，不能创建或替换项目");
                 return create(c, i, "append_storyboard");
             }));
-            tools.add(write("batch_update_records", "事务批量局部修改业务记录，最多 100 项。每项提供读取返回的 expectedFingerprint；省略字段保留原值。保护创作者锁定与内部 AI 字段。稳定 requestId 防止重复执行。", McpBatchInputs.Update.class, schemas.update(), this::update));
+            tools.add(write("batch_update_records", "事务批量配置提示词工作台和业务内容，最多 100 项；参考模式直接写 prompt 与有序 refImages/refAudios，首尾帧模式写 videoPrompt 和帧提示词/URL。导演计划可省略，不调用内部 AI。每项需 expectedFingerprint；省略字段保留原值，媒体数组整组替换，保护创作者锁，requestId 保证幂等。", McpBatchInputs.Update.class, schemas.update(), this::update));
             tools.add(McpTool.read("get_business_operation", "读取 MCP 业务写入请求的已提交结果，便于客户端中断后恢复。不是内部 AI 任务查询接口。", McpBatchInputs.Operation.class, (c, i) -> journal.read(c, i.requestId())));
             tools.add(write("clone_shot", "复制授权项目的分镜，沿用现有业务复制规则，不启动任何 AI。使用读取返回的版本指纹和稳定 requestId。", McpBatchInputs.Clone.class, null, this::cloneShot));
             tools.add(write("set_default_character_look", "将项目人物的一个现有造型设为默认；复用默认造型互斥规则，不生成图片。", McpBatchInputs.DefaultLook.class, null, this::defaultLook));
@@ -83,7 +87,7 @@ public class McpBusinessTools {
                 try {
                     if (item == null || item.clientKey() == null || !item.clientKey().matches("[A-Za-z0-9_-]{1,80}") || references.containsKey(item.clientKey()))
                         throw new BizException(400, "clientKey 必须有效且在批次内唯一");
-                    schemas.validate(item.type(), item.data(), true);
+                    schemas.validate(item.type(), item.data(), true, true);
                     if (item.type() == McpRecordType.PROJECT && (index != 0 || project != null)) throw new BizException(400, "新项目只能是无 dramaId 批次的首项");
                     Map<String, Object> data = resolve(item.data(), references);
                     Long id = records.create(effective, item.type(), project, data);

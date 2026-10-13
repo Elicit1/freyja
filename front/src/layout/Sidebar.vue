@@ -79,6 +79,10 @@
           <el-icon><Operation /></el-icon>
           <template #title>系统参数</template>
         </el-menu-item>
+        <el-menu-item index="/system/mcp">
+          <el-icon><Connection /></el-icon>
+          <template #title>MCP 服务</template>
+        </el-menu-item>
         <el-menu-item index="/system/skills">
           <el-icon><Collection /></el-icon>
           <template #title>AI Skills</template>
@@ -140,7 +144,8 @@ import {
   Operation,
   Collection,
   Brush,
-  ChatDotRound
+  ChatDotRound,
+  Connection
 } from '@element-plus/icons-vue'
 
 const route = useRoute()

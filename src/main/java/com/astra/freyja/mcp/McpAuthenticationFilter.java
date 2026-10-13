@@ -20,18 +20,19 @@ import java.util.stream.Collectors;
 
 public final class McpAuthenticationFilter extends OncePerRequestFilter {
     private static final int MAX_BODY_BYTES = 2 * 1024 * 1024;
-    private final byte[] credential;
-    private final Set<String> origins;
-    private final McpPrincipal principal;
+    static final int MAX_IMAGE_REQUEST_BYTES = 16 * 1024 * 1024;
+    private static final com.fasterxml.jackson.databind.ObjectMapper REQUEST_JSON = new com.fasterxml.jackson.databind.ObjectMapper();
+    private final McpProperties properties;
+    private final McpRuntimeControl control;
 
     public McpAuthenticationFilter(McpProperties properties) {
-        if (properties.getToken() == null || properties.getToken().length() < 24 || properties.getToken().isBlank())
+        this(properties, null);
+    }
+    public McpAuthenticationFilter(McpProperties properties, McpRuntimeControl control) {
+        this.properties = properties; this.control = control;
+        if (control == null && properties.isEnabled() && !McpRuntimeControl.validToken(properties.getToken()))
             throw new IllegalStateException("开启 MCP 必须配置至少 24 字符的 FREYJA_MCP_TOKEN");
-        credential = properties.getToken().getBytes(StandardCharsets.UTF_8);
-        origins = properties.getAllowedOrigins().stream().filter(s -> !s.isBlank()).collect(Collectors.toUnmodifiableSet());
-        Set<Long> projects = properties.getAllowedProjectIds().stream().filter(s -> !s.isBlank())
-                .map(McpScope::id).collect(Collectors.toUnmodifiableSet());
-        principal = new McpPrincipal(properties.isWriteEnabled(), properties.isAllowAllProjects(), properties.isAllowCreateProjects(), projects);
+        properties.getAllowedProjectIds().stream().filter(s -> !s.isBlank()).forEach(McpScope::id);
     }
 
     @Override protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -41,6 +42,17 @@ public final class McpAuthenticationFilter extends OncePerRequestFilter {
 
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
+        McpRuntimeSettings settings = control == null ? null : control.current();
+        boolean enabled = settings == null ? properties.isEnabled() : settings.isEnabled();
+        if (!enabled) { reject(response, 404, "MCP_DISABLED"); return; }
+        String token = settings == null ? properties.getToken() : control.token(settings);
+        if (!McpRuntimeControl.validToken(token)) { reject(response, 503, "MCP_TOKEN_NOT_CONFIGURED"); return; }
+        byte[] credential = token.getBytes(StandardCharsets.UTF_8);
+        Set<String> origins = settings == null ? properties.getAllowedOrigins() : settings.getAllowedOrigins();
+        Set<Long> projects = (settings == null ? properties.getAllowedProjectIds() : settings.getAllowedProjectIds()).stream().filter(s -> !s.isBlank())
+                .map(McpScope::id).collect(Collectors.toUnmodifiableSet());
+        McpPrincipal principal = settings == null ? new McpPrincipal(properties.isWriteEnabled(), properties.isAllowAllProjects(), properties.isAllowCreateProjects(), projects)
+                : new McpPrincipal(settings.isWriteEnabled(), settings.isAllowAllProjects(), settings.isAllowCreateProjects(), projects);
         String origin = request.getHeader("Origin");
         if (origin != null && !origins.contains(origin)) { reject(response, 403, "MCP_ORIGIN_DENIED"); return; }
         if (origin != null) {
@@ -62,11 +74,21 @@ public final class McpAuthenticationFilter extends OncePerRequestFilter {
             response.setHeader("WWW-Authenticate", "Bearer realm=\"freyja-mcp\"");
             reject(response, 401, "MCP_UNAUTHORIZED"); return;
         }
-        if (request.getContentLengthLong() > MAX_BODY_BYTES) { reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return; }
-        byte[] body = request.getInputStream().readNBytes(MAX_BODY_BYTES + 1);
-        if (body.length > MAX_BODY_BYTES) { reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return; }
+        if (request.getContentLengthLong() > MAX_IMAGE_REQUEST_BYTES) { reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return; }
+        byte[] body = request.getInputStream().readNBytes(MAX_IMAGE_REQUEST_BYTES + 1);
+        if (body.length > MAX_IMAGE_REQUEST_BYTES || (body.length > MAX_BODY_BYTES && !imageUpload(body))) {
+            reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return;
+        }
         request.setAttribute(McpPrincipal.CONTEXT_KEY, principal);
         chain.doFilter(new BufferedRequest(request, body), response);
+    }
+
+    private static boolean imageUpload(byte[] body) {
+        try {
+            var root = REQUEST_JSON.readTree(body);
+            return root != null && "tools/call".equals(root.path("method").asText())
+                    && McpImageUploads.TOOL_NAME.equals(root.path("params").path("name").asText());
+        } catch (IOException e) { return false; }
     }
 
     /** Bounded buffering also covers chunked requests; the MCP transport is synchronous. */

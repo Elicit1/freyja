@@ -15,7 +15,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.function.Supplier;
 
-/** Journal and all business writes commit atomically; concurrent retries wait on the unique request key. */
+/** Journal and database writes commit atomically; uploads use stable object paths. Concurrent retries wait on the unique request key. */
 @Service
 @RequiredArgsConstructor
 public class McpOperationStore {

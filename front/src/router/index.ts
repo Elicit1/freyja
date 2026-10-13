@@ -62,6 +62,12 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '系统参数配置' }
       },
       {
+        path: 'system/mcp',
+        name: 'McpSettings',
+        component: () => import('@/views/system/mcp/index.vue'),
+        meta: { title: 'MCP 服务' }
+      },
+      {
         path: 'system/skills',
         name: 'AiSkills',
         component: () => import('@/views/system/skills/index.vue'),

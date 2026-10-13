@@ -15,6 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.UUID;
@@ -40,20 +42,30 @@ public class MediaAssetServiceImpl implements MediaAssetService {
         String uniqueName = UUID.randomUUID().toString().replace("-", "") + "." + ext;
         String objectPath = String.format("%s/%s/%s", safeCategory, dateDir, uniqueName);
 
-        String bucket = minioProperties.getBucketName();
-        ensureBucketExists(bucket);
+        String contentType = StringUtils.defaultIfBlank(file.getContentType(), determineContentType(ext));
+        try {
+            return store(file.getInputStream(), file.getSize(), objectPath, originalFilename, contentType);
+        } catch (IOException e) {
+            throw new BizException("读取上传文件失败");
+        }
+    }
 
-        try (InputStream is = file.getInputStream()) {
-            String contentType = file.getContentType();
-            if (StringUtils.isBlank(contentType)) {
-                contentType = determineContentType(ext);
-            }
+    @Override
+    public AssetUploadResultVO uploadImage(byte[] image, String objectPath, String originalFilename, String contentType) {
+        if (image == null || image.length == 0) throw new BizException("上传图片不能为空");
+        return store(new ByteArrayInputStream(image), image.length, objectPath, originalFilename, contentType);
+    }
+
+    private AssetUploadResultVO store(InputStream input, long size, String objectPath, String originalFilename, String contentType) {
+        String bucket = minioProperties.getBucketName();
+        try (InputStream is = input) {
+            ensureBucketExists(bucket);
 
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucket)
                             .object(objectPath)
-                            .stream(is, file.getSize(), -1)
+                            .stream(is, size, -1)
                             .contentType(contentType)
                             .build()
             );
@@ -66,7 +78,7 @@ public class MediaAssetServiceImpl implements MediaAssetService {
                     .objectPath(objectPath)
                     .url(accessUrl)
                     .originalFilename(originalFilename)
-                    .size(file.getSize())
+                    .size(size)
                     .contentType(contentType)
                     .build();
         } catch (Exception e) {

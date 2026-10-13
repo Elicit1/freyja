@@ -16,4 +16,7 @@ public interface MediaAssetService {
      * @return 上传结果包含完整访问 URL
      */
     AssetUploadResultVO upload(MultipartFile file, String category);
+
+    /** Store validated image bytes at a server-generated path, allowing stable MCP upload retries. */
+    AssetUploadResultVO uploadImage(byte[] image, String objectPath, String originalFilename, String contentType);
 }

@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class McpAuthenticationFilterTest {
     @Test void startupRequiresCredentialAndValidStringProjectIds() {
         McpProperties properties = new McpProperties();
+        properties.setEnabled(true);
         assertThrows(IllegalStateException.class, () -> new McpAuthenticationFilter(properties));
         properties.setToken("0123456789abcdef0123456789abcdef");
         properties.setAllowedProjectIds(Set.of("0"));
@@ -20,6 +21,7 @@ class McpAuthenticationFilterTest {
 
     @Test void allowedOriginAndCredentialCreateImmutableScopedIdentity() throws Exception {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef");
+        properties.setEnabled(true);
         properties.setAllowedProjectIds(Set.of("2032095628944588801")); properties.setAllowedOrigins(Set.of("https://studio.example"));
         McpAuthenticationFilter filter = new McpAuthenticationFilter(properties);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp"); request.setServletPath("/mcp");
@@ -33,6 +35,7 @@ class McpAuthenticationFilterTest {
 
     @Test void browserPreflightDoesNotExposeToolsAndActualRequestStillRequiresAuthentication() throws Exception {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef");
+        properties.setEnabled(true);
         properties.setAllowedOrigins(Set.of("https://studio.example"));
         McpAuthenticationFilter filter = new McpAuthenticationFilter(properties);
         MockHttpServletRequest preflight = new MockHttpServletRequest("OPTIONS", "/mcp"); preflight.setServletPath("/mcp");
@@ -49,6 +52,7 @@ class McpAuthenticationFilterTest {
 
     @Test void oversizedBodyIsRejectedEvenWithoutContentLength() throws Exception {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef");
+        properties.setEnabled(true);
         McpAuthenticationFilter filter = new McpAuthenticationFilter(properties);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp") {
             @Override public long getContentLengthLong() { return -1; }
@@ -62,6 +66,7 @@ class McpAuthenticationFilterTest {
 
     @Test void boundedBufferPassesOriginalBodyToTransport() throws Exception {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef");
+        properties.setEnabled(true);
         McpAuthenticationFilter filter = new McpAuthenticationFilter(properties);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp"); request.setServletPath("/mcp");
         request.addHeader("Authorization", "Bearer " + properties.getToken()); byte[] body = "{\"业务\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -70,5 +75,29 @@ class McpAuthenticationFilterTest {
             assertArrayEquals(body, r.getInputStream().readAllBytes()); assertNotNull(r.getAttribute(McpPrincipal.CONTEXT_KEY)); called.set(true);
         });
         assertTrue(called.get());
+    }
+
+    @Test void onlyActualImageUploadCallsCanUseLargerBodyLimit() throws Exception {
+        McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef"); properties.setEnabled(true);
+        var filter = new McpAuthenticationFilter(properties);
+        for (String name : java.util.List.of("upload_asset_image", "batch_create_records")) {
+            var request = new MockHttpServletRequest("POST", "/mcp") { @Override public long getContentLengthLong() { return -1; } };
+            request.setServletPath("/mcp"); request.addHeader("Authorization", "Bearer " + properties.getToken());
+            request.addHeader("Mcp-Name", "upload_asset_image"); // A header cannot expand limits for a different tool.
+            byte[] body = ("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"" + name + "\",\"arguments\":{\"dataBase64\":\"" + "A".repeat(2 * 1024 * 1024) + "\"}}}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            request.setContent(body); AtomicBoolean called = new AtomicBoolean(); var response = new MockHttpServletResponse();
+            filter.doFilter(request, response, (r, s) -> { assertArrayEquals(body, r.getInputStream().readAllBytes()); called.set(true); });
+            assertEquals(name.equals("upload_asset_image"), called.get()); assertEquals(name.equals("upload_asset_image") ? 200 : 413, response.getStatus());
+        }
+    }
+
+    @Test void imageUploadAbsoluteLimitCoversChunkedBodies() throws Exception {
+        McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef"); properties.setEnabled(true);
+        var request = new MockHttpServletRequest("POST", "/mcp") { @Override public long getContentLengthLong() { return -1; } };
+        request.setServletPath("/mcp"); request.addHeader("Authorization", "Bearer " + properties.getToken());
+        request.setContent(new byte[McpAuthenticationFilter.MAX_IMAGE_REQUEST_BYTES + 1]);
+        var response = new MockHttpServletResponse();
+        new McpAuthenticationFilter(properties).doFilter(request, response, (r, s) -> fail("oversized request reached transport"));
+        assertEquals(413, response.getStatus());
     }
 }

@@ -7,6 +7,8 @@ import com.astra.freyja.dao.*;
 import com.astra.freyja.entity.*;
 import com.astra.freyja.service.*;
 import com.astra.freyja.service.impl.*;
+import com.astra.freyja.director.service.DirectorPlanStateService;
+import com.astra.freyja.director.service.DirectorPlanValidator;
 import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.baomidou.mybatisplus.annotation.DbType;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
@@ -79,12 +81,12 @@ class McpBusinessDatabaseTest {
     @EnableTransactionManagement
     @MapperScan(basePackages = "com.astra.freyja.dao", annotationClass = Mapper.class)
     @Import({McpJson.class, McpScope.class, McpBusinessView.class, McpAssets.class, McpBusinessSchemas.class,
-            McpBusinessRecords.class, McpOperationStore.class, McpBusinessTools.class, McpReadTools.class,
+            McpBusinessRecords.class, McpOperationStore.class, McpBusinessTools.class, McpReadTools.class, McpImageUploads.class, MediaAssetServiceImpl.class,
             DramaServiceImpl.class, DramaEpisodeServiceImpl.class, DramaSceneServiceImpl.class,
             DramaShotGroupServiceImpl.class, DramaShotServiceImpl.class, ResCharacterServiceImpl.class,
             ResCharacterLookServiceImpl.class, ResCharacterOutfitServiceImpl.class, ResSceneServiceImpl.class,
             ResPropServiceImpl.class, ResKeyframeServiceImpl.class, CharacterRegistryServiceImpl.class,
-            ShotVideoTakeServiceImpl.class})
+            ShotVideoTakeServiceImpl.class, DirectorPlanStateService.class, DirectorPlanValidator.class})
     static class Config {
         @Bean DataSource dataSource() {
             return new DriverManagerDataSource("jdbc:h2:mem:mcp-business-test;MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000", "sa", "");
@@ -121,7 +123,7 @@ class McpBusinessDatabaseTest {
         for (Class<?> type : List.of(Drama.class, DramaEpisode.class, DramaScene.class, DramaShotGroup.class,
                 DramaShot.class, ResCharacter.class, ResCharacterLook.class, ResScene.class, ResProp.class,
                 ResKeyframe.class, ResCharacterAlias.class, ResCharacterEvidence.class, ResCharacterResolution.class,
-                DramaShotVideoTake.class, McpBusinessOperation.class)) {
+                DramaShotVideoTake.class, McpBusinessOperation.class, SysConfig.class)) {
             var info = TableInfoHelper.getTableInfo(type);
             List<String> columns = new ArrayList<>(); columns.add(info.getKeyColumn() + " BIGINT PRIMARY KEY");
             info.getFieldList().forEach(f -> {
@@ -262,7 +264,8 @@ class McpBusinessDatabaseTest {
         assertEquals(before.getVideoPrompt(), after.getVideoPrompt()); assertEquals(before.getDirectorPlanJson(), after.getDirectorPlanJson());
         assertEquals(before.getDirectorPlanMode(), after.getDirectorPlanMode()); assertEquals(before.getSeed(), after.getSeed());
         assertTrue(after.getCharacterRefsJson().contains("private action")); assertTrue(after.getPropRefsJson().contains("private prop"));
-        assertFalse(json.write(result).contains("private"));
+        assertTrue(json.write(result).contains("private prompt"));
+        assertFalse(json.write(result).contains("directorPlanJson"));
         assertEquals(map(result), map(call("batch_update_records", caller, input)));
     }
 
@@ -332,7 +335,7 @@ class McpBusinessDatabaseTest {
     @Test void completeCatalogContainsOnlyBusinessToolsAndWhitelistedSchemas() {
         Set<String> expected = Set.of("search_projects", "get_project", "get_project_outline", "list_shots", "get_shot", "search_assets",
                 "get_asset", "list_character_looks", "get_business_options", "batch_read_records", "list_shot_video_versions", "batch_create_records",
-                "append_storyboard", "batch_update_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version");
+                "append_storyboard", "batch_update_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version", "upload_asset_image");
         List<McpTool<?>> all = new ArrayList<>(reads.tools()); all.addAll(tools.tools());
         assertEquals(expected, all.stream().map(McpTool::name).collect(java.util.stream.Collectors.toSet()));
         for (McpTool<?> tool : all) {
@@ -347,9 +350,7 @@ class McpBusinessDatabaseTest {
     }
 
     void assertBusinessSchema(Object node) {
-        Set<String> forbidden = Set.of("prompt", "firstFramePrompt", "endFramePrompt", "negativePrompt", "videoPrompt", "customScenePrompt",
-                "directorPlan", "directorPlanJson", "directorPlanMode", "modelCode", "modelId", "providerId", "skillId", "skillName", "taskId", "seed",
-                "actionPrompt", "emotionPrompt", "propPrompt", "refImages", "refAudios", "generationMode");
+        Set<String> forbidden = Set.of("directorPlanJson", "directorPlanRevision", "directorPlanInputHash", "modelCode", "modelId", "providerId", "skills", "skillId", "skillName", "taskId", "latestTaskId");
         if (node instanceof Map<?, ?> object) {
             if (object.get("properties") instanceof Map<?, ?> fields) assertTrue(Collections.disjoint(fields.keySet(), forbidden), fields.keySet().toString());
             object.values().forEach(this::assertBusinessSchema);
@@ -361,8 +362,8 @@ class McpBusinessDatabaseTest {
                 Map.of("clientKey", "ep", "type", "EPISODE", "data", Map.of("title", "Schema import"))));
         assertFalse(protocolCall("batch_create_records", caller, valid).isError());
         assertEquals(2, count("drama_episode"));
-        for (Map<String, Object> data : List.of(Map.<String, Object>of("sceneId", 30), Map.<String, Object>of("sceneId", "30", "prompt", "secret"),
-                Map.<String, Object>of("sceneId", "30", "characterRefs", List.of(Map.of("characterId", "50", "actionPrompt", "secret"))),
+        for (Map<String, Object> data : List.of(Map.<String, Object>of("sceneId", 30), Map.<String, Object>of("sceneId", "30", "latestTaskId", "secret"),
+                Map.<String, Object>of("sceneId", "30", "characterRefs", List.of(Map.of("characterId", "50", "modelId", "secret"))),
                 Map.<String, Object>of("sceneId", "30", "propRefs", List.of(Map.of("propId", 70))),
                 Map.<String, Object>of("sceneId", "30", "arbitrary", true), Map.<String, Object>of("sceneId", "9999999999999999999"))) {
             var invalid = Map.<String, Object>of("requestId", "invalid-schema01", "dramaId", ROOT, "items", List.of(Map.of("clientKey", "shot", "type", "SHOT", "data", data)));
@@ -376,15 +377,181 @@ class McpBusinessDatabaseTest {
 
     @Test void allBusinessProjectionsExcludePrivateFieldsIncludingNestedData() {
         Map<String, Object> raw = new HashMap<>(); raw.put("id", PROJECT);
-        for (String field : List.of("prompt", "negativePrompt", "videoPrompt", "promptSnapshot", "modelCode", "providerId", "latestTaskId",
-                "directorPlanJson", "comfyWorkflowTemplateId", "voiceId", "loraName", "visualPrompt")) raw.put(field, "secret");
-        raw.put("characterRefsJson", "[{\"characterId\":2032095628944588801,\"lookId\":60,\"actionPrompt\":\"secret\"}]");
-        raw.put("propRefsJson", "[{\"propId\":70,\"propPrompt\":\"secret\"}]");
+        for (String field : List.of("promptSnapshot", "modelCode", "providerId", "latestTaskId", "comfyWorkflowTemplateId", "voiceId", "loraName", "visualPrompt")) raw.put(field, "secret");
+        raw.put("prompt", "editable prompt"); raw.put("negativePrompt", "editable negative prompt"); raw.put("videoPrompt", "editable video prompt");
+        Map<String, Object> plan = new LinkedHashMap<>(plan(5)); plan.put("skills", List.of(Map.of("name", "secret")));
+        raw.put("directorPlanJson", json.write(plan));
+        raw.put("characterRefsJson", "[{\"characterId\":2032095628944588801,\"lookId\":60,\"actionPrompt\":\"editable action\"}]");
+        raw.put("propRefsJson", "[{\"propId\":70,\"propPrompt\":\"editable prop\"}]");
         for (McpBusinessView.Kind kind : McpBusinessView.Kind.values()) {
             Map<String, Object> projected = views.project(kind, raw);
             assertEquals(ROOT, projected.get("id")); assertFalse(json.write(projected).contains("secret"), kind.toString());
             if (kind == McpBusinessView.Kind.SHOT) assertEquals(ROOT, map(((List<?>) projected.get("characterRefs")).getFirst()).get("characterId"));
         }
+    }
+
+    static Map<String, Object> plan(int duration) {
+        return Map.of("schemaVersion", "1.0", "duration", duration, "shotSize", "MEDIUM_SHOT", "cameraAngle", "EYE_LEVEL", "narrativeIntent", "展现人物抵达",
+                "cameraBeats", List.of(Map.of("startSec", 0, "endSec", duration, "movement", "STATIC", "speed", "NONE")));
+    }
+
+    @Test void externalAgentCanCreateFullShotWithPromptsPlanAndReferencesWithoutAi() {
+        character(50L, PROJECT); look(60L, 50L, 1);
+        ResProp p = new ResProp(); p.setId(70L); p.setDramaId(PROJECT); p.setName("Prop"); props.insert(p);
+        Map<String, Object> data = new LinkedHashMap<>(Map.ofEntries(Map.entry("sceneId", "30"), Map.entry("duration", 5), Map.entry("seed", "123"),
+                Map.entry("prompt", "external positive"), Map.entry("firstFramePrompt", "external first"), Map.entry("endFramePrompt", "external last"),
+                Map.entry("videoPrompt", "external video"), Map.entry("negativePrompt", "external negative"), Map.entry("customScenePrompt", "external background"),
+                Map.entry("directorPlan", plan(5)), Map.entry("generationMode", "REFERENCE_MODE"), Map.entry("previewImageUrl", "https://media/first.png")));
+        data.put("characterRefs", List.of(Map.of("characterId", "50", "lookId", "60", "actionPrompt", "walking", "emotionPrompt", "calm", "positionTag", "left")));
+        data.put("propRefs", List.of(Map.of("propId", "70", "propName", "bag", "propPrompt", "leather bag")));
+        data.put("refImages", List.of(Map.of("id", "image1", "sourceType", "CHARACTER_REFERENCE", "sourceId", "60", "characterId", "50", "lookId", "60", "imageUrl", "https://media/look.png", "usageRole", "SUBJECT")));
+        data.put("refAudios", List.of(Map.of("id", "audio1", "sourceType", "TTS", "characterId", "50", "audioUrl", "https://media/voice.mp3", "duration", 3, "text", "到了")));
+        var result = protocolCall("batch_create_records", caller, Map.of("requestId", "external-shot-01", "dramaId", ROOT,
+                "items", List.of(Map.of("clientKey", "shot", "type", "SHOT", "data", data))));
+        assertFalse(result.isError(), json.write(result.structuredContent()));
+        Map<String, Object> output = map(map(result.structuredContent()).get("data")); String id = (String) map(output.get("idMap")).get("shot");
+        DramaShot saved = shots.selectById(McpScope.id(id));
+        assertEquals("external first", saved.getFirstFramePrompt()); assertEquals("external video", saved.getVideoPrompt()); assertEquals("MANUAL", saved.getDirectorPlanMode());
+        assertEquals("MANUAL_UPLOAD", saved.getFirstFrameSourceType()); assertTrue(saved.getRefImagesJson().contains("look.png"));
+        Map<String, Object> view = records.read(caller, McpRecordType.SHOT, id, ROOT);
+        assertEquals("external positive", view.get("prompt")); assertEquals("123", view.get("seed"));
+        assertEquals("walking", map(((List<?>) view.get("characterRefs")).getFirst()).get("actionPrompt"));
+        assertEquals("60", map(((List<?>) view.get("refImages")).getFirst()).get("sourceId"));
+        assertEquals(new BigDecimal("3"), new BigDecimal(map(((List<?>) view.get("refAudios")).getFirst()).get("duration").toString()));
+        assertFalse(map(view.get("directorPlan")).containsKey("skills")); verifyNoInteractions(storage);
+    }
+
+    @Test void externalPlanUpdateUsesRevisionAndExplicitPromptClearWhilePreservingOmittedFields() {
+        character(50L, PROJECT); look(60L, 50L, 1);
+        DramaShot before = shot(80L); before.setPrompt("old positive"); before.setFirstFramePrompt("preserve first"); before.setCustomScenePrompt("old background");
+        before.setCharacterRefsJson("[{\"characterId\":50,\"lookId\":60,\"actionPrompt\":\"old action\",\"emotionPrompt\":\"preserve emotion\"}]"); shots.updateById(before);
+        Map<String, Object> data = new LinkedHashMap<>(Map.of("duration", 6, "videoPrompt", "external replacement", "directorPlan", plan(6),
+                "characterRefs", List.of(Map.of("characterId", "50", "actionPrompt", "new action")))); data.put("prompt", null); data.put("customScenePrompt", null);
+        var result = call("batch_update_records", caller, new McpBatchInputs.Update("external-patch01", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT,
+                "80", views.fingerprint(shots.selectById(80L)), data))));
+        DramaShot after = shots.selectById(80L); assertNull(after.getPrompt()); assertNull(after.getCustomScenePrompt()); assertEquals("preserve first", after.getFirstFramePrompt());
+        assertEquals("external replacement", after.getVideoPrompt()); assertEquals("MANUAL", after.getDirectorPlanMode()); assertEquals(1, after.getDirectorPlanRevision());
+        assertTrue(after.getCharacterRefsJson().contains("preserve emotion")); assertTrue(after.getCharacterRefsJson().contains("new action")); assertTrue(after.getCharacterRefsJson().contains("60"));
+        assertTrue(json.write(result).contains("external replacement"));
+    }
+
+    @Test void invalidDirectorPlanRollsBackShotAndEarlierBatchItems() {
+        DramaShot before = shot(80L);
+        Map<String, Object> invalid = new LinkedHashMap<>(plan(5)); invalid.put("cameraBeats", List.of(Map.of("startSec", 1, "endSec", 5, "movement", "STATIC", "speed", "NONE")));
+        var input = new McpBatchInputs.Update("invalid-plan-001", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.EPISODE, "20", views.fingerprint(episodes.selectById(20L)), Map.of("title", "Temporary")),
+                new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80", views.fingerprint(before), Map.of("prompt", "Temporary", "directorPlan", invalid))));
+        assertEquals(400, assertThrows(BizException.class, () -> call("batch_update_records", caller, input)).getCode());
+        assertEquals("Episode", episodes.selectById(20L).getTitle()); assertNull(shots.selectById(80L).getPrompt()); assertEquals(0, count("mcp_business_operation"));
+    }
+
+    @Test void referenceMediaCannotCrossProjectsAndInternalSkillProvenanceCannotBeSpoofed() {
+        character(50L, PROJECT); character(51L, PROJECT + 1); look(60L, 51L, 1);
+        var foreign = Map.<String, Object>of("sceneId", "30", "refImages", List.of(Map.of("sourceType", "CHARACTER_REFERENCE", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png")));
+        assertEquals(403, assertThrows(BizException.class, () -> create("foreign-media-01", List.of(item("shot", McpRecordType.SHOT, foreign)))).getCode());
+        var audio = Map.<String, Object>of("sceneId", "30", "refAudios", List.of(Map.of("sourceType", "TTS", "characterId", "51", "audioUrl", "https://media/voice.mp3")));
+        assertEquals(403, assertThrows(BizException.class, () -> create("foreign-audio-01", List.of(item("shot", McpRecordType.SHOT, audio)))).getCode());
+        Map<String, Object> spoof = new LinkedHashMap<>(plan(5)); spoof.put("skills", List.of(Map.of("name", "internal")));
+        assertTrue(protocolCall("batch_create_records", caller, Map.of("requestId", "spoof-plan-0001", "dramaId", ROOT, "items", List.of(Map.of("clientKey", "shot", "type", "SHOT", "data", Map.of("sceneId", "30", "directorPlan", spoof))))).isError());
+        assertEquals(0, count("drama_shot"));
+    }
+
+    @Test void externalAssetPromptContentIsPersistedWithoutGeneration() {
+        var result = create("asset-prompts-01", List.of(item("character", McpRecordType.CHARACTER, Map.of("name", "External", "appearancePrompt", "external identity", "negativePrompt", "external negative")),
+                item("look", McpRecordType.CHARACTER_LOOK, Map.of("characterId", ref("character"), "lookName", "External look", "designDesc", "Business look", "outfitPrompt", "external clothing")),
+                item("frame", McpRecordType.KEYFRAME, Map.of("name", "External frame", "prompt", "external first frame"))));
+        Map<String, Object> ids = map(result.get("idMap"));
+        assertEquals("external identity", characters.selectById(McpScope.id((String) ids.get("character"))).getAppearancePrompt());
+        assertEquals("external clothing", looks.selectById(McpScope.id((String) ids.get("look"))).getOutfitPrompt());
+        assertEquals("external first frame", keyframes.selectById(McpScope.id((String) ids.get("frame"))).getPrompt()); verifyNoInteractions(storage);
+    }
+
+    @Test void minimalBusinessRecordsNeedNeitherAssetPromptsNorDirectorPlans() {
+        var output = create("minimal-records-01", List.of(
+                item("ep", McpRecordType.EPISODE, Map.of()),
+                item("scene", McpRecordType.SCENE, Map.of("episodeId", ref("ep"))),
+                item("group", McpRecordType.SHOT_GROUP, Map.of("sceneId", ref("scene"))),
+                item("shot", McpRecordType.SHOT, Map.of("sceneId", ref("scene"), "shotGroupId", ref("group"))),
+                item("character", McpRecordType.CHARACTER, Map.of("displayName", "旅客")),
+                item("look", McpRecordType.CHARACTER_LOOK, Map.of("characterId", ref("character"), "lookName", "日常装", "designDesc", "灰色棉衣")),
+                item("assetScene", McpRecordType.RESOURCE_SCENE, Map.of("name", "车站")),
+                item("prop", McpRecordType.PROP, Map.of("name", "行李")),
+                item("frame", McpRecordType.KEYFRAME, Map.of("name", "站台", "frameUrl", "https://media/station.png"))));
+        Map<String, Object> ids = map(output.get("idMap"));
+        ResCharacter character = characters.selectById(McpScope.id((String) ids.get("character")));
+        ResCharacterLook look = looks.selectById(McpScope.id((String) ids.get("look")));
+        assertEquals("旅客", character.getName()); assertNull(character.getAppearancePrompt());
+        assertNull(look.getOutfitPrompt()); assertNull(look.getAppearancePrompt()); assertEquals(1, look.getIsDefault());
+        DramaShot saved = shots.selectById(McpScope.id((String) ids.get("shot")));
+        assertNull(saved.getDirectorPlanJson()); assertNull(saved.getPrompt()); assertEquals("FIRST_LAST_FRAME", saved.getGenerationMode());
+        assertEquals(0, saved.getDuration().compareTo(new BigDecimal("3"))); verifyNoInteractions(storage);
+    }
+
+    @Test void orderedWorkshopCardsPreserveWeakBindingsWithoutDirectorPlanOrInference() {
+        character(50L, PROJECT); look(60L, 50L, 1); look(61L, 50L, 0);
+        Map<String, Object> data = Map.of("sceneId", "30", "generationMode", "REFERENCE_MODE", "prompt", "<Picture 1> 风格；<Picture 2> 画外人物；<Audio 1> 音效。",
+                "refImages", List.of(Map.of("sourceType", "UPLOAD", "imageUrl", "https://media/style.png", "usageRole", "STYLE"),
+                        Map.of("sourceType", "CHARACTER_REFERENCE", "sourceId", "61", "characterId", "50", "imageUrl", "https://media/look.png", "usageRole", "NON_SUBJECT", "referenceRole", "COMBINED")),
+                "refAudios", List.of(Map.of("sourceType", "UPLOAD", "audioUrl", "https://media/sfx.wav", "duration", 3, "usageMode", "SFX_REUSE")));
+        var created = create("workshop-order-01", List.of(item("shot", McpRecordType.SHOT, data)));
+        String id = (String) map(created.get("idMap")).get("shot");
+        DramaShot saved = shots.selectById(McpScope.id(id)); assertNull(saved.getDirectorPlanJson());
+        Map<String, Object> view = records.read(caller, McpRecordType.SHOT, id, ROOT);
+        List<?> media = (List<?>) view.get("refImages");
+        assertEquals("https://media/style.png", map(media.get(0)).get("imageUrl"));
+        assertEquals("50", map(media.get(1)).get("characterId")); assertEquals("NON_SUBJECT", map(media.get(1)).get("usageRole"));
+        assertEquals("61", map(media.get(1)).get("lookId"));
+        assertEquals(List.of(), view.get("characterRefs"));
+        assertNotEquals(map(media.get(0)).get("id"), map(media.get(1)).get("id")); assertNotNull(map(media.get(0)).get("id"));
+        List<?> audio = (List<?>) view.get("refAudios"); assertNotNull(map(audio.getFirst()).get("id"));
+        assertEquals(created, create("workshop-order-01", List.of(item("shot", McpRecordType.SHOT, data))));
+        List<?> reordered = List.of(media.get(1), media.get(0));
+        call("batch_update_records", caller, new McpBatchInputs.Update("workshop-order-02", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, id,
+                views.fingerprint(saved), Map.of("prompt", "<Picture 1> 画外人物；<Picture 2> 风格；<Audio 1> 音效。", "refImages", reordered)))));
+        Map<String, Object> updated = records.read(caller, McpRecordType.SHOT, id, ROOT);
+        assertEquals(reordered, updated.get("refImages")); assertEquals(audio, updated.get("refAudios")); assertNull(shots.selectById(McpScope.id(id)).getDirectorPlanJson());
+        verifyNoInteractions(storage);
+    }
+
+    @Test void incompleteMediaAndBusinessRequirementsRollBackEarlierRecords() {
+        List<McpBatchInputs.CreateItem> invalid = List.of(
+                item("bad", McpRecordType.CHARACTER, Map.of("personality", "calm")),
+                item("bad", McpRecordType.CHARACTER_LOOK, Map.of("characterId", "50", "lookName", "look")),
+                item("bad", McpRecordType.KEYFRAME, Map.of("name", "frame")),
+                item("bad", McpRecordType.SHOT, Map.of("sceneId", "30", "refImages", List.of(Map.of("sourceType", "UPLOAD")))),
+                item("bad", McpRecordType.SHOT, Map.of("sceneId", "30", "refImages", List.of(Map.of("sourceType", "UPLOAD", "imageUrl", "  ")))),
+                item("bad", McpRecordType.SHOT, Map.of("sceneId", "30", "refImages", List.of(Map.of("sourceType", "CHARACTER_REFERENCE", "imageUrl", "https://media/look.png", "sourceId", "60")))),
+                item("bad", McpRecordType.SHOT, Map.of("sceneId", "30", "refImages", List.of(Map.of("sourceType", "SCENE", "imageUrl", "https://media/scene.png")))),
+                item("bad", McpRecordType.SHOT, Map.of("sceneId", "30", "refAudios", List.of(Map.of("sourceType", "TTS", "audioUrl", "https://media/voice.mp3")))),
+                item("bad", McpRecordType.SHOT, Map.of("sceneId", "30", "refAudios", List.of(Map.of("sourceType", "UPLOAD", "audioUrl", "https://media/voice.mp3", "duration", 1)))),
+                item("bad", McpRecordType.SHOT, Map.of("sceneId", "30", "refAudios", List.of(Map.of("sourceType", "UPLOAD", "audioUrl", "https://media/voice.mp3", "duration", 8), Map.of("sourceType", "UPLOAD", "audioUrl", "https://media/voice2.mp3", "duration", 8)))),
+                item("bad", McpRecordType.SHOT, Map.of("sceneId", "30", "refImages", List.of(Map.of("id", "same", "sourceType", "UPLOAD", "imageUrl", "https://media/one.png"), Map.of("id", "same", "sourceType", "UPLOAD", "imageUrl", "https://media/two.png")))));
+        for (var item : invalid) assertEquals(400, assertThrows(BizException.class, () -> create("incomplete-data-01", List.of(item("ep", McpRecordType.EPISODE, Map.of()), item))).getCode());
+        assertEquals(1, count("drama_episode")); assertEquals(0, count("drama_shot")); assertEquals(0, count("mcp_business_operation"));
+    }
+
+    @Test void ordinaryWorkshopPatchPreservesExistingManualPlan() {
+        shot(80L);
+        call("batch_update_records", caller, new McpBatchInputs.Update("optional-plan-01", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80",
+                views.fingerprint(shots.selectById(80L)), Map.of("directorPlan", plan(5))))));
+        DramaShot before = shots.selectById(80L);
+        call("batch_update_records", caller, new McpBatchInputs.Update("optional-plan-02", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80",
+                views.fingerprint(before), Map.of("videoPrompt", "直接填写卡片")))));
+        DramaShot after = shots.selectById(80L);
+        assertEquals(before.getDirectorPlanJson(), after.getDirectorPlanJson()); assertEquals(before.getDirectorPlanRevision(), after.getDirectorPlanRevision());
+        assertEquals("直接填写卡片", after.getVideoPrompt());
+    }
+
+    @Test void externalAgentCannotOverrideOrResetCreatorLockedDirectorPlan() {
+        shot(80L);
+        Map<String, Object> locked = new LinkedHashMap<>(plan(5)); locked.put("lockedFields", List.of("narrativeIntent"));
+        call("batch_update_records", caller, new McpBatchInputs.Update("locked-plan-set1", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80",
+                views.fingerprint(shots.selectById(80L)), Map.of("directorPlan", locked)))));
+        Map<String, Object> changed = new LinkedHashMap<>(locked); changed.put("narrativeIntent", "覆盖创作者意图");
+        for (Map<String, Object> data : List.of(Map.<String, Object>of("directorPlan", changed), Map.<String, Object>of("directorPlanMode", "AUTO"))) {
+            var input = new McpBatchInputs.Update("locked-plan-deny", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80", views.fingerprint(shots.selectById(80L)), data)));
+            assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_records", caller, input)).getCode());
+        }
+        assertEquals(1, shots.selectById(80L).getDirectorPlanRevision()); assertEquals("MANUAL", shots.selectById(80L).getDirectorPlanMode());
     }
 
     @Test void batchSizeLimitsAndDuplicateKeysDoNotLeavePartialWrites() {

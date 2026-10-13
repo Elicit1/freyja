@@ -6,6 +6,8 @@ import com.astra.freyja.dto.drama.*;
 import com.astra.freyja.dto.res.*;
 import com.astra.freyja.entity.*;
 import com.astra.freyja.service.*;
+import com.astra.freyja.director.service.DirectorPlanStateService;
+import com.astra.freyja.director.model.DirectorPlan;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
@@ -40,6 +42,7 @@ public class McpBusinessRecords {
     private final McpScope scope;
     private final McpBusinessView views;
     private final McpBusinessSchemas schemas;
+    private final DirectorPlanStateService directorPlans;
     private final ObjectMapper binding = new ObjectMapper().findAndRegisterModules();
 
     public BaseEntity require(McpPrincipal caller, McpRecordType type, String recordId, String dramaId, boolean write) {
@@ -97,7 +100,7 @@ public class McpBusinessRecords {
     }
 
     public Long create(McpPrincipal caller, McpRecordType type, Long project, Map<String, Object> data) {
-        schemas.validate(type, data, false);
+        schemas.validate(type, data, false, true);
         if (type == McpRecordType.PROJECT) {
             if (!caller.createProjects() || project != null) throw new BizException(403, "仅允许在授权新建项目的批次首项创建一个项目");
         } else if (project == null) throw new BizException(400, "必须指定已授权项目或先创建项目");
@@ -115,16 +118,31 @@ public class McpBusinessRecords {
     }
 
     public void update(McpPrincipal caller, McpRecordType type, BaseEntity current, Long project, Map<String, Object> data) {
-        schemas.validate(type, data, false);
+        schemas.validate(type, data, false, false);
         Object dto = patch(type, current, data);
         references(caller, type, dto, project, current, data);
         switch (type) {
             case PROJECT -> dramaService.update((DramaDTO) dto); case EPISODE -> episodeService.update((DramaEpisodeDTO) dto);
             case SCENE -> sceneService.update((DramaSceneDTO) dto); case SHOT_GROUP -> groupService.update((DramaShotGroupDTO) dto);
-            case SHOT -> shotService.update((DramaShotDTO) dto); case CHARACTER -> characterService.update((ResCharacterDTO) dto);
+            case SHOT -> {
+                DramaShotDTO shot = (DramaShotDTO) dto;
+                shotService.update(shot);
+                if (data.containsKey("directorPlan") || data.containsKey("directorPlanMode")) {
+                    DirectorPlanEditDTO edit = new DirectorPlanEditDTO(); edit.setDirectorPlanMode(shot.getDirectorPlanMode());
+                    edit.setDirectorPlan(shot.getDirectorPlan()); edit.setDirectorPlanRevision(((DramaShot) current).getDirectorPlanRevision());
+                    directorPlans.save(current.getId(), edit);
+                }
+                updateManualMedia(shot, data);
+            }
+            case CHARACTER -> characterService.update((ResCharacterDTO) dto);
             case CHARACTER_LOOK -> lookService.update((ResCharacterLookDTO) dto); case RESOURCE_SCENE -> resourceSceneService.update((ResSceneDTO) dto);
             case PROP -> propService.update((ResPropDTO) dto); case KEYFRAME -> keyframeService.update((ResKeyframeDTO) dto);
         }
+        UpdateWrapper<BaseEntity> clear = new UpdateWrapper<BaseEntity>().eq("id", current.getId());
+        McpBusinessSchemas.CONTENT_COLUMNS.forEach((field, column) -> {
+            if (schemas.fields(type).contains(field) && data.containsKey(field) && data.get(field) == null) clear.set(column, null);
+        });
+        if (clear.getSqlSet() != null) mapper(type).update(null, clear);
     }
 
     private Object patch(McpRecordType type, BaseEntity current, Map<String, Object> data) {
@@ -133,10 +151,14 @@ public class McpBusinessRecords {
             // Preserve fields that are intentionally not exposed through MCP.
             if (current != null) BeanUtils.copyProperties(current, dto);
             binding.readerForUpdating(dto).readValue(binding.writeValueAsString(data));
-            if (dto instanceof DramaShotDTO shot && current instanceof DramaShot existing) {
-                preserveReferenceDetails(shot, existing, data);
-                cameraLock(existing.getShotTypeLocked(), existing.getShotType(), shot.getShotTypeLocked(), shot.getShotType());
-                cameraLock(existing.getCameraMovementLocked(), existing.getCameraMovement(), shot.getCameraMovementLocked(), shot.getCameraMovement());
+            if (dto instanceof DramaShotDTO shot) {
+                if (current instanceof DramaShot existing) {
+                    preserveReferenceDetails(shot, existing, data);
+                    cameraLock(existing.getShotTypeLocked(), existing.getShotType(), shot.getShotTypeLocked(), shot.getShotType());
+                    cameraLock(existing.getCameraMovementLocked(), existing.getCameraMovement(), shot.getCameraMovementLocked(), shot.getCameraMovement());
+                }
+                configureDirectorPlan(shot, (DramaShot) current, data);
+                if (current == null && shot.getPreviewImageUrl() != null && !shot.getPreviewImageUrl().isBlank()) shot.setFirstFrameSourceType("MANUAL_UPLOAD");
             }
             return dto;
         } catch (BizException e) { throw e; }
@@ -144,11 +166,11 @@ public class McpBusinessRecords {
     }
     private void preserveReferenceDetails(DramaShotDTO dto, DramaShot existing, Map<String, Object> data) throws Exception {
         if (data.containsKey("characterRefs")) dto.setCharacterRefs(mergeReferences(
-                existing.getCharacterRefsJson(), dto.getCharacterRefs(), "characterId", Set.of("characterId", "lookId"), CharacterShotRefDTO.class));
+                existing.getCharacterRefsJson(), (List<?>) data.get("characterRefs"), "characterId", CharacterShotRefDTO.class));
         if (data.containsKey("propRefs")) dto.setPropRefs(mergeReferences(
-                existing.getPropRefsJson(), dto.getPropRefs(), "propId", Set.of("propId"), PropShotRefDTO.class));
+                existing.getPropRefsJson(), (List<?>) data.get("propRefs"), "propId", PropShotRefDTO.class));
     }
-    private <T> List<T> mergeReferences(String raw, List<T> updates, String identity, Set<String> businessFields, Class<T> type) throws Exception {
+    private <T> List<T> mergeReferences(String raw, List<?> updates, String identity, Class<T> type) throws Exception {
         Map<String, Map<String, Object>> previous = new HashMap<>();
         if (raw != null && !raw.isBlank()) {
             List<Map<String, Object>> entries = binding.readValue(raw, binding.getTypeFactory().constructCollectionType(List.class,
@@ -156,13 +178,45 @@ public class McpBusinessRecords {
             for (var entry : entries) previous.put(String.valueOf(entry.get(identity)), entry);
         }
         List<T> result = new ArrayList<>();
-        for (T update : updates) {
+        for (Object update : updates) {
             Map<String, Object> value = binding.convertValue(update, binding.getTypeFactory().constructMapType(Map.class, String.class, Object.class));
             Map<String, Object> merged = new LinkedHashMap<>(previous.getOrDefault(String.valueOf(value.get(identity)), Map.of()));
-            businessFields.forEach(field -> merged.put(field, value.get(field)));
+            merged.putAll(value);
             result.add(binding.convertValue(merged, type));
         }
         return result;
+    }
+    private void configureDirectorPlan(DramaShotDTO dto, DramaShot current, Map<String, Object> data) {
+        if (!data.containsKey("directorPlan") && !data.containsKey("directorPlanMode")) return;
+        if (data.containsKey("directorPlan") && dto.getDirectorPlan() != null) {
+            if ("AUTO".equals(data.get("directorPlanMode"))) throw new BizException(400, "提交导演计划必须使用 MANUAL 模式");
+            dto.setDirectorPlanMode("MANUAL");
+            if (current == null && dto.getDuration() == null) dto.setDuration(dto.getDirectorPlan().getDuration());
+        } else if ("MANUAL".equals(dto.getDirectorPlanMode())) {
+            if (data.containsKey("directorPlan") || current == null || current.getDirectorPlanJson() == null)
+                throw new BizException(400, "MANUAL 模式必须提供导演计划");
+            dto.setDirectorPlan(directorPlans.decode(current.getDirectorPlanJson()));
+        } else dto.setDirectorPlan(null);
+        if (current != null && current.getDirectorPlanJson() != null) {
+            DirectorPlan previous = directorPlans.decode(current.getDirectorPlanJson());
+            if (previous.getLockedFields() != null && !previous.getLockedFields().isEmpty()) {
+                DirectorPlan next = dto.getDirectorPlan();
+                if (next == null || next.getLockedFields() == null || !next.getLockedFields().containsAll(previous.getLockedFields()))
+                    throw new BizException(409, "CREATOR_LOCKED: 不能删除或解除导演计划锁定字段");
+                Map<?, ?> before = binding.convertValue(previous, Map.class), after = binding.convertValue(next, Map.class);
+                for (String field : previous.getLockedFields()) if (!Objects.equals(before.get(field), after.get(field)))
+                    throw new BizException(409, "CREATOR_LOCKED: 导演计划字段已锁定: " + field);
+            }
+        }
+    }
+    private void updateManualMedia(DramaShotDTO shot, Map<String, Object> data) {
+        UpdateWrapper<DramaShot> update = new UpdateWrapper<DramaShot>().eq("id", shot.getId());
+        Map.of("previewImageUrl", "preview_image_url", "endFrameImageUrl", "end_frame_image_url", "audioUrl", "audio_url").forEach((field, column) -> {
+            if (data.containsKey(field) && "".equals(data.get(field))) update.set(column, null);
+        });
+        if (data.containsKey("previewImageUrl")) update.set("first_frame_source_type", "".equals(data.get("previewImageUrl")) ? null : "MANUAL_UPLOAD")
+                .set("first_frame_source_shot_id", null).set("first_frame_source_video_url", null).set("first_frame_source_video_take_id", null);
+        if (update.getSqlSet() != null) shots.update(null, update);
     }
     private void cameraLock(Boolean locked, String oldValue, Boolean newLocked, String newValue) {
         if (Boolean.TRUE.equals(locked) && (!Boolean.TRUE.equals(newLocked) || !Objects.equals(oldValue, newValue)))
@@ -207,6 +261,7 @@ public class McpBusinessRecords {
                     asset(caller, McpInputs.AssetType.PROP, ref.getPropId(), project);
                 }
             }
+            mediaReferences(caller, shot, project);
         }
         if (dto instanceof ResCharacterLookDTO look) {
             if (look.getCharacterId() == null) throw new BizException(400, "造型需要 characterId");
@@ -217,6 +272,57 @@ public class McpBusinessRecords {
     }
     private McpAssets.Entry asset(McpPrincipal caller, McpInputs.AssetType type, Long id, Long project) {
         return id == null ? null : assets.resolve(caller, type, id.toString(), project.toString(), false);
+    }
+    private void mediaReferences(McpPrincipal caller, DramaShotDTO shot, Long project) {
+        Set<String> imageIds = new HashSet<>();
+        if (shot.getRefImages() != null) for (ShotRefImageDTO image : shot.getRefImages()) {
+            if (image == null || image.getSourceType() == null) throw new BizException(400, "参考图需要明确 sourceType");
+            image.setId(slotId(image.getId(), imageIds, "参考图"));
+            switch (image.getSourceType()) {
+                case "SCENE" -> requiredAsset(caller, McpInputs.AssetType.SCENE, image.getSourceId(), project);
+                case "PROP" -> requiredAsset(caller, McpInputs.AssetType.PROP, image.getSourceId(), project);
+                case "KEYFRAME" -> requiredAsset(caller, McpInputs.AssetType.KEYFRAME, image.getSourceId(), project);
+                case "CHARACTER" -> {
+                    requiredAsset(caller, McpInputs.AssetType.CHARACTER, image.getSourceId(), project);
+                    if (image.getCharacterId() != null && !image.getCharacterId().equals(image.getSourceId())) throw new BizException(403, "人物参考图 characterId 与 sourceId 不一致");
+                    if (image.getCharacterId() == null) image.setCharacterId(image.getSourceId());
+                }
+                case "CHARACTER_REFERENCE" -> {
+                    requiredAsset(caller, McpInputs.AssetType.CHARACTER, image.getCharacterId(), project);
+                    var look = requiredAsset(caller, McpInputs.AssetType.CHARACTER_LOOK, image.getSourceId(), project);
+                    if (!image.getCharacterId().equals(look.characterId()) || (image.getLookId() != null && !image.getLookId().equals(look.id())))
+                        throw new BizException(403, "人物参考图不属于指定人物或造型");
+                    // sourceId already identifies the look; preserve that explicit selection in downstream manifests.
+                    if (image.getLookId() == null) image.setLookId(look.id());
+                }
+                case "UPLOAD" -> { if (image.getSourceId() != null) throw new BizException(400, "UPLOAD 参考图不能伪造 sourceId"); }
+                default -> throw new BizException(400, "参考图 sourceType 无效");
+            }
+            if (image.getCharacterId() != null) asset(caller, McpInputs.AssetType.CHARACTER, image.getCharacterId(), project);
+            if (image.getLookId() != null) {
+                var look = asset(caller, McpInputs.AssetType.CHARACTER_LOOK, image.getLookId(), project);
+                Long character = image.getCharacterId() != null ? image.getCharacterId() : "CHARACTER".equals(image.getSourceType()) ? image.getSourceId() : null;
+                if (!Objects.equals(character, look.characterId())) throw new BizException(403, "参考图造型不属于指定人物");
+            }
+        }
+        Set<String> audioIds = new HashSet<>();
+        java.math.BigDecimal totalDuration = java.math.BigDecimal.ZERO;
+        if (shot.getRefAudios() != null) for (ShotRefAudioDTO audio : shot.getRefAudios()) {
+            audio.setId(slotId(audio.getId(), audioIds, "参考音频"));
+            if (audio.getDuration() != null) totalDuration = totalDuration.add(audio.getDuration());
+            if ("TTS".equals(audio.getSourceType())) requiredAsset(caller, McpInputs.AssetType.CHARACTER, audio.getCharacterId(), project);
+            else if (audio.getCharacterId() != null) asset(caller, McpInputs.AssetType.CHARACTER, audio.getCharacterId(), project);
+        }
+        if (totalDuration.compareTo(java.math.BigDecimal.valueOf(15)) > 0) throw new BizException(400, "已知参考音频总长不得超过 15 秒");
+    }
+    private String slotId(String submitted, Set<String> ids, String kind) {
+        String id = submitted == null ? "mcp-" + UUID.randomUUID() : submitted;
+        if (!ids.add(id)) throw new BizException(400, kind + "槽位 id 必须唯一");
+        return id;
+    }
+    private McpAssets.Entry requiredAsset(McpPrincipal caller, McpInputs.AssetType type, Long id, Long project) {
+        if (id == null) throw new BizException(400, "参考媒体缺少关联资产 ID");
+        return asset(caller, type, id, project);
     }
 
     @SuppressWarnings("unchecked") private BaseMapper<BaseEntity> mapper(McpRecordType type) {

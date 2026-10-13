@@ -86,6 +86,15 @@ docker compose up -d --build
 
 已有数据库启用 AI 任务关联渲染取消时，在更新后端容器前执行 `sh docker/mysql/migrations/apply-20260929-render-task-parent-ai-task.sh`。迁移为 `render_task` 增加父 AI 任务 ID 与上游取消状态；脚本可重复执行。全新数据库由初始化 SQL 直接建好这些字段。
 
+已有数据库部署 MCP 业务读写与图片上传功能时，在更新后端容器前执行以下增量 SQL，补建业务请求记录表；脚本可重复执行，不修改原有业务数据。全新数据卷已由初始化 SQL 创建此表。MCP 可视化配置复用现有 `sys_config`，不需要额外建表。
+
+```bash
+docker exec -i freyja-mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --default-character-set=utf8mb4 freyja' < src/main/resources/sql/mcp-business.sql
+docker compose up -d --build --no-deps backend frontend
+```
+
+部署完成后进入 **管理 → MCP 服务**（`/system/mcp`）配置权限、令牌、整体及工具开关。页面保存过的配置优先于环境默认值。图片上传复用现有 MinIO 配置，不调用内部 AI；详见 [MCP 使用说明](mcp-api.md)。
+
 ### 4. 访问系统
 已有数据库更新提供商默认对话能力与 MiMo 适配时，先执行 `src/main/resources/sql/provider-chat-capabilities.sql`，再更新前后端镜像。该迁移只新增可空列，可重复执行。现有 Docker MySQL 可用：
 

@@ -33,11 +33,11 @@ public class McpReadTools {
     public List<McpTool<?>> tools() {
         return List.of(
                 McpTool.read("search_projects", "分页查找授权项目。keyword 搜索标题，size 最多 50。业务 ID 全部为字符串。", Search.class, this::searchProjects),
-                McpTool.read("get_project", "读取授权项目的业务设定与 editFingerprint。不返回内部 AI 配置。", Project.class, (c, i) ->
+                McpTool.read("get_project", "读取授权项目的业务设定与 editFingerprint。不返回内部 Agent 设置或系统提示词。", Project.class, (c, i) ->
                         views.project(McpBusinessView.Kind.PROJECT, dramas.selectById(scope.project(c, i.dramaId())))),
                 McpTool.read("get_project_outline", "分页读取 EPISODE 剧集、SCENE 剧作场次或 SHOT_GROUP 镜头组。场景资产请用 search_assets。", Outline.class, this::outline),
                 McpTool.read("list_shots", "分页读取指定项目的有效分镜，可按 episodeId/sceneId 筛选。详情用 get_shot。", Shots.class, this::shots),
-                McpTool.read("get_shot", "读取项目内分镜的剧本、对白、资产关联、已有媒体与 editFingerprint。内部 AI 字段不公开。", Shot.class, (c, i) -> {
+                McpTool.read("get_shot", "读取项目内完整分镜配置：剧本、对白、提示词、导演计划、参考图音频、关联资产和 editFingerprint。不执行内部 AI。", Shot.class, (c, i) -> {
                     Long project = scope.project(c, i.dramaId());
                     return views.project(McpBusinessView.Kind.SHOT, scope.shot(McpScope.id(i.shotId()), project));
                 }),

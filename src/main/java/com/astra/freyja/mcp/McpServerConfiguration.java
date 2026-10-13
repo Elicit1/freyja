@@ -6,7 +6,6 @@ import io.modelcontextprotocol.server.McpStatelessServerFeatures;
 import io.modelcontextprotocol.server.transport.ServerTransportSecurityValidator;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStatelessServerTransport;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -20,7 +19,6 @@ import java.util.Map;
 
 @Configuration(proxyBeanMethods = false)
 @EnableConfigurationProperties(McpProperties.class)
-@ConditionalOnProperty(name = "spring.ai.mcp.server.enabled", havingValue = "true")
 public class McpServerConfiguration {
     public static final String GUIDE = """
             FREYJA BUSINESS MCP
@@ -31,12 +29,20 @@ public class McpServerConfiguration {
             5. Use business options for supported enum values. Never invent existing IDs or media URLs.
             6. Writes require explicit server permission. Read the current business record and its edit fingerprint before editing.
             7. Preserve creator locks and inspect version conflicts. Use a stable request ID for retryable writes.
-            8. Internal AI, agents, model execution, prompts and skills are outside this server's capabilities.
+            8. Directly fill prompt-workshop cards through business CRUD. REFERENCE_MODE uses prompt; FIRST_LAST_FRAME uses videoPrompt and optional firstFramePrompt/endFramePrompt or existing frame URLs.
+            9. Internal Agent/model execution, AI prompt generation, system prompt templates and Skills are never exposed. Saving configuration does not start inference.
+            10. The administrator can disable the server or individual tools at runtime. Refresh tools/list after configuration changes.
+            11. DirectorPlan and directorPlanMode are optional advanced manual content. Normally omit both; no plan is generated, and an existing plan is preserved on update.
+            12. Character creation needs one of name/canonicalName/displayName. Look creation needs characterId, lookName and designDesc. Identity/outfit/appearance prompts and images are optional; do not invent missing visual states.
+            13. Pictures and audios keep the submitted array order: item 1 is <Picture 1> or <Audio 1>. Each needs sourceType and a nonblank media URL. Omitted slot IDs are generated. Update the final prompt and reordered media together.
+            14. Asset pictures need sourceId; CHARACTER uses a character ID, CHARACTER_REFERENCE uses a look ID and requires characterId. UPLOAD omits sourceId and may explicitly bind characterId/lookId. usageRole/referenceRole describe weak binding; NON_SUBJECT does not require an on-screen character.
+            15. Audio source TTS requires characterId but only references existing audio. Optionally specify real duration and usageMode.
+            16. upload_asset_image accepts PNG/JPEG/static WebP bytes as raw Base64, up to 10 MiB, for an authorized project. Choose CHARACTER/CHARACTER_LOOK/SCENE/PROP/KEYFRAME/SHOT_REFERENCE purpose and a stable requestId. Use its returned url in business CRUD; uploading does not overwrite a record or generate internal prompts.
             """;
 
     @Bean
-    FilterRegistrationBean<McpAuthenticationFilter> mcpAuthenticationFilter(McpProperties properties) {
-        var registration = new FilterRegistrationBean<>(new McpAuthenticationFilter(properties));
+    FilterRegistrationBean<McpAuthenticationFilter> mcpAuthenticationFilter(McpProperties properties, ObjectProvider<McpRuntimeControl> controls) {
+        var registration = new FilterRegistrationBean<>(new McpAuthenticationFilter(properties, controls.getIfAvailable()));
         registration.addUrlPatterns("/mcp", "/mcp/*");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
         return registration;
@@ -56,7 +62,13 @@ public class McpServerConfiguration {
     }
 
     @Bean
-    List<McpStatelessServerFeatures.SyncToolSpecification> freyjaMcpTools(McpReadTools reads, McpToolCatalog catalog, ObjectProvider<McpBusinessTools> business) {
+    List<McpStatelessServerFeatures.SyncToolSpecification> freyjaMcpTools(McpReadTools reads, McpToolCatalog catalog, ObjectProvider<McpBusinessTools> business, ObjectProvider<McpRuntimeControl> controls) {
+        McpRuntimeControl control = controls.getIfAvailable();
+        if (control != null) {
+            var state = control.current();
+            java.util.List<McpTool<?>> all = new java.util.ArrayList<>(reads.tools()); business.ifAvailable(adapter -> all.addAll(adapter.allTools()));
+            return all.stream().filter(tool -> control.toolEnabled(state, tool)).map(catalog::specification).toList();
+        }
         java.util.List<McpTool<?>> tools = new java.util.ArrayList<>(reads.tools());
         business.ifAvailable(adapter -> tools.addAll(adapter.tools()));
         return tools.stream().map(catalog::specification).toList();

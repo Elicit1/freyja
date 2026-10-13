@@ -4,12 +4,13 @@ spring:
   ai:
     mcp:
       server:
-        enabled: ${freyja.mcp.enabled:false}
+        # Keep transport infrastructure available; the runtime gate defaults off and can be managed in the UI.
+        enabled: true
         protocol: STATELESS
         type: SYNC
         name: freyja-digital-studio
         version: 1.0.0
-        instructions: "FREYJA business operations only. Internal agents, model execution, prompts and skills are not exposed. All business IDs are strings. Read current data before editing and preserve creator locks."
+        instructions: "Business tools for direct prompt-workshop editing, ordered reference media and asset image uploads. DirectorPlan and asset prompts are optional. Internal Agent/model execution, AI prompt generation, system templates and Skills are not exposed. Business IDs are strings. Preserve creator locks and use fingerprints. Refresh tools/list after tool configuration changes."
         tool-callback-converter: false
         annotation-scanner:
           enabled: false

@@ -408,7 +408,7 @@ docker compose down -v
 
 ### 1. 技术栈
 - **后端**：Java 26 + Maven 3.9+ + Spring Boot 4.1.1 + MyBatis-Plus 3.5.17 + Spring AI 2.0.1
-- **MCP 服务**：实际引入 `spring-ai-starter-mcp-server-webmvc`（由 Spring AI 2.0.1 BOM 管理），提供默认关闭的 Streamable HTTP `/mcp` 业务接口。支持最多 100 项的批量读取、事务创建/修改、关联引用和幂等重试；内置 Agent 保留，内部所有 AI 能力均不对外开放。启用和客户端连接见 [MCP 使用说明](docs/mcp-api.md)，交付与验证见 [实现清单](docs/mcp-implementation.md)。
+- **MCP 服务**：实际引入 `spring-ai-starter-mcp-server-webmvc`（由 Spring AI 2.0.1 BOM 管理），提供默认关闭的 Streamable HTTP `/mcp` 业务接口。支持最多 100 项的事务批量操作，外部 Agent 可直接填写提示词工作台卡片、配置完整分镜及有序参考媒体，并通过 `upload_asset_image` 上传最多 10 MiB 的 PNG/JPEG/静态 WebP 作为人物、造型、场景、关键图或道具参考；导演计划和资产英文 Prompt 均可省略，不发布内部 Agent、模型推理和 AI 提示词生成接口。管理页 `/system/mcp` 支持整体/单工具热开关、令牌和项目授权。必填规则见 [MCP 字段核对](docs/mcp-fields.md)，启用和连接见 [MCP 使用说明](docs/mcp-api.md)，交付与验证见 [实现清单](docs/mcp-implementation.md)。
 - **MCP 数据库测试**：实际引入 H2（仅 `test` 作用域），在内存数据库中验证 MyBatis 查询、分页和原有业务 CRUD 的事务；运行时数据库保持 MySQL。
 - **前端**：Node.js 22+ + Vite 6 + Vue 3.5 + TypeScript + Element Plus + Tailwind CSS
 - **网关**：Python 3.10+ + FastAPI + Uvicorn
