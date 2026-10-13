@@ -66,6 +66,10 @@ MCP 空间类型和时段 Schema 明确列出枚举并接收 `null`；省略更�
 
 专项回归133项全部通过（MCP 全套、剧本拆解、时长、短剧服务和视听提示词）；覆盖环境留空/明确值/资产继承/显式清空/无关补丁保留、7.5秒参考模式与造型引用读回、HTTP 实际发布 Schema 和指引。前端 TypeScript/Vite 构建通过。日志为 `logs/mcp-scene-tests.log`、`logs/mcp-scene-front.log`。部署验收记录在 `logs/mcp-scene-release/`。
 
+功能提交 `45c159e` 已部署到 WSL Docker，并执行旧库升级。六个目标列全部为可空、默认 `NULL`；真实 MySQL 省略列插入验证通过并事务回滚，不保留验收业务记录。升级前后7个项目、172个分镜、24个人物、24个造型、18个资源场景、14个道具、16个关键图数量一致；场景环境、摄影、时长、生成模式、人物/媒体引用和双轨提示词的历史摘要一致，MCP 配置摘要一致。只重建 backend/frontend，MySQL、Redis、MinIO、网关容器 ID 保持一致。
+
+运行 JAR 哈希与本轮产物一致，前端首页与本轮构建一致，Nginx 校验通过。经原鉴权通过 `/api/mcp` 验收72个工具、枚举和模式 Schema、初始化与指南中的7–8秒/读回/无配乐指引，以及原有 Skill 和参考文件读取。镜像为 `astrag1/freyja-backend:scene-45c159e`、`astrag1/freyja-frontend:scene-45c159e`，同时更新运行标签 `1.0.0`，原镜像保留为各自 `rollback-before-scene-45c159e` 标签。`before.json/after.json/deploy.json/schema-after.txt` 记录部署验收，不含明文凭据。客户端需重新连接或刷新工具列表以加载新字段说明。没有调用模型渲染；这些说明引导客户端 AI，不自动重写已有提示词或保证第三方模型的音轨输出。
+
 ### 题材输入与 MCP 专属画幅策略
 
 功能提交 `a4b35fd` 已部署至 WSL Docker。项目题材支持自由文本与字典建议，原建议代码继续兼容；画幅要求仅增加在 MCP 创建/显式修改入口，未修改前端画幅选择器、`9:16` 默认值或内部 AI 拆解的画幅行为。外部 Agent 从初始化说明、`freyja://guide` 及创建参数 Schema 得知：用户未提供画幅时先读取启用选项并询问；明确委托 AI 决定时优先启用的 `16:9`。单条和批量创建均拒绝遗漏或不受支持的画幅，修改其他字段时保留原画幅；是否询问用户由客户端 Agent 执行。
