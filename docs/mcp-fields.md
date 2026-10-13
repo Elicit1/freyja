@@ -38,7 +38,7 @@
 
 ## 参考图、声音与弱绑定
 
-参考图每项需要 `sourceType`、非空 `imageUrl`。除 `UPLOAD` 外，需要真实的 `sourceId`：`SCENE` 对应场景资产、`PROP` 对应道具、`KEYFRAME` 对应关键图、`CHARACTER` 对应人物身份图、`CHARACTER_REFERENCE` 对应造型图。造型图还需要明确 `characterId`，`lookId` 可省略（服务端根据明确的来源造型 `sourceId` 补齐，避免后续误用默认造型）；人物身份图省略 `characterId` 时按明确的来源人物 `sourceId` 补齐。`UPLOAD` 不需要 `sourceId`，可以显式用 `characterId / lookId` 弱绑定已有主体。
+参考图每项需要 `sourceType`、非空 `imageUrl`，不接受 `url/type/assetId` 别名。除 `UPLOAD` 外，需要真实的 `sourceId`：`SCENE` 对应场景资产、`PROP` 对应道具、`KEYFRAME` 对应关键图、`CHARACTER` 对应人物身份图、`CHARACTER_LOOK`（兼容 `CHARACTER_REFERENCE`）对应造型图。造型图还需要明确 `characterId`，`lookId` 可省略（服务端根据明确的来源造型 `sourceId` 补齐，并统一保存为 `CHARACTER_REFERENCE`）；人物身份图省略 `characterId` 时按明确的来源人物 `sourceId` 补齐。`UPLOAD` 不需要 `sourceId`，可以显式用 `characterId / lookId` 弱绑定已有主体。公开 Schema 保留可识别的对象字段，条件必填在业务入口校验，避免客户端显示 `unknown` 交叉类型。
 
 `usageRole` 标识主体/画外人物/场景/道具/风格等用途，`referenceRole` 标识身份、造型、组合、姿态或风格约束，均由外部 Agent 按需要明确提交。图片中的人物不一定要出镜：可用 `NON_SUBJECT` 标明画外人物。`characterRefs` 是镜头的人物业务关联，参考图上的 `characterId / lookId` 是图片的弱绑定；服务端不通过文字猜测对应关系，不强迫每张图成为出镜人物。
 
@@ -52,7 +52,17 @@
 
 ## 不对外开放
 
-内部 Agent/会话、推理模型与提供商、AI 提示词生成、导演 AI 规划、Skill、系统 Prompt、剧本拆解、生图/视频/TTS 执行、AI 任务与模型调度均不作为 MCP 工具。生成结果的提示词文本和媒体 URL 是业务内容，可以直接填写；不能据此调用内部 AI 生成接口。
+内部 Agent/会话、推理模型与提供商、AI 提示词生成、导演 AI 规划、系统 Prompt、剧本拆解、生图/视频/TTS 执行、AI 任务与模型调度均不作为 MCP 工具。Skill 的已启用发布版本知识通过 `list_skills/read_skill/read_skill_file` 只读提供，不执行附属脚本。生成结果的提示词文本和媒体 URL 是业务内容，可以直接填写；不能据此调用内部 AI 生成接口。
+
+## 完整卡片与批量素材交付
+
+业务最小必填仅保证草稿可保存。用户要求完整分镜时，外部 Agent 应补齐基本规格、时长、剧本/动作、适用的对白/旁白/音效和人物造型、场景、道具、关键图关联。景别/运镜无明确选择可以填 `AUTO`，对应锁保持 `false`；已有锁须保留。没有依据的剧情、台词和视觉状态仍保持空，不由 Java 猜测。
+
+人物/造型设定图先从 Skill 目录读取 `character-sheet-design`。用户要求一张图内的三视图、头部特写与全身分区、服饰细节和透明/白底时，外部 Agent 按规范生成并检查实际图像，再上传和关联 URL；不把排版指令混入人物稳定身份或服装专属 Prompt。MCP 的初始化说明、指南、目录工具和参考图字段提供这一指引，但不会强制第三方模型执行 Skill。
+
+先读 `h3-prompt-writing` 及其参考文件：首尾帧视频用 `references/base-en.txt` 的三段式填 `videoPrompt`；参考模式用 `references/ref-en.txt` 的六段式填 `prompt`。完整图片卡片不能代替视频提示词；保存后应读回核对最终卡片及媒体编号。具体段名和流程见 [完整分镜与 H3 流程](mcp-api.md#外部-agent-的完整分镜与-h3-流程)。
+
+批量图片用 `batch_upload_asset_images`，顶层 `requestId,dramaId,items`，每项 `clientKey,purpose,dataBase64,fileName?`。每批 1–20 张，单张最多 10 MiB、整批最多 20 MiB，返回有序结果和 `urlMap`；通过该映射填写资产和参考图字段。不要输出 Base64，素材包通过有工作区权限的普通文件编辑工具保存。
 
 ## 检查发现与已实施修正
 

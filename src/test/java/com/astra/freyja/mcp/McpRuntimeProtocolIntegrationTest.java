@@ -81,15 +81,27 @@ class McpRuntimeProtocolIntegrationTest {
         var response = rpc("tools/list", Map.of(), TOKEN); assertEquals(200, response.statusCode(), response.body());
         Set<String> names = new HashSet<>(); json.readTree(response.body()).path("result").path("tools").forEach(tool -> names.add(tool.path("name").asText())); return names;
     }
+    @Test void newSkillAndBatchImageToolsFollowWriteAndIndependentRuntimeSwitches() throws Exception {
+        configure(true, false);
+        assertTrue(toolNames().containsAll(Set.of("list_skills", "read_skill", "read_skill_file"))); assertFalse(toolNames().contains("batch_upload_asset_images"));
+        var cached = catalog.specification(inventory.all().stream().filter(tool -> tool.name().equals("list_skills")).findFirst().orElseThrow());
+        admin("/system/mcp/tools/list_skills", Map.of("revision", revision(), "enabled", false)); assertFalse(toolNames().contains("list_skills"));
+        var result = cached.callHandler().apply(McpTransportContext.create(Map.of(McpPrincipal.CONTEXT_KEY, fixture.caller)), new McpSchema.CallToolRequest("list_skills", Map.of()));
+        assertTrue(result.isError());
+        configure(true, true); assertTrue(toolNames().contains("batch_upload_asset_images"));
+        admin("/system/mcp/tools/batch_upload_asset_images", Map.of("revision", revision(), "enabled", false)); assertFalse(toolNames().contains("batch_upload_asset_images"));
+        org.mockito.Mockito.verifyNoInteractions(fixture.storage, fixture.skillContents, fixture.skillRepository);
+    }
+
     @Test void uiConfigEnablesDefaultOffServerWithoutRestartAndNeverReturnsToken() throws Exception {
         assertEquals(404, rpc("tools/list", Map.of(), TOKEN).statusCode());
-        JsonNode initial = admin("/system/mcp", null).path("data"); assertFalse(initial.path("enabled").asBoolean()); assertEquals(68, initial.path("tools").size());
+        JsonNode initial = admin("/system/mcp", null).path("data"); assertFalse(initial.path("enabled").asBoolean()); assertEquals(72, initial.path("tools").size());
         assertEquals(400, admin("/system/mcp/enabled", Map.of("revision", 0, "enabled", true)).path("code").asInt()); assertNull(configs.find());
         JsonNode saved = configure(false, true); assertEquals(200, saved.path("code").asInt(), saved.toString());
         assertFalse(saved.toString().contains(TOKEN)); assertFalse(saved.toString().contains("tokenCiphertext")); assertTrue(saved.path("data").path("tokenConfigured").asBoolean());
         assertFalse(configs.find().getConfigValue().contains(TOKEN));
         assertEquals(200, admin("/system/mcp/enabled", Map.of("revision", revision(), "enabled", true)).path("code").asInt());
-        assertEquals(401, rpc("tools/list", Map.of(), "incorrect").statusCode()); assertEquals(68, toolNames().size());
+        assertEquals(401, rpc("tools/list", Map.of(), "incorrect").statusCode()); assertEquals(72, toolNames().size());
     }
     @Test void disabledToolDisappearsAndCachedHandlerCannotExecuteIt() throws Exception {
         assertEquals(200, configure(true, true).path("code").asInt());
@@ -111,7 +123,7 @@ class McpRuntimeProtocolIntegrationTest {
         assertEquals(200, admin("/system/mcp", null).path("code").asInt());
         admin("/system/mcp/enabled", Map.of("revision", revision(), "enabled", true)); assertFalse(toolNames().contains("get_shot"));
         assertEquals(200, configure(true, false).path("code").asInt()); assertFalse(toolNames().contains("batch_create_records")); assertFalse(toolNames().contains("get_business_operation"));
-        assertEquals(18, toolNames().size()); assertFalse(toolNames().contains("get_shot"));
+        assertEquals(21, toolNames().size()); assertFalse(toolNames().contains("get_shot"));
     }
 
     @Test void uploadToolHasIndependentSwitchAndCachedHandlerCannotUploadWhenDisabled() throws Exception {

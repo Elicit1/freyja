@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 public final class McpAuthenticationFilter extends OncePerRequestFilter {
     private static final int MAX_BODY_BYTES = 2 * 1024 * 1024;
     static final int MAX_IMAGE_REQUEST_BYTES = 16 * 1024 * 1024;
+    static final int MAX_BATCH_IMAGE_REQUEST_BYTES = 32 * 1024 * 1024;
     private static final com.fasterxml.jackson.databind.ObjectMapper REQUEST_JSON = new com.fasterxml.jackson.databind.ObjectMapper();
     private final McpProperties properties;
     private final McpRuntimeControl control;
@@ -74,21 +75,27 @@ public final class McpAuthenticationFilter extends OncePerRequestFilter {
             response.setHeader("WWW-Authenticate", "Bearer realm=\"freyja-mcp\"");
             reject(response, 401, "MCP_UNAUTHORIZED"); return;
         }
-        if (request.getContentLengthLong() > MAX_IMAGE_REQUEST_BYTES) { reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return; }
-        byte[] body = request.getInputStream().readNBytes(MAX_IMAGE_REQUEST_BYTES + 1);
-        if (body.length > MAX_IMAGE_REQUEST_BYTES || (body.length > MAX_BODY_BYTES && !imageUpload(body))) {
+        if (request.getContentLengthLong() > MAX_BATCH_IMAGE_REQUEST_BYTES) { reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return; }
+        byte[] body = request.getInputStream().readNBytes(MAX_BATCH_IMAGE_REQUEST_BYTES + 1);
+        if (body.length > MAX_BATCH_IMAGE_REQUEST_BYTES || (body.length > MAX_BODY_BYTES && body.length > bodyLimit(body))) {
             reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return;
         }
         request.setAttribute(McpPrincipal.CONTEXT_KEY, principal);
         chain.doFilter(new BufferedRequest(request, body), response);
     }
 
-    private static boolean imageUpload(byte[] body) {
+    private static int bodyLimit(byte[] body) {
         try {
             var root = REQUEST_JSON.readTree(body);
-            return root != null && "tools/call".equals(root.path("method").asText())
-                    && McpImageUploads.TOOL_NAME.equals(root.path("params").path("name").asText());
-        } catch (IOException e) { return false; }
+            if (root != null && "tools/call".equals(root.path("method").asText())) {
+                return switch (root.path("params").path("name").asText()) {
+                    case McpImageUploads.TOOL_NAME -> MAX_IMAGE_REQUEST_BYTES;
+                    case McpImageUploads.BATCH_TOOL_NAME -> MAX_BATCH_IMAGE_REQUEST_BYTES;
+                    default -> MAX_BODY_BYTES;
+                };
+            }
+        } catch (IOException ignored) { }
+        return MAX_BODY_BYTES;
     }
 
     /** Bounded buffering also covers chunked requests; the MCP transport is synchronous. */

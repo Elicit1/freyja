@@ -9,5 +9,9 @@ import java.util.*;
 public class McpToolInventory {
     private final McpReadTools reads;
     private final McpBusinessTools business;
-    public List<McpTool<?>> all() { List<McpTool<?>> result = new ArrayList<>(reads.tools()); result.addAll(business.allTools()); return result; }
+    private final org.springframework.beans.factory.ObjectProvider<McpSkillTools> skills;
+    public List<McpTool<?>> all() {
+        List<McpTool<?>> result = new ArrayList<>(reads.tools()); result.addAll(business.allTools());
+        skills.ifAvailable(adapter -> result.addAll(adapter.tools())); return result;
+    }
 }

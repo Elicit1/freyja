@@ -124,4 +124,59 @@ class McpImageUploadTest {
         assertTrue(result.getObjectPath().startsWith("outfit/")); assertEquals("look.png", result.getOriginalFilename()); assertEquals((long) bytes.length, result.getSize());
         verify(fixture.storage).putObject(any(PutObjectArgs.class));
     }
+
+    McpImageUploads.BatchUpload batch(String requestId, List<McpImageUploads.UploadItem> items) {
+        return new McpImageUploads.BatchUpload(requestId, McpBusinessDatabaseTest.ROOT, items);
+    }
+    McpImageUploads.UploadItem batchItem(String key, byte[] bytes) {
+        return new McpImageUploads.UploadItem(key, McpImageUploads.Purpose.CHARACTER_LOOK, Base64.getEncoder().encodeToString(bytes), key + ".png");
+    }
+    Map<String, Object> callBatch(McpImageUploads.BatchUpload input) {
+        return fixture.map(fixture.call(McpImageUploads.BATCH_TOOL_NAME, fixture.caller, input));
+    }
+    @Test void batchPreservesClientKeysAndOrderWithOneJournalAndNoBase64OnReplay() throws Exception {
+        byte[] png = image("png", false), jpeg = image("jpg", false);
+        var input = batch("batch-upload-001", List.of(batchItem("hero", png), batchItem("scene", jpeg)));
+        List<byte[]> stored = new ArrayList<>();
+        doAnswer(invocation -> { stored.add(((PutObjectArgs) invocation.getArgument(0)).stream().readAllBytes()); return null; })
+                .when(fixture.storage).putObject(any(PutObjectArgs.class));
+        var result = callBatch(input); assertEquals(2, result.get("count"));
+        List<?> records = (List<?>) result.get("records");
+        assertEquals("hero", fixture.map(records.get(0)).get("clientKey")); assertEquals("scene", fixture.map(records.get(1)).get("clientKey"));
+        assertEquals(fixture.map(records.get(0)).get("url"), fixture.map(result.get("urlMap")).get("hero"));
+        assertArrayEquals(png, stored.get(0)); assertArrayEquals(jpeg, stored.get(1));
+        assertEquals(result, callBatch(input)); assertEquals(2, stored.size()); assertEquals(1, fixture.count("mcp_business_operation"));
+        assertFalse(fixture.json.write(result).contains(input.items().get(0).dataBase64()));
+        assertEquals(409, assertThrows(BizException.class, () -> callBatch(batch(input.requestId(), List.of(batchItem("hero", jpeg), batchItem("scene", png))))).getCode());
+    }
+    @Test void batchRejectsInvalidLaterImageDuplicateKeysAndLimitsBeforeAnyUpload() throws Exception {
+        var good = batchItem("hero", image("png", false));
+        var bad = new McpImageUploads.UploadItem("bad", good.purpose(), "%%%%", null);
+        var error = assertThrows(BizException.class, () -> callBatch(batch("batch-invalid-01", List.of(good, bad))));
+        assertTrue(error.getMessage().startsWith("items[1]"));
+        assertThrows(BizException.class, () -> callBatch(batch("batch-duplicate1", List.of(good, good))));
+        assertThrows(BizException.class, () -> callBatch(batch("batch-count-001", Collections.nCopies(21, good))));
+        byte[] large = image("png", true); List<McpImageUploads.UploadItem> overTotal = new ArrayList<>();
+        for (int i = 0; i < 7; i++) overTotal.add(batchItem("item" + i, large));
+        assertEquals(413, assertThrows(BizException.class, () -> callBatch(batch("batch-total-001", overTotal))).getCode());
+        verifyNoInteractions(fixture.storage); assertEquals(0, fixture.count("mcp_business_operation"));
+    }
+    @Test void batchStorageFailureRetriesStablePathsAndDoesNotCommitIncompleteResults() throws Exception {
+        var input = batch("batch-retry-001", List.of(batchItem("hero", image("png", false)), batchItem("prop", image("jpg", false))));
+        List<String> paths = new ArrayList<>();
+        doAnswer(invocation -> {
+            paths.add(((PutObjectArgs) invocation.getArgument(0)).object());
+            if (paths.size() == 2) throw new IllegalStateException("storage unavailable"); return null;
+        }).when(fixture.storage).putObject(any(PutObjectArgs.class));
+        var error = assertThrows(BizException.class, () -> callBatch(input)); assertEquals(502, error.getCode()); assertTrue(error.getMessage().contains("items[1]"));
+        assertEquals(0, fixture.count("mcp_business_operation"));
+        callBatch(input); assertEquals(paths.subList(0, 2), paths.subList(2, 4)); assertEquals(1, fixture.count("mcp_business_operation"));
+        callBatch(input); assertEquals(4, paths.size());
+    }
+    @Test void batchWritePermissionsAndProjectScopeAreEnforcedBeforeStorage() throws Exception {
+        var input = batch("batch-scope-001", List.of(batchItem("hero", image("png", false))));
+        assertEquals(403, assertThrows(BizException.class, () -> uploads.batchUpload(new McpPrincipal(false, false, false, Set.of(McpBusinessDatabaseTest.PROJECT)), input)).getCode());
+        var foreign = new McpImageUploads.BatchUpload(input.requestId(), Long.toString(McpBusinessDatabaseTest.PROJECT + 1), input.items());
+        assertEquals(403, assertThrows(BizException.class, () -> callBatch(foreign)).getCode()); verifyNoInteractions(fixture.storage);
+    }
 }

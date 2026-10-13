@@ -6,7 +6,7 @@ FREYJA 作为 MCP Server，第三方 AI 平台作为 MCP Client。外部 Agent �
 
 各类型真实必填项、默认值、模式对应的卡片字段和媒体条件必填项见 [MCP 字段核对](mcp-fields.md)。创建和更新使用不同的约束：创建标明业务必填字段，更新仅提交需要修改的字段，不要求重传创建字段。
 
-**内部 AI 执行接口始终不开放。** MCP 不提供内部 Agent 会话、模型/提供商查询或调用、AI 提示词生成、导演 AI 规划、系统 Prompt 模板、Skill、剧本拆解、生图、视频生成、语音生成、AI 任务与后处理模型调度。保存外部生成的内容只校验和持久化，不调用这些服务。模型凭据、运行任务状态和内部 Skill 使用记录仍通过字段白名单排除。
+**内部 AI 执行接口始终不开放。** MCP 不提供内部 Agent 会话、模型/提供商查询或调用、AI 提示词生成、导演 AI 规划、系统 Prompt 模板、剧本拆解、生图、视频生成、语音生成、AI 任务与后处理模型调度。已启用且已发布的 Skill 知识通过只读工具按需提供，供外部 Agent 自行生成内容；读取不执行 Skill 脚本或内部 AI。模型凭据、运行任务状态和内部 Skill 使用记录仍通过字段白名单排除。
 
 使用 Spring AI 2.0.1 / MCP Java SDK 2.0.0 的无状态 Streamable HTTP，统一入口 `/mcp`。内部 ToolCallback 自动转换及 MCP 注解扫描均关闭，只注册显式业务工具。
 
@@ -59,11 +59,11 @@ bearer_token_env_var = "FREYJA_MCP_TOKEN"
 tool_timeout_sec = 300
 ```
 
-客户端与后端不在同一机器时，更换 `localhost`。建议工具调用等待时间为 300 秒，以容纳大图上传和批量业务写入；此项是客户端配置，已连接的客户端需要同步修改。客户端超时不代表服务端事务已回滚，写入应使用原 `requestId` 重试或查询 `get_business_operation`。其他 MCP 客户端填写相同 URL 与认证头，并设置相应的工具调用超时。可使用 MCP Inspector 的 Streamable HTTP 模式验证初始化、发现和调用。
+客户端与后端不在同一机器时，更换 `localhost`。服务端 `spring.ai.mcp.server.request-timeout` 配置为 300 秒；客户端工具调用等待时间也建议 300 秒，以容纳批量图片上传和业务写入，已连接客户端需同步修改。客户端超时不代表服务端事务已回滚，写入应使用原 `requestId` 重试或查询 `get_business_operation`。其他 MCP 客户端填写相同 URL 与认证头，并设置相应的工具调用超时。可使用 MCP Inspector 的 Streamable HTTP 模式验证初始化、发现和调用。
 
 ## 工具目录
 
-提供 68 个可独立配置的业务工具，默认只读模式最多发布 19 个，开启写入权限后最多发布 68 个；实际发布数量还受整体开关与各工具开关控制。资源 `freyja://guide` 提供业务使用规则。没有 MCP Prompts 模板服务能力；业务记录中的提示词数据通过普通读写工具处理。
+提供 72 个可独立配置的工具，默认只读模式最多发布 22 个，开启写入权限后最多发布 72 个；实际发布数量还受整体开关与各工具开关控制。资源 `freyja://guide` 提供业务使用规则。没有 MCP Prompts 模板服务能力；业务记录中的提示词数据通过普通读写工具处理。
 
 | 只读工具 | 参数与用途 |
 |---|---|
@@ -73,6 +73,9 @@ tool_timeout_sec = 300
 | `list_shots` | `dramaId`、`episodeId?`、`sceneId?`、`page?`、`size?`，分页有效分镜 |
 | `get_shot` | `dramaId`、`shotId`，完整分镜配置、提示词、导演计划、参考图音频与 `editFingerprint` |
 | `search_assets` | `type=CHARACTER/CHARACTER_LOOK/SCENE/PROP/KEYFRAME`、`dramaId?`、`publicOnly?`、`characterId?`、`keyword?`、`page?`、`size?` |
+| `list_skills` | `keyword? / page? / size?`，仅返回已启用且已发布 Skill 的轻量目录及字符串 `versionId` |
+| `read_skill` | `name`、`versionId?`，返回 `SKILL.md` 和可读参考文件目录；指定版本已改变时返回 409 |
+| `read_skill_file` | `name / versionId / path`，读取该版本 `references/` 下 `.md/.txt`；单文件最多 128 KiB，不返回对象键或存储 URL |
 | `get_asset` | `type`、`assetId`、`dramaId?` |
 | `list_character_looks` | `characterId`、`dramaId?`、`page?`、`size?` |
 | `get_business_options` | `dictType`，业务字典白名单，不包含 AI 模型/生成选项 |
@@ -92,6 +95,7 @@ tool_timeout_sec = 300
 | `reorder_group_shots` | `requestId,dramaId,groupId,shotIds`，需组内完整且无重复的分镜列表 |
 | `select_shot_video_version` | `requestId,dramaId,shotId,takeId,expectedFingerprint`，选择已有视频版本，复用尾帧失效规则 |
 | `upload_asset_image` | `requestId,dramaId,purpose,dataBase64,fileName?`，上传 PNG/JPEG/静态 WebP 参考图，返回可关联的 URL；单张最多 10 MiB |
+| `batch_upload_asset_images` | `requestId,dramaId,items`，每项 `clientKey,purpose,dataBase64,fileName?`；1–20 张，单张 10 MiB、整批 20 MiB；返回有序 `records` 和 `urlMap` |
 
 业务 ID 全部使用十进制 JSON **字符串**，包括嵌套人物、造型、道具 ID。数字形式、零、空字符串或超出 Long 范围均拒绝；JSON-RPC 请求 ID 保持原始类型。
 
@@ -201,7 +205,7 @@ tool_timeout_sec = 300
 - 多模态参考模式：填写 `generationMode=REFERENCE_MODE`、工作台主卡片 `prompt` 和有序媒体列表。
 - 首尾帧模式：填写 `generationMode=FIRST_LAST_FRAME`、视频卡片 `videoPrompt`；图片提示词 `firstFramePrompt / endFramePrompt` 和已有图片 `previewImageUrl / endFrameImageUrl` 按需提供。负向词与场景补充词按需填写。
 - 人物引用：`characterId,lookId,designDesc,actionPrompt,emotionPrompt,positionTag`；道具引用：`propId,propName,propType,propPrompt`。
-- `refImages` 最多 9 项，每项需要 `sourceType,imageUrl`；非 `UPLOAD` 来源还需要 `sourceId`，造型图 `CHARACTER_REFERENCE` 还需要 `characterId`。`refAudios` 最多 3 项，每项需要 `sourceType,audioUrl`；`TTS` 还需要 `characterId`，只引用已有声音，不执行 TTS。外键仍使用字符串或创建批次的 `clientKey` 引用，资产来源必须在授权范围，造型与人物必须匹配。
+- `refImages` 最多 9 项，每项需要 `sourceType,imageUrl`；非 `UPLOAD` 来源还需要 `sourceId`，造型图 `CHARACTER_LOOK`（兼容 `CHARACTER_REFERENCE`）还需要 `characterId`。人物图 `sourceId` 是人物 ID，造型图则是造型 ID；服务端将造型来源统一保存为 `CHARACTER_REFERENCE` 并补齐 `lookId`。不能用 `url/type/assetId` 代替这些字段。`refAudios` 最多 3 项，每项需要 `sourceType,audioUrl`；`TTS` 还需要 `characterId`，只引用已有声音，不执行 TTS。外键仍使用字符串或创建批次的 `clientKey` 引用，资产来源必须在授权范围，造型与人物必须匹配。
 - 图像/音频数组顺序就是 `<Picture N> / <Audio N>` 顺序，不能提交空 URL。槽位 `id` 可省略，服务端生成；提交时须在数组中唯一。人物图通过 `characterId/lookId` 与主体弱绑定，`usageRole=NON_SUBJECT` 可关联画外人物，不强制加入出镜人物列表。用途由外部 Agent 明确指定，服务端不解析文字猜测绑定。重排时应同时更新最终 Prompt。
 - 音频真实时长 `duration` 可选；提交时必须为 2–15 秒，已知时长总和不得超过 15 秒。`usageMode` 按需明确音色、对白、音乐或音效用途。
 - `generationMode=FIRST_LAST_FRAME/REFERENCE_MODE`；`seed` 使用 1 到 9007199254740991 的整数字符串。已有首帧、尾帧和音频 URL 可以保存；视频版本仍使用专用选择工具。
@@ -265,7 +269,44 @@ tool_timeout_sec = 300
 
 同一 `requestId`、项目、用途、文件内容和文件名重试返回已提交结果，不重复上传；文件内容以 SHA-256 参与幂等校验，Base64 表示形式不影响判断。数据库只保存摘要和返回结果，不保存 Base64。MinIO 和 SQL 不构成一个跨服务事务：归档成功而数据库提交失败时，原请求重试会覆盖相同对象路径；上传后未关联的图片保留为已上传文件。文件上传和后续资产关联是两个独立业务操作。
 
-普通 MCP 请求体仍限制为 2 MiB；服务端只对实际 `tools/call` 的 `upload_asset_image` 请求放宽到 16 MiB，以容纳 Base64。客户端或反向代理若另有请求体上限，也需要容纳该请求。Agent 应通过客户端代码/文件工具读取并编码图片，避免在对话中手工拼接大量 Base64。
+普通 MCP 请求体仍限制为 2 MiB；实际 `tools/call` 的 `upload_asset_image` 请求上限 16 MiB，`batch_upload_asset_images` 上限 32 MiB，以容纳 Base64。客户端或反向代理若另有请求体上限，也需要容纳该请求。仅伪造工具名请求头不能扩大上限。Agent 应通过客户端代码/文件工具读取并编码图片，只输出 URL、文件位置、创建结果和核对摘要，避免回显 Base64。
+
+### 批量上传
+
+```json
+{
+  "requestId": "asset-images-batch-001",
+  "dramaId": "2032095628944588801",
+  "items": [
+    {"clientKey": "hero-look", "purpose": "CHARACTER_LOOK", "dataBase64": "<图片纯Base64>", "fileName": "hero.png"},
+    {"clientKey": "room", "purpose": "SCENE", "dataBase64": "<图片纯Base64>", "fileName": "room.png"}
+  ]
+}
+```
+
+所有图片先完成格式、尺寸、文件名、唯一标签和总大小校验，再开始上传；参数错误不会上传其中任一张。返回的 `urlMap["hero-look"]` 可用于创建/更新造型的 `referenceImageUrl`。顺序与 `clientKey` 保持稳定，不回显 Base64。数据库只提交完整批次摘要；MinIO 中途失败可能留下已上传对象，使用原 `requestId` 和原内容重试会覆盖相同路径。它与后续业务资产关联仍是两个独立操作。成功批次改内容或换用途必须使用新 `requestId`。
+
+## 外部 Agent 的完整分镜与 H3 流程
+
+### Skill 如何被发现
+
+初始化响应的 server instructions、`freyja://guide`、`list_skills` 工具说明和相关字段说明都会引导外部 Agent 在创作开始及任务阶段改变时先读目录，按 `name/description` 选择 Skill，再读正文及所需参考文件。用户明确指定的布局、风格、背景和输出要求优先。目录只含已启用的发布版本；知识读取仍受 MCP 整体和单工具开关控制。
+
+人物或造型设定图先读 `character-sheet-design`：用户要求三视图、细节、头身分区时，在同一张图内放全身正面/侧面/背面、独立头部特写区及已有设计细节；透明要求通过实际 Alpha 输出实现，白底仅在用户允许时使用。已有图片可直接关联，单张肖像等明确布局不会被强制改成三视图。三视图是同一人物的多个视角，后续视频不能因此把人物复制成多人。
+
+内置来源为 `skills/character-sheet-design/SKILL.md`，可发布 ZIP 为 `skills/character-sheet-design.zip`。部署包含技能包的新版本后，现有启动初始化器会自动导入尚未发布的该 Skill；已有发布版本的同名 Skill 保持原版本及启停状态，不会因源文件变化自动更新。也可在 AI Skills 页面导入 ZIP。只修改本地源文件不会改变运行数据库中的已发布知识。
+
+这些是明确的流程指引，不能证明第三方模型每次都已加载或遵守 Skill。保存草稿的 CRUD 仍允许不完整卡片，服务端不按关键词判断提示词是否合规。若必需 Skill 不可用，Agent 应说明缺失规范，不能声称已按该规范完成。用户要求可审阅结果时，Agent 应报告使用的 Skill 名称/版本及实际结果核对摘要。
+
+### 填写与核对
+
+1. 读取项目、大纲、相关资产和人物默认造型。填写基本规格、时长、镜头剧本、动作、对白/旁白/音效及适用的关联；无明确景别或运镜时可填 `AUTO` 并保持对应锁为 `false`。保留已有创作者锁，不凭空补剧情或资产 ID。
+2. `characterRefs` 绑定真实 `characterId/lookId`，`propRefs` 绑定道具。主视觉 `resSceneId/resKeyframeId` 互斥；额外场景、道具和关键图可用 `refImages` 有序关联。`CHARACTER` 来源不能拿造型 ID 冒充人物 ID。
+3. 先 `list_skills`，人物/造型设定图读取 `character-sheet-design`，分镜按目录读取 `cinematography / camera-direction` 等所需规范。写 MiniMax H3 视频卡片必须读取 `h3-prompt-writing`，再用返回的字符串 `versionId` 调用 `read_skill_file`。
+4. 首尾帧模式读 `references/base-en.txt`，将 `integrated_multimodal_description / overall_soundscape / non_diegetic_music` 三段完整写入 `videoPrompt`；多模态参考模式读 `references/ref-en.txt`，将 `subject_definitions / summary / retention_analysis / detailed_description / overall_soundscape / non_diegetic_music` 六段完整写入 `prompt`。遵循实际 Skill 的时序、图号、声音和英文规则，台词保留原语言。
+5. 保存后读回核对卡片、图号、资产/造型及生成模式。图片提示词已填写不能代表视频卡片完成。创建允许草稿；MCP 保存不会自动生成缺失卡片。Skill 停用返回 404，版本变化返回 409，重新读取目录和正文再继续，不能默默混用新旧规范。
+
+每次正文读取最多 128 KiB；Skill 目录不含全文，参考文件按需读取。各工具可在 MCP 管理页独立关闭。附属脚本、资产二进制、任意路径和存储地址不开放。外部 Agent 写工作区素材包时使用正常文件编辑工具；Node 文件写入遇到 `EPERM` 应切换到具有工作区权限的文件工具。
 
 ## 配置页后台接口
 
@@ -273,7 +314,7 @@ tool_timeout_sec = 300
 
 | 接口 | 用途 |
 |---|---|
-| `GET /system/mcp` | 获取当前配置、令牌是否已配置、68 个工具的状态/Schema及 10 类对象的 `crudCapabilities`；不返回令牌 |
+| `GET /system/mcp` | 获取当前配置、令牌是否已配置、72 个工具的状态/Schema及 10 类对象的 `crudCapabilities`；不返回令牌 |
 | `PUT /system/mcp` | 保存完整权限/来源配置及可选新令牌；必须提供当前 `revision` |
 | `PUT /system/mcp/enabled` | `{revision,enabled}` 控制整体开关 |
 | `PUT /system/mcp/tools/{name}` | `{revision,enabled}` 控制单个已知业务工具；未知名称拒绝 |
@@ -292,9 +333,9 @@ tool_timeout_sec = 300
 {"ok":false,"error":{"code":403,"message":"PROJECT_ACCESS_DENIED: 项目不在 MCP 授权范围"}}
 ```
 
-认证失败 HTTP 401，Origin 不允许 HTTP 403；普通请求体超过 2 MiB、图片上传请求体超过 16 MiB 返回 HTTP 413（包含分块传输）。上传图片本身仍限制 10 MiB。拒绝跨项目引用、人物造型不匹配、公共资产写入、未知字段及非法参数。不开放系统配置修改、任意 SQL 或任意 HTTP 转发。
+认证失败 HTTP 401，Origin 不允许 HTTP 403；普通请求体超过 2 MiB、单张上传请求超过 16 MiB、批量上传请求超过 32 MiB 返回 HTTP 413（包含分块传输）。上传图片本身仍限制每张 10 MiB、整批 20 MiB。拒绝跨项目引用、人物造型不匹配、公共资产写入、未知字段及非法参数。不开放系统配置修改、任意 SQL 或任意 HTTP 转发。
 
-SDK 在进入业务处理前也会校验公开 Schema，此类参数错误可能只有 `isError` 和文本内容；客户端应先检查 `isError`，再解析可用的结构化业务错误。
+所有显式工具在业务入口统一校验公开 Schema 和条件必填项，失败返回简短 `isError=true` 与结构化错误。SDK 的重复前置校验关闭，避免批量 `oneOf` 错误重复列出全部对象分支；校验仍在服务端执行。错误指出实际批次项和媒体字段，不回显请求载荷。失败工具、错误码和简短原因写入日志。
 
 ```powershell
 $env:JAVA_HOME = 'F:\program_file\jdk26'

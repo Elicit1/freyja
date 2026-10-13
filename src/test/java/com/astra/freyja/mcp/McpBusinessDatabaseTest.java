@@ -59,6 +59,10 @@ class McpBusinessDatabaseTest {
     @Autowired McpBusinessView views;
     @Autowired McpJson json;
     @Autowired McpReadTools reads;
+    @Autowired McpSkillTools skills;
+    @Autowired com.astra.freyja.skill.service.SkillCatalogService skillCatalog;
+    @Autowired com.astra.freyja.skill.service.SkillContentService skillContents;
+    @Autowired com.astra.freyja.skill.repository.SkillRepository skillRepository;
     @Autowired McpProperties properties;
     @Autowired DramaMapper dramas;
     @Autowired DramaEpisodeMapper episodes;
@@ -87,7 +91,7 @@ class McpBusinessDatabaseTest {
             DramaShotGroupServiceImpl.class, DramaShotServiceImpl.class, ResCharacterServiceImpl.class,
             ResCharacterLookServiceImpl.class, ResCharacterOutfitServiceImpl.class, ResSceneServiceImpl.class,
             ResPropServiceImpl.class, ResKeyframeServiceImpl.class, CharacterRegistryServiceImpl.class,
-            ShotVideoTakeServiceImpl.class, DirectorPlanStateService.class, DirectorPlanValidator.class})
+            ShotVideoTakeServiceImpl.class, DirectorPlanStateService.class, DirectorPlanValidator.class, McpSkillTools.class})
     static class Config {
         @Bean DataSource dataSource() {
             return new DriverManagerDataSource("jdbc:h2:mem:mcp-business-test;MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=10000", "sa", "");
@@ -113,6 +117,9 @@ class McpBusinessDatabaseTest {
         @Bean PromptAssembleService prompts() { return mock(PromptAssembleService.class); }
         @Bean RenderTaskService renders() { return mock(RenderTaskService.class); }
         @Bean ReadSkillFileToolFactory skillFiles() { return mock(ReadSkillFileToolFactory.class); }
+        @Bean com.astra.freyja.skill.service.SkillCatalogService skillCatalog() { return mock(com.astra.freyja.skill.service.SkillCatalogService.class); }
+        @Bean com.astra.freyja.skill.service.SkillContentService skillContents() { return mock(com.astra.freyja.skill.service.SkillContentService.class); }
+        @Bean com.astra.freyja.skill.repository.SkillRepository skillRepository() { return mock(com.astra.freyja.skill.repository.SkillRepository.class); }
         @Bean(name = "renderAsyncExecutor") Executor executor() { return mock(Executor.class); }
         @Bean MinioClient storage() { return mock(MinioClient.class); }
         @Bean MinioProperties minioProperties() { return new MinioProperties(); }
@@ -121,11 +128,12 @@ class McpBusinessDatabaseTest {
     @BeforeEach void setup() {
         properties.setWriteEnabled(true);
         reset(models, images, prompts, renders, skillFiles, storage);
+        reset(skillCatalog, skillContents, skillRepository);
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         for (Class<?> type : List.of(Drama.class, DramaEpisode.class, DramaScene.class, DramaShotGroup.class,
                 DramaShot.class, ResCharacter.class, ResCharacterLook.class, ResScene.class, ResProp.class,
                 ResKeyframe.class, ResCharacterAlias.class, ResCharacterEvidence.class, ResCharacterResolution.class,
-                DramaShotVideoTake.class, McpBusinessOperation.class, SysConfig.class)) {
+                DramaShotVideoTake.class, McpBusinessOperation.class, SysConfig.class, AiSkillFile.class)) {
             var info = TableInfoHelper.getTableInfo(type);
             List<String> columns = new ArrayList<>(); columns.add(info.getKeyColumn() + " BIGINT PRIMARY KEY");
             info.getFieldList().forEach(f -> {
@@ -337,12 +345,12 @@ class McpBusinessDatabaseTest {
     @Test void completeCatalogContainsOnlyBusinessToolsAndWhitelistedSchemas() {
         Set<String> expected = new HashSet<>(Set.of("search_projects", "get_project", "get_project_outline", "list_shots", "get_shot", "search_assets",
                 "get_asset", "list_character_looks", "get_business_options", "batch_read_records", "list_shot_video_versions", "batch_create_records",
-                "append_storyboard", "batch_delete_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version", "upload_asset_image"));
+                "append_storyboard", "batch_delete_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version", "upload_asset_image", "batch_upload_asset_images", "list_skills", "read_skill", "read_skill_file"));
         List<String> singulars = List.of("project", "episode", "scene", "shot_group", "shot", "character", "character_look", "resource_scene", "prop", "keyframe");
         for (String object : singulars) for (String action : List.of("get", "create", "update", "delete")) expected.add(action + "_" + object);
         for (String plural : List.of("projects", "episodes", "scenes", "shot_groups", "shots", "characters", "character_looks", "resource_scenes", "props", "keyframes")) expected.add("batch_update_" + plural);
-        assertEquals(68, expected.size()); assertFalse(expected.contains("batch_update_records"));
-        List<McpTool<?>> all = new ArrayList<>(reads.tools()); all.addAll(tools.tools());
+        assertEquals(72, expected.size()); assertFalse(expected.contains("batch_update_records"));
+        List<McpTool<?>> all = new ArrayList<>(reads.tools()); all.addAll(tools.tools()); all.addAll(skills.tools());
         assertEquals(expected, all.stream().map(McpTool::name).collect(java.util.stream.Collectors.toSet()));
         for (McpTool<?> tool : all) {
             var spec = new McpToolCatalog(json).specification(tool);

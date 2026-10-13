@@ -80,14 +80,15 @@ class McpAuthenticationFilterTest {
     @Test void onlyActualImageUploadCallsCanUseLargerBodyLimit() throws Exception {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef"); properties.setEnabled(true);
         var filter = new McpAuthenticationFilter(properties);
-        for (String name : java.util.List.of("upload_asset_image", "batch_create_records")) {
+        for (String name : java.util.List.of("upload_asset_image", "batch_upload_asset_images", "batch_create_records")) {
             var request = new MockHttpServletRequest("POST", "/mcp") { @Override public long getContentLengthLong() { return -1; } };
             request.setServletPath("/mcp"); request.addHeader("Authorization", "Bearer " + properties.getToken());
             request.addHeader("Mcp-Name", "upload_asset_image"); // A header cannot expand limits for a different tool.
             byte[] body = ("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"" + name + "\",\"arguments\":{\"dataBase64\":\"" + "A".repeat(2 * 1024 * 1024) + "\"}}}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
             request.setContent(body); AtomicBoolean called = new AtomicBoolean(); var response = new MockHttpServletResponse();
             filter.doFilter(request, response, (r, s) -> { assertArrayEquals(body, r.getInputStream().readAllBytes()); called.set(true); });
-            assertEquals(name.equals("upload_asset_image"), called.get()); assertEquals(name.equals("upload_asset_image") ? 200 : 413, response.getStatus());
+            boolean upload = name.equals("upload_asset_image") || name.equals("batch_upload_asset_images");
+            assertEquals(upload, called.get()); assertEquals(upload ? 200 : 413, response.getStatus());
         }
     }
 
@@ -99,5 +100,22 @@ class McpAuthenticationFilterTest {
         var response = new MockHttpServletResponse();
         new McpAuthenticationFilter(properties).doFilter(request, response, (r, s) -> fail("oversized request reached transport"));
         assertEquals(413, response.getStatus());
+    }
+
+    @Test void batchLimitOnlyAppliesToActualBatchUploadAndPreservesChunkedPayload() throws Exception {
+        McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef"); properties.setEnabled(true);
+        for (String tool : java.util.List.of("batch_upload_asset_images", "upload_asset_image", "batch_create_records")) {
+            var request = new MockHttpServletRequest("POST", "/mcp") { @Override public long getContentLengthLong() { return -1; } };
+            request.setServletPath("/mcp"); request.addHeader("Authorization", "Bearer " + properties.getToken());
+            request.addHeader("Mcp-Name", "batch_upload_asset_images");
+            byte[] body = ("{\"method\":\"tools/call\",\"params\":{\"name\":\"" + tool + "\",\"arguments\":{\"data\":\"" + "A".repeat(McpAuthenticationFilter.MAX_IMAGE_REQUEST_BYTES) + "\"}}}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            request.setContent(body); var response = new MockHttpServletResponse(); AtomicBoolean called = new AtomicBoolean();
+            new McpAuthenticationFilter(properties).doFilter(request, response, (r, s) -> { assertArrayEquals(body, r.getInputStream().readAllBytes()); called.set(true); });
+            assertEquals(tool.equals("batch_upload_asset_images"), called.get());
+        }
+        var request = new MockHttpServletRequest("POST", "/mcp") { @Override public long getContentLengthLong() { return -1; } };
+        request.setServletPath("/mcp"); request.addHeader("Authorization", "Bearer " + properties.getToken());
+        request.setContent(new byte[McpAuthenticationFilter.MAX_BATCH_IMAGE_REQUEST_BYTES + 1]); var response = new MockHttpServletResponse();
+        new McpAuthenticationFilter(properties).doFilter(request, response, (r, s) -> fail("oversized batch reached transport")); assertEquals(413, response.getStatus());
     }
 }

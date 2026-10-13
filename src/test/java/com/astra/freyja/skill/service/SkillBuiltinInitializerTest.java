@@ -20,6 +20,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -27,6 +28,7 @@ import java.util.zip.ZipOutputStream;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
 
 @ExtendWith(MockitoExtension.class)
 class SkillBuiltinInitializerTest {
@@ -96,5 +98,24 @@ class SkillBuiltinInitializerTest {
         initializer.initBuiltinSkills();
 
         verify(skillAdminService, times(1)).saveSkillPackage(eq(null), eq(null), eq(10), eq(pkg));
+    }
+
+    @Test
+    void distributableCharacterSheetSkillIsValidatedAndAutoPublished(@TempDir Path tempDir) throws Exception {
+        Path archive = Path.of("skills", "character-sheet-design.zip");
+        Files.copy(archive, tempDir.resolve(archive.getFileName()));
+        ReflectionTestUtils.setField(initializer, "customSkillsDir", tempDir.toString());
+        ReflectionTestUtils.setField(initializer, "packageValidator", new SkillPackageValidator());
+        when(skillMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+        initializer.initBuiltinSkills();
+        var imported = org.mockito.ArgumentCaptor.forClass(StandardSkillPackage.class);
+        verify(skillAdminService).saveSkillPackage(eq(null), eq(null), eq(10), imported.capture());
+        var pkg = imported.getValue();
+        assertEquals("character-sheet-design", pkg.getMetadata().getName());
+        String source = Files.readString(Path.of("skills", "character-sheet-design", "SKILL.md"), StandardCharsets.UTF_8).replace("\r\n", "\n");
+        assertEquals(source, pkg.getEntrypointContent());
+        assertArrayEquals(source.getBytes(StandardCharsets.UTF_8), pkg.getFiles().get("SKILL.md"));
+        assertTrue(pkg.getTotalSize() < 128 * 1024L);
+        verifyNoInteractions(packageValidator);
     }
 }

@@ -42,6 +42,7 @@ public class McpBusinessTools {
         tools.add(McpTool.read("list_shot_video_versions", "分页读取分镜已有视频版本，仅返回媒体资产信息，不返回模型、提示词或内部任务。", McpBatchInputs.VideoTakes.class, this::versions));
         {
             tools.add(imageUploads.tool());
+            tools.add(imageUploads.batchTool());
             tools.add(write("batch_create_records", "事务批量创建业务记录，最多 100 项；必填字段见各类型 Schema，人物/造型英文 Prompt 和导演计划均可省略。每项 clientKey 唯一；ID 可用 {ref:clientKey} 引用此前新建记录。省略 dramaId 时首项须为 PROJECT，且需新建权限。稳定 requestId 防止重复创建。", McpBatchInputs.Create.class, schemas.create(), (c, i) -> create(c, i, "batch_create_records")));
             Map<String, Object> appendSchema = new LinkedHashMap<>(schemas.create()); appendSchema.put("required", List.of("requestId", "dramaId", "items"));
             tools.add(write("append_storyboard", "将外部 Agent 已生成的资产、剧集、场次、镜头组和分镜追加到授权项目。与 batch_create_records 相同的有序 items；只新增，不覆盖原剧集，不触发内部拆解或模型调用。", McpBatchInputs.Create.class, appendSchema, (c, i) -> {

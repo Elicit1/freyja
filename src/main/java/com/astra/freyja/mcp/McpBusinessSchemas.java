@@ -107,14 +107,21 @@ public class McpBusinessSchemas {
         if (field.equals("directorPlan")) return "可选的手工导演计划。外部 Agent 通常省略，直接保存提示词工作台内容；服务端不会补生成计划。";
         if (field.equals("directorPlanMode")) return "可选高级编辑；不使用导演计划时省略，更新时保留已有计划。AUTO 仅重置，不启动 AI。";
         if (type == McpRecordType.SHOT) return switch (field) {
-            case "prompt" -> "REFERENCE_MODE 的提示词工作台主卡片，由外部 Agent 直接生成；<Picture N>/<Audio N> 对应媒体数组第 N 项。";
-            case "videoPrompt" -> "FIRST_LAST_FRAME 的视频提示词卡片，由外部 Agent 直接填写，声音设计写入正文。";
+            case "prompt" -> "REFERENCE_MODE 的最终 H3 六段式视频卡片：subject_definitions、summary、retention_analysis、detailed_description、overall_soundscape、non_diegetic_music。先读取 h3-prompt-writing Skill 及 references/ref-en.txt；<Picture N>/<Audio N> 对应媒体数组第 N 项。";
+            case "videoPrompt" -> "FIRST_LAST_FRAME 的最终 H3 三段式视频卡片：integrated_multimodal_description、overall_soundscape、non_diegetic_music。先读取 h3-prompt-writing Skill 及 references/base-en.txt；不能仅填写图片提示词后宣称视频卡片完成。";
             case "firstFramePrompt", "endFramePrompt" -> "首尾帧模式的图片提示词，可省略；已有图片可直接保存对应 URL。";
             case "generationMode" -> "创建时默认 FIRST_LAST_FRAME；多模态参考卡片使用 REFERENCE_MODE。";
             case "sceneId" -> "创建必填的归属场次；剧集和项目由服务端校验确定。";
+            case "shotType", "cameraMovement" -> "基本规格与机位卡片；允许 AUTO（自动），外部 Agent 无明确选择时填写 AUTO，并保持对应 Locked=false；具体枚举读取业务字典。";
+            case "characterRefs" -> "出镜人物业务关联：characterId 为人物 ID，lookId 为明确选定的造型 ID；先读取默认造型。动作/情绪/站位由外部 Agent 按剧本填写，不由 Java 猜测。";
+            case "propRefs" -> "关联镜头实际使用的道具资产，propId 为真实道具 ID。";
+            case "resSceneId" -> "镜头场景资产；可继承场次设置。与 resKeyframeId 互斥。";
+            case "resKeyframeId" -> "主视觉关键图资产 ID；与 resSceneId 互斥，额外场景/关键图可通过 refImages 关联。";
             default -> null;
         };
-        if (type == McpRecordType.CHARACTER && field.equals("appearancePrompt")) return "可选的稳定身份外貌 Prompt，直接填写外部生成的结果，无需调用内部 AI。";
+        if ((type == McpRecordType.CHARACTER || type == McpRecordType.CHARACTER_LOOK) && field.equals("referenceImageUrl"))
+            return "人物/造型设定图 URL；生成图片前先读 character-sheet-design Skill，遵循用户的三视图/头身分区/细节/透明或白底要求，上传后填写返回 URL。已有图片可直接关联。";
+        if (type == McpRecordType.CHARACTER && field.equals("appearancePrompt")) return "可选的稳定身份外貌 Prompt；设定图版式和导出要求按 character-sheet-design Skill 写入图片生成指令，不混入稳定身份描述。";
         if (type == McpRecordType.CHARACTER_LOOK) return switch (field) {
             case "designDesc" -> "创建必填的造型视觉概念描述，与可选英文 Prompt 不同。";
             case "outfitPrompt" -> "可选的服装专属 Prompt，已有图片时也不要求填写。";
@@ -138,29 +145,23 @@ public class McpBusinessSchemas {
             properties.put("id", described(Map.of("type", "string", "pattern", ".*\\S.*", "maxLength", 200), "可省略，服务端补全槽位标识；显式值须在数组中唯一，非雪花 ID。"));
         }
         if (type == ShotRefImageDTO.class) {
-            properties.put("sourceType", Map.of("type", "string", "enum", List.of("SCENE", "CHARACTER", "CHARACTER_REFERENCE", "PROP", "KEYFRAME", "UPLOAD")));
+            properties.put("sourceType", described(Map.of("type", "string", "enum", List.of("SCENE", "CHARACTER", "CHARACTER_LOOK", "CHARACTER_REFERENCE", "PROP", "KEYFRAME", "UPLOAD")),
+                    "人物身份图用 CHARACTER；人物造型图用 CHARACTER_LOOK（兼容 CHARACTER_REFERENCE，保存为 CHARACTER_REFERENCE）；二者 sourceId 含义不同。"));
             properties.put("imageUrl", described(nonblank(), "必填的已有参考图 URL；服务端不抓取外部 URL、不调用内部生图。"));
-            properties.put("sourceId", described(identifier(refs, true), "资产来源必填；CHARACTER 为人物 ID并补齐 characterId，CHARACTER_REFERENCE 为造型 ID并补齐省略的 lookId，UPLOAD 省略。"));
-            properties.put("characterId", described(identifier(refs, true), "显式人物弱绑定；CHARACTER_REFERENCE 必填，UPLOAD 可按需关联，画外人物也可绑定。"));
+            properties.put("sourceId", described(identifier(refs, true), "除 UPLOAD 外必填；CHARACTER 为人物 ID，CHARACTER_LOOK/CHARACTER_REFERENCE 为造型 ID并补齐 lookId；SCENE/PROP/KEYFRAME 为对应资产 ID。UPLOAD 省略。"));
+            properties.put("characterId", described(identifier(refs, true), "显式人物弱绑定；CHARACTER_LOOK/CHARACTER_REFERENCE 必填，UPLOAD 可按需关联，画外人物也可绑定。"));
             properties.put("usageRole", described(properties.get("usageRole"), "按需明确 SUBJECT（出镜主体）/NON_SUBJECT（画外人物）、场景、道具、风格或关键图用途；不从文字推断。"));
             properties.put("referenceRole", Map.of("type", List.of("string", "null"), "enum", Arrays.asList("IDENTITY", "LOOK", "COMBINED", "POSE", "STYLE", null)));
-            result.put("allOf", List.of(
-                    when("sourceType", List.of("SCENE", "CHARACTER", "CHARACTER_REFERENCE", "PROP", "KEYFRAME"),
-                            Map.of("required", List.of("sourceId"), "properties", Map.of("sourceId", identifier(refs, false)))),
-                    when("sourceType", List.of("CHARACTER_REFERENCE"), Map.of("required", List.of("characterId"), "properties", Map.of("characterId", identifier(refs, false)))),
-                    when("sourceType", List.of("UPLOAD"), Map.of("properties", Map.of("sourceId", Map.of("type", "null"))))));
+            // Keep items a plain object: clients render allOf/if/then as unknown intersections.
+            // Conditional requirements are enforced below before any business writes.
         }
         if (type == ShotRefAudioDTO.class) {
             properties.put("sourceType", Map.of("type", "string", "enum", List.of("TTS", "UPLOAD")));
             properties.put("audioUrl", described(nonblank(), "必填的已有声音 URL；TTS 只表示来源，不执行声音生成。"));
             properties.put("duration", Map.of("type", List.of("number", "null"), "minimum", 2, "maximum", 15, "description", "可选的真实秒数；已知音频总长不超过15秒，不会猜测时长。"));
             properties.put("usageMode", described(properties.get("usageMode"), "按需指定 VOICE_TIMBRE、DIALOGUE_REUSE、BGM_REUSE、BGM_STYLE、SFX_REUSE、SFX_REFERENCE、RHYTHM_REFERENCE。"));
-            result.put("allOf", List.of(when("sourceType", List.of("TTS"), Map.of("required", List.of("characterId"), "properties", Map.of("characterId", identifier(refs, false))))));
         }
         return result;
-    }
-    private static Map<String, Object> when(String name, List<String> values, Object consequence) {
-        return Map.of("if", Map.of("properties", Map.of(name, Map.of("enum", values)), "required", List.of(name)), "then", consequence);
     }
     @SuppressWarnings("unchecked") public Map<String, Object> directorPlan() throws Exception {
         Map<String, Object> schema = json.mapper().readValue(DirectorPlanSchema.jsonSchema(), Map.class);
@@ -231,7 +232,29 @@ public class McpBusinessSchemas {
 
     public void validate(McpRecordType type, Map<String, Object> data, boolean references, boolean create) {
         if (type == null || data == null || (!create && data.isEmpty())) throw new BizException(400, "必须提供记录类型与业务 data，更新补丁不能为空");
+        if (type == McpRecordType.SHOT) {
+            validateMedia(data.get("refImages"), true);
+            validateMedia(data.get("refAudios"), false);
+        }
         if (!validator.validate(data(type, references, create), data).valid()) throw new BizException(400, "业务字段不符合 Schema：检查必填字段、媒体 URL 和来源 ID；运行状态、模型及 Skill 等内部字段不能写入，ID 必须为字符串");
+    }
+    private static void validateMedia(Object value, boolean image) {
+        if (!(value instanceof List<?> items)) return;
+        for (int index = 0; index < items.size(); index++) {
+            String path = (image ? "refImages" : "refAudios") + "[" + index + "]";
+            if (!(items.get(index) instanceof Map<?, ?> item)) throw new BizException(400, path + " 必须为对象");
+            Set<String> allowed = image ? IMAGE_REFERENCE_FIELDS : AUDIO_REFERENCE_FIELDS;
+            if (!allowed.containsAll(item.keySet())) throw new BizException(400, path + " 包含未知字段；图片使用 imageUrl/sourceType/sourceId，声音使用 audioUrl/sourceType");
+            if (!(item.get("sourceType") instanceof String source)) throw new BizException(400, path + ".sourceType 必填");
+            String urlField = image ? "imageUrl" : "audioUrl";
+            if (!(item.get(urlField) instanceof String url) || url.isBlank()) throw new BizException(400, path + "." + urlField + " 必填");
+            if (image && !"UPLOAD".equals(source) && item.get("sourceId") == null)
+                throw new BizException(400, path + ".sourceId 必填；造型图传造型 ID，人物图传人物 ID");
+            if (image && "UPLOAD".equals(source) && item.get("sourceId") != null)
+                throw new BizException(400, path + ".sourceId 在 UPLOAD 时必须省略或为 null");
+            if ((image && Set.of("CHARACTER_LOOK", "CHARACTER_REFERENCE").contains(source) || !image && "TTS".equals(source)) && item.get("characterId") == null)
+                throw new BizException(400, path + ".characterId 必填");
+        }
     }
     private static Map<String, Object> identifier(boolean references, boolean nullable) {
         List<Object> choices = new ArrayList<>();

@@ -18,12 +18,18 @@ import java.util.*;
 @RequiredArgsConstructor
 public class McpImageUploads {
     public static final String TOOL_NAME = "upload_asset_image";
+    public static final String BATCH_TOOL_NAME = "batch_upload_asset_images";
     public static final int MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    public static final int MAX_BATCH_ITEMS = 20;
+    public static final int MAX_BATCH_BYTES = 20 * 1024 * 1024;
     public static final int MAX_BASE64_CHARS = ((MAX_IMAGE_BYTES + 2) / 3) * 4;
     private static final long MAX_PIXELS = 40_000_000;
     public enum Purpose { CHARACTER, CHARACTER_LOOK, SCENE, PROP, KEYFRAME, SHOT_REFERENCE }
     public record Upload(String requestId, String dramaId, Purpose purpose, String dataBase64,
                          @ToolParam(required = false) String fileName) {}
+    public record UploadItem(String clientKey, Purpose purpose, String dataBase64,
+                             @ToolParam(required = false) String fileName) {}
+    public record BatchUpload(String requestId, String dramaId, List<UploadItem> items) {}
     private record Image(byte[] bytes, String extension, String contentType, int width, int height, String hash) {}
     private final MediaAssetService media;
     private final McpOperationStore journal;
@@ -39,9 +45,7 @@ public class McpImageUploads {
         if (input == null || input.purpose() == null) throw new BizException(400, "必须提供图片上传参数和 purpose");
         Long project = scope.project(caller, input.dramaId());
         McpOperationStore.key(input.requestId());
-        String name = input.fileName();
-        if (name != null && (name.isBlank() || name.length() > 200 || name.contains("/") || name.contains("\\") || name.chars().anyMatch(Character::isISOControl)))
-            throw new BizException(400, "fileName 应为不带路径的文件名，最多200字符");
+        String name = input.fileName(); validateName(name);
         Image image = decode(input.dataBase64());
         // The journal hashes only small metadata; the file content is represented by its SHA-256.
         Map<String, Object> identity = new LinkedHashMap<>();
@@ -50,13 +54,65 @@ public class McpImageUploads {
         return journal.execute(input.requestId(), TOOL_NAME, identity, () -> {
             // Deterministic path also covers a storage success followed by a database commit failure.
             String path = "mcp/" + project + "/" + input.purpose().name().toLowerCase(Locale.ROOT) + "/" + input.requestId() + "/" + image.hash() + "." + image.extension();
-            com.astra.freyja.dto.res.AssetUploadResultVO stored;
-            try { stored = media.uploadImage(image.bytes(), path, name == null ? "image." + image.extension() : name, image.contentType()); }
-            catch (RuntimeException e) { throw new BizException(502, "IMAGE_UPLOAD_FAILED: 图片归档失败，请使用原 requestId 重试"); }
-            return new McpOperationStore.Outcome(Map.of("requestId", input.requestId(), "dramaId", project.toString(), "purpose", input.purpose(),
-                    "url", stored.getUrl(), "contentType", image.contentType(), "size", image.bytes().length,
-                    "width", image.width(), "height", image.height(), "sha256", image.hash()), project, false);
+            Map<String, Object> result = store(image, path, name, input.purpose());
+            result.put("requestId", input.requestId()); result.put("dramaId", project.toString());
+            return new McpOperationStore.Outcome(result, project, false);
         });
+    }
+
+    public McpTool<BatchUpload> batchTool() {
+        return new McpTool<>(BATCH_TOOL_NAME, "批量上传 1–20 张 PNG/JPEG/静态 WebP 到授权项目，每张最多10 MiB，整批最多20 MiB。每项必填唯一 clientKey、purpose、纯 Base64 dataBase64，可选 fileName。上传前校验全部图片；返回有序 records 与 urlMap，不回显 Base64。原 requestId 和原内容可幂等重试；MinIO 失败可能保留已上传对象，重试覆盖相同路径。上传后用业务 CRUD 关联 URL。", BatchUpload.class,
+                McpTool.Effect.WRITE, batchSchema(), this::batchUpload);
+    }
+    public Object batchUpload(McpPrincipal caller, BatchUpload input) {
+        if (!caller.write()) throw new BizException(403, "MCP_WRITE_DISABLED");
+        if (input == null || input.items() == null || input.items().isEmpty() || input.items().size() > MAX_BATCH_ITEMS)
+            throw new BizException(400, "图片批次必须包含 1–20 项");
+        Long project = scope.project(caller, input.dramaId()); McpOperationStore.key(input.requestId());
+        Set<String> keys = new HashSet<>(); List<Image> images = new ArrayList<>(); List<Object> identities = new ArrayList<>();
+        long total = 0;
+        for (int index = 0; index < input.items().size(); index++) {
+            var item = input.items().get(index);
+            try {
+                if (item == null || item.purpose() == null || item.clientKey() == null || !item.clientKey().matches("[A-Za-z0-9_-]{1,80}") || !keys.add(item.clientKey()))
+                    throw new BizException(400, "每项需要 purpose 和批次内唯一 clientKey");
+                validateName(item.fileName());
+                // Bound aggregate decoded memory before allocating the next image.
+                if (item.dataBase64() != null && total + (long) item.dataBase64().length() / 4 * 3 - 2 > MAX_BATCH_BYTES)
+                    throw new BizException(413, "图片整批最多20 MiB，请拆分批次");
+                Image image = decode(item.dataBase64()); total += image.bytes().length;
+                if (total > MAX_BATCH_BYTES) throw new BizException(413, "图片整批最多20 MiB，请拆分批次");
+                images.add(image);
+                Map<String, Object> identity = new LinkedHashMap<>();
+                identity.put("clientKey", item.clientKey()); identity.put("purpose", item.purpose());
+                identity.put("fileName", item.fileName()); identity.put("sha256", image.hash()); identities.add(identity);
+            } catch (BizException e) { throw new BizException(e.getCode(), "items[" + index + "]: " + e.getMessage()); }
+        }
+        long totalSize = total;
+        return journal.execute(input.requestId(), BATCH_TOOL_NAME, Map.of("dramaId", input.dramaId(), "items", identities), () -> {
+            List<Object> results = new ArrayList<>(); Map<String, String> urls = new LinkedHashMap<>();
+            for (int index = 0; index < images.size(); index++) {
+                var item = input.items().get(index); Image image = images.get(index);
+                String path = "mcp/" + project + "/" + item.purpose().name().toLowerCase(Locale.ROOT) + "/" + input.requestId() + "/" + item.clientKey() + "/" + image.hash() + "." + image.extension();
+                try {
+                    Map<String, Object> result = store(image, path, item.fileName(), item.purpose());
+                    result.put("clientKey", item.clientKey()); results.add(result); urls.put(item.clientKey(), (String) result.get("url"));
+                } catch (BizException e) { throw new BizException(e.getCode(), "items[" + index + "] (" + item.clientKey() + "): " + e.getMessage()); }
+            }
+            return new McpOperationStore.Outcome(Map.of("requestId", input.requestId(), "dramaId", project.toString(), "count", results.size(),
+                    "totalSize", totalSize, "records", results, "urlMap", urls), project, false);
+        });
+    }
+    private static void validateName(String name) {
+        if (name != null && (name.isBlank() || name.length() > 200 || name.contains("/") || name.contains("\\") || name.chars().anyMatch(Character::isISOControl)))
+            throw new BizException(400, "fileName 应为不带路径的文件名，最多200字符");
+    }
+    private Map<String, Object> store(Image image, String path, String name, Purpose purpose) {
+        com.astra.freyja.dto.res.AssetUploadResultVO stored;
+        try { stored = media.uploadImage(image.bytes(), path, name == null ? "image." + image.extension() : name, image.contentType()); }
+        catch (RuntimeException e) { throw new BizException(502, "IMAGE_UPLOAD_FAILED: 图片归档失败，请使用原 requestId 和原内容重试"); }
+        return new LinkedHashMap<>(Map.of("purpose", purpose, "url", stored.getUrl(), "contentType", image.contentType(), "size", image.bytes().length,
+                "width", image.width(), "height", image.height(), "sha256", image.hash()));
     }
 
     private Image decode(String encoded) {
@@ -134,5 +190,13 @@ public class McpImageUploads {
                 "purpose", Map.of("type", "string", "enum", Arrays.stream(Purpose.values()).map(Enum::name).toList()),
                 "dataBase64", Map.of("type", "string", "minLength", 1, "maxLength", MAX_BASE64_CHARS, "description", "PNG/JPEG/WebP 图片的纯 Base64；文件最多10 MiB，不含 data: 前缀，不接受 URL 或本地路径"),
                 "fileName", Map.of("type", "string", "minLength", 1, "maxLength", 200, "description", "可选文件名，不含路径；存储扩展名按真实图片格式确定")));
+    }
+    @SuppressWarnings("unchecked") private static Map<String, Object> batchSchema() {
+        Map<String, Object> properties = new LinkedHashMap<>((Map<String, Object>) schema().get("properties"));
+        Object requestId = properties.remove("requestId"), dramaId = properties.remove("dramaId");
+        properties.put("clientKey", Map.of("type", "string", "pattern", "^[A-Za-z0-9_-]{1,80}$", "description", "批次内唯一标签，对应返回 urlMap 的键"));
+        var item = Map.of("type", "object", "additionalProperties", false, "required", List.of("clientKey", "purpose", "dataBase64"), "properties", properties);
+        return Map.of("type", "object", "additionalProperties", false, "required", List.of("requestId", "dramaId", "items"), "properties",
+                Map.of("requestId", requestId, "dramaId", dramaId, "items", Map.of("type", "array", "minItems", 1, "maxItems", MAX_BATCH_ITEMS, "items", item)));
     }
 }

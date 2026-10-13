@@ -30,6 +30,7 @@ class McpBatchProtocolIntegrationTest {
     static final String TOKEN = "mcp-batch-protocol-test-token-1234567890";
     @LocalServerPort int port;
     @Autowired AutowireCapableBeanFactory factory;
+    @Autowired com.astra.freyja.dao.AiSkillFileMapper skillFileMapper;
     McpBusinessDatabaseTest fixture;
     final HttpClient http = HttpClient.newHttpClient();
     final ObjectMapper json = new ObjectMapper();
@@ -61,10 +62,11 @@ class McpBatchProtocolIntegrationTest {
     @Test void discoversBusinessCrudToolsAndNoInternalAi() throws Exception {
         JsonNode init = rpc("initialize", Map.of("protocolVersion", "2025-06-18", "capabilities", Map.of(), "clientInfo", Map.of("name", "batch-test", "version", "1")));
         assertFalse(init.path("capabilities").has("prompts"));
-        JsonNode catalog = rpc("tools/list", Map.of()).path("tools"); assertEquals(68, catalog.size());
+        JsonNode catalog = rpc("tools/list", Map.of()).path("tools"); assertEquals(72, catalog.size());
         Set<String> names = new HashSet<>(); catalog.forEach(tool -> names.add(tool.path("name").asText()));
         assertTrue(names.containsAll(Set.of("append_storyboard", "batch_create_records", "batch_update_shots", "batch_delete_records", "batch_read_records")));
-        assertTrue(Collections.disjoint(names, Set.of("list_skills", "read_skill", "get_creation_options", "decompose_script", "generate_image", "generate_video")));
+        assertTrue(names.containsAll(Set.of("list_skills", "read_skill", "read_skill_file", "batch_upload_asset_images")));
+        assertTrue(Collections.disjoint(names, Set.of("get_creation_options", "decompose_script", "generate_image", "generate_video")));
         assertFalse(names.contains("internal_ai_should_remain_private"));
     }
 
@@ -174,5 +176,87 @@ class McpBatchProtocolIntegrationTest {
         assertEquals(url, entries.get(2).path("data").path("referenceImageUrl").asText()); assertEquals(url, entries.get(3).path("data").path("frameUrl").asText());
         assertEquals(url, entries.get(4).path("data").path("coverUrl").asText());
         assertEquals(2, fixture.count("mcp_business_operation"));
+    }
+
+    @Test void singleAndElevenShotBatchAcceptLookAliasAndExposeConcreteMediaSchema() throws Exception {
+        fixture.character(50L, McpBusinessDatabaseTest.PROJECT); fixture.look(60L, 50L, 1);
+        for (JsonNode tool : rpc("tools/list", Map.of()).path("tools")) if (tool.path("name").asText().equals("create_shot")) {
+            JsonNode image = tool.path("inputSchema").path("properties").path("data").path("properties").path("refImages").path("items");
+            assertEquals("object", image.path("type").asText()); assertFalse(image.has("allOf"));
+            assertEquals(List.of("sourceType", "imageUrl"), json.convertValue(image.path("required"), List.class));
+            assertTrue(image.path("properties").has("sourceId")); assertTrue(image.path("properties").path("sourceType").path("enum").toString().contains("CHARACTER_LOOK"));
+        }
+        Map<String, Object> data = new LinkedHashMap<>(Map.of("sceneId", "30", "shotType", "AUTO", "cameraMovement", "AUTO", "shotTypeLocked", false, "cameraMovementLocked", false,
+                "characterRefs", List.of(Map.of("characterId", "50", "lookId", "60")),
+                "refImages", List.of(Map.of("sourceType", "CHARACTER_LOOK", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png"))));
+        data.put("videoPrompt", "integrated_multimodal_description: 0-4s the subject walks.\noverall_soundscape: footsteps.\nnon_diegetic_music: none."); data.put("duration", 4);
+        JsonNode single = rpc("tools/call", Map.of("name", "create_shot", "arguments", Map.of("requestId", "look-single-001", "dramaId", McpBusinessDatabaseTest.ROOT, "data", data)));
+        assertFalse(single.path("isError").asBoolean(), single.toString());
+        JsonNode saved = single.path("structuredContent").path("data").path("data");
+        assertEquals("CHARACTER_REFERENCE", saved.path("refImages").get(0).path("sourceType").asText());
+        assertEquals("60", saved.path("refImages").get(0).path("lookId").asText()); assertEquals("AUTO", saved.path("shotType").asText());
+        assertEquals(data.get("videoPrompt"), saved.path("videoPrompt").asText());
+        List<Object> items = new ArrayList<>(); for (int index = 0; index < 11; index++) items.add(Map.of("clientKey", "shot" + index, "type", "SHOT", "data", data));
+        JsonNode batch = rpc("tools/call", Map.of("name", "batch_create_records", "arguments", Map.of("requestId", "look-batch-0001", "dramaId", McpBusinessDatabaseTest.ROOT, "items", items)));
+        assertFalse(batch.path("isError").asBoolean(), batch.toString()); assertEquals(12, fixture.count("drama_shot"));
+    }
+
+    @Test void malformedSingleAndBatchMediaReturnCompactStructuredErrorsWithoutUnionDump() throws Exception {
+        for (Map<String, Object> image : List.of(Map.<String, Object>of("url", "https://media/a.png", "type", "CHARACTER", "assetId", "50"),
+                Map.<String, Object>of("sourceType", "CHARACTER", "imageUrl", "https://media/a.png"))) {
+            Map<String, Object> data = Map.of("sceneId", "30", "refImages", List.of(image));
+            for (String tool : List.of("create_shot", "batch_create_records")) {
+                Map<String, Object> args = new LinkedHashMap<>(Map.of("requestId", "invalid-media001", "dramaId", McpBusinessDatabaseTest.ROOT));
+                if (tool.equals("create_shot")) args.put("data", data);
+                else args.put("items", List.of(Map.of("clientKey", "shot", "type", "SHOT", "data", data)));
+                var result = rpc("tools/call", Map.of("name", tool, "arguments", args));
+                assertTrue(result.path("isError").asBoolean()); assertEquals(400, result.path("structuredContent").path("error").path("code").asInt());
+                assertTrue(result.toString().length() < 1500, result.toString());
+                assertTrue(result.path("structuredContent").path("error").path("message").asText().contains("refImages[0]"));
+                assertFalse(result.toString().contains("constant value 'PROJECT'"));
+            }
+        }
+        assertEquals(0, fixture.count("drama_shot"));
+    }
+
+    @Test void batchUploadWorksThroughHttpAndReturnsOnlyUrlsAndMetadata() throws Exception {
+        org.mockito.Mockito.when(fixture.storage.bucketExists(org.mockito.ArgumentMatchers.any(io.minio.BucketExistsArgs.class))).thenReturn(true);
+        String encoded = Base64.getEncoder().encodeToString(McpImageUploadTest.image("png", true));
+        Map<String, Object> args = Map.of("requestId", "http-batch-image1", "dramaId", McpBusinessDatabaseTest.ROOT, "items", List.of(
+                Map.of("clientKey", "hero", "purpose", "CHARACTER_LOOK", "dataBase64", encoded),
+                Map.of("clientKey", "scene", "purpose", "SCENE", "dataBase64", encoded)));
+        var result = rpc("tools/call", Map.of("name", "batch_upload_asset_images", "arguments", args));
+        assertFalse(result.path("isError").asBoolean(), result.toString());
+        assertEquals(2, result.path("structuredContent").path("data").path("count").asInt());
+        assertTrue(result.path("structuredContent").path("data").path("urlMap").has("hero")); assertFalse(result.toString().contains(encoded));
+        assertEquals(result, rpc("tools/call", Map.of("name", "batch_upload_asset_images", "arguments", args)));
+        org.mockito.Mockito.verify(fixture.storage, org.mockito.Mockito.times(2)).putObject(org.mockito.ArgumentMatchers.any(io.minio.PutObjectArgs.class));
+    }
+
+    @Test void publishedSkillAndReferenceFilesUseEnabledVersionWithoutExecutingInternalTools() throws Exception {
+        var item = com.astra.freyja.skill.model.SkillCatalogItem.builder().name("h3-prompt-writing").displayName("H3").description("H3 video prompt format").version("1").versionId(2032095628944588802L).build();
+        org.mockito.Mockito.when(fixture.skillCatalog.getEnabledCatalog()).thenReturn(List.of(item));
+        org.mockito.Mockito.when(fixture.skillContents.loadSkillVersion(item.getVersionId())).thenReturn(com.astra.freyja.skill.model.LoadedSkill.builder()
+                .name(item.getName()).version("1").contentHash("hash").content("Read references/base-en.txt for three sections; references/ref-en.txt for six.").build());
+        var file = new com.astra.freyja.entity.AiSkillFile(); file.setId(301L); file.setSkillVersionId(item.getVersionId()); file.setRelativePath("references/base-en.txt");
+        file.setFileType("REFERENCE"); file.setObjectKey("private/storage/key"); file.setContentHash("filehash"); file.setContentSize(100L); skillFileMapper.insert(file);
+        org.mockito.Mockito.when(fixture.skillRepository.loadTextFile("private/storage/key", "filehash", 100L)).thenReturn("integrated_multimodal_description\noverall_soundscape\nnon_diegetic_music");
+        var catalog = rpc("tools/call", Map.of("name", "list_skills", "arguments", Map.of("keyword", "H3"))).path("structuredContent").path("data");
+        assertEquals(1, catalog.path("total").asInt()); assertTrue(catalog.path("records").get(0).path("versionId").isTextual()); assertFalse(catalog.toString().contains("base-en.txt"));
+        Map<String, Object> readArgs = Map.of("name", item.getName(), "versionId", item.getVersionId().toString());
+        var loaded = rpc("tools/call", Map.of("name", "read_skill", "arguments", readArgs)); assertFalse(loaded.path("isError").asBoolean(), loaded.toString());
+        assertEquals("references/base-en.txt", loaded.path("structuredContent").path("data").path("references").get(0).path("path").asText()); assertFalse(loaded.toString().contains("private/storage/key"));
+        var fileArgs = new LinkedHashMap<>(readArgs); fileArgs.put("path", "references/base-en.txt");
+        var body = rpc("tools/call", Map.of("name", "read_skill_file", "arguments", fileArgs)); assertFalse(body.path("isError").asBoolean());
+        assertTrue(body.path("structuredContent").path("data").path("content").asText().contains("overall_soundscape")); assertFalse(body.toString().contains("private/storage/key"));
+        for (String path : List.of("references/../secret.md", "references/./base-en.txt", "scripts/run.py", "F:\\secret.md", "references\\base-en.txt")) {
+            fileArgs.put("path", path); assertTrue(rpc("tools/call", Map.of("name", "read_skill_file", "arguments", fileArgs)).path("isError").asBoolean());
+        }
+        fileArgs.put("path", "references/base-en.txt"); item.setVersionId(302L);
+        var changed = rpc("tools/call", Map.of("name", "read_skill_file", "arguments", fileArgs)); assertEquals(409, changed.path("structuredContent").path("error").path("code").asInt());
+        org.mockito.Mockito.when(fixture.skillCatalog.getEnabledCatalog()).thenReturn(List.of());
+        assertEquals(404, rpc("tools/call", Map.of("name", "read_skill", "arguments", readArgs)).path("structuredContent").path("error").path("code").asInt());
+        org.mockito.Mockito.verify(fixture.skillRepository, org.mockito.Mockito.times(1)).loadTextFile("private/storage/key", "filehash", 100L);
+        org.mockito.Mockito.verifyNoInteractions(fixture.skillFiles);
     }
 }

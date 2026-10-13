@@ -10,7 +10,8 @@ spring:
         type: SYNC
         name: freyja-digital-studio
         version: 1.0.0
-        instructions: "Business tools for direct prompt-workshop editing, ordered reference media and asset image uploads. DirectorPlan and asset prompts are optional. Internal Agent/model execution, AI prompt generation, system templates and Skills are not exposed. Business IDs are strings. Preserve creator locks and use fingerprints. Refresh tools/list after tool configuration changes."
+        request-timeout: 300s
+        instructions: "Discover list_skills at creation start and whenever the task stage changes; select by descriptions and read_skill/read_skill_file before generating. Character/character-look design images use character-sheet-design: when requested, one canvas holds front/side/back full-body views, separate head portraits and detail close-ups; respect explicit user layout, style and background. Transparent means real PNG alpha with the image tool transparency option, not a painted checkerboard; white is an alternative when allowed. Before MiniMax H3 writing, read h3-prompt-writing and references/base-en.txt for three-section FIRST_LAST_FRAME videoPrompt or references/ref-en.txt for six-section REFERENCE_MODE prompt. Fill complete storyboard specifications and asset associations; AUTO is allowed for shotType/cameraMovement with locks false. Use imageUrl/sourceType/sourceId in refImages; CHARACTER_LOOK uses a look ID and characterId. Single/batch image uploads return URLs, never print Base64. DirectorPlan remains optional. Internal AI/model execution and system templates remain private. Business IDs are strings. Preserve creator locks and fingerprints. Read freyja://guide for the full workflow. Refresh tools/list after configuration changes."
         tool-callback-converter: false
         annotation-scanner:
           enabled: false

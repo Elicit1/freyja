@@ -407,6 +407,8 @@ public class McpBusinessRecords {
         Set<String> imageIds = new HashSet<>();
         if (shot.getRefImages() != null) for (ShotRefImageDTO image : shot.getRefImages()) {
             if (image == null || image.getSourceType() == null) throw new BizException(400, "参考图需要明确 sourceType");
+            // Normalize the public asset-type alias to the existing media representation.
+            if ("CHARACTER_LOOK".equals(image.getSourceType())) image.setSourceType("CHARACTER_REFERENCE");
             image.setId(slotId(image.getId(), imageIds, "参考图"));
             switch (image.getSourceType()) {
                 case "SCENE" -> requiredAsset(caller, McpInputs.AssetType.SCENE, image.getSourceId(), project);

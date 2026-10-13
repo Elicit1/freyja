@@ -58,7 +58,7 @@
             </el-table-column>
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="业务工具" name="tools">
+        <el-tab-pane label="业务与知识工具" name="tools">
           <div class="tool-toolbar"><el-input v-model="keyword" clearable placeholder="搜索工具名称或说明" class="search-input" /><el-select v-model="effect" class="effect-select"><el-option label="全部工具" value="ALL" /><el-option label="读取工具" value="READ" /><el-option label="写入工具" value="WRITE" /></el-select><span class="hint">工具开关即时保存，整体关闭时仍可配置。</span></div>
           <el-table :data="filteredTools" row-key="name" class="tools-table">
             <el-table-column label="工具" min-width="300"><template #default="{ row }"><strong>{{ labels[row.name] || row.name }}</strong><div><code>{{ row.name }}</code></div><p class="tool-description">{{ row.description }}</p></template></el-table-column>
@@ -69,7 +69,7 @@
           </el-table>
         </el-tab-pane>
       </el-tabs>
-      <p class="boundary-note">外部 Agent 可上传图片用于人物、造型、场景、关键图和道具参考，直接填写提示词工作台卡片并按顺序关联参考媒体；导演计划、人物及造型英文 Prompt 均可省略。内部 Agent、AI 提示词生成、模型推理和 Skill 系统始终不通过此服务开放。</p>
+      <p class="boundary-note">外部 Agent 可单张或批量上传人物、造型、场景、关键图和道具参考图，读取已启用的 Skill 规范，填写完整分镜与 H3 视频提示词卡片；景别和运镜可选自动，导演计划可省略。Skill 知识仅供读取，内部 Agent、AI 提示词生成和模型执行接口保持私有。</p>
     </template>
     <el-dialog :model-value="!!schemaTool" :title="schemaTool ? `工具参数 · ${schemaTool.name}` : '工具参数'" width="min(800px, 94vw)" @close="schemaTool = null"><pre class="schema-preview">{{ JSON.stringify(schemaTool?.inputSchema, null, 2) }}</pre></el-dialog>
   </div>
@@ -88,6 +88,7 @@ const connectionUrl = computed(() => new URL('/api/mcp', window.location.origin)
 const clientConfig = computed(() => `[mcp_servers.freyja]\nurl = "${connectionUrl.value}"\nbearer_token_env_var = "FREYJA_MCP_TOKEN"\ntool_timeout_sec = 300`)
 const filteredTools = computed(() => settings.value?.tools.filter(t => (effect.value === 'ALL' || t.effect === effect.value) && `${t.name} ${t.description} ${labels[t.name] || ''}`.toLowerCase().includes(keyword.value.toLowerCase())) || [])
 const labels: Record<string, string> = { search_projects: '搜索项目', get_project: '项目详情', get_project_outline: '读取大纲', list_shots: '分镜列表', get_shot: '完整分镜配置', search_assets: '搜索资产', get_asset: '资产详情', list_character_looks: '人物造型', get_business_options: '业务字典', batch_read_records: '批量读取', batch_create_records: '批量创建', batch_delete_records: '批量删除', append_storyboard: '追加分镜导入', get_business_operation: '业务请求结果', clone_shot: '复制分镜', set_default_character_look: '设置默认造型', reorder_group_shots: '组内分镜重排', list_shot_video_versions: '视频版本列表', select_shot_video_version: '选择视频版本', upload_asset_image: '上传资产参考图' }
+Object.assign(labels, { batch_upload_asset_images: '批量上传资产图片', list_skills: 'Skill 目录', read_skill: '读取 Skill 正文', read_skill_file: '读取 Skill 参考规范' })
 const crudOperations = [
   { key: 'read', label: '单条读取' }, { key: 'create', label: '单条创建' }, { key: 'update', label: '单条修改' },
   { key: 'delete', label: '单条删除' }, { key: 'batchUpdate', label: '批量修改' }
