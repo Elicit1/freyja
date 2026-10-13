@@ -25,7 +25,7 @@
                 <p class="hint">保存后不回显令牌。请将令牌保存在第三方客户端中，更换后原令牌立即失效。</p>
               </el-form-item>
               <div class="permission-grid">
-                <el-form-item label="允许业务写入"><el-switch v-model="form.writeEnabled" /><p class="hint">开放创建、修改、追加导入等操作；具体工具仍需单独开启。</p></el-form-item>
+                <el-form-item label="允许业务写入"><el-switch v-model="form.writeEnabled" /><p class="hint">开放创建、修改、删除和追加导入；具体工具仍需单独开启。</p></el-form-item>
                 <el-form-item label="允许新建项目"><el-switch v-model="form.allowCreateProjects" :disabled="!form.writeEnabled" /><p class="hint">外部 Agent 可创建项目，并访问通过 MCP 创建的项目。</p></el-form-item>
               </div>
               <el-form-item label="项目授权"><el-switch v-model="form.allowAllProjects" active-text="允许访问全部项目" />
@@ -39,6 +39,24 @@
           <el-card shadow="never" class="connection-card"><h3>客户端连接</h3><p class="hint">将令牌设置为客户端的 FREYJA_MCP_TOKEN 环境变量，然后填写下面的连接配置。远程客户端需使用可访问的服务地址。</p>
             <pre>{{ clientConfig }}</pre><el-button @click="copy(clientConfig)">复制连接配置</el-button>
           </el-card>
+        </el-tab-pane>
+        <el-tab-pane label="业务 CRUD" name="crud">
+          <el-alert title="单条 CRUD 和各对象批量修改均有独立工具与开关。修改和删除前先读取 editFingerprint；公共资产只读。" type="info" :closable="false" show-icon />
+          <p class="hint">剧情场次用于组织剧集，场景资产用于视觉参考。批量创建与批量删除保留跨对象操作；删除需先解除引用、先子后父，媒体文件保留。</p>
+          <el-table :data="settings.crudCapabilities" row-key="type" class="crud-table">
+            <el-table-column label="业务对象" min-width="150"><template #default="{ row }"><strong>{{ row.label }}</strong><div><code>{{ row.type }}</code></div></template></el-table-column>
+            <el-table-column v-for="operation in crudOperations" :key="operation.key" :label="operation.label" min-width="205">
+              <template #default="{ row }">
+                <template v-if="toolByName(row[operation.key])">
+                  <el-button link type="primary" class="crud-tool-name" @click="schemaTool = toolByName(row[operation.key])!">{{ row[operation.key] }}</el-button>
+                  <div class="crud-state">
+                    <el-tag :type="toolByName(row[operation.key])!.published ? 'success' : 'info'" size="small">{{ toolState(toolByName(row[operation.key])!) }}</el-tag>
+                    <el-switch :model-value="toolByName(row[operation.key])!.enabled" :disabled="busy" :loading="pendingTool === row[operation.key]" @change="(value: string | number | boolean) => switchTool(toolByName(row[operation.key])!, value)" />
+                  </div>
+                </template>
+              </template>
+            </el-table-column>
+          </el-table>
         </el-tab-pane>
         <el-tab-pane label="业务工具" name="tools">
           <div class="tool-toolbar"><el-input v-model="keyword" clearable placeholder="搜索工具名称或说明" class="search-input" /><el-select v-model="effect" class="effect-select"><el-option label="全部工具" value="ALL" /><el-option label="读取工具" value="READ" /><el-option label="写入工具" value="WRITE" /></el-select><span class="hint">工具开关即时保存，整体关闭时仍可配置。</span></div>
@@ -69,9 +87,17 @@ const form = reactive({ token: '', writeEnabled: false, allowCreateProjects: fal
 const connectionUrl = computed(() => new URL('/api/mcp', window.location.origin).toString())
 const clientConfig = computed(() => `[mcp_servers.freyja]\nurl = "${connectionUrl.value}"\nbearer_token_env_var = "FREYJA_MCP_TOKEN"\ntool_timeout_sec = 300`)
 const filteredTools = computed(() => settings.value?.tools.filter(t => (effect.value === 'ALL' || t.effect === effect.value) && `${t.name} ${t.description} ${labels[t.name] || ''}`.toLowerCase().includes(keyword.value.toLowerCase())) || [])
-const labels: Record<string, string> = { search_projects: '搜索项目', get_project: '项目详情', get_project_outline: '读取大纲', list_shots: '分镜列表', get_shot: '完整分镜配置', search_assets: '搜索资产', get_asset: '资产详情', list_character_looks: '人物造型', get_business_options: '业务字典', batch_read_records: '批量读取', batch_create_records: '批量创建', batch_update_records: '批量配置', append_storyboard: '追加分镜导入', get_business_operation: '业务请求结果', clone_shot: '复制分镜', set_default_character_look: '设置默认造型', reorder_group_shots: '组内分镜重排', list_shot_video_versions: '视频版本列表', select_shot_video_version: '选择视频版本', upload_asset_image: '上传资产参考图' }
+const labels: Record<string, string> = { search_projects: '搜索项目', get_project: '项目详情', get_project_outline: '读取大纲', list_shots: '分镜列表', get_shot: '完整分镜配置', search_assets: '搜索资产', get_asset: '资产详情', list_character_looks: '人物造型', get_business_options: '业务字典', batch_read_records: '批量读取', batch_create_records: '批量创建', batch_delete_records: '批量删除', append_storyboard: '追加分镜导入', get_business_operation: '业务请求结果', clone_shot: '复制分镜', set_default_character_look: '设置默认造型', reorder_group_shots: '组内分镜重排', list_shot_video_versions: '视频版本列表', select_shot_video_version: '选择视频版本', upload_asset_image: '上传资产参考图' }
+const crudOperations = [
+  { key: 'read', label: '单条读取' }, { key: 'create', label: '单条创建' }, { key: 'update', label: '单条修改' },
+  { key: 'delete', label: '单条删除' }, { key: 'batchUpdate', label: '批量修改' }
+] as const
+function toolByName(name: string) { return settings.value?.tools.find(tool => tool.name === name) }
+function toolState(tool: McpToolInfo) { return tool.published ? '已发布' : !tool.enabled ? '已停用' : !settings.value?.enabled ? '服务已关闭' : '写入权限未开启' }
 function accept(value: McpSettings, syncForm = false) {
   settings.value = value
+  for (const capability of value.crudCapabilities) for (const operation of crudOperations)
+    labels[capability[operation.key]] = operation.label + capability.label
   if (syncForm) Object.assign(form, { token: '', writeEnabled: value.writeEnabled, allowCreateProjects: value.allowCreateProjects, allowAllProjects: value.allowAllProjects, projectIds: value.allowedProjectIds.join('\n'), origins: value.allowedOrigins.join('\n') })
 }
 async function load(syncForm = false) {
@@ -123,5 +149,7 @@ pre { white-space: pre-wrap; overflow-wrap: anywhere; padding: 16px; background:
 .tool-toolbar { margin: 12px 0 20px; flex-wrap: wrap; }.search-input { max-width: 320px; }.effect-select { width: 140px; }.tool-toolbar .hint { margin: 0; }
 .tools-table code { color: var(--text-secondary); font-size: 12px; }.tool-description { font-size: 12px; line-height: 1.7; color: var(--text-secondary); margin: 8px 0; }
 .boundary-note { margin-top: 20px; }.schema-preview { max-height: 65vh; overflow: auto; }
+.crud-table { margin-top: 18px; }.crud-table code { color: var(--text-secondary); font-size: 11px; }
+.crud-tool-name { font-size: 11px; }.crud-state { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 900px) { .summary-grid { grid-template-columns: 1fr; }.permission-grid { grid-template-columns: 1fr; }.token-row { flex-wrap: wrap; }.token-row .el-input { flex-basis: 100%; }.mcp-page { padding: 16px; } }
 </style>

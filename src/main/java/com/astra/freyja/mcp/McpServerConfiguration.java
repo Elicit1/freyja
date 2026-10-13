@@ -38,6 +38,8 @@ public class McpServerConfiguration {
             14. Asset pictures need sourceId; CHARACTER uses a character ID, CHARACTER_REFERENCE uses a look ID and requires characterId. UPLOAD omits sourceId and may explicitly bind characterId/lookId. usageRole/referenceRole describe weak binding; NON_SUBJECT does not require an on-screen character.
             15. Audio source TTS requires characterId but only references existing audio. Optionally specify real duration and usageMode.
             16. upload_asset_image accepts PNG/JPEG/static WebP bytes as raw Base64, up to 10 MiB, for an authorized project. Choose CHARACTER/CHARACTER_LOOK/SCENE/PROP/KEYFRAME/SHOT_REFERENCE purpose and a stable requestId. Use its returned url in business CRUD; uploading does not overwrite a record or generate internal prompts.
+            17. Each business object has independent get/create/update/delete tools: project, episode, scene, shot_group, shot, character, character_look, resource_scene, prop, keyframe. Batch updates use object-specific batch_update_<plural> tools (e.g. batch_update_shots), without a type parameter. Cross-object batch_create_records/batch_delete_records remain available. SCENE means narrative scene; RESOURCE_SCENE means visual scene asset. Writes appear only when server, write permission and the tool are enabled.
+            18. Read editFingerprint before updating or deleting. Deletion is logical, requires empty child collections and no live asset/media references, and preserves stored media files. Delete child records before parents; a failure rolls back the whole batch. Reuse requestId after timeouts, including deletion of a project.
             """;
 
     @Bean

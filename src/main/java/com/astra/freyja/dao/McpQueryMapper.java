@@ -1,21 +1,30 @@
 package com.astra.freyja.dao;
 
-import com.astra.freyja.entity.DramaShot;
+import com.astra.freyja.entity.*;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
-import org.apache.ibatis.annotations.Select;
+import java.util.Set;
 
 @Mapper
 public interface McpQueryMapper {
-    String VALID_SHOT_GROUP = " AND (s.shot_group_id IS NULL OR EXISTS (SELECT 1 FROM drama_shot_group g "
-            + "WHERE g.id=s.shot_group_id AND g.deleted=0 AND g.drama_id=s.drama_id "
-            + "AND g.episode_id=s.episode_id AND g.scene_id=s.scene_id))";
-    @Select("<script>SELECT s.*" + com.astra.freyja.dao.DramaShotMapper.ACTIVE_DRAMA_SHOTS
-            + VALID_SHOT_GROUP
-            + "<if test='episodeId != null'> AND s.episode_id = #{episodeId}</if>"
-            + "<if test='sceneId != null'> AND s.scene_id = #{sceneId}</if>"
-            + " ORDER BY ep.episode_no, sc.scene_no, s.sort_order, s.shot_no, s.id</script>")
+    Drama lockProject(@Param("id") Long id);
+    DramaEpisode lockEpisode(@Param("id") Long id);
+    DramaScene lockScene(@Param("id") Long id);
+    DramaShotGroup lockShotGroup(@Param("id") Long id);
+    DramaShot lockShot(@Param("id") Long id);
+    ResCharacter lockCharacter(@Param("id") Long id);
+    ResCharacterLook lockCharacterLook(@Param("id") Long id);
+    ResScene lockResourceScene(@Param("id") Long id);
+    ResProp lockProp(@Param("id") Long id);
+    ResKeyframe lockKeyframe(@Param("id") Long id);
     Page<DramaShot> shots(Page<DramaShot> page, @Param("dramaId") Long dramaId,
                           @Param("episodeId") Long episodeId, @Param("sceneId") Long sceneId);
+    Page<Drama> projects(Page<Drama> page, @Param("allProjects") boolean allProjects, @Param("createdProjects") boolean createdProjects,
+                         @Param("projectIds") Set<Long> projectIds, @Param("keyword") String keyword);
+    Page<DramaScene> scenes(Page<DramaScene> page, @Param("dramaId") Long dramaId,
+                           @Param("episodeId") Long episodeId, @Param("sceneId") Long sceneId);
+    Page<DramaShotGroup> groups(Page<DramaShotGroup> page, @Param("dramaId") Long dramaId,
+                               @Param("episodeId") Long episodeId, @Param("sceneId") Long sceneId);
+    Page<ResKeyframe> keyframes(Page<ResKeyframe> page, @Param("dramaId") Long dramaId, @Param("keyword") String keyword);
 }

@@ -24,6 +24,7 @@ public class McpRuntimeControl {
     private final McpJson json;
     private final CryptoUtil crypto;
     private final McpToolInventory inventory;
+    private final McpRecordTools recordTools;
     private final ObjectProvider<McpStatelessSyncServer> servers;
     private final ObjectProvider<McpToolCatalog> catalogs;
 
@@ -37,7 +38,15 @@ public class McpRuntimeControl {
         if (row == null) return defaults();
         if (!McpServerConfigMapper.CONFIG_KEY.equals(row.getConfigKey()) || !Integer.valueOf(1).equals(row.getStatus()))
             throw new BizException(409, "MCP 设置记录无效，请恢复管理配置");
-        try { return json.mapper().readerForUpdating(defaults()).readValue(row.getConfigValue()); }
+        try {
+            McpRuntimeSettings state = json.mapper().readerForUpdating(defaults()).readValue(row.getConfigValue());
+            Boolean legacyUpdate = state.getTools().remove("batch_update_records");
+            if (legacyUpdate != null) for (var capability : recordTools.capabilities()) {
+                state.getTools().putIfAbsent((String) capability.get("batchUpdate"), legacyUpdate);
+                state.getTools().putIfAbsent((String) capability.get("update"), legacyUpdate);
+            }
+            return state;
+        }
         catch (Exception e) { throw new BizException(409, "MCP 设置格式无效，请修复配置"); }
     }
     public String token(McpRuntimeSettings settings) {
@@ -60,6 +69,8 @@ public class McpRuntimeControl {
         result.put("allowAllProjects", state.isAllowAllProjects()); result.put("allowCreateProjects", state.isAllowCreateProjects());
         result.put("allowedProjectIds", state.getAllowedProjectIds()); result.put("allowedOrigins", state.getAllowedOrigins());
         result.put("tokenConfigured", validToken(token(state))); result.put("endpoint", "/mcp"); result.put("protocol", "Streamable HTTP");
+        result.put("recordTypes", Arrays.stream(McpRecordType.values()).map(Enum::name).toList());
+        result.put("crudCapabilities", recordTools.capabilities());
         var catalog = catalogs.getObject();
         result.put("tools", inventory.all().stream().map(tool -> Map.of("name", tool.name(), "description", tool.description(), "effect", tool.effect(),
                 "enabled", !Boolean.FALSE.equals(state.getTools().get(tool.name())), "published", state.isEnabled() && toolEnabled(state, tool),

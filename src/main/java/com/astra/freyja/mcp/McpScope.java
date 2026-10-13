@@ -27,10 +27,15 @@ public class McpScope {
     }
     public static Long optionalId(String raw) { return raw == null ? null : id(raw); }
     public Long project(McpPrincipal caller, String raw) {
+        Long id = authorizeProject(caller, raw);
+        if (dramas.selectById(id) == null) throw new BizException(404, "项目不存在");
+        return id;
+    }
+    /** Permission-only check allows an authorized caller to recover a committed project deletion. */
+    public Long authorizeProject(McpPrincipal caller, String raw) {
         Long id = id(raw);
         if (!caller.canRead(id) && !(caller.createProjects() && operations != null && operations.createdProjectCount(id) > 0))
             throw new BizException(403, "PROJECT_ACCESS_DENIED: 项目不在 MCP 授权范围");
-        if (dramas.selectById(id) == null) throw new BizException(404, "项目不存在");
         return id;
     }
     public void belongs(Long actual, Long project) {

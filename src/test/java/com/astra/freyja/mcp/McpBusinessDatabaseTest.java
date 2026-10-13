@@ -69,6 +69,7 @@ class McpBusinessDatabaseTest {
     @Autowired ResCharacterLookMapper looks;
     @Autowired ResPropMapper props;
     @Autowired ResKeyframeMapper keyframes;
+    @Autowired ResSceneMapper resourceScenes;
     @Autowired DramaShotVideoTakeMapper takes;
     @Autowired AiModelFactory models;
     @Autowired AiImageApiService images;
@@ -81,7 +82,7 @@ class McpBusinessDatabaseTest {
     @EnableTransactionManagement
     @MapperScan(basePackages = "com.astra.freyja.dao", annotationClass = Mapper.class)
     @Import({McpJson.class, McpScope.class, McpBusinessView.class, McpAssets.class, McpBusinessSchemas.class,
-            McpBusinessRecords.class, McpOperationStore.class, McpBusinessTools.class, McpReadTools.class, McpImageUploads.class, MediaAssetServiceImpl.class,
+            McpBusinessRecords.class, McpRecordTools.class, McpOperationStore.class, McpBusinessTools.class, McpReadTools.class, McpImageUploads.class, MediaAssetServiceImpl.class,
             DramaServiceImpl.class, DramaEpisodeServiceImpl.class, DramaSceneServiceImpl.class,
             DramaShotGroupServiceImpl.class, DramaShotServiceImpl.class, ResCharacterServiceImpl.class,
             ResCharacterLookServiceImpl.class, ResCharacterOutfitServiceImpl.class, ResSceneServiceImpl.class,
@@ -96,6 +97,7 @@ class McpBusinessDatabaseTest {
             MybatisConfiguration config = new MybatisConfiguration(); config.setMapUnderscoreToCamelCase(true);
             MybatisPlusInterceptor pagination = new MybatisPlusInterceptor(); pagination.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
             MybatisSqlSessionFactoryBean factory = new MybatisSqlSessionFactoryBean();
+            factory.setMapperLocations(new org.springframework.core.io.support.PathMatchingResourcePatternResolver().getResources("classpath*:/mapper/**/*.xml"));
             factory.setDataSource(source); factory.setConfiguration(config); factory.setPlugins(pagination);
             factory.setGlobalConfig(new GlobalConfig().setMetaObjectHandler(new MyMetaObjectHandler()));
             return factory.getObject();
@@ -147,7 +149,7 @@ class McpBusinessDatabaseTest {
     @AfterEach void noInternalAiCalls() { verifyNoInteractions(models, images, prompts, renders, skillFiles); }
     @SuppressWarnings("unchecked") Map<String, Object> map(Object object) { return (Map<String, Object>) json.value(object); }
     @SuppressWarnings("unchecked") Object call(String name, McpPrincipal principal, Object input) {
-        McpTool<Object> tool = (McpTool<Object>) tools.tools().stream().filter(t -> t.name().equals(name)).findFirst().orElseThrow();
+        McpTool<Object> tool = (McpTool<Object>) java.util.stream.Stream.concat(reads.tools().stream(), tools.tools().stream()).filter(t -> t.name().equals(name)).findFirst().orElseThrow();
         return tool.handler().apply(principal, input);
     }
     McpBatchInputs.CreateItem item(String key, McpRecordType type, Map<String, Object> data) { return new McpBatchInputs.CreateItem(key, type, data); }
@@ -231,9 +233,9 @@ class McpBusinessDatabaseTest {
         assertEquals(403, assertThrows(BizException.class, () -> create("foreign-parent-01", List.of(item("scene", McpRecordType.SCENE,
                 Map.of("episodeId", "21", "name", "Invalid"))))).getCode());
         ResCharacter publicCharacter = character(50L, 0L);
-        var update = new McpBatchInputs.Update("public-update-01", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.CHARACTER, "50",
+        var update = new McpRecordInputs.BatchUpdate("public-update-01", ROOT, List.of(new McpRecordInputs.UpdateItem( "50",
                 views.fingerprint(characters.selectById(publicCharacter.getId())), Map.of("name", "Changed"))));
-        assertEquals(403, assertThrows(BizException.class, () -> call("batch_update_records", caller, update)).getCode());
+        assertEquals(403, assertThrows(BizException.class, () -> call("batch_update_characters", caller, update)).getCode());
         assertEquals(0, count("mcp_business_operation"));
     }
 
@@ -256,9 +258,9 @@ class McpBusinessDatabaseTest {
         shots.updateById(shot);
         new JdbcTemplate(dataSource).update("UPDATE drama_shot SET director_plan_json=?,director_plan_mode=? WHERE id=80", shot.getDirectorPlanJson(), shot.getDirectorPlanMode());
         DramaShot before = shots.selectById(80L);
-        var input = new McpBatchInputs.Update("patch-request-01", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80", views.fingerprint(before),
+        var input = new McpRecordInputs.BatchUpdate("patch-request-01", ROOT, List.of(new McpRecordInputs.UpdateItem( "80", views.fingerprint(before),
                 Map.of("dialogue", "New dialogue", "characterRefs", List.of(Map.of("characterId", "50", "lookId", "60")), "propRefs", List.of(Map.of("propId", "70"))))));
-        Object result = call("batch_update_records", caller, input);
+        Object result = call("batch_update_shots", caller, input);
         DramaShot after = shots.selectById(80L);
         assertEquals("New dialogue", after.getDialogue()); assertEquals(before.getPrompt(), after.getPrompt());
         assertEquals(before.getVideoPrompt(), after.getVideoPrompt()); assertEquals(before.getDirectorPlanJson(), after.getDirectorPlanJson());
@@ -266,18 +268,18 @@ class McpBusinessDatabaseTest {
         assertTrue(after.getCharacterRefsJson().contains("private action")); assertTrue(after.getPropRefsJson().contains("private prop"));
         assertTrue(json.write(result).contains("private prompt"));
         assertFalse(json.write(result).contains("directorPlanJson"));
-        assertEquals(map(result), map(call("batch_update_records", caller, input)));
+        assertEquals(map(result), map(call("batch_update_shots", caller, input)));
     }
 
     @Test void staleFingerprintAndCreatorLocksRollbackTheWholeUpdate() {
         DramaShot a = shot(80L), b = shot(81L); b.setShotType("CLOSE_UP"); b.setShotTypeLocked(true); shots.updateById(b); b = shots.selectById(81L);
-        var change = new McpBatchInputs.Update("locked-update-01", ROOT, List.of(
-                new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80", views.fingerprint(a), Map.of("dialogue", "Temporary")),
-                new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "81", views.fingerprint(b), Map.of("shotType", "FULL_SHOT"))));
-        assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_records", caller, change)).getCode());
+        var change = new McpRecordInputs.BatchUpdate("locked-update-01", ROOT, List.of(
+                new McpRecordInputs.UpdateItem( "80", views.fingerprint(a), Map.of("dialogue", "Temporary")),
+                new McpRecordInputs.UpdateItem( "81", views.fingerprint(b), Map.of("shotType", "FULL_SHOT"))));
+        assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_shots", caller, change)).getCode());
         assertNull(shots.selectById(80L).getDialogue()); assertEquals(0, count("mcp_business_operation"));
-        var stale = new McpBatchInputs.Update("stale-update-01", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80", "0".repeat(64), Map.of("dialogue", "Stale"))));
-        assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_records", caller, stale)).getCode());
+        var stale = new McpRecordInputs.BatchUpdate("stale-update-01", ROOT, List.of(new McpRecordInputs.UpdateItem( "80", "0".repeat(64), Map.of("dialogue", "Stale"))));
+        assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_shots", caller, stale)).getCode());
     }
 
     @Test void batchReadsReturnPerItemErrorsWithoutDisclosingOtherProjects() {
@@ -333,9 +335,13 @@ class McpBusinessDatabaseTest {
     }
 
     @Test void completeCatalogContainsOnlyBusinessToolsAndWhitelistedSchemas() {
-        Set<String> expected = Set.of("search_projects", "get_project", "get_project_outline", "list_shots", "get_shot", "search_assets",
+        Set<String> expected = new HashSet<>(Set.of("search_projects", "get_project", "get_project_outline", "list_shots", "get_shot", "search_assets",
                 "get_asset", "list_character_looks", "get_business_options", "batch_read_records", "list_shot_video_versions", "batch_create_records",
-                "append_storyboard", "batch_update_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version", "upload_asset_image");
+                "append_storyboard", "batch_delete_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version", "upload_asset_image"));
+        List<String> singulars = List.of("project", "episode", "scene", "shot_group", "shot", "character", "character_look", "resource_scene", "prop", "keyframe");
+        for (String object : singulars) for (String action : List.of("get", "create", "update", "delete")) expected.add(action + "_" + object);
+        for (String plural : List.of("projects", "episodes", "scenes", "shot_groups", "shots", "characters", "character_looks", "resource_scenes", "props", "keyframes")) expected.add("batch_update_" + plural);
+        assertEquals(68, expected.size()); assertFalse(expected.contains("batch_update_records"));
         List<McpTool<?>> all = new ArrayList<>(reads.tools()); all.addAll(tools.tools());
         assertEquals(expected, all.stream().map(McpTool::name).collect(java.util.stream.Collectors.toSet()));
         for (McpTool<?> tool : all) {
@@ -346,7 +352,7 @@ class McpBusinessDatabaseTest {
             assertBusinessSchema(json.value(spec.tool().inputSchema()));
         }
         properties.setWriteEnabled(false);
-        assertEquals(Set.of("batch_read_records", "list_shot_video_versions"), tools.tools().stream().map(McpTool::name).collect(java.util.stream.Collectors.toSet()));
+        assertEquals(10, tools.tools().size()); assertTrue(tools.tools().stream().allMatch(t -> t.effect() == McpTool.Effect.READ));
     }
 
     void assertBusinessSchema(Object node) {
@@ -427,7 +433,7 @@ class McpBusinessDatabaseTest {
         before.setCharacterRefsJson("[{\"characterId\":50,\"lookId\":60,\"actionPrompt\":\"old action\",\"emotionPrompt\":\"preserve emotion\"}]"); shots.updateById(before);
         Map<String, Object> data = new LinkedHashMap<>(Map.of("duration", 6, "videoPrompt", "external replacement", "directorPlan", plan(6),
                 "characterRefs", List.of(Map.of("characterId", "50", "actionPrompt", "new action")))); data.put("prompt", null); data.put("customScenePrompt", null);
-        var result = call("batch_update_records", caller, new McpBatchInputs.Update("external-patch01", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT,
+        var result = call("batch_update_shots", caller, new McpRecordInputs.BatchUpdate("external-patch01", ROOT, List.of(new McpRecordInputs.UpdateItem(
                 "80", views.fingerprint(shots.selectById(80L)), data))));
         DramaShot after = shots.selectById(80L); assertNull(after.getPrompt()); assertNull(after.getCustomScenePrompt()); assertEquals("preserve first", after.getFirstFramePrompt());
         assertEquals("external replacement", after.getVideoPrompt()); assertEquals("MANUAL", after.getDirectorPlanMode()); assertEquals(1, after.getDirectorPlanRevision());
@@ -436,12 +442,12 @@ class McpBusinessDatabaseTest {
     }
 
     @Test void invalidDirectorPlanRollsBackShotAndEarlierBatchItems() {
-        DramaShot before = shot(80L);
+        DramaShot before = shot(80L); DramaShot earlier = shot(81L);
         Map<String, Object> invalid = new LinkedHashMap<>(plan(5)); invalid.put("cameraBeats", List.of(Map.of("startSec", 1, "endSec", 5, "movement", "STATIC", "speed", "NONE")));
-        var input = new McpBatchInputs.Update("invalid-plan-001", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.EPISODE, "20", views.fingerprint(episodes.selectById(20L)), Map.of("title", "Temporary")),
-                new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80", views.fingerprint(before), Map.of("prompt", "Temporary", "directorPlan", invalid))));
-        assertEquals(400, assertThrows(BizException.class, () -> call("batch_update_records", caller, input)).getCode());
-        assertEquals("Episode", episodes.selectById(20L).getTitle()); assertNull(shots.selectById(80L).getPrompt()); assertEquals(0, count("mcp_business_operation"));
+        var input = new McpRecordInputs.BatchUpdate("invalid-plan-001", ROOT, List.of(new McpRecordInputs.UpdateItem("81", views.fingerprint(earlier), Map.of("dialogue", "Temporary")),
+                new McpRecordInputs.UpdateItem( "80", views.fingerprint(before), Map.of("prompt", "Temporary", "directorPlan", invalid))));
+        assertEquals(400, assertThrows(BizException.class, () -> call("batch_update_shots", caller, input)).getCode());
+        assertNull(shots.selectById(81L).getDialogue()); assertNull(shots.selectById(80L).getPrompt()); assertEquals(0, count("mcp_business_operation"));
     }
 
     @Test void referenceMediaCannotCrossProjectsAndInternalSkillProvenanceCannotBeSpoofed() {
@@ -505,7 +511,7 @@ class McpBusinessDatabaseTest {
         List<?> audio = (List<?>) view.get("refAudios"); assertNotNull(map(audio.getFirst()).get("id"));
         assertEquals(created, create("workshop-order-01", List.of(item("shot", McpRecordType.SHOT, data))));
         List<?> reordered = List.of(media.get(1), media.get(0));
-        call("batch_update_records", caller, new McpBatchInputs.Update("workshop-order-02", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, id,
+        call("batch_update_shots", caller, new McpRecordInputs.BatchUpdate("workshop-order-02", ROOT, List.of(new McpRecordInputs.UpdateItem( id,
                 views.fingerprint(saved), Map.of("prompt", "<Picture 1> 画外人物；<Picture 2> 风格；<Audio 1> 音效。", "refImages", reordered)))));
         Map<String, Object> updated = records.read(caller, McpRecordType.SHOT, id, ROOT);
         assertEquals(reordered, updated.get("refImages")); assertEquals(audio, updated.get("refAudios")); assertNull(shots.selectById(McpScope.id(id)).getDirectorPlanJson());
@@ -531,10 +537,10 @@ class McpBusinessDatabaseTest {
 
     @Test void ordinaryWorkshopPatchPreservesExistingManualPlan() {
         shot(80L);
-        call("batch_update_records", caller, new McpBatchInputs.Update("optional-plan-01", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80",
+        call("batch_update_shots", caller, new McpRecordInputs.BatchUpdate("optional-plan-01", ROOT, List.of(new McpRecordInputs.UpdateItem( "80",
                 views.fingerprint(shots.selectById(80L)), Map.of("directorPlan", plan(5))))));
         DramaShot before = shots.selectById(80L);
-        call("batch_update_records", caller, new McpBatchInputs.Update("optional-plan-02", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80",
+        call("batch_update_shots", caller, new McpRecordInputs.BatchUpdate("optional-plan-02", ROOT, List.of(new McpRecordInputs.UpdateItem( "80",
                 views.fingerprint(before), Map.of("videoPrompt", "直接填写卡片")))));
         DramaShot after = shots.selectById(80L);
         assertEquals(before.getDirectorPlanJson(), after.getDirectorPlanJson()); assertEquals(before.getDirectorPlanRevision(), after.getDirectorPlanRevision());
@@ -544,14 +550,167 @@ class McpBusinessDatabaseTest {
     @Test void externalAgentCannotOverrideOrResetCreatorLockedDirectorPlan() {
         shot(80L);
         Map<String, Object> locked = new LinkedHashMap<>(plan(5)); locked.put("lockedFields", List.of("narrativeIntent"));
-        call("batch_update_records", caller, new McpBatchInputs.Update("locked-plan-set1", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80",
+        call("batch_update_shots", caller, new McpRecordInputs.BatchUpdate("locked-plan-set1", ROOT, List.of(new McpRecordInputs.UpdateItem( "80",
                 views.fingerprint(shots.selectById(80L)), Map.of("directorPlan", locked)))));
         Map<String, Object> changed = new LinkedHashMap<>(locked); changed.put("narrativeIntent", "覆盖创作者意图");
         for (Map<String, Object> data : List.of(Map.<String, Object>of("directorPlan", changed), Map.<String, Object>of("directorPlanMode", "AUTO"))) {
-            var input = new McpBatchInputs.Update("locked-plan-deny", ROOT, List.of(new McpBatchInputs.UpdateItem(McpRecordType.SHOT, "80", views.fingerprint(shots.selectById(80L)), data)));
-            assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_records", caller, input)).getCode());
+            var input = new McpRecordInputs.BatchUpdate("locked-plan-deny", ROOT, List.of(new McpRecordInputs.UpdateItem( "80", views.fingerprint(shots.selectById(80L)), data)));
+            assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_shots", caller, input)).getCode());
         }
         assertEquals(1, shots.selectById(80L).getDirectorPlanRevision()); assertEquals("MANUAL", shots.selectById(80L).getDirectorPlanMode());
+    }
+
+    Map<String, Object> singleRead(String object, McpPrincipal principal, String project, String id) {
+        Object input = object.equals("project") ? new McpInputs.Project(project) : object.equals("shot") ? new McpInputs.Shot(project, id)
+                : new McpRecordInputs.Get(project, id);
+        return map(call("get_" + object, principal, input));
+    }
+    McpBatchInputs.DeleteItem deleteItem(McpRecordType type, String id) {
+        return new McpBatchInputs.DeleteItem(type, id, views.fingerprint(records.require(caller, type, id, ROOT, true)));
+    }
+
+    @Test void everyObjectHasWorkingSingleCrudAndDedicatedBatchUpdate() {
+        McpPrincipal creator = new McpPrincipal(true, false, true, Set.of());
+        var projectInput = new McpRecordInputs.Create("single-create-project", null, Map.of("title", "Isolated project"));
+        Map<String, Object> created = map(call("create_project", creator, projectInput));
+        assertEquals(created, map(call("create_project", creator, projectInput)));
+        String project = (String) created.get("recordId");
+        Map<String, String> ids = new LinkedHashMap<>(); ids.put("project", project);
+        Map<String, Map<String, Object>> data = new LinkedHashMap<>();
+        data.put("episode", Map.of("title", "Episode"));
+        data.put("character", Map.of("name", "Actor"));
+        data.put("resource_scene", Map.of("name", "Location"));
+        data.put("prop", Map.of("name", "Prop"));
+        data.put("keyframe", Map.of("name", "Frame", "frameUrl", "https://media/frame.png"));
+        for (var entry : data.entrySet()) {
+            var result = map(call("create_" + entry.getKey(), creator, new McpRecordInputs.Create("single-create-" + entry.getKey(), project, entry.getValue())));
+            ids.put(entry.getKey(), (String) result.get("recordId"));
+        }
+        ids.put("scene", (String) map(call("create_scene", creator, new McpRecordInputs.Create("single-create-scene", project, Map.of("episodeId", ids.get("episode"))))).get("recordId"));
+        ids.put("shot_group", (String) map(call("create_shot_group", creator, new McpRecordInputs.Create("single-create-group", project, Map.of("sceneId", ids.get("scene"))))).get("recordId"));
+        ids.put("shot", (String) map(call("create_shot", creator, new McpRecordInputs.Create("single-create-shot", project, Map.of("sceneId", ids.get("scene"), "shotGroupId", ids.get("shot_group"))))).get("recordId"));
+        ids.put("character_look", (String) map(call("create_character_look", creator, new McpRecordInputs.Create("single-create-look", project,
+                Map.of("characterId", ids.get("character"), "lookName", "Day", "designDesc", "Grey coat")))).get("recordId"));
+        for (var entry : ids.entrySet()) {
+            String object = entry.getKey(), id = entry.getValue();
+            var before = singleRead(object, creator, project, id);
+            assertEquals(id, before.get("id"));
+            var update = new McpRecordInputs.Update("single-update-" + object, project, id, (String) before.get("editFingerprint"), Map.of("remark", "Single update"));
+            Object updated = call("update_" + object, creator, update);
+            assertEquals(map(updated), map(call("update_" + object, creator, update)));
+            var after = singleRead(object, creator, project, id); assertEquals("Single update", after.get("remark"));
+            var batch = new McpRecordInputs.BatchUpdate("typed-batch-" + object, project, List.of(new McpRecordInputs.UpdateItem(id, (String) after.get("editFingerprint"), Map.of("remark", "Batch update"))));
+            call("batch_update_" + object + "s", creator, batch);
+            assertEquals("Batch update", singleRead(object, creator, project, id).get("remark"));
+        }
+        for (String object : List.of("keyframe", "prop", "resource_scene", "character_look", "character", "shot", "shot_group", "scene", "episode", "project")) {
+            String id = ids.get(object);
+            var delete = new McpRecordInputs.Delete("single-delete-" + object, project, id, (String) singleRead(object, creator, project, id).get("editFingerprint"));
+            var result = map(call("delete_" + object, creator, delete)); assertEquals(true, result.get("deleted"));
+            assertEquals(result, map(call("delete_" + object, creator, delete)));
+            assertEquals("SUCCEEDED", map(journal.read(creator, delete.requestId())).get("status"));
+            assertEquals(404, assertThrows(BizException.class, () -> singleRead(object, creator, project, id)).getCode());
+        }
+        verifyNoInteractions(storage);
+    }
+
+    @Test void batchDeleteChecksAllOriginalVersionsThenDeletesChildrenBeforeParentsAndReplays() {
+        shot(80L);
+        DramaShotVideoTake take = new DramaShotVideoTake(); take.setId(90L); take.setShotId(80L); takes.insert(take);
+        var input = new McpBatchInputs.Delete("delete-hierarchy-01", ROOT, List.of(deleteItem(McpRecordType.SHOT, "80"),
+                deleteItem(McpRecordType.SHOT_GROUP, "40"), deleteItem(McpRecordType.SCENE, "30"),
+                deleteItem(McpRecordType.EPISODE, "20"), deleteItem(McpRecordType.PROJECT, ROOT)));
+        Object result = call("batch_delete_records", caller, input);
+        assertNull(dramas.selectById(PROJECT)); assertNull(takes.selectById(90L));
+        assertEquals(1, new JdbcTemplate(dataSource).queryForObject("SELECT deleted FROM drama WHERE id=?", Integer.class, PROJECT));
+        assertEquals(map(result), map(call("batch_delete_records", caller, input)));
+        assertEquals("SUCCEEDED", map(journal.read(caller, input.requestId())).get("status"));
+        verifyNoInteractions(storage);
+    }
+
+    @Test void deleteRollbackRejectsStaleDuplicateParentPublicForeignAndReadOnlyRequests() {
+        shot(80L); shot(81L);
+        var a = deleteItem(McpRecordType.SHOT, "80"); var b = deleteItem(McpRecordType.SHOT, "81");
+        var parent = deleteItem(McpRecordType.SHOT_GROUP, "40");
+        for (List<McpBatchInputs.DeleteItem> items : List.of(List.of(a, parent), List.of(a, a),
+                List.of(a, new McpBatchInputs.DeleteItem(b.type(), b.recordId(), "0".repeat(64))))) {
+            assertThrows(BizException.class, () -> call("batch_delete_records", caller, new McpBatchInputs.Delete("delete-fail-test", ROOT, items)));
+            assertNotNull(shots.selectById(80L)); assertNotNull(groups.selectById(40L)); assertEquals(0, count("mcp_business_operation"));
+        }
+        character(50L, 0L); character(51L, PROJECT + 1);
+        for (String id : List.of("50", "51")) assertEquals(403, assertThrows(BizException.class, () -> call("delete_character", caller,
+                new McpRecordInputs.Delete("delete-scope-test", ROOT, id, views.fingerprint(characters.selectById(McpScope.id(id)))))).getCode());
+        assertEquals(403, assertThrows(BizException.class, () -> call("delete_shot", new McpPrincipal(false, false, false, Set.of(PROJECT)),
+                new McpRecordInputs.Delete("delete-readonly-01", ROOT, "80", a.expectedFingerprint()))).getCode());
+        var unsupported = new McpRecordInputs.Create("single-foreign-01", Long.toString(PROJECT + 1), Map.of("name", "Forbidden"));
+        assertEquals(403, assertThrows(BizException.class, () -> call("create_prop", caller, unsupported)).getCode());
+        verifyNoInteractions(storage);
+    }
+
+    @Test void defaultLookPromotionDoesNotInvalidateLaterDeletionInSameBatch() {
+        character(50L, PROJECT); look(60L, 50L, 1); look(61L, 50L, 0);
+        var input = new McpBatchInputs.Delete("delete-looks-001", ROOT, List.of(deleteItem(McpRecordType.CHARACTER_LOOK, "60"),
+                deleteItem(McpRecordType.CHARACTER_LOOK, "61"), deleteItem(McpRecordType.CHARACTER, "50")));
+        call("batch_delete_records", caller, input);
+        assertNull(looks.selectById(60L)); assertNull(looks.selectById(61L)); assertNull(characters.selectById(50L));
+    }
+
+    @Test void directReferencesWeakImageBindingsAndAudioReferencesBlockAssetDeletion() {
+        character(50L, PROJECT); look(60L, 50L, 1); shot(80L);
+        ResScene location = new ResScene(); location.setId(70L); location.setDramaId(PROJECT); location.setName("Location"); resourceScenes.insert(location);
+        ResProp prop = new ResProp(); prop.setId(71L); prop.setDramaId(PROJECT); prop.setName("Prop"); props.insert(prop);
+        ResKeyframe frame = new ResKeyframe(); frame.setId(72L); frame.setDramaId(PROJECT); frame.setName("Frame"); keyframes.insert(frame);
+        record Case(McpRecordType type, String id, String column, Object value) {}
+        List<Case> cases = List.of(
+                new Case(McpRecordType.CHARACTER_LOOK, "60", "character_refs_json", "[{\"characterId\":50,\"lookId\":60}]"),
+                new Case(McpRecordType.CHARACTER_LOOK, "60", "ref_images_json", "[{\"sourceType\":\"UPLOAD\",\"lookId\":\"60\"}]"),
+                new Case(McpRecordType.CHARACTER_LOOK, "60", "ref_images_json", "[{\"sourceType\":\"CHARACTER_REFERENCE\",\"sourceId\":\"60\"}]"),
+                new Case(McpRecordType.RESOURCE_SCENE, "70", "res_scene_id", 70L),
+                new Case(McpRecordType.PROP, "71", "prop_refs_json", "[{\"propId\":\"71\"}]"),
+                new Case(McpRecordType.PROP, "71", "ref_images_json", "[{\"sourceType\":\"PROP\",\"sourceId\":\"71\"}]"),
+                new Case(McpRecordType.KEYFRAME, "72", "res_keyframe_id", 72L),
+                new Case(McpRecordType.KEYFRAME, "72", "ref_images_json", "[{\"sourceType\":\"KEYFRAME\",\"sourceId\":\"72\"}]"));
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        for (Case c : cases) {
+            jdbc.update("UPDATE drama_shot SET " + c.column() + "=? WHERE id=80", c.value());
+            var input = new McpBatchInputs.Delete("delete-in-use-01", ROOT, List.of(deleteItem(c.type(), c.id())));
+            assertTrue(assertThrows(BizException.class, () -> call("batch_delete_records", caller, input)).getMessage().contains("RECORD_IN_USE"));
+            jdbc.update("UPDATE drama_shot SET " + c.column() + "=NULL WHERE id=80");
+        }
+        call("delete_character_look", caller, new McpRecordInputs.Delete("delete-empty-look", ROOT, "60", views.fingerprint(looks.selectById(60L))));
+        for (String[] ref : List.of(new String[]{"character_refs_json", "[{\"characterId\":50}]"},
+                new String[]{"ref_images_json", "[{\"sourceType\":\"UPLOAD\",\"characterId\":\"50\"}]"},
+                new String[]{"ref_images_json", "[{\"sourceType\":\"CHARACTER\",\"sourceId\":\"50\"}]"},
+                new String[]{"ref_audios_json", "[{\"sourceType\":\"UPLOAD\",\"characterId\":\"50\"}]"})) {
+            jdbc.update("UPDATE drama_shot SET " + ref[0] + "=? WHERE id=80", ref[1]);
+            var input = new McpBatchInputs.Delete("delete-char-used", ROOT, List.of(deleteItem(McpRecordType.CHARACTER, "50")));
+            assertTrue(assertThrows(BizException.class, () -> call("batch_delete_records", caller, input)).getMessage().contains("RECORD_IN_USE"));
+            jdbc.update("UPDATE drama_shot SET " + ref[0] + "=NULL WHERE id=80");
+        }
+        jdbc.update("UPDATE drama_scene SET res_scene_id=70 WHERE id=30");
+        assertThrows(BizException.class, () -> call("batch_delete_records", caller, new McpBatchInputs.Delete("delete-sc-used01", ROOT, List.of(deleteItem(McpRecordType.RESOURCE_SCENE, "70")))));
+        jdbc.update("UPDATE drama_scene SET res_scene_id=NULL WHERE id=30");
+        call("batch_delete_records", caller, new McpBatchInputs.Delete("delete-free-001", ROOT, List.of(deleteItem(McpRecordType.CHARACTER, "50"),
+                deleteItem(McpRecordType.RESOURCE_SCENE, "70"), deleteItem(McpRecordType.PROP, "71"), deleteItem(McpRecordType.KEYFRAME, "72"))));
+        verifyNoInteractions(storage);
+    }
+
+    @Test void busyShotsBoundKeyframesVideoSourcesAndInvalidStoredReferencesRejectDeletion() {
+        DramaShot a = shot(80L), b = shot(81L); b.setFirstFrameSourceShotId(80L); shots.updateById(b);
+        assertTrue(assertThrows(BizException.class, () -> call("batch_delete_records", caller,
+                new McpBatchInputs.Delete("delete-video-ref", ROOT, List.of(deleteItem(McpRecordType.SHOT, "80"))))).getMessage().contains("RECORD_IN_USE"));
+        call("batch_delete_records", caller, new McpBatchInputs.Delete("delete-video-pair", ROOT, List.of(deleteItem(McpRecordType.SHOT, "81"), deleteItem(McpRecordType.SHOT, "80"))));
+        a = shot(82L); a.setRenderStatus("RENDERING"); shots.updateById(a);
+        assertTrue(assertThrows(BizException.class, () -> call("batch_delete_records", caller,
+                new McpBatchInputs.Delete("delete-busy-shot", ROOT, List.of(deleteItem(McpRecordType.SHOT, "82"))))).getMessage().contains("RECORD_BUSY"));
+        new JdbcTemplate(dataSource).update("UPDATE drama_shot SET render_status=NULL WHERE id=82");
+        ResKeyframe frame = new ResKeyframe(); frame.setId(72L); frame.setDramaId(PROJECT); frame.setShotId(82L); keyframes.insert(frame);
+        assertTrue(assertThrows(BizException.class, () -> call("batch_delete_records", caller,
+                new McpBatchInputs.Delete("delete-bound-shot", ROOT, List.of(deleteItem(McpRecordType.SHOT, "82"))))).getMessage().contains("HAS_CHILDREN"));
+        character(50L, PROJECT);
+        new JdbcTemplate(dataSource).update("UPDATE drama_shot SET ref_images_json='invalid json' WHERE id=82");
+        assertTrue(assertThrows(BizException.class, () -> call("batch_delete_records", caller,
+                new McpBatchInputs.Delete("delete-invalid-ref", ROOT, List.of(deleteItem(McpRecordType.CHARACTER, "50"))))).getMessage().contains("REFERENCE_DATA_INVALID"));
     }
 
     @Test void batchSizeLimitsAndDuplicateKeysDoNotLeavePartialWrites() {

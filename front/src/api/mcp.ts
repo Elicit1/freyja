@@ -9,6 +9,8 @@ export interface McpToolInfo {
   inputSchema: Record<string, unknown>
 }
 export interface McpSettings {
+  recordTypes: string[]
+  crudCapabilities: McpCrudCapability[]
   revision: number
   enabled: boolean
   writeEnabled: boolean
@@ -20,6 +22,15 @@ export interface McpSettings {
   endpoint: string
   protocol: string
   tools: McpToolInfo[]
+}
+export interface McpCrudCapability {
+  type: string
+  label: string
+  read: string
+  create: string
+  update: string
+  delete: string
+  batchUpdate: string
 }
 export interface McpSettingsUpdate {
   revision: number

@@ -4,7 +4,7 @@
 
 ## 创建业务记录
 
-所有创建请求需要 `requestId`、`items`；每项需要 `clientKey`、`type`、`data`。操作已有项目需要顶层 `dramaId`，不要在 `data` 中重复填写。业务 ID 使用字符串，批内可以引用此前的 `clientKey`。
+单条创建使用各对象的 `create_*` 工具，需要 `requestId,dramaId,data`；`create_project` 省略 `dramaId`。跨对象批量创建需要 `requestId,items`，每项需要 `clientKey,type,data`。操作已有项目需要顶层 `dramaId`，不要在 `data` 中重复填写。业务 ID 使用字符串，仅跨对象创建批次可以引用此前的 `clientKey`。
 
 | 记录类型 | `data` 最小必填 | 可以省略的内容 |
 |---|---|---|
@@ -21,7 +21,9 @@
 
 `designDesc` 是造型的视觉概念描述，是现有业务校验的必填项；不能把它与可省略的英文妆发/状态 `appearancePrompt` 混同。MCP 不额外要求人物/造型先运行内部 AI 生成提示词。
 
-修改请求每项需要 `recordId`、`expectedFingerprint` 和至少一个要改的业务字段。创建必填字段不要求在补丁中重传；省略字段保留原值。引用数组提交时替换整个数组，图和音频按提交顺序保存。
+单条修改使用 `update_*`；批量修改按对象拆分，例如 `batch_update_shots / batch_update_characters`。请求需要 `requestId,dramaId`，单条或每个批量项需要 `recordId,expectedFingerprint,data`，不接收 `type`。创建必填字段不要求在补丁中重传；`data` 至少一个字段，省略字段保留原值。引用数组提交时替换整个数组，图和音频按提交顺序保存。
+
+单条删除使用 `delete_*`，需要 `requestId,dramaId,recordId,expectedFingerprint`；跨对象批量删除使用 `batch_delete_records`，每项额外需要 `type`。不用填写业务 `data`。先解除引用并先子后父，仅逻辑删除且保留媒体文件。完整工具映射见 [MCP 使用说明](mcp-api.md#各业务对象独立-crud)。配置页“业务 CRUD”根据服务端映射展示 10 类对象的单条 CRUD 和独立批量修改状态。
 
 ## 填写提示词工作台
 

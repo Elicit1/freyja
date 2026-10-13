@@ -48,13 +48,13 @@ class McpRuntimeProtocolIntegrationTest {
             McpToolInventory.class, McpSettingsController.class, CryptoUtil.class, GlobalExceptionHandler.class})
     static class App {
         @Bean McpRuntimeControl control(McpProperties properties, McpServerConfigMapper mapper, McpJson json, CryptoUtil crypto,
-                McpToolInventory inventory, ObjectProvider<McpStatelessSyncServer> servers, ObjectProvider<McpToolCatalog> catalogs,
+                McpToolInventory inventory, McpRecordTools recordTools, ObjectProvider<McpStatelessSyncServer> servers, ObjectProvider<McpToolCatalog> catalogs,
                 SqlSessionFactory sqlSessionFactory, DataSource source) {
             // The production database already owns sys_config; create it before transport registration in this test.
             new JdbcTemplate(source).execute("CREATE TABLE IF NOT EXISTS sys_config (id BIGINT PRIMARY KEY,config_name VARCHAR(100),config_key VARCHAR(100),"
                     + "config_value VARCHAR(100000),config_type VARCHAR(32),is_builtin INTEGER,status INTEGER,deleted INTEGER,"
                     + "create_by BIGINT,update_by BIGINT,create_time TIMESTAMP,update_time TIMESTAMP,remark VARCHAR(500))");
-            return new McpRuntimeControl(properties, mapper, json, crypto, inventory, servers, catalogs);
+            return new McpRuntimeControl(properties, mapper, json, crypto, inventory, recordTools, servers, catalogs);
         }
     }
     @BeforeEach void setup() { fixture = new McpBusinessDatabaseTest(); factory.autowireBean(fixture); fixture.setup(); fixture.properties.setWriteEnabled(false); control.publish(control.current()); }
@@ -83,13 +83,13 @@ class McpRuntimeProtocolIntegrationTest {
     }
     @Test void uiConfigEnablesDefaultOffServerWithoutRestartAndNeverReturnsToken() throws Exception {
         assertEquals(404, rpc("tools/list", Map.of(), TOKEN).statusCode());
-        JsonNode initial = admin("/system/mcp", null).path("data"); assertFalse(initial.path("enabled").asBoolean()); assertEquals(20, initial.path("tools").size());
+        JsonNode initial = admin("/system/mcp", null).path("data"); assertFalse(initial.path("enabled").asBoolean()); assertEquals(68, initial.path("tools").size());
         assertEquals(400, admin("/system/mcp/enabled", Map.of("revision", 0, "enabled", true)).path("code").asInt()); assertNull(configs.find());
         JsonNode saved = configure(false, true); assertEquals(200, saved.path("code").asInt(), saved.toString());
         assertFalse(saved.toString().contains(TOKEN)); assertFalse(saved.toString().contains("tokenCiphertext")); assertTrue(saved.path("data").path("tokenConfigured").asBoolean());
         assertFalse(configs.find().getConfigValue().contains(TOKEN));
         assertEquals(200, admin("/system/mcp/enabled", Map.of("revision", revision(), "enabled", true)).path("code").asInt());
-        assertEquals(401, rpc("tools/list", Map.of(), "incorrect").statusCode()); assertEquals(20, toolNames().size());
+        assertEquals(401, rpc("tools/list", Map.of(), "incorrect").statusCode()); assertEquals(68, toolNames().size());
     }
     @Test void disabledToolDisappearsAndCachedHandlerCannotExecuteIt() throws Exception {
         assertEquals(200, configure(true, true).path("code").asInt());
@@ -111,7 +111,7 @@ class McpRuntimeProtocolIntegrationTest {
         assertEquals(200, admin("/system/mcp", null).path("code").asInt());
         admin("/system/mcp/enabled", Map.of("revision", revision(), "enabled", true)); assertFalse(toolNames().contains("get_shot"));
         assertEquals(200, configure(true, false).path("code").asInt()); assertFalse(toolNames().contains("batch_create_records")); assertFalse(toolNames().contains("get_business_operation"));
-        assertEquals(10, toolNames().size()); assertFalse(toolNames().contains("get_shot"));
+        assertEquals(18, toolNames().size()); assertFalse(toolNames().contains("get_shot"));
     }
 
     @Test void uploadToolHasIndependentSwitchAndCachedHandlerCannotUploadWhenDisabled() throws Exception {
@@ -141,10 +141,40 @@ class McpRuntimeProtocolIntegrationTest {
     }
     Set<String> toolNamesForServer() { Set<String> result = new HashSet<>(); server.listTools().forEach(t -> result.add(t.name())); return result; }
 
+    @Test void crudMatrixShowsAllObjectsAndIndividualDeleteSwitchReallyBlocksCalls() throws Exception {
+        configure(true, true);
+        JsonNode settings = admin("/system/mcp", null).path("data");
+        assertEquals(10, settings.path("crudCapabilities").size()); assertEquals(10, settings.path("recordTypes").size());
+        fixture.shot(80L);
+        admin("/system/mcp/tools/delete_shot", Map.of("revision", revision(), "enabled", false));
+        assertFalse(toolNames().contains("delete_shot")); assertTrue(toolNames().contains("batch_delete_records"));
+        Map<String, Object> arguments = Map.of("requestId", "disabled-delete-01", "dramaId", McpBusinessDatabaseTest.ROOT, "recordId", "80",
+                "expectedFingerprint", fixture.views.fingerprint(fixture.shots.selectById(80L)));
+        var cachedTool = inventory.all().stream().filter(t -> t.name().equals("delete_shot")).findFirst().orElseThrow();
+        var result = catalog.specification(cachedTool).callHandler().apply(McpTransportContext.create(Map.of(McpPrincipal.CONTEXT_KEY, fixture.caller)),
+                new McpSchema.CallToolRequest("delete_shot", arguments));
+        assertTrue(result.isError()); assertNotNull(fixture.shots.selectById(80L));
+        assertEquals(0, fixture.count("mcp_business_operation"));
+    }
+
+    @Test void legacyUpdateSwitchMigratesToDedicatedToolsAndCanBeSaved() throws Exception {
+        configure(true, true);
+        var legacy = control.current(); legacy.getTools().put("batch_update_records", false);
+        configs.save(fixture.json.write(legacy));
+        var migrated = control.current(); assertFalse(migrated.getTools().containsKey("batch_update_records"));
+        for (var capability : factory.getBean(McpRecordTools.class).capabilities()) {
+            assertEquals(false, migrated.getTools().get(capability.get("batchUpdate")));
+            assertEquals(false, migrated.getTools().get(capability.get("update")));
+        }
+        assertEquals(200, admin("/system/mcp/tools/batch_update_shots", Map.of("revision", revision(), "enabled", true)).path("code").asInt());
+        assertTrue(toolNames().contains("batch_update_shots")); assertFalse(toolNames().contains("batch_update_props"));
+        assertFalse(configs.find().getConfigValue().contains("batch_update_records"));
+    }
+
     @Test void savedSettingsAndEncryptedTokenSurviveAControlServiceRestart() throws Exception {
         assertEquals(200, configure(true, true).path("code").asInt());
         admin("/system/mcp/tools/get_shot", Map.of("revision", revision(), "enabled", false));
-        var restarted = new McpRuntimeControl(fixture.properties, configs, fixture.json, factory.getBean(CryptoUtil.class), inventory,
+        var restarted = new McpRuntimeControl(fixture.properties, configs, fixture.json, factory.getBean(CryptoUtil.class), inventory, factory.getBean(McpRecordTools.class),
                 factory.getBeanProvider(McpStatelessSyncServer.class), factory.getBeanProvider(McpToolCatalog.class));
         assertFalse(fixture.properties.isEnabled()); assertTrue(restarted.current().isEnabled());
         assertFalse(restarted.current().getTools().get("get_shot")); assertEquals(TOKEN, restarted.token(restarted.current()));

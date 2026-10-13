@@ -26,6 +26,7 @@ public class McpAssets {
     private final McpScope scope;
     private final McpJson json;
     private final McpBusinessView views;
+    private final McpQueryMapper queries;
 
     public record Entry(AssetType type, Long id, Long dramaId, Long characterId, Long shotId) {}
 
@@ -75,18 +76,16 @@ public class McpAssets {
             if (project == null) query.and(q -> q.isNull("drama_id").or().eq("drama_id", 0)); else query.eq("drama_id", project);
             if (input.characterId() != null) throw new BizException(400, "仅造型查询接受 characterId");
         }
-        if (input.type() == AssetType.KEYFRAME) query.apply("(shot_id IS NULL OR EXISTS (SELECT 1 FROM drama_shot s "
-                + "JOIN drama_scene sc ON sc.id=s.scene_id AND sc.deleted=0 "
-                + "JOIN drama_episode ep ON ep.id=s.episode_id AND ep.id=sc.episode_id AND ep.deleted=0 "
-                + "WHERE s.id=res_keyframe.shot_id AND s.drama_id=res_keyframe.drama_id AND s.deleted=0 "
-                + "AND sc.drama_id=s.drama_id AND ep.drama_id=s.drama_id"
-                + McpQueryMapper.VALID_SHOT_GROUP + "))");
         String column = input.type() == AssetType.CHARACTER_LOOK ? "look_name" : "name";
         if (input.keyword() != null && !input.keyword().isBlank()) {
             if (input.keyword().length() > 200) throw new BizException(400, "关键词过长");
             query.like(column, input.keyword());
         }
         query.orderByAsc("sort_order").orderByAsc("id");
+        if (input.type() == AssetType.KEYFRAME) {
+            Page<ResKeyframe> page = queries.keyframes(new Page<>(McpScope.page(input.page()), McpScope.size(input.size())), project, input.keyword());
+            return McpReadTools.page(page, page.getRecords().stream().map(e -> views.project(McpBusinessView.Kind.KEYFRAME, e)).toList());
+        }
         Page<BaseEntity> page = mapper(input.type()).selectPage(new Page<>(McpScope.page(input.page()), McpScope.size(input.size())), query);
         return McpReadTools.page(page, page.getRecords().stream().map(e -> views.project(McpBusinessView.kind(input.type()), e)).toList());
     }

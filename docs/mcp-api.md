@@ -63,7 +63,7 @@ tool_timeout_sec = 300
 
 ## 工具目录
 
-提供 20 个可独立配置的业务工具，默认只读模式最多发布 11 个，开启写入权限后最多发布 20 个；实际发布数量还受整体开关与各工具开关控制。资源 `freyja://guide` 提供业务使用规则。没有 MCP Prompts 模板服务能力；业务记录中的提示词数据通过普通读写工具处理。
+提供 68 个可独立配置的业务工具，默认只读模式最多发布 19 个，开启写入权限后最多发布 68 个；实际发布数量还受整体开关与各工具开关控制。资源 `freyja://guide` 提供业务使用规则。没有 MCP Prompts 模板服务能力；业务记录中的提示词数据通过普通读写工具处理。
 
 | 只读工具 | 参数与用途 |
 |---|---|
@@ -85,7 +85,7 @@ tool_timeout_sec = 300
 |---|---|
 | `batch_create_records` | 单事务创建最多 100 项，支持有序 `clientKey` 引用 |
 | `append_storyboard` | 向已有项目追加外部生成的结构化资产/分镜，不调用内部拆解 |
-| `batch_update_records` | 最多 100 项局部更新，每项需当前 `expectedFingerprint` |
+| `batch_delete_records` | 最多 100 项跨对象逻辑删除，每项需 `type,recordId,expectedFingerprint`；先子后父，不隐式级联 |
 | `get_business_operation` | 只读查询 MCP 业务请求已提交结果，用于断线恢复，不查询内部 AI 任务 |
 | `clone_shot` | `requestId,dramaId,shotId,expectedFingerprint`，复制分镜并清理原分镜所属媒体版本/帧来源 |
 | `set_default_character_look` | `requestId,dramaId,lookId,expectedFingerprint`，复用默认造型互斥规则 |
@@ -94,6 +94,39 @@ tool_timeout_sec = 300
 | `upload_asset_image` | `requestId,dramaId,purpose,dataBase64,fileName?`，上传 PNG/JPEG/静态 WebP 参考图，返回可关联的 URL；单张最多 10 MiB |
 
 业务 ID 全部使用十进制 JSON **字符串**，包括嵌套人物、造型、道具 ID。数字形式、零、空字符串或超出 Long 范围均拒绝；JSON-RPC 请求 ID 保持原始类型。
+
+## 各业务对象独立 CRUD
+
+| 业务对象 | 单条读取 | 单条创建 | 单条修改 | 单条删除 | 批量修改 |
+|---|---|---|---|---|---|
+| 项目 (PROJECT) | `get_project` | `create_project` | `update_project` | `delete_project` | `batch_update_projects` |
+| 剧集 (EPISODE) | `get_episode` | `create_episode` | `update_episode` | `delete_episode` | `batch_update_episodes` |
+| 剧情场次 (SCENE) | `get_scene` | `create_scene` | `update_scene` | `delete_scene` | `batch_update_scenes` |
+| 镜头组 (SHOT_GROUP) | `get_shot_group` | `create_shot_group` | `update_shot_group` | `delete_shot_group` | `batch_update_shot_groups` |
+| 分镜 (SHOT) | `get_shot` | `create_shot` | `update_shot` | `delete_shot` | `batch_update_shots` |
+| 人物 (CHARACTER) | `get_character` | `create_character` | `update_character` | `delete_character` | `batch_update_characters` |
+| 人物造型 (CHARACTER_LOOK) | `get_character_look` | `create_character_look` | `update_character_look` | `delete_character_look` | `batch_update_character_looks` |
+| 场景资产 (RESOURCE_SCENE) | `get_resource_scene` | `create_resource_scene` | `update_resource_scene` | `delete_resource_scene` | `batch_update_resource_scenes` |
+| 道具 (PROP) | `get_prop` | `create_prop` | `update_prop` | `delete_prop` | `batch_update_props` |
+| 关键图 (KEYFRAME) | `get_keyframe` | `create_keyframe` | `update_keyframe` | `delete_keyframe` | `batch_update_keyframes` |
+
+单条工具不接收 `type`。每个创建/修改 Schema 只包含该对象的白名单业务字段；内部更新直接绑定对应业务 Service，不再通过一个通用更新入口按枚举分派。
+
+- 读取：`get_project` 沿用 `dramaId`，`get_shot` 沿用 `dramaId,shotId`；其余为 `recordId,dramaId`，公共资产读取可省略 `dramaId`。
+- 创建：`requestId,dramaId,data`；`create_project` 必须省略 `dramaId`，需新建项目权限。
+- 修改：`requestId,dramaId,recordId,expectedFingerprint,data`，`data` 是非空补丁。
+- 删除：`requestId,dramaId,recordId,expectedFingerprint`。
+- 批量修改：`requestId,dramaId,items=[{recordId,expectedFingerprint,data}]`，每批 1–100 条同类对象；没有 `type`，不能混入其他对象字段。
+
+例如单条创建道具调用 `create_prop`：
+
+```json
+{"requestId":"create-prop-001","dramaId":"2032095628944588801","data":{"name":"旧手提箱","description":"棕色皮革"}}
+```
+
+成功返回 `requestId,dramaId,recordId,data`；删除返回 `requestId,dramaId,recordId,deleted:true`。批量修改成功返回 `requestId,dramaId,records`。所有写入复用同一幂等日志和权限校验。
+
+旧 `batch_update_records` 已移除。客户端刷新 `tools/list` 后切换至对应工具；旧工具的开关配置自动迁移到所有独立修改/批量修改工具，已明确配置的新开关优先。旧成功请求仍可通过 `get_business_operation` 查询。
 
 ## 批量创建与追加
 
@@ -122,14 +155,14 @@ tool_timeout_sec = 300
 
 ## 批量修改与重试
 
-先读记录取得 `editFingerprint`，再提交补丁。省略字段保留原值；空数组清空人物/道具关联。分镜 `resSceneId` / `resKeyframeId` 可用显式 `null` 清空，两者互斥；其他可空规则以 Schema 为准。不允许普通内容更新移动场次/镜头组/分镜所属层级或造型所属人物。
+先读记录取得 `editFingerprint`，再向对应对象的批量修改工具提交补丁，例如下面参数用于 `batch_update_shots`。省略字段保留原值；空数组清空人物/道具关联。分镜 `resSceneId` / `resKeyframeId` 可用显式 `null` 清空，两者互斥；其他可空规则以 Schema 为准。不允许普通内容更新移动场次/镜头组/分镜所属层级或造型所属人物。
 
 ```json
 {
   "requestId":"edit-20261013-001",
   "dramaId":"2032095628944588801",
   "items":[
-    {"type":"SHOT","recordId":"2032095628944588802","expectedFingerprint":"<读取返回的64位十六进制指纹>","data":{"dialogue":"终于到了。"}}
+    {"recordId":"2032095628944588802","expectedFingerprint":"<读取返回的64位十六进制指纹>","data":{"dialogue":"终于到了。"}}
   ]
 }
 ```
@@ -140,9 +173,30 @@ tool_timeout_sec = 300
 
 断线后查询 `get_business_operation`，或重发原参数。查询只读取已提交结果，不存在/尚未提交返回 404。请求记录不会进入内部 Agent 运行时。
 
+## 删除契约
+
+单条使用各对象的 `delete_*` 工具，跨对象同事务使用 `batch_delete_records`：
+
+```json
+{
+  "requestId":"delete-storyboard-001",
+  "dramaId":"2032095628944588801",
+  "items":[
+    {"type":"SHOT","recordId":"2032095628944588802","expectedFingerprint":"<当前分镜指纹>"},
+    {"type":"SHOT_GROUP","recordId":"2032095628944588804","expectedFingerprint":"<当前镜头组指纹>"}
+  ]
+}
+```
+
+删除是逻辑删除，复用业务 Service；不删除 MinIO 图片、音频和视频文件。删除分镜时，其视频抽卡记录随业务规则逻辑删除。项目、剧集、场次、镜头组和人物仍有子记录时返回 409 `HAS_CHILDREN`；分镜绑定关键图时也须先解除绑定或删除关键图。没有隐式大纲/资产级联删除。
+
+资产仍被有效场次、分镜的直接外键、人物/道具关联、参考图来源、人物/造型弱绑定或音频人物绑定使用时返回 409 `RECORD_IN_USE`。作为其他分镜帧来源的分镜也不能直接删除。正在排队/渲染的分镜返回 `RECORD_BUSY`；损坏的引用 JSON 返回 `REFERENCE_DATA_INVALID`。
+
+批量删除先校验全部原始指纹，再按提交顺序删除，须先子后父。任一失败全批回滚；删除默认造型引起的默认造型提升、删除分镜引起的剧集时长重算不会让同批后续项误报指纹冲突。项目删除成功后，在原项目授权仍有效时可用原请求重试或查询操作结果。
+
 ## 外部 Agent 完整分镜配置
 
-继续使用 `batch_create_records / append_storyboard / batch_update_records`，不需要调用独立的 AI 接口。`SHOT` 数据支持：
+使用 `create_shot / update_shot / batch_update_shots`，或者通过 `batch_create_records / append_storyboard` 创建完整大纲，不需要调用内部 AI 接口。`SHOT` 数据支持：
 
 - 多模态参考模式：填写 `generationMode=REFERENCE_MODE`、工作台主卡片 `prompt` 和有序媒体列表。
 - 首尾帧模式：填写 `generationMode=FIRST_LAST_FRAME`、视频卡片 `videoPrompt`；图片提示词 `firstFramePrompt / endFramePrompt` 和已有图片 `previewImageUrl / endFrameImageUrl` 按需提供。负向词与场景补充词按需填写。
@@ -153,14 +207,14 @@ tool_timeout_sec = 300
 - `generationMode=FIRST_LAST_FRAME/REFERENCE_MODE`；`seed` 使用 1 到 9007199254740991 的整数字符串。已有首帧、尾帧和音频 URL 可以保存；视频版本仍使用专用选择工具。
 - **常规外部 Agent 流程省略 `directorPlan / directorPlanMode`**，不会自动生成计划，更新时保留已有计划。需要手工编辑时可提交计划，自动保存为 `MANUAL` 并校验时长、节拍、枚举与创作者锁；不能伪造 `skills` 或内部版本/哈希。`directorPlanMode=AUTO` 仅重置，不启动 AI，重置时不能同时提交计划。
 
-直接填写参考模式卡片的补丁示例（人物 ID、媒体 URL 和指纹替换为真实读取结果，无需导演计划）：
+通过 `batch_update_shots` 直接填写参考模式卡片的补丁示例（人物 ID、媒体 URL 和指纹替换为真实读取结果，无需导演计划）：
 
 ```json
 {
   "requestId":"external-shot-config-001",
   "dramaId":"2032095628944588801",
   "items":[{
-    "type":"SHOT", "recordId":"2032095628944588802", "expectedFingerprint":"<当前指纹>",
+    "recordId":"2032095628944588802", "expectedFingerprint":"<当前指纹>",
     "data":{
       "duration":5,
       "generationMode":"REFERENCE_MODE",
@@ -196,7 +250,7 @@ tool_timeout_sec = 300
 }
 ```
 
-返回 `requestId,dramaId,purpose,url,contentType,size,width,height,sha256`。上传不要求资产已创建，也不自动覆盖任何资产；随后使用 `batch_create_records / batch_update_records` 关联返回的 `url`，更新现有资产仍需要 `expectedFingerprint`。
+返回 `requestId,dramaId,purpose,url,contentType,size,width,height,sha256`。上传不要求资产已创建，也不自动覆盖任何资产；随后使用对应资产的单条创建/修改或批量工具关联返回的 `url`，更新现有资产仍需要 `expectedFingerprint`。
 
 | 上传用途 `purpose` | 业务记录和关联字段 |
 |---|---|
@@ -219,7 +273,7 @@ tool_timeout_sec = 300
 
 | 接口 | 用途 |
 |---|---|
-| `GET /system/mcp` | 获取当前配置、令牌是否已配置和 20 个工具的状态/Schema；不返回令牌 |
+| `GET /system/mcp` | 获取当前配置、令牌是否已配置、68 个工具的状态/Schema及 10 类对象的 `crudCapabilities`；不返回令牌 |
 | `PUT /system/mcp` | 保存完整权限/来源配置及可选新令牌；必须提供当前 `revision` |
 | `PUT /system/mcp/enabled` | `{revision,enabled}` 控制整体开关 |
 | `PUT /system/mcp/tools/{name}` | `{revision,enabled}` 控制单个已知业务工具；未知名称拒绝 |
@@ -238,7 +292,7 @@ tool_timeout_sec = 300
 {"ok":false,"error":{"code":403,"message":"PROJECT_ACCESS_DENIED: 项目不在 MCP 授权范围"}}
 ```
 
-认证失败 HTTP 401，Origin 不允许 HTTP 403；普通请求体超过 2 MiB、图片上传请求体超过 16 MiB 返回 HTTP 413（包含分块传输）。上传图片本身仍限制 10 MiB。拒绝跨项目引用、人物造型不匹配、公共资产写入、未知字段及非法参数。不开放删除、系统配置修改、任意 SQL 或任意 HTTP 转发。
+认证失败 HTTP 401，Origin 不允许 HTTP 403；普通请求体超过 2 MiB、图片上传请求体超过 16 MiB 返回 HTTP 413（包含分块传输）。上传图片本身仍限制 10 MiB。拒绝跨项目引用、人物造型不匹配、公共资产写入、未知字段及非法参数。不开放系统配置修改、任意 SQL 或任意 HTTP 转发。
 
 SDK 在进入业务处理前也会校验公开 Schema，此类参数错误可能只有 `isError` 和文本内容；客户端应先检查 `isError`，再解析可用的结构化业务错误。
 

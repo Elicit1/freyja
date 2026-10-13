@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.astra.freyja.dao.McpDeleteQueryMapper">
+    <select id="referencingShots" resultType="com.astra.freyja.entity.DramaShot">
+        SELECT s.id, s.drama_id, s.res_scene_id, s.res_keyframe_id, s.first_frame_source_shot_id,
+               s.character_refs_json, s.prop_refs_json, s.ref_images_json, s.ref_audios_json
+        <include refid="com.astra.freyja.dao.McpQueryMapper.liveShotFrom"/>
+        <include refid="com.astra.freyja.dao.McpQueryMapper.validShotGroup"/>
+    </select>
+    <select id="referencingScenes" resultType="com.astra.freyja.entity.DramaScene">
+        SELECT sc.id, sc.res_scene_id <include refid="com.astra.freyja.dao.McpQueryMapper.liveSceneFrom"/>
+    </select>
+</mapper>

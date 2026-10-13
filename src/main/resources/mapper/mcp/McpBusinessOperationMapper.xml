@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.astra.freyja.dao.McpBusinessOperationMapper">
+    <insert id="reserve">
+        INSERT IGNORE INTO mcp_business_operation
+            (id, request_id, tool_name, request_hash, created_project, status, create_time)
+        VALUES (#{id}, #{requestId}, #{toolName}, #{requestHash}, 0, 'RUNNING', CURRENT_TIMESTAMP)
+    </insert>
+    <select id="lock" resultType="com.astra.freyja.entity.McpBusinessOperation">
+        SELECT * FROM mcp_business_operation WHERE request_id = #{key} FOR UPDATE
+    </select>
+    <select id="find" resultType="com.astra.freyja.entity.McpBusinessOperation">
+        SELECT * FROM mcp_business_operation WHERE request_id = #{key}
+    </select>
+    <select id="createdProjectCount" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM mcp_business_operation
+        WHERE drama_id = #{id} AND created_project = 1 AND status = 'SUCCEEDED'
+    </select>
+    <update id="complete">
+        UPDATE mcp_business_operation
+        SET drama_id = #{dramaId}, created_project = #{createdProject}, status = 'SUCCEEDED',
+            result_json = #{resultJson}, complete_time = CURRENT_TIMESTAMP
+        WHERE id = #{id} AND status = 'RUNNING'
+    </update>
+</mapper>

@@ -177,25 +177,56 @@ public class McpBusinessSchemas {
         } else if (value instanceof List<?> list) list.forEach(this::closeObjects);
     }
 
-    public Map<String, Object> create() { return batch(false); }
-    public Map<String, Object> update() { return batch(true); }
-    private Map<String, Object> batch(boolean update) {
+    public Map<String, Object> create() { return batchCreate(); }
+    public Map<String, Object> singleGet(McpRecordType type) {
+        return object(Map.of("dramaId", identifier(false, false), "recordId", identifier(false, false)),
+                type.assetType() == null ? List.of("dramaId", "recordId") : List.of("recordId"));
+    }
+    public Map<String, Object> singleCreate(McpRecordType type) {
+        return object(Map.of("requestId", requestId(), "dramaId", identifier(false, false), "data", data(type, false, true)),
+                type == McpRecordType.PROJECT ? List.of("requestId", "data") : List.of("requestId", "dramaId", "data"));
+    }
+    public Map<String, Object> singleUpdate(McpRecordType type) {
+        return object(Map.of("requestId", requestId(), "dramaId", identifier(false, false), "recordId", identifier(false, false),
+                "expectedFingerprint", fingerprint(), "data", data(type, false, false)),
+                List.of("requestId", "dramaId", "recordId", "expectedFingerprint", "data"));
+    }
+    public Map<String, Object> singleDelete() {
+        return object(Map.of("requestId", requestId(), "dramaId", identifier(false, false), "recordId", identifier(false, false),
+                "expectedFingerprint", fingerprint()), List.of("requestId", "dramaId", "recordId", "expectedFingerprint"));
+    }
+    public Map<String, Object> batchUpdate(McpRecordType type) {
+        var item = object(Map.of("recordId", identifier(false, false), "expectedFingerprint", fingerprint(), "data", data(type, false, false)),
+                List.of("recordId", "expectedFingerprint", "data"));
+        return object(Map.of("requestId", requestId(), "dramaId", identifier(false, false),
+                "items", Map.of("type", "array", "minItems", 1, "maxItems", 100, "items", item)), List.of("requestId", "dramaId", "items"));
+    }
+    private static Map<String, Object> requestId() { return Map.of("type", "string", "pattern", "^[A-Za-z0-9_-]{8,80}$"); }
+    private static Map<String, Object> fingerprint() { return Map.of("type", "string", "pattern", "^[a-f0-9]{64}$"); }
+    public Map<String, Object> delete() {
+        Map<String, Object> item = object(Map.of(
+                "type", Map.of("type", "string", "enum", Arrays.stream(McpRecordType.values()).map(Enum::name).toList()),
+                "recordId", identifier(false, false),
+                "expectedFingerprint", Map.of("type", "string", "pattern", "^[a-f0-9]{64}$")),
+                List.of("type", "recordId", "expectedFingerprint"));
+        return object(Map.of("requestId", Map.of("type", "string", "pattern", "^[A-Za-z0-9_-]{8,80}$"),
+                "dramaId", identifier(false, false), "items", Map.of("type", "array", "minItems", 1, "maxItems", 100, "items", item)),
+                List.of("requestId", "dramaId", "items"));
+    }
+    private Map<String, Object> batchCreate() {
         List<Object> alternatives = new ArrayList<>();
         for (McpRecordType type : McpRecordType.values()) {
             Map<String, Object> properties = new LinkedHashMap<>();
             properties.put("type", Map.of("type", "string", "const", type.name()));
-            properties.put("data", data(type, !update, !update));
-            if (update) {
-                properties.put("recordId", identifier(false, false));
-                properties.put("expectedFingerprint", Map.of("type", "string", "pattern", "^[a-f0-9]{64}$"));
-            } else properties.put("clientKey", Map.of("type", "string", "pattern", "^[A-Za-z0-9_-]{1,80}$"));
-            alternatives.add(object(properties, update ? List.of("type", "recordId", "expectedFingerprint", "data") : List.of("type", "clientKey", "data")));
+            properties.put("data", data(type, true, true));
+            properties.put("clientKey", Map.of("type", "string", "pattern", "^[A-Za-z0-9_-]{1,80}$"));
+            alternatives.add(object(properties, List.of("type", "clientKey", "data")));
         }
         Map<String, Object> props = new LinkedHashMap<>();
         props.put("requestId", Map.of("type", "string", "pattern", "^[A-Za-z0-9_-]{8,80}$"));
         props.put("dramaId", identifier(false, false));
         props.put("items", Map.of("type", "array", "minItems", 1, "maxItems", 100, "items", Map.of("oneOf", alternatives)));
-        return object(props, update ? List.of("requestId", "dramaId", "items") : List.of("requestId", "items"));
+        return object(props, List.of("requestId", "items"));
     }
 
     public void validate(McpRecordType type, Map<String, Object> data, boolean references, boolean create) {

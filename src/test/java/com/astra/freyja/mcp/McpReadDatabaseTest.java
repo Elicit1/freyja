@@ -57,6 +57,7 @@ class McpReadDatabaseTest {
             MybatisConfiguration config = new MybatisConfiguration(); config.setMapUnderscoreToCamelCase(true);
             MybatisPlusInterceptor pagination = new MybatisPlusInterceptor(); pagination.addInnerInterceptor(new PaginationInnerInterceptor(DbType.MYSQL));
             MybatisSqlSessionFactoryBean factory = new MybatisSqlSessionFactoryBean();
+            factory.setMapperLocations(new org.springframework.core.io.support.PathMatchingResourcePatternResolver().getResources("classpath*:/mapper/**/*.xml"));
             factory.setDataSource(source); factory.setConfiguration(config); factory.setPlugins(pagination); return factory.getObject();
         }
     }
@@ -78,7 +79,7 @@ class McpReadDatabaseTest {
         }
         McpScope scope = new McpScope(dramas, episodes, scenes, groups, shots);
         McpJson json = new McpJson();
-        assets = new McpAssets(characters, looks, resourceScenes, props, keyframes, scope, json, new McpBusinessView(json));
+        assets = new McpAssets(characters, looks, resourceScenes, props, keyframes, scope, json, new McpBusinessView(json), queries);
         reads = new McpReadTools(dramas, episodes, scenes, groups, mock(DictService.class), queries, assets, scope, json, new McpBusinessView(json));
         for (long id : List.of(PROJECT, PROJECT + 1)) {
             Drama d = new Drama(); d.setId(id); d.setTitle("Project " + id); d.setSortOrder(0); d.setDeleted(0); dramas.insert(d);

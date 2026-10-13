@@ -55,20 +55,10 @@ public class McpReadTools {
     public Object searchProjects(McpPrincipal caller, Search input) {
         int page = McpScope.page(input.page()), size = McpScope.size(input.size());
         if (!caller.allProjects() && !caller.createProjects() && caller.projects().isEmpty()) return page(new Page<>(page, size, 0), List.of());
-        LambdaQueryWrapper<Drama> query = new LambdaQueryWrapper<Drama>()
-                .orderByAsc(Drama::getSortOrder).orderByAsc(Drama::getId);
-        if (!caller.allProjects()) query.and(q -> {
-            if (!caller.projects().isEmpty()) q.in(Drama::getId, caller.projects());
-            if (caller.createProjects()) {
-                if (!caller.projects().isEmpty()) q.or();
-                q.inSql(Drama::getId, "SELECT drama_id FROM mcp_business_operation WHERE created_project=1 AND status='SUCCEEDED'");
-            }
-        });
         if (input.keyword() != null && !input.keyword().isBlank()) {
             if (input.keyword().length() > 200) throw new BizException(400, "关键词过长");
-            query.like(Drama::getTitle, input.keyword());
         }
-        Page<Drama> result = dramas.selectPage(new Page<>(page, size), query);
+        Page<Drama> result = queries.projects(new Page<>(page, size), caller.allProjects(), caller.createProjects(), caller.projects(), input.keyword());
         return page(result, result.getRecords().stream().map(d -> {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", d.getId()); row.put("title", d.getTitle()); row.put("genre", d.getGenre()); row.put("status", d.getStatus());
@@ -95,21 +85,11 @@ public class McpReadTools {
                 yield page(p, p.getRecords().stream().map(this::outlineSummary).toList());
             }
             case SCENE -> {
-                Page<DramaScene> p = scenes.selectPage(new Page<>(current, size), new LambdaQueryWrapper<DramaScene>()
-                        .eq(DramaScene::getDramaId, project).eq(episode != null, DramaScene::getEpisodeId, episode)
-                        .eq(scene != null, DramaScene::getId, scene)
-                        .apply("EXISTS (SELECT 1 FROM drama_episode ep WHERE ep.id=drama_scene.episode_id AND ep.drama_id=drama_scene.drama_id AND ep.deleted=0)")
-                        .orderByAsc(DramaScene::getEpisodeId).orderByAsc(DramaScene::getSceneNo).orderByAsc(DramaScene::getId));
+                Page<DramaScene> p = queries.scenes(new Page<>(current, size), project, episode, scene);
                 yield page(p, p.getRecords().stream().map(this::outlineSummary).toList());
             }
             case SHOT_GROUP -> {
-                Page<DramaShotGroup> p = groups.selectPage(new Page<>(current, size), new LambdaQueryWrapper<DramaShotGroup>()
-                        .eq(DramaShotGroup::getDramaId, project).eq(episode != null, DramaShotGroup::getEpisodeId, episode)
-                        .eq(scene != null, DramaShotGroup::getSceneId, scene)
-                        .apply("EXISTS (SELECT 1 FROM drama_scene sc JOIN drama_episode ep ON ep.id=sc.episode_id AND ep.deleted=0 "
-                                + "WHERE sc.id=drama_shot_group.scene_id AND sc.episode_id=drama_shot_group.episode_id "
-                                + "AND sc.drama_id=drama_shot_group.drama_id AND ep.drama_id=sc.drama_id AND sc.deleted=0)")
-                        .orderByAsc(DramaShotGroup::getEpisodeId).orderByAsc(DramaShotGroup::getGroupNo).orderByAsc(DramaShotGroup::getId));
+                Page<DramaShotGroup> p = queries.groups(new Page<>(current, size), project, episode, scene);
                 yield page(p, p.getRecords().stream().map(this::outlineSummary).toList());
             }
         };

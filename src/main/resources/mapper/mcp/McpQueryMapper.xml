@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.astra.freyja.dao.McpQueryMapper">
+    <select id="lockProject" resultType="com.astra.freyja.entity.Drama">
+        SELECT * FROM drama WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <select id="lockEpisode" resultType="com.astra.freyja.entity.DramaEpisode">
+        SELECT * FROM drama_episode WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <select id="lockScene" resultType="com.astra.freyja.entity.DramaScene">
+        SELECT * FROM drama_scene WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <select id="lockShotGroup" resultType="com.astra.freyja.entity.DramaShotGroup">
+        SELECT * FROM drama_shot_group WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <select id="lockShot" resultType="com.astra.freyja.entity.DramaShot">
+        SELECT * FROM drama_shot WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <select id="lockCharacter" resultType="com.astra.freyja.entity.ResCharacter">
+        SELECT * FROM res_character WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <select id="lockCharacterLook" resultType="com.astra.freyja.entity.ResCharacterLook">
+        SELECT * FROM res_character_look WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <select id="lockResourceScene" resultType="com.astra.freyja.entity.ResScene">
+        SELECT * FROM res_scene WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <select id="lockProp" resultType="com.astra.freyja.entity.ResProp">
+        SELECT * FROM res_prop WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <select id="lockKeyframe" resultType="com.astra.freyja.entity.ResKeyframe">
+        SELECT * FROM res_keyframe WHERE id = #{id} AND deleted = 0 FOR UPDATE
+    </select>
+    <sql id="liveShotFrom">
+        FROM drama_shot s
+        JOIN drama d ON d.id = s.drama_id AND d.deleted = 0
+        JOIN drama_scene sc ON sc.id = s.scene_id AND sc.drama_id = s.drama_id AND sc.deleted = 0
+        JOIN drama_episode ep ON ep.id = s.episode_id AND ep.id = sc.episode_id AND ep.drama_id = s.drama_id AND ep.deleted = 0
+        WHERE s.deleted = 0
+    </sql>
+    <sql id="validShotGroup">
+        AND (s.shot_group_id IS NULL OR EXISTS (
+            SELECT 1 FROM drama_shot_group g
+            WHERE g.id = s.shot_group_id AND g.deleted = 0 AND g.drama_id = s.drama_id
+              AND g.episode_id = s.episode_id AND g.scene_id = s.scene_id
+        ))
+    </sql>
+    <sql id="liveSceneFrom">
+        FROM drama_scene sc
+        JOIN drama d ON d.id = sc.drama_id AND d.deleted = 0
+        JOIN drama_episode ep ON ep.id = sc.episode_id AND ep.drama_id = sc.drama_id AND ep.deleted = 0
+        WHERE sc.deleted = 0
+    </sql>
+    <select id="shots" resultType="com.astra.freyja.entity.DramaShot">
+        SELECT s.* <include refid="liveShotFrom"/> <include refid="validShotGroup"/>
+        AND s.drama_id = #{dramaId}
+        <if test="episodeId != null">AND s.episode_id = #{episodeId}</if>
+        <if test="sceneId != null">AND s.scene_id = #{sceneId}</if>
+        ORDER BY ep.episode_no, sc.scene_no, s.sort_order, s.shot_no, s.id
+    </select>
+    <select id="projects" resultType="com.astra.freyja.entity.Drama">
+        SELECT d.id, d.title, d.genre, d.status, d.synopsis, d.aspect_ratio
+        FROM drama d WHERE d.deleted = 0
+        <if test="!allProjects">
+            <choose>
+                <when test="projectIds != null and !projectIds.isEmpty()">
+                    AND (d.id IN
+                    <foreach collection="projectIds" item="projectId" open="(" separator="," close=")">#{projectId}</foreach>
+                    <if test="createdProjects">
+                        OR EXISTS (SELECT 1 FROM mcp_business_operation op
+                            WHERE op.drama_id = d.id AND op.created_project = 1 AND op.status = 'SUCCEEDED')
+                    </if>)
+                </when>
+                <when test="createdProjects">
+                    AND EXISTS (SELECT 1 FROM mcp_business_operation op
+                        WHERE op.drama_id = d.id AND op.created_project = 1 AND op.status = 'SUCCEEDED')
+                </when>
+                <otherwise>AND 1 = 0</otherwise>
+            </choose>
+        </if>
+        <if test="keyword != null and keyword.trim() != ''">AND d.title LIKE CONCAT('%', #{keyword}, '%')</if>
+        ORDER BY d.sort_order, d.id
+    </select>
+    <select id="scenes" resultType="com.astra.freyja.entity.DramaScene">
+        SELECT sc.* <include refid="liveSceneFrom"/>
+        AND sc.drama_id = #{dramaId}
+        <if test="episodeId != null">AND sc.episode_id = #{episodeId}</if>
+        <if test="sceneId != null">AND sc.id = #{sceneId}</if>
+        ORDER BY sc.episode_id, sc.scene_no, sc.id
+    </select>
+    <select id="groups" resultType="com.astra.freyja.entity.DramaShotGroup">
+        SELECT g.* FROM drama_shot_group g
+        JOIN drama d ON d.id = g.drama_id AND d.deleted = 0
+        JOIN drama_scene sc ON sc.id = g.scene_id AND sc.drama_id = g.drama_id AND sc.deleted = 0
+        JOIN drama_episode ep ON ep.id = g.episode_id AND ep.id = sc.episode_id AND ep.drama_id = g.drama_id AND ep.deleted = 0
+        WHERE g.deleted = 0 AND g.drama_id = #{dramaId}
+        <if test="episodeId != null">AND g.episode_id = #{episodeId}</if>
+        <if test="sceneId != null">AND g.scene_id = #{sceneId}</if>
+        ORDER BY g.episode_id, g.group_no, g.id
+    </select>
+    <select id="keyframes" resultType="com.astra.freyja.entity.ResKeyframe">
+        SELECT k.* FROM res_keyframe k WHERE k.deleted = 0
+        <choose>
+            <when test="dramaId != null">AND k.drama_id = #{dramaId}</when>
+            <otherwise>AND (k.drama_id IS NULL OR k.drama_id = 0)</otherwise>
+        </choose>
+        AND (k.shot_id IS NULL OR EXISTS (
+            SELECT 1 <include refid="liveShotFrom"/> <include refid="validShotGroup"/>
+            AND s.id = k.shot_id AND s.drama_id = k.drama_id
+        ))
+        <if test="keyword != null and keyword.trim() != ''">AND k.name LIKE CONCAT('%', #{keyword}, '%')</if>
+        ORDER BY k.sort_order, k.id
+    </select>
+</mapper>

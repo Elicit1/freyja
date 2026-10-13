@@ -1,7 +1,7 @@
 package com.astra.freyja.mcp;
 
 import com.astra.freyja.common.BizException;
-import com.astra.freyja.dao.DramaMapper;
+import com.astra.freyja.dao.McpQueryMapper;
 import com.astra.freyja.entity.BaseEntity;
 import com.astra.freyja.service.DramaShotGroupService;
 import com.astra.freyja.service.DramaShotService;
@@ -24,7 +24,8 @@ public class McpBusinessTools {
     private final McpOperationStore journal;
     private final McpScope scope;
     private final McpBusinessView views;
-    private final DramaMapper dramas;
+    private final McpQueryMapper queries;
+    private final McpRecordTools recordTools;
     private final DramaShotService shots;
     private final DramaShotGroupService groups;
     private final ResCharacterLookService looks;
@@ -47,13 +48,14 @@ public class McpBusinessTools {
                 if (i.dramaId() == null || i.items().stream().anyMatch(item -> item.type() == McpRecordType.PROJECT)) throw new BizException(400, "追加导入必须指定项目，不能创建或替换项目");
                 return create(c, i, "append_storyboard");
             }));
-            tools.add(write("batch_update_records", "事务批量配置提示词工作台和业务内容，最多 100 项；参考模式直接写 prompt 与有序 refImages/refAudios，首尾帧模式写 videoPrompt 和帧提示词/URL。导演计划可省略，不调用内部 AI。每项需 expectedFingerprint；省略字段保留原值，媒体数组整组替换，保护创作者锁，requestId 保证幂等。", McpBatchInputs.Update.class, schemas.update(), this::update));
+            tools.add(write("batch_delete_records", "事务批量逻辑删除项目/剧集/场次/镜头组/分镜、人物/造型/场景资产/道具/关键图，最多100项，单条也可传一项。每项需当前 expectedFingerprint；先删除子记录并解除资产引用，不隐式级联。任一失败全批回滚，requestId 幂等；不删除 MinIO 文件、不调用内部 AI。", McpBatchInputs.Delete.class, schemas.delete(), this::delete));
             tools.add(McpTool.read("get_business_operation", "读取 MCP 业务写入请求的已提交结果，便于客户端中断后恢复。不是内部 AI 任务查询接口。", McpBatchInputs.Operation.class, (c, i) -> journal.read(c, i.requestId())));
             tools.add(write("clone_shot", "复制授权项目的分镜，沿用现有业务复制规则，不启动任何 AI。使用读取返回的版本指纹和稳定 requestId。", McpBatchInputs.Clone.class, null, this::cloneShot));
             tools.add(write("set_default_character_look", "将项目人物的一个现有造型设为默认；复用默认造型互斥规则，不生成图片。", McpBatchInputs.DefaultLook.class, null, this::defaultLook));
             tools.add(write("reorder_group_shots", "按给定完整 shotIds 重排镜头组内分镜，不修改镜头内容。不接受跨组/重复/缺少的分镜。", McpBatchInputs.Reorder.class, null, this::reorder));
             tools.add(write("select_shot_video_version", "将分镜已有视频版本选为当前生效视频，复用历史版本选择和尾帧缓存失效规则；不生成或处理视频。", McpBatchInputs.SelectVideo.class, null, this::selectVersion));
         }
+        tools.addAll(recordTools.tools());
         return tools;
     }
     private <I> McpTool<I> write(String name, String description, Class<I> type, Map<String, Object> schema, BiFunction<McpPrincipal, I, Object> action) {
@@ -105,18 +107,25 @@ public class McpBusinessTools {
         });
     }
 
-    private Object update(McpPrincipal caller, McpBatchInputs.Update input) {
-        write(caller); batch(input.items()); Long project = scope.project(caller, input.dramaId());
-        return journal.execute(input.requestId(), "batch_update_records", input, () -> {
-            mutex(project); Set<String> seen = new HashSet<>(); List<Object> result = new ArrayList<>();
+    private Object delete(McpPrincipal caller, McpBatchInputs.Delete input) {
+        write(caller); batch(input.items()); Long project = scope.authorizeProject(caller, input.dramaId());
+        return journal.execute(input.requestId(), "batch_delete_records", input, () -> {
+            mutex(project); Set<String> seen = new HashSet<>(); List<BaseEntity> locked = new ArrayList<>();
+            // Validate original fingerprints before business side effects such as default-look promotion or duration recalculation.
             for (int index = 0; index < input.items().size(); index++) {
                 var item = input.items().get(index);
                 try {
-                    if (item == null || item.type() == null || !seen.add(item.type() + ":" + item.recordId())) throw new BizException(400, "更新项无效或重复");
+                    if (item == null || item.type() == null || !seen.add(item.type() + ":" + item.recordId())) throw new BizException(400, "删除项无效或重复");
                     BaseEntity current = records.lockScoped(caller, item.type(), item.recordId(), input.dramaId());
-                    fingerprint(current, item.expectedFingerprint());
-                    records.update(caller, item.type(), current, project, item.data());
-                    result.add(Map.of("type", item.type(), "recordId", item.recordId(), "data", records.read(caller, item.type(), item.recordId(), input.dramaId())));
+                    fingerprint(current, item.expectedFingerprint()); locked.add(current);
+                } catch (BizException e) { throw itemError(index, e); }
+            }
+            List<Object> result = new ArrayList<>();
+            for (int index = 0; index < input.items().size(); index++) {
+                var item = input.items().get(index);
+                try {
+                    records.delete(item.type(), locked.get(index));
+                    result.add(Map.of("type", item.type(), "recordId", item.recordId(), "deleted", true));
                 } catch (BizException e) { throw itemError(index, e); }
             }
             return new McpOperationStore.Outcome(Map.of("requestId", input.requestId(), "dramaId", input.dramaId(), "records", result), project, false);
@@ -137,7 +146,7 @@ public class McpBusinessTools {
         if (input instanceof List<?> list) return list.stream().map(value -> resolveValue(value, ids)).toList();
         return input;
     }
-    private void mutex(Long project) { if (dramas.lockById(project) == null) throw new BizException(404, "项目不存在"); }
+    private void mutex(Long project) { if (queries.lockProject(project) == null) throw new BizException(404, "项目不存在"); }
     private void fingerprint(BaseEntity entity, String expected) {
         if (expected == null || !expected.equals(views.fingerprint(entity))) throw new BizException(409, "EDIT_CONFLICT: 内容已变动，请重新读取后提交");
     }

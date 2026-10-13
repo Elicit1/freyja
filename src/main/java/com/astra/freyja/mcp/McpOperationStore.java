@@ -50,7 +50,7 @@ public class McpOperationStore {
         key(key);
         McpBusinessOperation result = operations.find(key);
         if (result == null) throw new BizException(404, "业务请求尚未提交或尚未完成；可使用原 requestId 重试");
-        scope.project(caller, result.getDramaId().toString());
+        scope.authorizeProject(caller, result.getDramaId().toString());
         try { return Map.of("requestId", key, "status", result.getStatus(), "data", json.mapper().readValue(result.getResultJson(), Object.class)); }
         catch (Exception e) { throw new BizException(500, "业务请求结果记录无效"); }
     }

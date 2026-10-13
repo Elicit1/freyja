@@ -43,6 +43,8 @@ public class McpBusinessRecords {
     private final McpBusinessView views;
     private final McpBusinessSchemas schemas;
     private final DirectorPlanStateService directorPlans;
+    private final McpDeleteQueryMapper deleteQueries;
+    private final McpQueryMapper queries;
     private final ObjectMapper binding = new ObjectMapper().findAndRegisterModules();
 
     public BaseEntity require(McpPrincipal caller, McpRecordType type, String recordId, String dramaId, boolean write) {
@@ -62,7 +64,12 @@ public class McpBusinessRecords {
     }
 
     public BaseEntity lock(McpRecordType type, Long id) {
-        BaseEntity value = mapper(type).selectOne(new QueryWrapper<BaseEntity>().eq("id", id).last("FOR UPDATE"));
+        BaseEntity value = switch (type) {
+            case PROJECT -> queries.lockProject(id); case EPISODE -> queries.lockEpisode(id);
+            case SCENE -> queries.lockScene(id); case SHOT_GROUP -> queries.lockShotGroup(id); case SHOT -> queries.lockShot(id);
+            case CHARACTER -> queries.lockCharacter(id); case CHARACTER_LOOK -> queries.lockCharacterLook(id);
+            case RESOURCE_SCENE -> queries.lockResourceScene(id); case PROP -> queries.lockProp(id); case KEYFRAME -> queries.lockKeyframe(id);
+        };
         if (value == null) throw new BizException(404, "业务记录不存在"); return value;
     }
 
@@ -117,33 +124,156 @@ public class McpBusinessRecords {
         };
     }
 
-    public void update(McpPrincipal caller, McpRecordType type, BaseEntity current, Long project, Map<String, Object> data) {
+    private <T> T prepareUpdate(McpPrincipal caller, McpRecordType type, BaseEntity current, Long project, Map<String, Object> data, Class<T> dtoClass) {
         schemas.validate(type, data, false, false);
         Object dto = patch(type, current, data);
         references(caller, type, dto, project, current, data);
-        switch (type) {
-            case PROJECT -> dramaService.update((DramaDTO) dto); case EPISODE -> episodeService.update((DramaEpisodeDTO) dto);
-            case SCENE -> sceneService.update((DramaSceneDTO) dto); case SHOT_GROUP -> groupService.update((DramaShotGroupDTO) dto);
-            case SHOT -> {
-                DramaShotDTO shot = (DramaShotDTO) dto;
-                shotService.update(shot);
-                if (data.containsKey("directorPlan") || data.containsKey("directorPlanMode")) {
-                    DirectorPlanEditDTO edit = new DirectorPlanEditDTO(); edit.setDirectorPlanMode(shot.getDirectorPlanMode());
-                    edit.setDirectorPlan(shot.getDirectorPlan()); edit.setDirectorPlanRevision(((DramaShot) current).getDirectorPlanRevision());
-                    directorPlans.save(current.getId(), edit);
-                }
-                updateManualMedia(shot, data);
-            }
-            case CHARACTER -> characterService.update((ResCharacterDTO) dto);
-            case CHARACTER_LOOK -> lookService.update((ResCharacterLookDTO) dto); case RESOURCE_SCENE -> resourceSceneService.update((ResSceneDTO) dto);
-            case PROP -> propService.update((ResPropDTO) dto); case KEYFRAME -> keyframeService.update((ResKeyframeDTO) dto);
+        return dtoClass.cast(dto);
+    }
+    public void updateProject(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        DramaDTO dto = prepareUpdate(caller, McpRecordType.PROJECT, current, project, data, DramaDTO.class);
+        dramaService.update(dto);
+        clearContent(McpRecordType.PROJECT, current, data);
+    }
+
+    public void updateEpisode(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        DramaEpisodeDTO dto = prepareUpdate(caller, McpRecordType.EPISODE, current, project, data, DramaEpisodeDTO.class);
+        episodeService.update(dto);
+        clearContent(McpRecordType.EPISODE, current, data);
+    }
+
+    public void updateScene(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        DramaSceneDTO dto = prepareUpdate(caller, McpRecordType.SCENE, current, project, data, DramaSceneDTO.class);
+        sceneService.update(dto);
+        clearContent(McpRecordType.SCENE, current, data);
+    }
+
+    public void updateShotGroup(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        DramaShotGroupDTO dto = prepareUpdate(caller, McpRecordType.SHOT_GROUP, current, project, data, DramaShotGroupDTO.class);
+        groupService.update(dto);
+        clearContent(McpRecordType.SHOT_GROUP, current, data);
+    }
+
+    public void updateShot(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        DramaShotDTO dto = prepareUpdate(caller, McpRecordType.SHOT, current, project, data, DramaShotDTO.class);
+        shotService.update(dto);
+        if (data.containsKey("directorPlan") || data.containsKey("directorPlanMode")) {
+            DirectorPlanEditDTO edit = new DirectorPlanEditDTO(); edit.setDirectorPlanMode(dto.getDirectorPlanMode());
+            edit.setDirectorPlan(dto.getDirectorPlan()); edit.setDirectorPlanRevision(((DramaShot) current).getDirectorPlanRevision());
+            directorPlans.save(current.getId(), edit);
         }
+        updateManualMedia(dto, data);
+        clearContent(McpRecordType.SHOT, current, data);
+    }
+
+    public void updateCharacter(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        ResCharacterDTO dto = prepareUpdate(caller, McpRecordType.CHARACTER, current, project, data, ResCharacterDTO.class);
+        characterService.update(dto);
+        clearContent(McpRecordType.CHARACTER, current, data);
+    }
+
+    public void updateCharacterLook(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        ResCharacterLookDTO dto = prepareUpdate(caller, McpRecordType.CHARACTER_LOOK, current, project, data, ResCharacterLookDTO.class);
+        lookService.update(dto);
+        clearContent(McpRecordType.CHARACTER_LOOK, current, data);
+    }
+
+    public void updateResourceScene(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        ResSceneDTO dto = prepareUpdate(caller, McpRecordType.RESOURCE_SCENE, current, project, data, ResSceneDTO.class);
+        resourceSceneService.update(dto);
+        clearContent(McpRecordType.RESOURCE_SCENE, current, data);
+    }
+
+    public void updateProp(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        ResPropDTO dto = prepareUpdate(caller, McpRecordType.PROP, current, project, data, ResPropDTO.class);
+        propService.update(dto);
+        clearContent(McpRecordType.PROP, current, data);
+    }
+
+    public void updateKeyframe(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data) {
+        ResKeyframeDTO dto = prepareUpdate(caller, McpRecordType.KEYFRAME, current, project, data, ResKeyframeDTO.class);
+        keyframeService.update(dto);
+        clearContent(McpRecordType.KEYFRAME, current, data);
+    }
+
+    private void clearContent(McpRecordType type, BaseEntity current, Map<String, Object> data) {
         UpdateWrapper<BaseEntity> clear = new UpdateWrapper<BaseEntity>().eq("id", current.getId());
         McpBusinessSchemas.CONTENT_COLUMNS.forEach((field, column) -> {
             if (schemas.fields(type).contains(field) && data.containsKey(field) && data.get(field) == null) clear.set(column, null);
         });
         if (clear.getSqlSet() != null) mapper(type).update(null, clear);
     }
+
+    public void delete(McpRecordType type, BaseEntity current) {
+        Long id = current.getId();
+        boolean children = switch (type) {
+            case PROJECT -> Arrays.stream(McpRecordType.values()).filter(t -> t != McpRecordType.PROJECT && t != McpRecordType.CHARACTER_LOOK)
+                    .anyMatch(t -> exists(t, "drama_id", id));
+            case EPISODE -> exists(McpRecordType.SCENE, "episode_id", id) || exists(McpRecordType.SHOT_GROUP, "episode_id", id) || exists(McpRecordType.SHOT, "episode_id", id);
+            case SCENE -> exists(McpRecordType.SHOT_GROUP, "scene_id", id) || exists(McpRecordType.SHOT, "scene_id", id);
+            case SHOT_GROUP -> exists(McpRecordType.SHOT, "shot_group_id", id);
+            case CHARACTER -> exists(McpRecordType.CHARACTER_LOOK, "character_id", id);
+            case SHOT -> exists(McpRecordType.KEYFRAME, "shot_id", id);
+            default -> false;
+        };
+        if (children) throw new BizException(409, "HAS_CHILDREN: 请先删除子记录或解除关键图的分镜绑定，再删除当前记录；不隐式级联删除");
+        if (current instanceof DramaShot shot && shot.getRenderStatus() != null && Set.of("QUEUED", "RENDERING").contains(shot.getRenderStatus()))
+            throw new BizException(409, "RECORD_BUSY: 当前记录正在处理，请先在工作台结束相关操作");
+        if (type.assetType() != null || type == McpRecordType.SHOT) checkReferences(type, id);
+        switch (type) {
+            case PROJECT -> dramaService.delete(id); case EPISODE -> episodeService.delete(id); case SCENE -> sceneService.delete(id);
+            case SHOT_GROUP -> groupService.delete(id); case SHOT -> shotService.delete(id);
+            case CHARACTER -> characterService.delete(id); case CHARACTER_LOOK -> lookService.delete(id);
+            case RESOURCE_SCENE -> resourceSceneService.delete(id); case PROP -> propService.delete(id); case KEYFRAME -> keyframeService.delete(id);
+        }
+    }
+    private boolean exists(McpRecordType type, String column, Long id) {
+        return mapper(type).selectCount(new QueryWrapper<BaseEntity>().eq(column, id)) > 0;
+    }
+    private void checkReferences(McpRecordType type, Long id) {
+        if (type == McpRecordType.RESOURCE_SCENE) for (var scene : deleteQueries.referencingScenes())
+            if (id.equals(scene.getResSceneId())) referenced();
+        for (var shot : deleteQueries.referencingShots()) {
+            if (type == McpRecordType.SHOT) {
+                if (!id.equals(shot.getId()) && id.equals(shot.getFirstFrameSourceShotId())) referenced();
+                continue;
+            }
+            if (type == McpRecordType.RESOURCE_SCENE && id.equals(shot.getResSceneId())) referenced();
+            if (type == McpRecordType.KEYFRAME && id.equals(shot.getResKeyframeId())) referenced();
+            if (type == McpRecordType.CHARACTER || type == McpRecordType.CHARACTER_LOOK) {
+                String field = type == McpRecordType.CHARACTER ? "characterId" : "lookId";
+                for (var ref : referenceObjects(shot.getCharacterRefsJson())) if (matches(ref, field, id)) referenced();
+            }
+            if (type == McpRecordType.PROP) for (var ref : referenceObjects(shot.getPropRefsJson())) if (matches(ref, "propId", id)) referenced();
+            for (var image : referenceObjects(shot.getRefImagesJson())) {
+                if (type == McpRecordType.CHARACTER && matches(image, "characterId", id)) referenced();
+                if (type == McpRecordType.CHARACTER_LOOK && matches(image, "lookId", id)) referenced();
+                String source = image.get("sourceType") instanceof String s ? s.toUpperCase(Locale.ROOT) : null;
+                String expected = switch (type) {
+                    case CHARACTER -> "CHARACTER"; case CHARACTER_LOOK -> "CHARACTER_REFERENCE"; case RESOURCE_SCENE -> "SCENE";
+                    case PROP -> "PROP"; case KEYFRAME -> "KEYFRAME"; default -> null;
+                };
+                if (expected != null && expected.equals(source) && matches(image, "sourceId", id)) referenced();
+            }
+            if (type == McpRecordType.CHARACTER) for (var audio : referenceObjects(shot.getRefAudiosJson())) if (matches(audio, "characterId", id)) referenced();
+        }
+    }
+    private boolean matches(Map<?, ?> ref, String field, Long id) {
+        Object value = ref.get(field);
+        if (value == null) return false;
+        if (!(value instanceof String) && !(value instanceof Number)) throw new BizException(409, "REFERENCE_DATA_INVALID: 已存储引用中的资产 ID 无效，请先在工作台修复");
+        return id.toString().equals(value.toString());
+    }
+    private List<Map<String, Object>> referenceObjects(String raw) {
+        if (raw == null || raw.isBlank()) return List.of();
+        try {
+            List<Map<String, Object>> values = binding.readValue(raw, binding.getTypeFactory().constructCollectionType(List.class,
+                    binding.getTypeFactory().constructMapType(Map.class, String.class, Object.class)));
+            if (values == null || values.stream().anyMatch(Objects::isNull)) throw new IllegalArgumentException();
+            return values;
+        } catch (Exception e) { throw new BizException(409, "REFERENCE_DATA_INVALID: 已存储引用结构无效，请先在工作台修复"); }
+    }
+    private void referenced() { throw new BizException(409, "RECORD_IN_USE: 记录仍被场次、分镜或参考媒体引用，请先解除引用"); }
 
     private Object patch(McpRecordType type, BaseEntity current, Map<String, Object> data) {
         try {

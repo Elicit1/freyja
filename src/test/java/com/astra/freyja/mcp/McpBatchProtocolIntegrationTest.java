@@ -58,12 +58,12 @@ class McpBatchProtocolIntegrationTest {
         JsonNode root = json.readTree(response.body()); assertFalse(root.has("error"), response.body()); return root.path("result");
     }
 
-    @Test void discoversOnlyTwentyBusinessToolsAndNoPrompts() throws Exception {
+    @Test void discoversBusinessCrudToolsAndNoInternalAi() throws Exception {
         JsonNode init = rpc("initialize", Map.of("protocolVersion", "2025-06-18", "capabilities", Map.of(), "clientInfo", Map.of("name", "batch-test", "version", "1")));
         assertFalse(init.path("capabilities").has("prompts"));
-        JsonNode catalog = rpc("tools/list", Map.of()).path("tools"); assertEquals(20, catalog.size());
+        JsonNode catalog = rpc("tools/list", Map.of()).path("tools"); assertEquals(68, catalog.size());
         Set<String> names = new HashSet<>(); catalog.forEach(tool -> names.add(tool.path("name").asText()));
-        assertTrue(names.containsAll(Set.of("append_storyboard", "batch_create_records", "batch_update_records", "batch_read_records")));
+        assertTrue(names.containsAll(Set.of("append_storyboard", "batch_create_records", "batch_update_shots", "batch_delete_records", "batch_read_records")));
         assertTrue(Collections.disjoint(names, Set.of("list_skills", "read_skill", "get_creation_options", "decompose_script", "generate_image", "generate_video")));
         assertFalse(names.contains("internal_ai_should_remain_private"));
     }
@@ -88,14 +88,18 @@ class McpBatchProtocolIntegrationTest {
     @Test void publishedContractsAllowDirectWorkshopCardsAndOnlyRequireBusinessFields() throws Exception {
         JsonNode catalog = rpc("tools/list", Map.of()).path("tools");
         Map<String, JsonNode> contracts = new HashMap<>();
-        for (JsonNode tool : catalog) if (Set.of("batch_create_records", "batch_update_records").contains(tool.path("name").asText())) {
+        for (JsonNode tool : catalog) if (Set.of("batch_create_records").contains(tool.path("name").asText())) {
             for (JsonNode item : tool.path("inputSchema").path("properties").path("items").path("items").path("oneOf"))
                 contracts.put(tool.path("name").asText() + ":" + item.path("properties").path("type").path("const").asText(), item.path("properties").path("data"));
         }
         JsonNode look = contracts.get("batch_create_records:CHARACTER_LOOK");
         assertEquals(List.of("characterId", "lookName", "designDesc"), json.convertValue(look.path("required"), List.class));
         assertEquals(List.of("sceneId"), json.convertValue(contracts.get("batch_create_records:SHOT").path("required"), List.class));
-        assertEquals(0, contracts.get("batch_update_records:CHARACTER_LOOK").path("required").size());
+        for (JsonNode tool : catalog) if (tool.path("name").asText().equals("batch_update_character_looks")) {
+            JsonNode item = tool.path("inputSchema").path("properties").path("items").path("items");
+            assertFalse(item.path("properties").has("type"));
+            assertEquals(0, item.path("properties").path("data").path("required").size());
+        }
         Map<String, Object> input = Map.of("requestId", "http-workshop-01", "dramaId", McpBusinessDatabaseTest.ROOT, "items", List.of(
                 Map.of("clientKey", "character", "type", "CHARACTER", "data", Map.of("name", "旅客")),
                 Map.of("clientKey", "look", "type", "CHARACTER_LOOK", "data", Map.of("characterId", Map.of("ref", "character"), "lookName", "日常装", "designDesc", "灰色棉衣")),
@@ -110,6 +114,40 @@ class McpBatchProtocolIntegrationTest {
         JsonNode invalid = rpc("tools/call", Map.of("name", "batch_create_records", "arguments", Map.of("requestId", "http-empty-url1", "dramaId", McpBusinessDatabaseTest.ROOT,
                 "items", List.of(Map.of("clientKey", "shot", "type", "SHOT", "data", Map.of("sceneId", "30", "refImages", List.of(Map.of("sourceType", "UPLOAD", "imageUrl", ""))))))));
         assertTrue(invalid.path("isError").asBoolean()); assertEquals(1, fixture.count("drama_shot"));
+    }
+
+    @Test void singleCrudAndTypedBatchUpdateWorkThroughHttpAndRejectOtherBusinessFields() throws Exception {
+        String project = McpBusinessDatabaseTest.ROOT;
+        JsonNode created = rpc("tools/call", Map.of("name", "create_prop", "arguments", Map.of("requestId", "http-single-create", "dramaId", project, "data", Map.of("name", "HTTP prop"))));
+        assertFalse(created.path("isError").asBoolean(), created.toString());
+        String id = created.path("structuredContent").path("data").path("recordId").asText();
+        JsonNode read = rpc("tools/call", Map.of("name", "get_prop", "arguments", Map.of("dramaId", project, "recordId", id)));
+        String fingerprint = read.path("structuredContent").path("data").path("editFingerprint").asText();
+        assertEquals(64, fingerprint.length());
+        for (Map<String, Object> invalid : List.of(
+                Map.<String, Object>of("requestId", "http-single-invalid", "dramaId", project, "recordId", id, "expectedFingerprint", fingerprint, "type", "PROP", "data", Map.of("name", "Wrong")),
+                Map.<String, Object>of("requestId", "http-single-invalid", "dramaId", project, "recordId", id, "expectedFingerprint", fingerprint, "data", Map.of("sceneId", "30")))) {
+            assertTrue(rpc("tools/call", Map.of("name", "update_prop", "arguments", invalid)).path("isError").asBoolean());
+        }
+        JsonNode updated = rpc("tools/call", Map.of("name", "update_prop", "arguments", Map.of("requestId", "http-single-update", "dramaId", project,
+                "recordId", id, "expectedFingerprint", fingerprint, "data", Map.of("name", "Edited prop"))));
+        assertFalse(updated.path("isError").asBoolean(), updated.toString());
+        fingerprint = updated.path("structuredContent").path("data").path("data").path("editFingerprint").asText();
+        JsonNode batch = rpc("tools/call", Map.of("name", "batch_update_props", "arguments", Map.of("requestId", "http-typed-update", "dramaId", project,
+                "items", List.of(Map.of("recordId", id, "expectedFingerprint", fingerprint, "data", Map.of("description", "External text"))))));
+        assertFalse(batch.path("isError").asBoolean(), batch.toString());
+        fingerprint = batch.path("structuredContent").path("data").path("records").get(0).path("data").path("editFingerprint").asText();
+        var arguments = Map.of("requestId", "http-single-delete", "dramaId", project, "recordId", id, "expectedFingerprint", fingerprint);
+        JsonNode deleted = rpc("tools/call", Map.of("name", "delete_prop", "arguments", arguments));
+        assertFalse(deleted.path("isError").asBoolean(), deleted.toString()); assertTrue(deleted.path("structuredContent").path("data").path("deleted").asBoolean());
+        assertEquals(deleted, rpc("tools/call", Map.of("name", "delete_prop", "arguments", arguments)));
+        assertNull(fixture.props.selectById(McpScope.id(id)));
+        assertTrue(rpc("tools/call", Map.of("name", "get_prop", "arguments", Map.of("dramaId", project, "recordId", id))).path("isError").asBoolean());
+        for (JsonNode tool : rpc("tools/list", Map.of()).path("tools")) {
+            String name = tool.path("name").asText();
+            assertNotEquals("batch_update_records", name);
+            if (name.startsWith("batch_update_")) assertFalse(tool.path("inputSchema").path("properties").path("items").path("items").path("properties").has("type"));
+        }
     }
 
     @Test void agentUploadsLargeImageThroughMcpThenCreatesAllReferenceAssets() throws Exception {
