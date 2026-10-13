@@ -212,3 +212,8 @@ docker compose down -v
 2. **正确配置 MinIO 外部访问端点**：
    将 `.env` 中的 `MINIO_EXTERNAL_ENDPOINT=http://localhost:9000` 改为您的公网服务器 IP 或对应反向代理域名（如 `https://oss.yourdomain.com`），确保创作者浏览器能够正常加载分镜图片与视频流；
 3. **防火墙与安全组**：仅对外开放前端 `80`（或 `443` HTTPS）端口与 MinIO 图片访问端口，MySQL/Redis 内部通信保持在 Docker 内网网段。
+
+
+### 统一能力目录升级
+
+后端启动自动执行 `upgrade_unified_capabilities.sql` 增量建表并首次导入能力。已有 MySQL 卷无需重新初始化；禁止为本次升级删除数据卷。初始化需要 CREATE TABLE 权限，可由管理员预执行同一脚本后使用业务账号。模型、MCP 认证、项目和素材配置保留。升级后内部 Agent 新建会话，并在助手设置中选择共享能力；不兼容旧 Run。发布与回滚在 AI 能力管理页完成，无需重启容器。

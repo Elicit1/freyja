@@ -19,7 +19,7 @@ public class AgentToolExecutor {
     public ToolResult execute(AgentRun run, AgentStep original, String owner, int epoch) {
         Snapshot snapshot = store.snapshot(run);
         AgentTool<?> tool;
-        try { tool = registry.require(original.getToolName()); }
+        try { tool = registry.require(original.getToolName(), snapshot); }
         catch (RuntimeException unknown) {
             return store.commitTool(run.getId(), owner, epoch, original.getId(), () -> ToolResult.error("UNKNOWN_TOOL", "工具未注册"), 0);
         }

@@ -25,6 +25,9 @@ public final class McpAuthenticationFilter extends OncePerRequestFilter {
     private static final com.fasterxml.jackson.databind.ObjectMapper REQUEST_JSON = new com.fasterxml.jackson.databind.ObjectMapper();
     private final McpProperties properties;
     private final McpRuntimeControl control;
+    private com.astra.freyja.capability.service.CapabilityMcpDispatcher dispatcher;
+
+    public void setDispatcher(com.astra.freyja.capability.service.CapabilityMcpDispatcher dispatcher) { this.dispatcher = dispatcher; }
 
     public McpAuthenticationFilter(McpProperties properties) {
         this(properties, null);
@@ -81,6 +84,7 @@ public final class McpAuthenticationFilter extends OncePerRequestFilter {
             reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return;
         }
         request.setAttribute(McpPrincipal.CONTEXT_KEY, principal);
+        if (dispatcher != null && dispatcher.handle(request, response, body, principal)) return;
         chain.doFilter(new BufferedRequest(request, body), response);
     }
 

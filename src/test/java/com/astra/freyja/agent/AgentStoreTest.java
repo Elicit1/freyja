@@ -83,6 +83,7 @@ class AgentStoreTest {
         assertFalse(store.summaryRecoverable(run)); verify(steps, never()).updateById(step);
     }
     @Test void publicPlanIsCommittedOnceAndRestoredWithoutModelHistory() {
+        run.setProfileSnapshotJson(json.write(AgentTestSupport.snapshot(List.of("update_task_plan"), "NORMAL")));
         var plan = new com.astra.freyja.agent.model.AgentTaskPlan("开始拆解", List.of(
                 new com.astra.freyja.agent.model.AgentTaskPlan.Item("decompose", "拆解小说", com.astra.freyja.agent.model.AgentTaskPlan.Status.IN_PROGRESS),
                 new com.astra.freyja.agent.model.AgentTaskPlan.Item("commit", "保存分镜", com.astra.freyja.agent.model.AgentTaskPlan.Status.PENDING)));

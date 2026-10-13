@@ -46,53 +46,6 @@ public class AgentBuiltinTools {
         public Class<I> inputType() { return type; }
         public boolean projectRequired() { return projectRequired; }
     }
-    @Bean AgentTool<EmptyInput> projectOverviewTool() {
-        return new ReadTool<>("get_project_overview", "读取当前绑定项目的概要与分镜数量，无需项目 ID 参数。", EmptyInput.class, true) {
-            public ToolResult execute(EmptyInput input, ToolContext context) {
-                Drama drama = dramas.selectById(context.dramaId());
-                if (drama == null) return ToolResult.error("NOT_FOUND", "项目不存在");
-                return ToolResult.success(Map.of("project", drama, "shotCount",
-                        shots.selectCount(new LambdaQueryWrapper<DramaShot>().eq(DramaShot::getDramaId, context.dramaId()))));
-            }
-        };
-    }
-    public record Asset(Long id, String type, String name, String description, String imageUrl, Long dramaId) {}
-    @Bean AgentTool<AssetsInput> projectAssetsTool() {
-        return new ReadTool<>("list_project_assets", "分页读取当前项目人物、场景、道具、关键图，可同时读取公共库。limit 每类最多 50。", AssetsInput.class, true) {
-            public ToolResult execute(AssetsInput input, ToolContext context) {
-                int limit = input.limit() == null ? 20 : Math.clamp(input.limit(), 1, 50);
-                Long id = context.dramaId();
-                var characterQuery = new LambdaQueryWrapper<ResCharacter>().and(q -> {
-                    q.eq(ResCharacter::getDramaId, id); if (input.includePublic()) q.or().isNull(ResCharacter::getDramaId);
-                }).orderByAsc(ResCharacter::getId).last("LIMIT " + limit);
-                var sceneQuery = new LambdaQueryWrapper<ResScene>().and(q -> {
-                    q.eq(ResScene::getDramaId, id); if (input.includePublic()) q.or().isNull(ResScene::getDramaId);
-                }).orderByAsc(ResScene::getId).last("LIMIT " + limit);
-                var propQuery = new LambdaQueryWrapper<ResProp>().and(q -> {
-                    q.eq(ResProp::getDramaId, id); if (input.includePublic()) q.or().isNull(ResProp::getDramaId);
-                }).orderByAsc(ResProp::getId).last("LIMIT " + limit);
-                var keyframeQuery = new LambdaQueryWrapper<ResKeyframe>().and(q -> {
-                    q.eq(ResKeyframe::getDramaId, id); if (input.includePublic()) q.or().isNull(ResKeyframe::getDramaId);
-                }).orderByAsc(ResKeyframe::getId).last("LIMIT " + limit);
-                return ToolResult.success(Map.of(
-                        "characters", characters.selectList(characterQuery).stream().map(v -> new Asset(v.getId(), "CHARACTER", v.getName(), v.getAppearanceDesc(), v.getReferenceImageUrl(), v.getDramaId())).toList(),
-                        "scenes", scenes.selectList(sceneQuery).stream().map(v -> new Asset(v.getId(), "SCENE", v.getName(), v.getDescription(), v.getReferenceImageUrl(), v.getDramaId())).toList(),
-                        "props", props.selectList(propQuery).stream().map(v -> new Asset(v.getId(), "PROP", v.getName(), v.getDescription(), v.getCoverUrl(), v.getDramaId())).toList(),
-                        "keyframes", keyframes.selectList(keyframeQuery).stream().map(v -> new Asset(v.getId(), "KEYFRAME", v.getName(), v.getDescription(), v.getFrameUrl(), v.getDramaId())).toList(),
-                        "limitPerType", limit));
-            }
-        };
-    }
-    @Bean AgentTool<ShotInput> shotDetailTool() {
-        return new ReadTool<>("get_shot_detail", "读取当前项目的一个分镜，shotId 是字符串形式的业务 ID。", ShotInput.class, true) {
-            public ToolResult execute(ShotInput input, ToolContext context) {
-                DramaShot shot = input.shotId() == null ? null : shots.selectById(input.shotId());
-                if (shot == null) return ToolResult.error("NOT_FOUND", "分镜不存在");
-                if (!Objects.equals(context.dramaId(), shot.getDramaId())) return ToolResult.error("SCOPE_VIOLATION", "分镜不属于当前项目");
-                return ToolResult.success(shot);
-            }
-        };
-    }
     @Bean AgentTool<AgentMemoryService.SaveNote> saveNoteTool() {
         return new AgentTool<>() {
             public String name() { return "save_session_note"; }
@@ -125,8 +78,10 @@ public class AgentBuiltinTools {
                 if (version == null) return ToolResult.error("SKILL_NOT_ALLOWED", "Skill 不在本次版本目录中");
                 boolean loaded = !context.snapshot().config().getSkills().isDynamicLoading();
                 if (!loaded) {
-                    loaded = steps.selectList(new LambdaQueryWrapper<AgentStep>().eq(AgentStep::getRunId, context.runId())
-                            .eq(AgentStep::getToolName, "load_skill").eq(AgentStep::getStatus, "SUCCEEDED")).stream().anyMatch(step -> {
+                    var loadingNames = context.snapshot().capabilities().bindings().stream()
+                            .filter(b -> b.handlerKey().equals(com.astra.freyja.capability.model.BuiltinCapability.LOAD_SKILL.handlerKey())).map(b -> b.name()).toList();
+                    loaded = !loadingNames.isEmpty() && steps.selectList(new LambdaQueryWrapper<AgentStep>().eq(AgentStep::getRunId, context.runId())
+                            .in(AgentStep::getToolName, loadingNames).eq(AgentStep::getStatus, "SUCCEEDED")).stream().anyMatch(step -> {
                         ToolCall call = json.read(step.getInputJson(), ToolCall.class);
                         LoadSkillRequest previous = json.read(call.arguments(), LoadSkillRequest.class);
                         ToolResult result = json.read(step.getResultJson(), ToolResult.class);

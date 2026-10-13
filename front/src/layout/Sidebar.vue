@@ -79,6 +79,10 @@
           <el-icon><Operation /></el-icon>
           <template #title>系统参数</template>
         </el-menu-item>
+        <el-menu-item index="/system/ai-capabilities">
+          <el-icon><Setting /></el-icon>
+          <template #title>AI 能力管理</template>
+        </el-menu-item>
         <el-menu-item index="/system/mcp">
           <el-icon><Connection /></el-icon>
           <template #title>MCP 服务</template>
@@ -145,6 +149,7 @@ import {
   Collection,
   Brush,
   ChatDotRound,
+  Setting,
   Connection
 } from '@element-plus/icons-vue'
 

@@ -45,67 +45,19 @@ public class AgentConfigService {
             defaults.setAgentCode(code);
             defaults.setEnabled(false);
             defaults.getTools().setNames(profiles.require(code).allowedTools());
-            var legacy = legacyProductionConfig(code);
-            if (legacy != null) {
-                defaults = fromEntity(legacy); defaults.setAgentCode(code); defaults.setDisplayName("FREYJA 助手");
-                mergeCapabilities(defaults, null, code);
-            }
             entry = toEntity(code, defaults, 1);
             try { mapper.insert(entry); }
             catch (DuplicateKeyException concurrentInitialization) {
                 entry = mapper.selectOne(new LambdaQueryWrapper<AgentConfig>().eq(AgentConfig::getAgentCode, code));
             }
         }
-        if (entry.getProfileVersion() != null && entry.getProfileVersion() < profiles.require(code).version()) {
-            entry = transactions.execute(tx -> {
-                AgentConfig locked = mapper.lockByCode(code);
-                if (locked.getProfileVersion() >= profiles.require(code).version()) return locked;
-                var config = fromEntity(locked);
-                if (locked.getProfileVersion() < 2) {
-                    var legacy = legacyProductionConfig(code);
-                    mergeCapabilities(config, legacy == null ? null : fromEntity(legacy), code);
-                } else {
-                    // A capability upgrade must preserve the user's model, optional tools and budgets.
-                    var names = new java.util.LinkedHashSet<>(config.getTools().getNames());
-                    names.addAll(profiles.require(code).requiredTools());
-                    config.getTools().setNames(List.copyOf(names));
-                }
-                return persistUpdate(code, locked, config);
-            });
-        }
-        return fromEntity(entry);
-    }
-    private AgentConfig legacyProductionConfig(String code) {
-        return AgentProfileRegistry.ASSISTANT_CODE.equals(code) ? mapper.selectOne(new LambdaQueryWrapper<AgentConfig>()
-                .eq(AgentConfig::getAgentCode, AgentProfileRegistry.LEGACY_PRODUCTION_CODE)) : null;
-    }
-    private void mergeCapabilities(AgentConfigDTO config, AgentConfigDTO legacy, String code) {
-        var profile = profiles.require(code); var defaults = profile.defaults();
-        var names = new java.util.LinkedHashSet<>(config.getTools().getNames());
-        if (legacy != null) names.addAll(legacy.getTools().getNames());
-        // Add the new production tools while preserving the existing optional query/memory selections.
-        names.addAll(profile.allowedTools().stream().filter(n -> !List.of("get_project_overview", "list_project_assets", "get_shot_detail",
-                "save_session_note", "list_session_notes", "load_skill", "read_skill_file").contains(n)).toList());
-        config.getTools().setNames(names.stream().filter(profile.allowedTools()::contains).toList());
-        if (legacy != null) {
-            config.setEnabled(config.isEnabled() || legacy.isEnabled());
-            if (config.getModel().getProviderId() == null || !com.astra.freyja.agent.production.ProductionAssets.text(config.getModel().getModelCode()))
-                config.setModel(json.copy(legacy.getModel(), AgentConfigDTO.Model.class));
-            var skills = new java.util.LinkedHashSet<>(config.getSkills().getNames()); skills.addAll(legacy.getSkills().getNames());
-            config.getSkills().setNames(List.copyOf(skills));
-            String extra = legacy.getInstructions().getSystemPrompt();
-            if (extra != null && !extra.isBlank() && !extra.equals(config.getInstructions().getSystemPrompt()))
-                config.getInstructions().setSystemPrompt(config.getInstructions().getSystemPrompt() + "\n" + extra);
-        }
-        var secondary = legacy == null ? defaults : legacy;
-        config.getModel().setMaxTokens(Math.max(config.getModel().getMaxTokens(), Math.max(defaults.getModel().getMaxTokens(), secondary.getModel().getMaxTokens())));
-        config.getMemory().setContextTokens(Math.max(config.getMemory().getContextTokens(), Math.max(defaults.getMemory().getContextTokens(), secondary.getMemory().getContextTokens())));
-        config.getRuntime().setMaxModelTurns(config.getRuntime().getMaxModelTurns() == 0 || secondary.getRuntime().getMaxModelTurns() == 0
-                ? 0 : Math.max(config.getRuntime().getMaxModelTurns(), Math.max(defaults.getRuntime().getMaxModelTurns(), secondary.getRuntime().getMaxModelTurns())));
-        config.getRuntime().setMaxToolCalls(Math.max(config.getRuntime().getMaxToolCalls(), Math.max(defaults.getRuntime().getMaxToolCalls(), secondary.getRuntime().getMaxToolCalls())));
-        config.getRuntime().setExecutionTimeoutSeconds(Math.max(config.getRuntime().getExecutionTimeoutSeconds(), Math.max(defaults.getRuntime().getExecutionTimeoutSeconds(), secondary.getRuntime().getExecutionTimeoutSeconds())));
-        if (new AgentConfigDTO().getDescription().equals(config.getDescription())) config.setDescription(defaults.getDescription());
-        config.setAgentCode(code);
+        var result = fromEntity(entry);
+        var profile = profiles.require(code);
+        var selected = new java.util.LinkedHashSet<>(result.getTools().getNames());
+        selected.retainAll(tools.allowedNames(code, profile.allowedTools()));
+        selected.addAll(tools.requiredNames(code, profile.requiredTools()));
+        result.getTools().setNames(List.copyOf(selected));
+        return result;
     }
     public List<AgentConfigDTO> list() { return profiles.all().stream().map(p -> get(p.code())).toList(); }
     public record Display(String agentCode, String displayName, String description, AgentConfigDTO.Avatar avatar) {}
@@ -116,8 +68,8 @@ public class AgentConfigService {
     }
     public Map<String, Object> catalog(String code) {
         var profile = profiles.require(code);
-        return Map.of("tools", tools.catalog(profile.allowedTools()), "requiredTools", profile.requiredTools(),
-                "skills", skills.getEnabledCatalog(), "fixedInstructions", profile.fixedInstructions(),
+        return Map.of("tools", tools.catalog(tools.allowedNames(profile.code(), profile.allowedTools())), "requiredTools", tools.requiredNames(profile.code(), profile.requiredTools()),
+                "skills", skills.getEnabledCatalog(), "fixedInstructions", profile.fixedInstructions() + "\n" + tools.sharedRules(),
                 "defaults", profile.defaults(), "profileVersion", profile.version());
     }
     public ValidationResult validate(String code, AgentConfigDTO dto, boolean execution) {
@@ -184,11 +136,12 @@ public class AgentConfigService {
         Map<String, Long> versions = new LinkedHashMap<>();
         skills.getEnabledCatalog().stream().filter(s -> config.getSkills().getNames().contains(s.getName()))
                 .forEach(s -> versions.put(s.getName(), s.getVersionId()));
+        var capabilitySnapshot = tools.snapshot(code, config.getTools().getNames());
         Map<String, Integer> toolVersions = new LinkedHashMap<>();
-        config.getTools().getNames().forEach(name -> toolVersions.put(name, tools.require(name).version()));
+        config.getTools().getNames().forEach(name -> toolVersions.put(name, capabilitySnapshot == null ? tools.require(name).version() : tools.releaseVersion(capabilitySnapshot)));
         config.setExpectedRevision(null);
         return new Snapshot(code, input.getRevision() == null ? 0 : input.getRevision(), profile.version(), config,
-                profile.fixedInstructions(), Map.copyOf(versions), Map.copyOf(toolVersions), pinned, type, pinSummaryModel(config.getMemory().getSummary(), pinned));
+                profile.fixedInstructions() + "\n公共应用规则（优先于默认创作建议）：\n" + tools.sharedRules(capabilitySnapshot), Map.copyOf(versions), Map.copyOf(toolVersions), pinned, type, pinSummaryModel(config.getMemory().getSummary(), pinned), capabilitySnapshot);
     }
     public AiModel pinSummaryModel(AgentConfigDTO.Summary summary, AiModel main) {
         if (summary.getProviderId() == null) return main;

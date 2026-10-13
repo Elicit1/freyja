@@ -54,7 +54,7 @@ public class McpServerConfiguration {
             26. Scene fields are optional: sceneType accepts INDOOR, OUTDOOR, STUDIO, VIRTUAL; timeOfDay accepts DAY, NIGHT, SUNSET, DAWN. Explicitly choose sceneType from the actual setting (riversides and streets use OUTDOOR). Omitted fields remain empty unless a story scene inherits an explicitly configured linked resource scene. Explicit null means empty; omitted update fields preserve existing values. No default INDOOR/OUTDOOR or DAY and no server-side semantic guessing.
             27. Explicitly select the prompt mode for finished video cards: REFERENCE_MODE uses prompt plus ordered refImages and optional refAudios; FIRST_LAST_FRAME uses videoPrompt plus firstFramePrompt/endFramePrompt or previewImageUrl/endFrameImageUrl. Do not write the final card into the other mode's field or claim a complete card from a draft. Draft omission remains compatible with FIRST_LAST_FRAME and a 3-second duration; always estimate the intended duration explicitly for finished shots.
             28. After creating or updating key records, read them back with get_scene/get_resource_scene/get_shot or batch_read_records. Compare persisted sceneType/timeOfDay, duration, generationMode and its prompt/media fields, characterRefs.characterId/lookId and reference image source/character/look IDs against creative intent. Write responses already include persisted data; additionally read current state after batches or related/default-look changes. Correct discrepancies with a fresh editFingerprint before continuing to rendering; never assume defaults reflect intent.
-            29. Generate video prompts without background music or score to allow clean editing. In both REFERENCE_MODE prompt and FIRST_LAST_FRAME videoPrompt, keep the required non_diegetic_music section and explicitly write none / no background music. overall_soundscape retains dialogue, natural ambience and necessary sound effects only; do not introduce music there or via BGM reference audios. This application audio requirement takes precedence over Skill examples suggesting music.
+            29. By default generate video prompts without background music or score to allow clean editing; when the creator explicitly requests music, include it as requested. In both REFERENCE_MODE prompt and FIRST_LAST_FRAME videoPrompt, keep the required non_diegetic_music section and when music is disabled explicitly write N/A or none / no background music according to the model contract. When music is disabled overall_soundscape retains dialogue, natural ambience and necessary sound effects only; do not introduce music there or via BGM reference audios. This application audio requirement takes precedence over Skill examples suggesting music.
             """;
 
     @Bean
@@ -74,8 +74,11 @@ public class McpServerConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<McpAuthenticationFilter> mcpAuthenticationFilter(McpProperties properties, ObjectProvider<McpRuntimeControl> controls) {
-        var registration = new FilterRegistrationBean<>(new McpAuthenticationFilter(properties, controls.getIfAvailable()));
+    FilterRegistrationBean<McpAuthenticationFilter> mcpAuthenticationFilter(McpProperties properties, ObjectProvider<McpRuntimeControl> controls,
+            ObjectProvider<com.astra.freyja.capability.service.CapabilityMcpDispatcher> dispatchers) {
+        var filter = new McpAuthenticationFilter(properties, controls.getIfAvailable());
+        filter.setDispatcher(dispatchers.getIfAvailable());
+        var registration = new FilterRegistrationBean<>(filter);
         registration.addUrlPatterns("/mcp", "/mcp/*");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
         return registration;

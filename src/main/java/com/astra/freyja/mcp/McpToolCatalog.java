@@ -42,11 +42,11 @@ public class McpToolCatalog {
             try {
                 if (control != null) control.requireTool(entry.name(), entry.effect());
                 McpPrincipal caller = principal(context);
-                if (entry.effect() == McpTool.Effect.WRITE && !caller.write()) throw new BizException(403, "MCP_WRITE_DISABLED");
+                if ((entry.effect() == McpTool.Effect.WRITE || entry.writePermissionRequired()) && !caller.write()) throw new BizException(403, "MCP_WRITE_DISABLED");
                 Map<String, Object> arguments = request.arguments() == null ? Map.of() : request.arguments();
                 if (!properties.keySet().containsAll(arguments.keySet())) throw new BizException(400, "工具参数包含未知字段");
                 for (String name : required) if (arguments.get(name) == null) throw new BizException(400, "缺少必填参数: " + name);
-                validateBusiness(entry.name(), arguments);
+                if (entry.validator() != null) entry.validator().accept(arguments);
                 if (!validator.validate(generated, arguments).valid()) throw new BizException(400, "参数类型不符合 Schema；业务 ID 必须为字符串");
                 I input;
                 try { input = json.read(arguments, entry.inputType()); }
@@ -62,35 +62,6 @@ public class McpToolCatalog {
                 return result(Map.of("ok", false, "error", Map.of("code", 500, "message", "MCP 工具执行失败，请查看服务端日志")), true);
             }
         }).build();
-    }
-
-    @SuppressWarnings("unchecked")
-    private void validateBusiness(String tool, Map<String, Object> arguments) {
-        if (businessSchemas == null) return;
-        if (Set.of("batch_create_records", "append_storyboard").contains(tool) && arguments.get("items") instanceof List<?> items) {
-            for (int index = 0; index < items.size(); index++) {
-                if (items.get(index) instanceof Map<?, ?> item && item.get("type") instanceof String type && item.get("data") instanceof Map<?, ?> data) {
-                    McpRecordType recordType;
-                    try { recordType = McpRecordType.valueOf(type); }
-                    catch (IllegalArgumentException e) { throw new BizException(400, "items[" + index + "].type 无效"); }
-                    try { businessSchemas.validate(recordType, (Map<String, Object>) data, true, true); }
-                    catch (BizException e) { throw new BizException(e.getCode(), "items[" + index + "]: " + e.getMessage()); }
-                }
-            }
-        }
-        for (McpRecordType type : McpRecordType.values()) {
-            String name = type.name().toLowerCase(Locale.ROOT);
-            if ((tool.equals("create_" + name) || tool.equals("update_" + name)) && arguments.get("data") instanceof Map<?, ?> data)
-                businessSchemas.validate(type, (Map<String, Object>) data, false, tool.startsWith("create_"));
-            if (tool.equals("batch_update_" + name + "s") && arguments.get("items") instanceof List<?> items) {
-                for (int index = 0; index < items.size(); index++) {
-                    if (items.get(index) instanceof Map<?, ?> item && item.get("data") instanceof Map<?, ?> data) {
-                        try { businessSchemas.validate(type, (Map<String, Object>) data, false, false); }
-                        catch (BizException e) { throw new BizException(e.getCode(), "items[" + index + "]: " + e.getMessage()); }
-                    }
-                }
-            }
-        }
     }
 
     public McpSchema.CallToolResult result(Object data, boolean error) {

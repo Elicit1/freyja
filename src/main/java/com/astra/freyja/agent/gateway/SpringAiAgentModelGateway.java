@@ -50,7 +50,7 @@ public class SpringAiAgentModelGateway implements AgentModelGateway {
             throw new BizException("任务使用的模型或提供商已不可用");
         var model = factory.getChatModelForSnapshot(settings.getProviderId(), snapshot.pinnedModel());
         ChatOptions options;
-        var definitions = registry.definitions(tools);
+        var definitions = registry.definitions(tools, snapshot);
         // Preserve the pinned model defaults and provider connection options. Spring AI 2 requires
         // concrete provider options; generic ToolCallingChatOptions cannot be cast by OpenAiChatModel.
         if (model.getOptions() instanceof OpenAiChatOptions defaults) {

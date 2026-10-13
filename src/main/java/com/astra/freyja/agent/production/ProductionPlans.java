@@ -339,6 +339,7 @@ public class ProductionPlans {
             dto.setDirectorPlanInput(com.astra.freyja.director.model.DirectorPlanInput.fromShot(s));
             dto.setUserInstruction("严格遵循已保存制作规划：" + json.write(data));
             dto.setRequiredSkillNames(ctx.snapshot().config().getSkills().getNames());
+            dto.setIncludeBgm(Boolean.TRUE.equals(data.getIncludeBgm()));
             p.setPromptTaskId(Long.valueOf(prompts.startPromptTask(dto))); p.setPromptTaskFingerprint(basis); p.setPromptTaskRevision(p.getRevision()); plans.updateById(p);
         }
         var task = tasks.getTaskById(p.getPromptTaskId());

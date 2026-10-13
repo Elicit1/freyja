@@ -32,13 +32,17 @@ public class ProductionJobs {
     private final AgentConfigMapper configs;
     private final DramaEpisodeMapper episodes;
     private final AgentMessageMapper messages;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private DictService dictionaries;
 
     private void validate(Start input) {
         if (input == null || !ProductionAssets.text(input.getClientRequestId()) || input.getClientRequestId().length() > 100)
             throw new BizException("需要合法的 clientRequestId");
         if (!ProductionAssets.text(input.getSourceText()) || input.getSourceText().length() > 100000)
             throw new BizException("请输入小说或剧本，最长 100000 字");
-        if (input.getAspectRatio() == null || !Set.of("9:16", "16:9", "1:1", "4:3").contains(input.getAspectRatio())) throw new BizException("画幅不合法");
+        if (!ProductionAssets.text(input.getAspectRatio()) || (dictionaries != null && dictionaries.listByType("drama_aspect_ratio").stream()
+                .noneMatch(option -> Integer.valueOf(1).equals(option.getStatus()) && input.getAspectRatio().equals(option.getDictValue()))))
+            throw new BizException("请选择启用的画幅比例");
         if (input.getPacingPreset() == null || !Set.of("AUTO", "FAST_PACED", "COMPACT", "STANDARD", "CINEMATIC_LONG").contains(input.getPacingPreset())) throw new BizException("节奏不合法");
         if (input.getWorkflow() == null || !Set.of("SCRIPT_DECOMPOSITION", "VIDEO_PREPARATION").contains(input.getWorkflow())) throw new BizException("请选择剧本拆解或完整视频准备流程");
         if (input.getDramaId() != null && dramas.selectById(input.getDramaId()) == null) throw new BizException("项目不存在");
@@ -80,6 +84,12 @@ public class ProductionJobs {
         }
         if (!ProductionAssets.text(options.getSourceText()))
             return ToolResult.needUser("请把需要拆解的小说或剧本原文发给我；有章节范围或拆解要求也可以一起告诉我。");
+        if (session.getDramaId() != null) {
+            var project = dramas.selectById(session.getDramaId());
+            if (project != null) options.setAspectRatio(project.getAspectRatio());
+        }
+        if (!ProductionAssets.text(options.getAspectRatio()))
+            return ToolResult.needUser("请选择系统已有画幅比例；也可以明确让我选择，届时优先采用启用的16:9。");
         validate(options);
         var old = jobs.lockByRunId(ctx.runId());
         if (old != null) {

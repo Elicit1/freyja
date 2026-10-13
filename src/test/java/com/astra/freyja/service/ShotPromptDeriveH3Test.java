@@ -38,6 +38,21 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ShotPromptDeriveH3Test {
+    @Test void publicRulesAreExportedAndFingerprintPinsTheirVersion() {
+        var catalog = org.mockito.Mockito.mock(com.astra.freyja.capability.service.CapabilityCatalogService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "capabilityCatalog", catalog);
+        when(catalog.rules()).thenReturn("旧规则：默认无配乐");
+        var dto = ShotPromptDeriveDTO.builder().generationMode("FIRST_LAST_FRAME").scriptContent("人物走向窗边。").build();
+        var first = service.buildPromptPackage(dto);
+        assertTrue(first.getCombinedPrompt().contains("旧规则：默认无配乐"));
+        when(catalog.rules()).thenReturn("新规则：默认无配乐，长镜头7–8秒");
+        var pinned = service.buildPromptPackage(dto);
+        assertEquals(first.getContextFingerprint(), pinned.getContextFingerprint());
+        assertFalse(pinned.getSystemPrompt().contains("新规则"));
+        var fresh = service.buildPromptPackage(ShotPromptDeriveDTO.builder().generationMode("FIRST_LAST_FRAME").scriptContent("人物走向窗边。").build());
+        assertNotEquals(first.getContextFingerprint(), fresh.getContextFingerprint());
+        assertTrue(fresh.getSystemPrompt().contains("新规则"));
+    }
 
     @Mock
     private DramaShotMapper shotMapper;

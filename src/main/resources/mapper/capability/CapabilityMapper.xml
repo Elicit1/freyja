@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.astra.freyja.dao.CapabilityMapper">
+    <select id="state" resultType="com.astra.freyja.capability.model.CapabilityRow">SELECT revision,active_release_id FROM ai_capability_catalog_state WHERE id=1</select>
+    <select id="lockState" resultType="com.astra.freyja.capability.model.CapabilityRow">SELECT revision,active_release_id FROM ai_capability_catalog_state WHERE id=1 FOR UPDATE</select>
+    <insert id="initializeState">INSERT IGNORE INTO ai_capability_catalog_state(id,revision) VALUES(1,0)</insert>
+    <select id="draft" resultType="com.astra.freyja.capability.model.CapabilityRow">SELECT revision,payload_json FROM ai_capability_catalog_state WHERE id=1</select>
+    <update id="saveDraft">UPDATE ai_capability_catalog_state SET payload_json=#{json},revision=revision+1 WHERE id=1</update>
+    <select id="release" resultType="com.astra.freyja.capability.model.CapabilityRow">SELECT id,revision,payload_json,content_hash,note,create_time FROM ai_capability_release WHERE id=#{id}</select>
+    <select id="releases" resultType="com.astra.freyja.capability.model.CapabilityRow">SELECT id,revision,content_hash,note,create_time FROM ai_capability_release ORDER BY revision DESC LIMIT 100</select>
+    <insert id="saveRelease">INSERT INTO ai_capability_release(id,revision,payload_json,content_hash,note,create_time) VALUES(#{id},#{revision},#{json},#{hash},#{note},CURRENT_TIMESTAMP)</insert>
+    <update id="activate">UPDATE ai_capability_catalog_state SET active_release_id=#{id},revision=#{revision} WHERE id=1</update>
+    <insert id="insertDefinition">INSERT IGNORE INTO ai_capability_definition(id,handler_key,display_name) VALUES(#{id},#{key},#{name})</insert>
+    <insert id="insertVersion">INSERT INTO ai_capability_version(id,capability_id,version_no,contract_json) VALUES(#{id},#{capabilityId},#{revision},#{json})</insert>
+    <insert id="saveBinding">INSERT INTO ai_capability_binding(id,capability_id,consumer_type,tool_name,binding_json) VALUES(#{id},#{capabilityId},#{consumer},#{name},#{json}) ON DUPLICATE KEY UPDATE tool_name=VALUES(tool_name),binding_json=VALUES(binding_json)</insert>
+    <insert id="saveRule">INSERT INTO ai_capability_rule(rule_code,content) VALUES(#{code},#{content}) ON DUPLICATE KEY UPDATE content=VALUES(content)</insert>
+    <insert id="enqueue">INSERT INTO ai_capability_outbox(id,revision,active_release_id,status,next_retry_time) VALUES(#{id},#{revision},#{releaseId},'PENDING',CURRENT_TIMESTAMP)</insert>
+    <select id="pendingEvents" resultType="com.astra.freyja.capability.model.CapabilityRow">SELECT id,revision,active_release_id FROM ai_capability_outbox WHERE status='PENDING' AND next_retry_time&lt;=CURRENT_TIMESTAMP ORDER BY revision LIMIT 50</select>
+    <update id="sent">UPDATE ai_capability_outbox SET status='SENT' WHERE id=#{id}</update>
+    <update id="retry">UPDATE ai_capability_outbox SET attempts=attempts+1,next_retry_time=DATE_ADD(CURRENT_TIMESTAMP,INTERVAL 5 SECOND) WHERE id=#{id}</update>
+</mapper>

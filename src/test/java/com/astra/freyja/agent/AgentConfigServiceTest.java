@@ -157,38 +157,26 @@ class AgentConfigServiceTest {
         row.setMemoryPolicyJson(json.write(dto.getMemory())); row.setRuntimePolicyJson(json.write(dto.getRuntime())); row.setAvatarConfigJson(json.write(dto.getAvatar()));
         return row;
     }
-    @Test void upgradeCombinesCapabilitiesButKeepsPrimaryModelAndPet() {
-        config.setDisplayName("我的助手"); config.setEnabled(false); config.getInstructions().setSystemPrompt("保持原文对白");
+    @Test void currentConfigurationKeepsModelAndAvatarWithoutLegacyMigration() {
+        config.setDisplayName("我的助手"); config.setEnabled(false);
         config.getAvatar().getPet().setSpritesheetUrl("https://example.test/my-pet.webp");
-        config.getTools().setNames(List.of("list_project_assets", "get_shot_detail"));
-        var primary = stored(config, 1);
-        var legacy = json.copy(config, AgentConfigDTO.class); legacy.setAgentCode("production-preparation"); legacy.setEnabled(true);
-        legacy.getModel().setProviderId(999L); legacy.getModel().setModelCode("other-model");
-        legacy.getAvatar().getPet().setSpritesheetUrl("https://example.test/other-pet.webp");
-        legacy.getInstructions().setSystemPrompt("角色造型保持一致");
-        when(mapper.selectOne(any())).thenReturn(primary, stored(legacy, 1)); when(mapper.lockByCode("core-assistant")).thenReturn(primary);
+        config.getTools().setNames(List.of("get_project", "get_shot", "start_script_decomposition", "inspect_preparation"));
+        when(mapper.selectOne(any())).thenReturn(stored(config, 1));
         var result = service.get("core-assistant");
-        assertEquals("我的助手", result.getDisplayName()); assertTrue(result.isEnabled()); assertEquals(9, result.getRevision());
-        assertEquals(config.getModel().getProviderId(), result.getModel().getProviderId()); assertEquals(config.getModel().getModelCode(), result.getModel().getModelCode());
+        assertEquals("我的助手", result.getDisplayName()); assertFalse(result.isEnabled());
+        assertEquals(config.getModel().getProviderId(), result.getModel().getProviderId());
         assertEquals(config.getAvatar().getPet().getSpritesheetUrl(), result.getAvatar().getPet().getSpritesheetUrl());
-        assertTrue(result.getTools().getNames().containsAll(List.of("list_project_assets", "start_script_decomposition", "inspect_preparation")));
-        assertEquals(262144, result.getMemory().getContextTokens()); assertEquals(60, result.getRuntime().getMaxModelTurns());
-        assertTrue(result.getInstructions().getSystemPrompt().contains("角色造型保持一致"));
-        verify(mapper, times(1)).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
-    }
-    @Test void legacyIdentifierResolvesOneConfigurationAndNewSnapshotsUseUnifiedCode() {
-        when(mapper.selectOne(any())).thenReturn(stored(config, AgentTestSupport.profile().version()));
-        assertEquals("core-assistant", service.get("production-preparation").getAgentCode());
+        assertTrue(result.getTools().getNames().containsAll(List.of("get_project", "get_shot", "inspect_preparation")));
         verify(mapper, never()).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));
-        var snapshot = service.snapshot("production-preparation", config, "NORMAL");
-        assertEquals("core-assistant", snapshot.agentCode()); assertEquals(AgentTestSupport.profile().version(), snapshot.profileVersion());
-        assertEquals("core-assistant", snapshot.config().getAgentCode());
+    }
+    @Test void retiredInternalProfileIsNotAliased() {
+        assertEquals(404, assertThrows(com.astra.freyja.common.BizException.class, () -> service.get("production-preparation")).getCode());
     }
     @Test void oneRegisteredAssistantHasQueryAndProductionCapabilities() {
         var profile = AgentTestSupport.profile(); var registry = new AgentProfileRegistry(List.of(profile));
-        assertEquals(1, registry.all().size()); assertSame(profile, registry.require("production-preparation"));
+        assertEquals(1, registry.all().size()); assertSame(profile, registry.require("core-assistant"));
         assertEquals("FREYJA 助手", profile.defaults().getDisplayName());
-        assertTrue(profile.allowedTools().containsAll(List.of("list_project_assets", "ensure_text_assets", "prepare_shot_prompts")));
+        assertTrue(profile.allowedTools().containsAll(List.of("search_assets", "ensure_text_assets", "prepare_shot_prompts")));
     }
     @Test void questionsUpgradePreservesExistingSettingsWithoutMergingLegacyAgain() {
         config.setEnabled(false); config.getRuntime().setMaxModelTurns(12); config.getMemory().setContextTokens(16000);
@@ -216,7 +204,7 @@ class AgentConfigServiceTest {
         assertFalse(upgraded.isEnabled()); assertEquals(config.getModel(), upgraded.getModel());
         assertEquals(config.getAvatar(), upgraded.getAvatar()); assertEquals(config.getRuntime(), upgraded.getRuntime());
         assertEquals(config.getMemory(), upgraded.getMemory()); assertEquals(config.getInstructions(), upgraded.getInstructions());
-        assertEquals("我的助手", upgraded.getDisplayName()); assertEquals(9, upgraded.getRevision());
+        assertEquals("我的助手", upgraded.getDisplayName()); assertEquals(8, upgraded.getRevision());
         verify(mapper, times(1)).selectOne(any());
     }
     @Test void progressUpgradeAddsPlanToolAndKeepsUnlimitedTurnsAndOtherSettings() {

@@ -27,6 +27,8 @@ public class McpRuntimeControl {
     private final McpRecordTools recordTools;
     private final ObjectProvider<McpStatelessSyncServer> servers;
     private final ObjectProvider<McpToolCatalog> catalogs;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.astra.freyja.capability.service.CapabilityCatalogService capabilities;
 
     public McpRuntimeSettings current() { return decode(configs.find()); }
     private McpRuntimeSettings defaults() {
@@ -54,13 +56,14 @@ public class McpRuntimeControl {
     }
     public static boolean validToken(String token) { return token != null && token.length() >= 24 && !token.isBlank(); }
     public boolean toolEnabled(McpRuntimeSettings state, McpTool<?> tool) {
-        if (tool.name().equals("get_business_operation") && !state.isWriteEnabled()) return false;
-        return !Boolean.FALSE.equals(state.getTools().get(tool.name())) && (tool.effect() == McpTool.Effect.READ || state.isWriteEnabled());
+        if (tool.writePermissionRequired() && !state.isWriteEnabled()) return false;
+        return (capabilities != null || !Boolean.FALSE.equals(state.getTools().get(tool.name()))) && (tool.effect() == McpTool.Effect.READ || state.isWriteEnabled());
     }
     public void requireTool(String name, McpTool.Effect effect) {
         var state = current();
         if (!state.isEnabled()) throw new BizException(403, "MCP_DISABLED");
-        if (Boolean.FALSE.equals(state.getTools().get(name))) throw new BizException(403, "MCP_TOOL_DISABLED");
+        if (capabilities == null ? Boolean.FALSE.equals(state.getTools().get(name)) : !capabilities.mcpBindingEnabled(capabilities.current(), name))
+            throw new BizException(403, "MCP_TOOL_DISABLED");
         if (effect == McpTool.Effect.WRITE && !state.isWriteEnabled()) throw new BizException(403, "MCP_WRITE_DISABLED");
     }
     public Map<String, Object> view() {
@@ -70,10 +73,13 @@ public class McpRuntimeControl {
         result.put("allowedProjectIds", state.getAllowedProjectIds()); result.put("allowedOrigins", state.getAllowedOrigins());
         result.put("tokenConfigured", validToken(token(state))); result.put("endpoint", "/mcp"); result.put("protocol", "Streamable HTTP");
         result.put("recordTypes", Arrays.stream(McpRecordType.values()).map(Enum::name).toList());
-        result.put("crudCapabilities", recordTools.capabilities());
+        var release = capabilities == null ? null : capabilities.current();
+        result.put("crudCapabilities", release == null ? recordTools.capabilities() : capabilities.crudCapabilities(release, recordTools.capabilities()));
         var catalog = catalogs.getObject();
-        result.put("tools", inventory.all().stream().map(tool -> Map.of("name", tool.name(), "description", tool.description(), "effect", tool.effect(),
-                "enabled", !Boolean.FALSE.equals(state.getTools().get(tool.name())), "published", state.isEnabled() && toolEnabled(state, tool),
+        var entries = release == null ? inventory.all() : capabilities.mcpTools(release, true);
+        result.put("tools", entries.stream().map(tool -> Map.of("name", tool.name(), "description", tool.description(), "effect", tool.effect(),
+                "enabled", release == null ? !Boolean.FALSE.equals(state.getTools().get(tool.name())) : capabilities.mcpBindingEnabled(release, tool.name()),
+                "published", state.isEnabled() && toolEnabled(state, tool) && (release == null || capabilities.mcpBindingEnabled(release, tool.name())),
                 "inputSchema", catalog.specification(tool).tool().inputSchema())).toList());
         return result;
     }
@@ -97,7 +103,11 @@ public class McpRuntimeControl {
     public void switchTool(String tool, McpRuntimeSettings.Switch input) { switchValue(tool, input); }
     private void switchValue(String tool, McpRuntimeSettings.Switch input) {
         if (input == null || input.enabled() == null) throw new BizException(400, "缺少开关状态");
-        edit(input.revision(), state -> { if (tool == null) state.setEnabled(input.enabled()); else state.getTools().put(tool, input.enabled()); });
+        edit(input.revision(), state -> {
+            if (tool == null) state.setEnabled(input.enabled());
+            else if (capabilities != null) capabilities.switchMcpTool(tool, input.enabled());
+            else state.getTools().put(tool, input.enabled());
+        });
     }
     private void edit(Integer revision, Consumer<McpRuntimeSettings> action) {
         configs.reserve(json.write(defaults())); var row = configs.lock();
@@ -119,10 +129,12 @@ public class McpRuntimeControl {
                     || uri.getQuery() != null || uri.getFragment() != null || (uri.getRawPath() != null && !uri.getRawPath().isEmpty())) throw new IllegalArgumentException(); }
             catch (RuntimeException e) { throw new BizException(400, "Origin 应为完整来源，例如 https://studio.example，不能包含路径"); }
         }
-        Set<String> known = new HashSet<>(); inventory.all().forEach(tool -> known.add(tool.name()));
+        Set<String> known = new HashSet<>(); inventory.registeredHandlers().forEach(tool -> known.add(tool.name()));
+        inventory.all().forEach(tool -> known.add(tool.name()));
         if (!known.containsAll(state.getTools().keySet()) || state.getTools().containsValue(null)) throw new BizException(400, "工具配置包含未知名称或无效状态");
     }
     public synchronized void publish(McpRuntimeSettings state) {
+        if (capabilities != null) return; // The request-local database catalog owns discovery and invocation.
         state = current();
         var server = servers.getIfAvailable(); if (server == null) return;
         var catalog = catalogs.getObject(); Set<String> current = new HashSet<>(); server.listTools().forEach(t -> current.add(t.name()));

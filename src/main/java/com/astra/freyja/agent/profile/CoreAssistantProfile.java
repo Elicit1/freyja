@@ -40,7 +40,7 @@ public class CoreAssistantProfile extends ProductionPreparationProfile {
                 """ + super.fixedInstructions();
     }
     public List<String> allowedTools() {
-        var names = new java.util.ArrayList<>(super.allowedTools()); names.add("list_project_assets"); names.add("request_user_input"); names.add("update_task_plan"); return List.copyOf(names);
+        var names = new java.util.ArrayList<>(super.allowedTools()); names.add("request_user_input"); names.add("update_task_plan"); return List.copyOf(names);
     }
     @Override public List<String> requiredTools() {
         var names = new java.util.ArrayList<>(super.requiredTools()); names.add("request_user_input"); names.add("update_task_plan"); return List.copyOf(names);

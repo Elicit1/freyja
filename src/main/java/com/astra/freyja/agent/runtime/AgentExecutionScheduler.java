@@ -24,7 +24,7 @@ public class AgentExecutionScheduler {
     private volatile boolean stopping;
     private boolean schemaWarning;
 
-    @Scheduled(fixedDelayString = "${freyja.agent.scan-delay-ms:2000}")
+    @Scheduled(fixedDelayString = "${freyja.agent.scan-delay-ms:2000}", initialDelayString = "${freyja.agent.scan-initial-delay-ms:2000}")
     public synchronized void scan() {
         if (stopping) return;
         try {

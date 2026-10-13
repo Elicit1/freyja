@@ -47,10 +47,10 @@ public class AgentConfigValidator {
         }
         text(errors, "instructions.systemPrompt", config.getInstructions().getSystemPrompt(), 30000);
         List<String> names = config.getTools().getNames();
-        if (names == null || names.stream().anyMatch(n -> n == null || !profile.allowedTools().contains(n))) {
+        if (names == null || names.stream().anyMatch(n -> n == null || !tools.allowedNames(profile.code(), profile.allowedTools()).contains(n))) {
             errors.add(issue("tools.names", "UNKNOWN_TOOL", "只能选择模板已注册的工具"));
         } else {
-            if (!names.containsAll(profile.requiredTools()) || Set.copyOf(names).size() != names.size())
+            if (!names.containsAll(tools.requiredNames(profile.code(), profile.requiredTools())) || Set.copyOf(names).size() != names.size())
                 errors.add(issue("tools.names", "INVALID_TOOLS", "必需工具不可移除，工具不能重复"));
             for (String name : names) tools.require(name);
         }

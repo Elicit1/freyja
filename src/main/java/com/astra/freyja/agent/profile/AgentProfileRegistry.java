@@ -10,8 +10,7 @@ import java.util.Map;
 public class AgentProfileRegistry {
     public static final String ASSISTANT_CODE = "core-assistant";
     public static final String LEGACY_PRODUCTION_CODE = "production-preparation";
-    /** Existing sessions and pinned runs keep their identifiers; new configuration resolves to one assistant. */
-    public static String canonicalCode(String code) { return LEGACY_PRODUCTION_CODE.equals(code) ? ASSISTANT_CODE : code; }
+    public static String canonicalCode(String code) { return code; }
     private final Map<String, AgentProfile> profiles = new LinkedHashMap<>();
     public AgentProfileRegistry(List<AgentProfile> entries) {
         for (AgentProfile profile : entries) {

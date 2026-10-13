@@ -30,7 +30,11 @@ final class AgentTestSupport {
         config.getModel().setProviderId(2032095628944588804L); config.getModel().setModelCode("test-model");
         AiModel model = new AiModel(); model.setModelCode("test-model"); model.setModelType("CHAT"); model.setStatus(1);
         return new Snapshot("core-assistant", 1, 1, config, "固定约束", Map.of(),
-                tools.stream().collect(java.util.stream.Collectors.toMap(name -> name, name -> 1)), model, type);
+                tools.stream().collect(java.util.stream.Collectors.toMap(name -> name, name -> 1)), model, type, null,
+                new com.astra.freyja.capability.model.CapabilityModels.AgentSnapshot("1", tools.stream().map(name ->
+                        new com.astra.freyja.capability.model.CapabilityModels.Binding(name, "1", "1", "INTERNAL_AGENT:" + name,
+                                com.astra.freyja.capability.model.CapabilityModels.Consumer.INTERNAL_AGENT, "core-assistant", name, name, Map.of(), true, false,
+                                com.astra.freyja.capability.model.CapabilityModels.ContextMode.AGENT_RUNTIME, false, Effect.READ, RecoveryMode.REPLAY_SAFE)).toList()));
     }
     static AgentRun run(Snapshot snapshot, com.astra.freyja.agent.model.AgentJson json) {
         AgentRun run = new AgentRun();

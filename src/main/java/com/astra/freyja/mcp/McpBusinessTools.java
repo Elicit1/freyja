@@ -34,7 +34,7 @@ public class McpBusinessTools {
 
     public List<McpTool<?>> tools() {
         return allTools().stream().filter(tool -> properties.isWriteEnabled() ||
-                (tool.effect() == McpTool.Effect.READ && !tool.name().equals("get_business_operation"))).toList();
+                (tool.effect() == McpTool.Effect.READ && !tool.writePermissionRequired())).toList();
     }
     public List<McpTool<?>> allTools() {
         List<McpTool<?>> tools = new ArrayList<>();
@@ -50,7 +50,7 @@ public class McpBusinessTools {
                 return create(c, i, "append_storyboard");
             }));
             tools.add(write("batch_delete_records", "事务批量逻辑删除项目/剧集/场次/镜头组/分镜、人物/造型/场景资产/道具/关键图，最多100项，单条也可传一项。每项需当前 expectedFingerprint；先删除子记录并解除资产引用，不隐式级联。任一失败全批回滚，requestId 幂等；不删除 MinIO 文件、不调用内部 AI。", McpBatchInputs.Delete.class, schemas.delete(), this::delete));
-            tools.add(McpTool.read("get_business_operation", "读取 MCP 业务写入请求的已提交结果，便于客户端中断后恢复。不是内部 AI 任务查询接口。", McpBatchInputs.Operation.class, (c, i) -> journal.read(c, i.requestId())));
+            tools.add(McpTool.read("get_business_operation", "读取 MCP 业务写入请求的已提交结果，便于客户端中断后恢复。不是内部 AI 任务查询接口。", McpBatchInputs.Operation.class, (c, i) -> journal.read(c, i.requestId())).requiringWritePermission());
             tools.add(write("clone_shot", "复制授权项目的分镜，沿用现有业务复制规则，不启动任何 AI。使用读取返回的版本指纹和稳定 requestId。", McpBatchInputs.Clone.class, null, this::cloneShot));
             tools.add(write("set_default_character_look", "将项目人物的一个现有造型设为默认；复用默认造型互斥规则，不生成图片。", McpBatchInputs.DefaultLook.class, null, this::defaultLook));
             tools.add(write("reorder_group_shots", "按给定完整 shotIds 重排镜头组内分镜，不修改镜头内容。不接受跨组/重复/缺少的分镜。", McpBatchInputs.Reorder.class, null, this::reorder));
@@ -60,7 +60,21 @@ public class McpBusinessTools {
         return tools;
     }
     private <I> McpTool<I> write(String name, String description, Class<I> type, Map<String, Object> schema, BiFunction<McpPrincipal, I, Object> action) {
-        return new McpTool<>(name, description, type, McpTool.Effect.WRITE, schema, action);
+        McpTool<I> tool = new McpTool<>(name, description, type, McpTool.Effect.WRITE, schema, action);
+        return type == McpBatchInputs.Create.class ? tool.validated(this::validateCreateBatch) : tool;
+    }
+    @SuppressWarnings("unchecked")
+    private void validateCreateBatch(Map<String, Object> input) {
+        if (!(input.get("items") instanceof List<?> items)) return;
+        for (int index = 0; index < items.size(); index++) {
+            if (items.get(index) instanceof Map<?, ?> item && item.get("type") instanceof String type && item.get("data") instanceof Map<?, ?> data) {
+                McpRecordType recordType;
+                try { recordType = McpRecordType.valueOf(type); }
+                catch (IllegalArgumentException invalid) { throw new BizException(400, "业务记录类型无效"); }
+                try { schemas.validate(recordType, (Map<String, Object>) data, true, true); }
+                catch (BizException invalid) { throw new BizException(invalid.getCode(), "items[" + index + "]: " + invalid.getMessage()); }
+            }
+        }
     }
 
     private Object read(McpPrincipal caller, McpBatchInputs.Read input) {

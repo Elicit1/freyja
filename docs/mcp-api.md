@@ -22,7 +22,7 @@ MCP 初始化指令与 `freyja://guide` 均引导外部 Agent 将非提示词生
 
 视频卡片显式选择模式：`REFERENCE_MODE` 使用 `prompt + refImages`（可选 `refAudios`），`FIRST_LAST_FRAME` 使用 `videoPrompt` 与首尾帧图片/提示词。写后使用 `get_scene/get_resource_scene/get_shot` 或 `batch_read_records` 核对场景类型/时段、`duration`、模式对应字段及人物/造型引用；以最新指纹修正偏差后再渲染。草稿省略模式/时长仍兼容首尾帧/3秒，完成卡片不能依赖这些默认值。
 
-生成视频提示词时不加背景音乐/配乐：两种 H3 模式均保留 `non_diegetic_music` 并明确写 `none / no background music`，`overall_soundscape` 保留对白、环境声和必要音效，不通过参考音频引入 BGM，便于后期剪辑。该约束优先于 Skill 的配乐示例。
+生成视频提示词时默认不加背景音乐/配乐：两种 H3 模式均保留 `non_diegetic_music`，按模型契约写 `N/A` 或 `none / no background music`；`overall_soundscape` 保留对白、环境声和必要音效，便于后期剪辑。用户明确要求背景音乐时按要求加入，内部制作规划使用 `includeBgm=true`。该默认规则优先于 Skill 的配乐示例。
 
 进入工作台 **管理 → MCP 服务**（`/system/mcp`），即可配置令牌、项目范围、写入权限、整体开关和每个工具的开关；保存立即生效，无需重启。页面展示连接地址、工具说明、参数 Schema、开启状态和实际发布状态。
 
@@ -359,3 +359,8 @@ $env:JAVA_HOME = 'F:\program_file\jdk26'
 协议测试使用真实 HTTP；数据库测试使用 H2 MySQL 兼容模式、实际 MyBatis 与原有 CRUD 服务，不写本地开发库。H2 验证不能替代目标 MySQL 上的上线验收。代码交付未自动升级数据库、启用服务或配置第三方客户端。
 
 实现清单见 [mcp-implementation.md](mcp-implementation.md)。参考：[Spring AI MCP Server](https://docs.spring.io/spring-ai/reference/api/mcp/mcp-server-boot-starter-docs.html)、[无状态传输](https://docs.spring.io/spring-ai/reference/api/mcp/mcp-stateless-server-boot-starter-docs.html)、[Codex MCP 配置](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)。
+
+
+## 统一能力目录
+
+工具名称、说明、Schema 和创作规则由 MySQL 发布快照驱动，在 `/system/ai-capabilities` 编辑；内部 Agent 复用同一处理器。Redis 负责缓存和刷新通知，故障时回源 MySQL。完整实现、管理 API 和升级说明见 [统一能力平台](mcp-mysql-redis-refactor-plan.md)。原 MCP 管理页继续管理认证、项目授权和工具开关。默认不生成背景音乐，用户明确要求配乐时允许；内部提示词使用显式 includeBgm 决策。升级后内部 Agent 需新建会话，不兼容旧运行快照。

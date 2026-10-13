@@ -18,6 +18,9 @@ import java.util.List;
 @AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ShotPromptDeriveDTO {
+    /** Server-generated rules snapshot; HTTP callers cannot override it. */
+    @com.fasterxml.jackson.annotation.JsonProperty(access = com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
+    private String capabilityRulesSnapshot;
     private String directorPlanMode;
     private Integer directorPlanRevision;
     private com.astra.freyja.director.model.DirectorPlan directorPlan;

@@ -103,6 +103,9 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.astra.freyja.capability.service.CapabilityCatalogService capabilityCatalog;
+
 
     private static final String DEFAULT_SYSTEM_PROMPT = """
             你是一名影视分镜导演和 AI 生图提示词设计师。
@@ -967,16 +970,29 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         return prompt + "\n\n" + CAMERA_DUTY_BOUNDARY;
     }
 
+    private String sharedRules(ShotPromptDeriveDTO dto) {
+        if (dto != null && dto.getCapabilityRulesSnapshot() != null) return dto.getCapabilityRulesSnapshot();
+        String scoped = com.astra.freyja.capability.service.CapabilityRuleContext.current();
+        String rules = scoped != null ? scoped : capabilityCatalog == null ? "" : capabilityCatalog.rules();
+        if (dto != null) dto.setCapabilityRulesSnapshot(rules);
+        return rules;
+    }
+
+    private String ruleSection(String rules) {
+        return StringUtils.isBlank(rules) ? "" : "\n公共应用规则（优先于配乐示例及默认创作建议；本镜头显式includeBgm选择优先）：\n" + rules;
+    }
+
     private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
                                        String consumer, String requestId, List<String> requiredSkillNames) {
-        return invokeApiWithSkills(chatModel, systemPrompt, userPrompt, consumer, requestId, requiredSkillNames, null, null);
+        return invokeApiWithSkills(chatModel, systemPrompt, userPrompt, consumer, requestId, requiredSkillNames, null, null, sharedRules(null));
     }
 
     private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
                                        String consumer, String requestId, List<String> requiredSkillNames,
                                        java.util.function.Consumer<String> stageListener,
-                                       java.util.function.Consumer<String> chunkListener) {
+                                       java.util.function.Consumer<String> chunkListener, String rules) {
         if (skillPromptContextService == null || loadSkillToolFactory == null) {
+            systemPrompt += ruleSection(rules);
             ChatResponse response = chatModel.call(new Prompt(List.of(
                     new SystemMessage(appendCameraDutyBoundary(systemPrompt)), new UserMessage(userPrompt))));
             return response != null && response.getResult() != null && response.getResult().getOutput() != null
@@ -988,6 +1004,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         String apiSystemPrompt = appendSkillContext(systemPrompt, requiredContext);
         apiSystemPrompt = skillPromptContextService.appendCatalogToSystemPrompt(apiSystemPrompt);
         apiSystemPrompt = appendCameraDutyBoundary(apiSystemPrompt);
+        apiSystemPrompt += ruleSection(rules);
         ToolCallback tool = loadSkillToolFactory.createTool(session, stageListener);
         ToolCallback readFileTool = readSkillFileToolFactory.createTool(session, stageListener);
         ChatClient.Builder clientBuilder = ChatClient.builder(chatModel);
@@ -1029,6 +1046,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             sb.append(StringUtils.defaultString(genMode)).append("|");
             sb.append(StringUtils.defaultString(templateVersion)).append("|");
             sb.append("h3-system=").append(officialH3GuideFingerprint(systemPrompt)).append("|");
+            sb.append("shared-rules=").append(officialH3GuideFingerprint(sharedRules(dto))).append("|");
             sb.append("h3-user=").append(officialH3GuideFingerprint(userTemplate)).append("|");
             sb.append("local-skills=").append(StringUtils.defaultString(localSkillFingerprint)).append("|");
             sb.append(dto.getDuration()).append("|").append(dto.getShotType()).append("|")
@@ -1375,6 +1393,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
         String userPrompt = resolveTemplate(userTemplate, vars);
         if (directorPlan != null && !userTemplate.contains("${DIRECTOR_PLAN}")) userPrompt += formatDirectorPlan(directorPlan);
+        String baseSystemPrompt = systemPrompt;
+        systemPrompt += ruleSection(sharedRules(dto));
         validatePromptSecurity(systemPrompt, userPrompt);
 
         // 组装专供外部 AI 聊天窗口单输入框的 combinedPrompt
@@ -1395,7 +1415,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         dto.setDirectorPlan(directorPlan);
         // 生成上下文指纹
         String contextFingerprint = calculateFingerprint(genMode, dto, manifest, templateVersion,
-                systemPrompt, userTemplate, skillContext.fingerprint());
+                baseSystemPrompt, userTemplate, skillContext.fingerprint());
 
         return ShotPromptPackageVO.builder()
                 .generationMode(genMode)
@@ -1535,6 +1555,9 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if (saved == null || !java.util.Set.of("PENDING", "RUNNING").contains(saved.getStatus())) return;
         try {
             var dto = objectMapper.readValue(saved.getInputPayload(), ShotPromptDeriveDTO.class);
+            // Only persisted server payload may restore this read-only snapshot.
+            var rules = objectMapper.readTree(saved.getInputPayload()).get("capabilityRulesSnapshot");
+            if (rules != null && rules.isTextual()) dto.setCapabilityRulesSnapshot(rules.asText());
             prepareDirectorPlan(dto);
             AiTask task = new AiTask(); org.springframework.beans.BeanUtils.copyProperties(saved, task);
             aiTaskService.updateTaskPayload(taskId, "PENDING", null, null);
@@ -1615,7 +1638,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                         chunk -> {
                             streamed.set(true);
                             publishPromptEvent(taskId, sseBridge, "chunk", chunk);
-                        });
+                        }, "");
                 ensurePromptTaskNotCancelled(taskId);
                 if (!streamed.get() && StringUtils.isNotBlank(rawText)) {
                     publishPromptEvent(taskId, sseBridge, "chunk", rawText);
@@ -1677,6 +1700,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     private AiTask createPromptTask(ShotPromptDeriveDTO dto) {
         if (aiTaskService == null || dto == null) return null;
         try {
+            dto.setCapabilityRulesSnapshot(sharedRules(dto));
             String inputPayload = objectMapper.writeValueAsString(dto);
             AiTask task = aiTaskService.createTask(
                     dto.getDramaId(),

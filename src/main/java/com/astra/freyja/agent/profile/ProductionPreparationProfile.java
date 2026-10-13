@@ -16,7 +16,7 @@ public class ProductionPreparationProfile implements AgentProfile {
     public List<String> allowedTools() {
         return List.of("prepare_script_decomposition", "start_script_decomposition", "retry_decomposition_segment", "commit_decomposition", "list_preparation_shots", "get_reference_candidates",
                 "ensure_text_assets", "save_shot_production_plans", "prepare_shot_prompts", "inspect_preparation", "get_preparation_report",
-                "get_project_overview", "get_shot_detail", "save_session_note", "list_session_notes", "load_skill", "read_skill_file");
+                "get_project", "get_shot", "search_assets", "list_character_looks", "get_business_options", "save_session_note", "list_session_notes", "load_skill", "read_skill_file");
     }
     public List<String> requiredTools() { return List.of("prepare_script_decomposition", "start_script_decomposition", "commit_decomposition", "list_preparation_shots", "get_reference_candidates", "ensure_text_assets", "save_shot_production_plans", "prepare_shot_prompts", "inspect_preparation"); }
     public AgentConfigDTO defaults() {

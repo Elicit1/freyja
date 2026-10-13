@@ -58,6 +58,7 @@ class ProductionPreparationTest {
     @Test void readyPromptRequestContainsCurrentDirectorInputSnapshot() {
         var s = shot(); s.setRefImagesJson("[]"); s.setGenerationMode("REFERENCE_MODE");
         var p = plan();
+        p.setIncludeBgm(true);
         when(assets.resolve("CHARACTER_LOOK", LOOK, DRAMA)).thenReturn(new ProductionAssets.Material("CHARACTER_LOOK", LOOK, CHARACTER, "小岚", "蓝外套", "blue coat", "https://example.test/look.png", "SYNCED", new ResCharacterLook()));
         var stored = new ShotProductionPlan(); stored.setId(91L); stored.setRevision(1); stored.setPlanJson(json.write(p)); stored.setAppliedFingerprint(service.fingerprint(s, p));
         var job = new AgentPreparationJob(); job.setDramaId(DRAMA);
@@ -71,6 +72,7 @@ class ProductionPreparationTest {
         assertEquals("DEFERRED", service.prompt(new ShotInput(SHOT, stored.getAppliedFingerprint()), ctx, null).kind());
         var request = ArgumentCaptor.forClass(com.astra.freyja.dto.drama.ShotPromptDeriveDTO.class); verify(prompts).startPromptTask(request.capture());
         assertEquals(com.astra.freyja.director.model.DirectorPlanInput.fromShot(s), request.getValue().getDirectorPlanInput());
+        assertTrue(request.getValue().getIncludeBgm(), "用户显式配乐决策必须传给异步提示词生成");
         assertEquals("小岚抬起头。", request.getValue().getDirectorPlanInput().scriptContent());
         s.setDirectorPlanMode("AUTO"); s.setDirectorPlanRevision(2);
         stored.setAppliedFingerprint(service.fingerprint(s, p)); stored.setPromptTaskFingerprint(stored.getAppliedFingerprint()); stored.setPromptTaskRevision(1);

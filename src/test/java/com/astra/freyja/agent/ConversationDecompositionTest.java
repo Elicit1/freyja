@@ -54,7 +54,7 @@ class ConversationDecompositionTest {
                 "chat-tool", AgentTestSupport.snapshot(List.of("prepare_script_decomposition", "request_user_input"), type));
     }
     private ConversationStart input() {
-        var input = new ConversationStart(); input.setSourceText("小岚走进灯塔，点亮窗边的灯。"); return input;
+        var input = new ConversationStart(); input.setSourceText("小岚走进灯塔，点亮窗边的灯。"); input.setAspectRatio("16:9"); return input;
     }
     private CoreAssistantProfile profile() {
         @SuppressWarnings("unchecked") var provider = (ObjectProvider<ProductionPlans>) mock(ObjectProvider.class);
@@ -71,7 +71,7 @@ class ConversationDecompositionTest {
         assertEquals(ctx.runId(), saved.getRunId()); assertEquals(ctx.sessionId(), saved.getSessionId());
         assertNull(saved.getDramaId()); assertEquals(input().getSourceText(), saved.getSourceText());
         assertEquals("SCRIPT_DECOMPOSITION", jobs.options(saved).getWorkflow());
-        assertEquals("9:16", jobs.options(saved).getAspectRatio()); assertEquals("AUTO", jobs.options(saved).getPacingPreset());
+        assertEquals("16:9", jobs.options(saved).getAspectRatio()); assertEquals("AUTO", jobs.options(saved).getPacingPreset());
         assertEquals("chat:" + ctx.runId(), jobs.options(saved).getClientRequestId());
         verify(store, never()).createSession(any(), anyString(), anyString()); verify(store, never()).submit(anyLong(), any(), any());
     }
@@ -79,7 +79,7 @@ class ConversationDecompositionTest {
         var source = new AgentMessage(); source.setId(2032095628944588805L); source.setSessionId(session.getId());
         source.setMessageType("USER"); var original = "夜色中的灯塔。\n".repeat(2000);
         source.setContentJson(json.write(MessageBody.text(original))); when(messages.selectById(source.getId())).thenReturn(source);
-        var input = new ConversationStart(); input.setSourceMessageId(source.getId());
+        var input = new ConversationStart(); input.setSourceMessageId(source.getId()); input.setAspectRatio("16:9");
         assertNull(jobs.prepare(input, ctx).errorCode()); assertEquals(original, saved.getSourceText());
         assertEquals(source.getId(), json.read(json.write(input), ConversationStart.class).getSourceMessageId());
         source.setSessionId(99L); assertEquals("INVALID_SOURCE", jobs.prepare(input, ctx).errorCode());
@@ -91,12 +91,12 @@ class ConversationDecompositionTest {
         var input = input(); input.setSourceMessageId(100L);
         assertEquals("INVALID_SOURCE", jobs.prepare(input, ctx).errorCode());
         input.setSourceMessageId(null); input.setWorkflow("UNKNOWN"); assertThrows(BizException.class, () -> jobs.prepare(input, ctx));
-        input.setWorkflow("SCRIPT_DECOMPOSITION"); input.setAspectRatio(null); assertThrows(BizException.class, () -> jobs.prepare(input, ctx));
+        input.setWorkflow("SCRIPT_DECOMPOSITION"); input.setAspectRatio(null); assertEquals("NEED_USER", jobs.prepare(input, ctx).kind());
         assertNull(saved); verify(mapper, never()).insert(any(AgentPreparationJob.class));
         assertThrows(BizException.class, () -> json.read("{\"dramaId\":\"2032095628944588806\",\"sourceText\":\"原文\"}", ConversationStart.class));
     }
     @Test void boundProjectIsInheritedAndStaleScopeCannotSwitchProjects() {
-        Long drama = 2032095628944588806L; session.setDramaId(drama); when(dramas.selectById(drama)).thenReturn(new Drama());
+        Long drama = 2032095628944588806L; session.setDramaId(drama); var project = new Drama(); project.setAspectRatio("16:9"); when(dramas.selectById(drama)).thenReturn(project);
         assertThrows(BizException.class, () -> jobs.prepare(input(), ctx));
         assertNull(jobs.prepare(input(), context(drama, "NORMAL")).errorCode());
         assertEquals(drama, saved.getDramaId()); assertEquals(drama, jobs.options(saved).getDramaId());
@@ -105,7 +105,7 @@ class ConversationDecompositionTest {
     @Test void replayIsIdempotentEvenAfterCommitBindsANewProjectAndRejectsChangedSource() {
         var input = input(); jobs.prepare(input, ctx); jobs.prepare(input, ctx);
         Long drama = 2032095628944588806L; session.setDramaId(drama); saved.setDramaId(drama); saved.setStatus("COMMITTED");
-        when(dramas.selectById(drama)).thenReturn(new Drama());
+        var project = new Drama(); project.setAspectRatio("16:9"); when(dramas.selectById(drama)).thenReturn(project);
         assertNull(jobs.prepare(input, context(drama, "NORMAL")).errorCode());
         input.setSourceText("另一篇原文");
         assertEquals(409, assertThrows(BizException.class, () -> jobs.prepare(input, context(drama, "NORMAL"))).getCode());

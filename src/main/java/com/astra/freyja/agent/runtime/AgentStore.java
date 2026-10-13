@@ -355,7 +355,9 @@ public class AgentStore {
                 }
                 case "IMMEDIATE" -> {
                     step.setStatus("SUCCEEDED"); run.setToolCalls(run.getToolCalls() + 1);
-                    if ("update_task_plan".equals(step.getToolName()) && result.errorCode() == null) {
+                    if (snapshot(run).capabilities() != null && snapshot(run).capabilities().bindings().stream().anyMatch(b ->
+                            b.name().equals(step.getToolName()) && b.handlerKey().equals(com.astra.freyja.capability.model.BuiltinCapability.TASK_PLAN.handlerKey()))
+                            && result.errorCode() == null) {
                         var plan = json.read(json.write(result.data()), AgentTaskPlan.class).validated();
                         // Use the same locked session object for every message sequence in this checkpoint.
                         event(session, run, "PLAN_UPDATED", Map.of("plan", plan));
@@ -404,7 +406,7 @@ public class AgentStore {
         if (choice.getProviderId() == null) { choice.setProviderId(config.getModel().getProviderId()); choice.setModelCode(config.getModel().getModelCode()); }
         var pinned = configs.pinSummaryModel(choice, original.pinnedModel());
         var replacement = new Snapshot(original.agentCode(), original.configRevision(), original.profileVersion(), config,
-                original.fixedInstructions(), original.skillVersions(), original.toolVersions(), original.pinnedModel(), original.runType(), pinned);
+                original.fixedInstructions(), original.skillVersions(), original.toolVersions(), original.pinnedModel(), original.runType(), pinned, original.capabilities());
         transactions.executeWithoutResult(tx -> {
             AgentSession session = lockSession(current.getSessionId()); AgentRun run = runs.lockById(id);
             if (!summaryRecoverable(run)) throw new BizException(409, "任务不处于可恢复的摘要阻塞状态");

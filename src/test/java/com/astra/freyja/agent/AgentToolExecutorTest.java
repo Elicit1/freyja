@@ -24,7 +24,7 @@ class AgentToolExecutorTest {
         @SuppressWarnings("unchecked") AgentTool<Input> tool = mock(AgentTool.class);
         when(tool.name()).thenReturn("external"); when(tool.version()).thenReturn(1);
         when(tool.effect()).thenReturn(Effect.WRITE); when(tool.recoveryMode()).thenReturn(RecoveryMode.RECONCILE); when(tool.inputType()).thenReturn(Input.class);
-        doReturn(tool).when(registry).require("external"); when(store.snapshot(run)).thenReturn(snapshot); when(store.session(run.getSessionId())).thenReturn(session);
+        doReturn(tool).when(registry).require(eq("external"), any(Snapshot.class)); when(store.snapshot(run)).thenReturn(snapshot); when(store.session(run.getSessionId())).thenReturn(session);
         when(store.beginTool(anyLong(), anyString(), anyInt(), anyLong())).thenReturn(step);
         when(tool.reconcile(any(), any(), isNull())).thenReturn(ToolResult.success("existing-job"));
         when(store.commitTool(anyLong(), anyString(), anyInt(), anyLong(), any(), anyLong())).thenAnswer(call -> ((Supplier<?>) call.getArgument(4)).get());
@@ -38,7 +38,7 @@ class AgentToolExecutorTest {
         var run = AgentTestSupport.run(snapshot, json);
         AgentStep step = new AgentStep(); step.setId(3L); step.setToolName("write");
         var tool = mock(AgentTool.class); when(tool.name()).thenReturn("write"); when(tool.version()).thenReturn(1); when(tool.effect()).thenReturn(Effect.WRITE);
-        when(registry.require("write")).thenReturn(tool); when(store.snapshot(run)).thenReturn(snapshot); when(store.session(run.getSessionId())).thenReturn(new AgentSession());
+        when(registry.require(eq("write"), any(Snapshot.class))).thenReturn(tool); when(store.snapshot(run)).thenReturn(snapshot); when(store.session(run.getSessionId())).thenReturn(new AgentSession());
         when(store.commitTool(anyLong(), anyString(), anyInt(), anyLong(), any(), anyLong())).thenAnswer(call -> ((Supplier<?>) call.getArgument(4)).get());
         var result = new AgentToolExecutor(registry, store, json).execute(run, step, "test-owner", 1);
         assertEquals("READ_ONLY_TEST", result.errorCode()); verify(tool, never()).execute(any(), any());

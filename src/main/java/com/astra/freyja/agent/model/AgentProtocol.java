@@ -19,11 +19,17 @@ public final class AgentProtocol {
                            AgentConfigDTO config, String fixedInstructions,
                            Map<String, Long> skillVersions, Map<String, Integer> toolVersions,
                            com.astra.freyja.entity.AiModel pinnedModel, String runType,
-                           com.astra.freyja.entity.AiModel summaryModel) {
+                           com.astra.freyja.entity.AiModel summaryModel,
+                           com.astra.freyja.capability.model.CapabilityModels.AgentSnapshot capabilities) {
+        public Snapshot(String agentCode, int configRevision, int profileVersion, AgentConfigDTO config, String fixedInstructions,
+                        Map<String, Long> skillVersions, Map<String, Integer> toolVersions,
+                        com.astra.freyja.entity.AiModel pinnedModel, String runType, com.astra.freyja.entity.AiModel summaryModel) {
+            this(agentCode, configRevision, profileVersion, config, fixedInstructions, skillVersions, toolVersions, pinnedModel, runType, summaryModel, null);
+        }
         public Snapshot(String agentCode, int configRevision, int profileVersion, AgentConfigDTO config,
                         String fixedInstructions, Map<String, Long> skillVersions, Map<String, Integer> toolVersions,
                         com.astra.freyja.entity.AiModel pinnedModel, String runType) {
-            this(agentCode, configRevision, profileVersion, config, fixedInstructions, skillVersions, toolVersions, pinnedModel, runType, null);
+            this(agentCode, configRevision, profileVersion, config, fixedInstructions, skillVersions, toolVersions, pinnedModel, runType, null, null);
         }
     }
     public record ToolCall(String id, String name, String arguments) {}

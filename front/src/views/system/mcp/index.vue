@@ -4,6 +4,7 @@
       <div><h1>MCP 服务</h1><p>让第三方 Agent 直接配置业务和完整分镜，由 Freyja 校验并保存。</p></div>
       <el-button :disabled="busy" @click="load(true)">刷新状态</el-button>
     </div>
+    <p class="hint">工具名称、字段说明和公共创作规则在 <router-link to="/system/ai-capabilities">AI 能力管理</router-link> 中编辑并发布；此处管理外部连接权限与工具开关。</p>
     <el-alert v-if="loadError" :title="loadError" type="error" :closable="false" show-icon />
     <template v-if="settings">
       <div class="summary-grid">

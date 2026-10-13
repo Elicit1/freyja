@@ -23,26 +23,31 @@ public class McpRecordTools {
     interface UpdateAction {
         void apply(McpPrincipal caller, BaseEntity current, Long project, Map<String, Object> data);
     }
-    record Binding(McpRecordType type, String singular, String plural, String label, UpdateAction update) {
-        String tool(String action) { return action + "_" + singular; }
-        String batchTool() { return "batch_update_" + plural; }
+    enum Operation { GET, CREATE, UPDATE, DELETE, BATCH_UPDATE }
+    record Binding(McpRecordType type, String label, Map<Operation, String> names, UpdateAction update) {
+        String tool(Operation operation) { return names.get(operation); }
+        String batchTool() { return tool(Operation.BATCH_UPDATE); }
         Map<String, Object> capability() {
-            return Map.of("type", type.name(), "label", label, "read", tool("get"), "create", tool("create"),
-                    "update", tool("update"), "delete", tool("delete"), "batchUpdate", batchTool());
+            return Map.of("type", type.name(), "label", label, "read", tool(Operation.GET), "create", tool(Operation.CREATE),
+                    "update", tool(Operation.UPDATE), "delete", tool(Operation.DELETE), "batchUpdate", batchTool());
         }
+    }
+    private Binding binding(McpRecordType type, String label, String get, String create, String update, String delete, String batch, UpdateAction action) {
+        return new Binding(type, label, Map.of(Operation.GET, get, Operation.CREATE, create, Operation.UPDATE, update,
+                Operation.DELETE, delete, Operation.BATCH_UPDATE, batch), action);
     }
     private List<Binding> bindings() {
         return List.of(
-                new Binding(McpRecordType.PROJECT, "project", "projects", "项目", records::updateProject),
-                new Binding(McpRecordType.EPISODE, "episode", "episodes", "剧集", records::updateEpisode),
-                new Binding(McpRecordType.SCENE, "scene", "scenes", "剧情场次", records::updateScene),
-                new Binding(McpRecordType.SHOT_GROUP, "shot_group", "shot_groups", "镜头组", records::updateShotGroup),
-                new Binding(McpRecordType.SHOT, "shot", "shots", "分镜", records::updateShot),
-                new Binding(McpRecordType.CHARACTER, "character", "characters", "人物", records::updateCharacter),
-                new Binding(McpRecordType.CHARACTER_LOOK, "character_look", "character_looks", "人物造型", records::updateCharacterLook),
-                new Binding(McpRecordType.RESOURCE_SCENE, "resource_scene", "resource_scenes", "场景资产", records::updateResourceScene),
-                new Binding(McpRecordType.PROP, "prop", "props", "道具", records::updateProp),
-                new Binding(McpRecordType.KEYFRAME, "keyframe", "keyframes", "关键图", records::updateKeyframe));
+                binding(McpRecordType.PROJECT, "项目", "get_project", "create_project", "update_project", "delete_project", "batch_update_projects", records::updateProject),
+                binding(McpRecordType.EPISODE, "剧集", "get_episode", "create_episode", "update_episode", "delete_episode", "batch_update_episodes", records::updateEpisode),
+                binding(McpRecordType.SCENE, "剧情场次", "get_scene", "create_scene", "update_scene", "delete_scene", "batch_update_scenes", records::updateScene),
+                binding(McpRecordType.SHOT_GROUP, "镜头组", "get_shot_group", "create_shot_group", "update_shot_group", "delete_shot_group", "batch_update_shot_groups", records::updateShotGroup),
+                binding(McpRecordType.SHOT, "分镜", "get_shot", "create_shot", "update_shot", "delete_shot", "batch_update_shots", records::updateShot),
+                binding(McpRecordType.CHARACTER, "人物", "get_character", "create_character", "update_character", "delete_character", "batch_update_characters", records::updateCharacter),
+                binding(McpRecordType.CHARACTER_LOOK, "人物造型", "get_character_look", "create_character_look", "update_character_look", "delete_character_look", "batch_update_character_looks", records::updateCharacterLook),
+                binding(McpRecordType.RESOURCE_SCENE, "场景资产", "get_resource_scene", "create_resource_scene", "update_resource_scene", "delete_resource_scene", "batch_update_resource_scenes", records::updateResourceScene),
+                binding(McpRecordType.PROP, "道具", "get_prop", "create_prop", "update_prop", "delete_prop", "batch_update_props", records::updateProp),
+                binding(McpRecordType.KEYFRAME, "关键图", "get_keyframe", "create_keyframe", "update_keyframe", "delete_keyframe", "batch_update_keyframes", records::updateKeyframe));
     }
     public List<Map<String, Object>> capabilities() { return bindings().stream().map(Binding::capability).toList(); }
 
@@ -51,19 +56,27 @@ public class McpRecordTools {
         for (Binding binding : bindings()) {
             // Existing project/shot detail tools keep their established dramaId/shotId arguments.
             if (binding.type() != McpRecordType.PROJECT && binding.type() != McpRecordType.SHOT)
-                result.add(new McpTool<>(binding.tool("get"), "读取" + binding.label() + "完整业务字段及 editFingerprint；公共资产只读。",
+                result.add(new McpTool<>(binding.tool(Operation.GET), "读取" + binding.label() + "完整业务字段及 editFingerprint；公共资产只读。",
                         McpRecordInputs.Get.class, McpTool.Effect.READ, schemas.singleGet(binding.type()),
                         (c, i) -> records.read(c, binding.type(), i.recordId(), i.dramaId())));
-            result.add(new McpTool<>(binding.tool("create"), "单条创建" + binding.label() + "；仅接受该对象业务字段，requestId 幂等，不调用内部 AI。",
-                    McpRecordInputs.Create.class, McpTool.Effect.WRITE, schemas.singleCreate(binding.type()), (c, i) -> create(binding, c, i)));
-            result.add(new McpTool<>(binding.tool("update"), "单条修改" + binding.label() + "；省略字段保留，需当前 expectedFingerprint 和稳定 requestId。提示词由外部直接填写。",
-                    McpRecordInputs.Update.class, McpTool.Effect.WRITE, schemas.singleUpdate(binding.type()), (c, i) -> update(binding, c, i)));
-            result.add(new McpTool<>(binding.tool("delete"), "单条逻辑删除" + binding.label() + "；需 expectedFingerprint，先删除子记录并解除引用，不删除媒体文件，requestId 幂等。",
+            result.add(new McpTool<>(binding.tool(Operation.CREATE), "单条创建" + binding.label() + "；仅接受该对象业务字段，requestId 幂等，不调用内部 AI。",
+                    McpRecordInputs.Create.class, McpTool.Effect.WRITE, schemas.singleCreate(binding.type()), (c, i) -> create(binding, c, i)).validated(args -> validate(binding.type(), args.get("data"), true)));
+            result.add(new McpTool<>(binding.tool(Operation.UPDATE), "单条修改" + binding.label() + "；省略字段保留，需当前 expectedFingerprint 和稳定 requestId。提示词由外部直接填写。",
+                    McpRecordInputs.Update.class, McpTool.Effect.WRITE, schemas.singleUpdate(binding.type()), (c, i) -> update(binding, c, i)).validated(args -> validate(binding.type(), args.get("data"), false)));
+            result.add(new McpTool<>(binding.tool(Operation.DELETE), "单条逻辑删除" + binding.label() + "；需 expectedFingerprint，先删除子记录并解除引用，不删除媒体文件，requestId 幂等。",
                     McpRecordInputs.Delete.class, McpTool.Effect.WRITE, schemas.singleDelete(), (c, i) -> delete(binding, c, i)));
             result.add(new McpTool<>(binding.batchTool(), "事务批量修改" + binding.label() + "，每次 1–100 项；只接受该对象的字段，无 type 参数。每项需 expectedFingerprint，任一失败全批回滚，requestId 幂等。",
-                    McpRecordInputs.BatchUpdate.class, McpTool.Effect.WRITE, schemas.batchUpdate(binding.type()), (c, i) -> batchUpdate(binding, c, i)));
+                    McpRecordInputs.BatchUpdate.class, McpTool.Effect.WRITE, schemas.batchUpdate(binding.type()), (c, i) -> batchUpdate(binding, c, i)).validated(args -> validateBatch(binding.type(), args)));
         }
         return result;
+    }
+    @SuppressWarnings("unchecked")
+    private void validate(McpRecordType type, Object data, boolean create) {
+        if (data instanceof Map<?, ?> map) schemas.validate(type, (Map<String, Object>) map, false, create);
+    }
+    private void validateBatch(McpRecordType type, Map<String, Object> arguments) {
+        if (arguments.get("items") instanceof List<?> items) for (Object item : items)
+            if (item instanceof Map<?, ?> map) validate(type, map.get("data"), false);
     }
     private Object create(Binding binding, McpPrincipal caller, McpRecordInputs.Create input) {
         write(caller);
@@ -73,7 +86,7 @@ public class McpRecordTools {
             if (!caller.createProjects()) throw new BizException(403, "MCP_CREATE_PROJECT_DISABLED");
             project = null;
         } else project = scope.authorizeProject(caller, input.dramaId());
-        return journal.execute(input.requestId(), binding.tool("create"), input, () -> {
+        return journal.execute(input.requestId(), binding.tool(Operation.CREATE), input, () -> {
             if (project != null) mutex(project);
             Long id = records.create(caller, binding.type(), project, input.data());
             Long owner = project == null ? id : project;
@@ -88,7 +101,7 @@ public class McpRecordTools {
     }
     private Object update(Binding binding, McpPrincipal caller, McpRecordInputs.Update input) {
         write(caller); Long project = scope.authorizeProject(caller, input.dramaId());
-        return journal.execute(input.requestId(), binding.tool("update"), input, () -> {
+        return journal.execute(input.requestId(), binding.tool(Operation.UPDATE), input, () -> {
             mutex(project);
             BaseEntity current = records.lockScoped(caller, binding.type(), input.recordId(), input.dramaId());
             fingerprint(current, input.expectedFingerprint());
@@ -99,7 +112,7 @@ public class McpRecordTools {
     }
     private Object delete(Binding binding, McpPrincipal caller, McpRecordInputs.Delete input) {
         write(caller); Long project = scope.authorizeProject(caller, input.dramaId());
-        return journal.execute(input.requestId(), binding.tool("delete"), input, () -> {
+        return journal.execute(input.requestId(), binding.tool(Operation.DELETE), input, () -> {
             mutex(project);
             BaseEntity current = records.lockScoped(caller, binding.type(), input.recordId(), input.dramaId());
             fingerprint(current, input.expectedFingerprint());
