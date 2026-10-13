@@ -20,7 +20,7 @@ public class ScriptDecomposeResultVO {
     @JsonPropertyDescription("根据故事提取或提炼的短剧标题")
     private String dramaTitle;
 
-    @JsonPropertyDescription("题材分类，例如: DOMINANT_CEO(霸总), WAR_GOD(战神), URBAN_ABILITY(都市异能), TIME_TRAVEL(穿越), ANCIENT_COSTUME(古装), SUSPENSE(悬疑), COMEDY(搞笑)")
+    @JsonPropertyDescription("题材自由文本或已有字典值，最长64字符；字典仅提供建议，未收录的题材使用清晰自然语言名称（如都市复仇、悬疑轻喜剧），不要编造枚举代码。已有项目继承原题材。")
     private String genre;
 
     @JsonPropertyDescription("故事梗概与核心大纲")

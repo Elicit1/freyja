@@ -462,7 +462,7 @@ CREATE TABLE `drama` (
     `id`              BIGINT UNSIGNED NOT NULL COMMENT '主键ID',
     `title`           VARCHAR(128)    NOT NULL COMMENT '短剧名称',
     `cover_url`       VARCHAR(512)    DEFAULT NULL COMMENT '短剧封面图URL (MinIO)',
-    `genre`           VARCHAR(64)     NOT NULL DEFAULT 'DOMINANT_CEO' COMMENT '题材类型 (字典 drama_genre)',
+    `genre`           VARCHAR(64)     NOT NULL DEFAULT 'DOMINANT_CEO' COMMENT '题材 (自由文本，字典仅提供建议)',
     `target_episodes` INT             NOT NULL DEFAULT 80 COMMENT '规划目标集数',
     `aspect_ratio`    VARCHAR(16)     NOT NULL DEFAULT '9:16' COMMENT '画幅比例 (9:16/16:9/1:1/4:3)',
     `style_preset`    VARCHAR(64)     NOT NULL DEFAULT 'cinematic-realism' COMMENT '默认风格预设 (字典 drama_style_preset)',

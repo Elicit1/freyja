@@ -153,7 +153,7 @@ tool_timeout_sec = 300
 }
 ```
 
-业务字段以 `tools/list` 返回的 JSON Schema 为准。人物需要 `name/canonicalName/displayName` 至少一个；造型需要 `characterId,lookName,designDesc`，服装 Prompt 与妆发/状态 Prompt 均可省略。剧集可提交空 `data={}` 使用业务默认值；场次需要 `episodeId`，镜头组和分镜需要 `sceneId`。关键图需要 `name`，且图片 URL/描述/Prompt 至少一个。项目 ID 由顶层统一设置，不能在 `data` 中覆盖；分镜所属剧集由场次校验确定。模型、内部任务和 Skill 记录等字段仍被拒绝。
+业务字段以 `tools/list` 返回的 JSON Schema 为准。项目创建需要 `title,aspectRatio`；画幅必须来自启用的系统选项。人物需要 `name/canonicalName/displayName` 至少一个；造型需要 `characterId,lookName,designDesc`，服装 Prompt 与妆发/状态 Prompt 均可省略。剧集可提交空 `data={}` 使用业务默认值；场次需要 `episodeId`，镜头组和分镜需要 `sceneId`。关键图需要 `name`，且图片 URL/描述/Prompt 至少一个。项目 ID 由顶层统一设置，不能在 `data` 中覆盖；分镜所属剧集由场次校验确定。模型、内部任务和 Skill 记录等字段仍被拒绝。
 
 任一写入失败整批回滚，错误含 `BATCH_ROLLED_BACK: items[index]`。成功后业务数据与请求结果一起提交。100 项以上应拆批，各批使用不同 `requestId`；跨批不承诺原子性。追加导入不会替换已有记录。
 
@@ -287,6 +287,10 @@ tool_timeout_sec = 300
 所有图片先完成格式、尺寸、文件名、唯一标签和总大小校验，再开始上传；参数错误不会上传其中任一张。返回的 `urlMap["hero-look"]` 可用于创建/更新造型的 `referenceImageUrl`。顺序与 `clientKey` 保持稳定，不回显 Base64。数据库只提交完整批次摘要；MinIO 中途失败可能留下已上传对象，使用原 `requestId` 和原内容重试会覆盖相同路径。它与后续业务资产关联仍是两个独立操作。成功批次改内容或换用途必须使用新 `requestId`。
 
 ## 外部 Agent 的完整分镜与 H3 流程
+
+项目题材 `genre` 支持最多64字符的自由文本；`drama_genre` 字典是固定建议，已有建议可以使用原字典值，未收录题材填写清晰名称即可，不编造枚举代码。剧集继承项目题材。其他枚举仍按相应字段的 Schema 和业务字典选择。
+
+MCP 创建项目的 `aspectRatio` 必填。用户未指定时，外部 Agent 先读取 `drama_aspect_ratio` 的启用选项并通过其客户端对话请用户选择；明确交给 AI 决定时优先 `16:9`，若该值未启用则从其余启用选项决定。MCP 拒绝省略或不受支持的比例；编辑无关字段和追加剧集保持已有画幅。这条规则只针对 MCP 创作流程，前端画幅交互及内部 AI 拆解流程保持原行为。
 
 ### Skill 如何被发现
 

@@ -38,12 +38,11 @@
         @reset="handleResetQuery"
       >
         <template #filters>
-          <DictSelect
+          <GenreInput
             v-model="query.genre"
-            dict-type="drama_genre"
-            placeholder="题材分类"
-            clearable
-            class="!w-36"
+            placeholder="输入或选择题材"
+            :show-suggestions="false"
+            class="!w-48"
             @change="handleSearch"
           />
 
@@ -358,6 +357,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Edit, Delete, ArrowLeft, Film, VideoCamera, MagicStick } from '@element-plus/icons-vue'
 import DictSelect from '@/components/DictSelect.vue'
+import GenreInput from '@/components/GenreInput.vue'
 import DictTag from '@/components/DictTag.vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import FilterToolbar from '@/components/workspace/FilterToolbar.vue'

@@ -29,6 +29,7 @@ public class McpBusinessRecords {
     private final DramaShotGroupMapper groups;
     private final DramaShotMapper shots;
     private final DramaService dramaService;
+    private final DictService dictService;
     private final DramaEpisodeService episodeService;
     private final DramaSceneService sceneService;
     private final DramaShotGroupService groupService;
@@ -354,6 +355,11 @@ public class McpBusinessRecords {
     }
 
     private void references(McpPrincipal caller, McpRecordType type, Object dto, Long project, BaseEntity old, Map<String, Object> data) {
+        if (dto instanceof DramaDTO drama && (old == null || data.containsKey("aspectRatio"))) {
+            boolean supported = dictService.listByType("drama_aspect_ratio").stream()
+                    .anyMatch(option -> Integer.valueOf(1).equals(option.getStatus()) && Objects.equals(option.getDictValue(), drama.getAspectRatio()));
+            if (!supported) throw new BizException(400, "ASPECT_RATIO_UNSUPPORTED: 请通过 get_business_options 选择启用的系统画幅比例");
+        }
         if (dto instanceof DramaSceneDTO scene) {
             var episode = scope.episode(scene.getEpisodeId(), project);
             if (old instanceof DramaScene current && !Objects.equals(current.getEpisodeId(), episode.getId())) throw new BizException(400, "不能通过内容更新移动场次到另一剧集");

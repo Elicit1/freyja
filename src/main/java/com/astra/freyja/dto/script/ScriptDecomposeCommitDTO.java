@@ -19,7 +19,7 @@ public class ScriptDecomposeCommitDTO {
     /** 短剧标题 */
     private String dramaTitle;
 
-    /** 题材分类 (字典 drama_genre) */
+    /** 题材自由文本或已有字典值；drama_genre 仅提供建议。 */
     private String genre;
 
     /** 故事梗概 */

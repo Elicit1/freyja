@@ -17,7 +17,7 @@ public class DramaDTO {
     /** 短剧封面图 URL (MinIO) */
     private String coverUrl;
 
-    /** 题材类型 (字典 drama_genre) */
+    /** 题材自由文本或已有字典值；drama_genre 仅提供建议，最多64字符。 */
     private String genre;
 
     /** 规划目标集数 */

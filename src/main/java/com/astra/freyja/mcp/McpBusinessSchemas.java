@@ -71,6 +71,7 @@ public class McpBusinessSchemas {
                 if (field.equals("generationMode")) schema = Map.of("type", "string", "enum", List.of("FIRST_LAST_FRAME", "REFERENCE_MODE"));
                 if (field.equals("seed")) schema = Map.of("type", "string", "pattern", "^[1-9][0-9]{0,15}$", "description", "1 到 " + ShotSeedUtil.MAX_SEED + " 的整数字符串");
                 if (field.equals("aliases")) schema = Map.of("type", "array", "maxItems", 50, "items", Map.of("type", "string", "maxLength", 200));
+                if (type == McpRecordType.PROJECT && field.equals("genre")) schema = Map.of("type", "string", "maxLength", 64);
                 String description = description(type, field);
                 properties.put(field, description == null ? schema : described(schema, description));
             }
@@ -93,7 +94,7 @@ public class McpBusinessSchemas {
     }
     private static List<String> required(McpRecordType type) {
         return switch (type) {
-            case PROJECT -> List.of("title"); case SCENE -> List.of("episodeId");
+            case PROJECT -> List.of("title", "aspectRatio"); case SCENE -> List.of("episodeId");
             case SHOT_GROUP, SHOT -> List.of("sceneId");
             case CHARACTER_LOOK -> List.of("characterId", "lookName", "designDesc");
             case RESOURCE_SCENE, PROP, KEYFRAME -> List.of("name");
@@ -106,6 +107,8 @@ public class McpBusinessSchemas {
     private static String description(McpRecordType type, String field) {
         if (field.equals("directorPlan")) return "可选的手工导演计划。外部 Agent 通常省略，直接保存提示词工作台内容；服务端不会补生成计划。";
         if (field.equals("directorPlanMode")) return "可选高级编辑；不使用导演计划时省略，更新时保留已有计划。AUTO 仅重置，不启动 AI。";
+        if (type == McpRecordType.PROJECT && field.equals("genre")) return "题材为最长64字符的自由文本；drama_genre 字典仅提供建议，可使用已有字典值或自定义题材名称（如都市复仇、悬疑轻喜剧）。未收录的题材直接填写清晰名称，无需编造枚举代码。剧集继承项目题材。";
+        if (type == McpRecordType.PROJECT && field.equals("aspectRatio")) return "创建必填；先读取 get_business_options(dictType=drama_aspect_ratio)。用户未指定时请用户选择已有比例，再创建；仅在用户明确交给 AI 决定时优先选启用的16:9，不自行默认9:16或编造比例。修改时省略保留原值。";
         if (type == McpRecordType.SHOT) return switch (field) {
             case "prompt" -> "REFERENCE_MODE 的最终 H3 六段式视频卡片：subject_definitions、summary、retention_analysis、detailed_description、overall_soundscape、non_diegetic_music。先读取 h3-prompt-writing Skill 及 references/ref-en.txt；<Picture N>/<Audio N> 对应媒体数组第 N 项。";
             case "videoPrompt" -> "FIRST_LAST_FRAME 的最终 H3 三段式视频卡片：integrated_multimodal_description、overall_soundscape、non_diegetic_music。先读取 h3-prompt-writing Skill 及 references/base-en.txt；不能仅填写图片提示词后宣称视频卡片完成。";
@@ -232,6 +235,8 @@ public class McpBusinessSchemas {
 
     public void validate(McpRecordType type, Map<String, Object> data, boolean references, boolean create) {
         if (type == null || data == null || (!create && data.isEmpty())) throw new BizException(400, "必须提供记录类型与业务 data，更新补丁不能为空");
+        if (create && type == McpRecordType.PROJECT && (!(data.get("aspectRatio") instanceof String ratio) || ratio.isBlank()))
+            throw new BizException(400, "ASPECT_RATIO_REQUIRED: 创建短剧前请用户选择系统已有画幅；明确交给 AI 决定时优先16:9，并提交 aspectRatio");
         if (type == McpRecordType.SHOT) {
             validateMedia(data.get("refImages"), true);
             validateMedia(data.get("refAudios"), false);

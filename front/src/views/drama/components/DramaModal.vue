@@ -23,7 +23,7 @@
       <el-row :gutter="16">
         <el-col :span="12">
           <el-form-item label="题材类型" prop="genre">
-            <DictSelect v-model="form.genre" dict-type="drama_genre" placeholder="请选择短剧题材" class="w-full" />
+            <GenreInput v-model="form.genre" class="w-full" />
           </el-form-item>
         </el-col>
         <el-col :span="12">
@@ -123,6 +123,7 @@ import { ref, reactive } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import DictSelect from '@/components/DictSelect.vue'
+import GenreInput from '@/components/GenreInput.vue'
 import { dramaApi } from '@/api/drama'
 import { assetApi } from '@/api/res-asset'
 import type { Drama } from '@/types/drama'
@@ -166,7 +167,7 @@ const form = reactive<Drama>({
 
 const rules: FormRules = {
   title: [{ required: true, message: '请输入短剧名称', trigger: 'blur' }],
-  genre: [{ required: true, message: '请选择题材类型', trigger: 'change' }],
+  genre: [{ required: true, whitespace: true, message: '请输入题材或选择建议', trigger: ['blur', 'change'] }],
   aspectRatio: [{ required: true, message: '请选择画幅比例', trigger: 'change' }]
 }
 

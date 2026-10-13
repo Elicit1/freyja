@@ -48,7 +48,7 @@ public class McpReadTools {
                     return assets.search(c, new Assets(AssetType.CHARACTER_LOOK, e.dramaId() == null ? null : e.dramaId().toString(),
                             e.dramaId() == null, i.characterId(), null, i.page(), i.size()));
                 }),
-                McpTool.read("get_business_options", "按 dictType 读取业务字典，如题材、画幅、景别、场景类型。AI 系统字典和模型目录不公开。", Options.class, this::options)
+                McpTool.read("get_business_options", "按 dictType 读取业务字典，如题材、画幅、景别、场景类型。drama_genre 仅为题材建议，项目 genre 允许最长64字符的自定义名称；其余枚举遵循各字段约束。AI 系统字典和模型目录不公开。", Options.class, this::options)
         );
     }
 

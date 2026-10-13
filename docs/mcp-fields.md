@@ -8,7 +8,7 @@
 
 | 记录类型 | `data` 最小必填 | 可以省略的内容 |
 |---|---|---|
-| PROJECT | `title` | 题材、画幅、风格、简介等；新建项目需独立权限 |
+| PROJECT | `title`、`aspectRatio` | 题材、风格、简介等；新建项目需独立权限，画幅须从启用的系统选项选择 |
 | EPISODE | 无（可为 `{}`） | 集号、标题、时长由业务服务给默认值 |
 | SCENE | `episodeId` | 场次序号、名称、环境属性、场景资产关联 |
 | SHOT_GROUP | `sceneId` | 组号、名称、叙事用途 |
@@ -20,6 +20,10 @@
 | KEYFRAME | `name`，且 `frameUrl / description / prompt` 至少一个非空 | `shotId`、用途类型、负向词；可以先创建文字草稿 |
 
 `designDesc` 是造型的视觉概念描述，是现有业务校验的必填项；不能把它与可省略的英文妆发/状态 `appearancePrompt` 混同。MCP 不额外要求人物/造型先运行内部 AI 生成提示词。
+
+项目 `genre` 是最多64字符的自由题材文字，`get_business_options(dictType=drama_genre)` 返回固定建议，不能视为穷尽枚举。已有建议可沿用其字典值；新题材直接填写自然语言名称，如“都市复仇悬疑”，无需编造未定义代码。题材由项目保存，剧集继承，不在 EPISODE 的 `data` 中提交。画幅、状态、景别等字段仍遵循各自约束。
+
+创建项目必须显式提交 `aspectRatio`。先读 `get_business_options(dictType=drama_aspect_ratio)`：未指定时询问用户，让其选择已有比例；用户明确委托 AI 决定时优先选启用的 `16:9`，不可无提示地默认 `9:16`。服务端拒绝未填写、未收录或已停用的比例。追加剧集及修改其他字段时保留项目原画幅。
 
 单条修改使用 `update_*`；批量修改按对象拆分，例如 `batch_update_shots / batch_update_characters`。请求需要 `requestId,dramaId`，单条或每个批量项需要 `recordId,expectedFingerprint,data`，不接收 `type`。创建必填字段不要求在补丁中重传；`data` 至少一个字段，省略字段保留原值。引用数组提交时替换整个数组，图和音频按提交顺序保存。
 

@@ -1,6 +1,7 @@
 package com.astra.freyja.dto.script;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonPropertyDescription;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -25,7 +26,8 @@ public class PlannerDecomposeResultVO implements Serializable {
     /** 短剧/章节建议标题 */
     private String dramaTitle;
 
-    /** 短剧题材类型 (如 DOMINANT_CEO, URBAN_REVENGE, SUSPENSE) */
+    /** 自由题材名称或已有字典值。 */
+    @JsonPropertyDescription("题材自由文本或已有字典值，最长64字符；未收录题材填写自然语言名称，不编造枚举代码，已有项目继承原题材。")
     private String genre;
 
     /** 本章剧情总纲 */

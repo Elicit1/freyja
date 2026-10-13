@@ -59,6 +59,7 @@ class McpBusinessDatabaseTest {
     @Autowired McpBusinessView views;
     @Autowired McpJson json;
     @Autowired McpReadTools reads;
+    @Autowired DictService dictionaries;
     @Autowired McpSkillTools skills;
     @Autowired com.astra.freyja.skill.service.SkillCatalogService skillCatalog;
     @Autowired com.astra.freyja.skill.service.SkillContentService skillContents;
@@ -129,6 +130,10 @@ class McpBusinessDatabaseTest {
         properties.setWriteEnabled(true);
         reset(models, images, prompts, renders, skillFiles, storage);
         reset(skillCatalog, skillContents, skillRepository);
+        reset(dictionaries);
+        when(dictionaries.listByType("drama_aspect_ratio")).thenReturn(List.of("9:16", "16:9", "1:1", "4:3").stream().map(value -> {
+            SysDictData option = new SysDictData(); option.setDictValue(value); option.setDictLabel(value); option.setStatus(1); return option;
+        }).toList());
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         for (Class<?> type : List.of(Drama.class, DramaEpisode.class, DramaScene.class, DramaShotGroup.class,
                 DramaShot.class, ResCharacter.class, ResCharacterLook.class, ResScene.class, ResProp.class,
@@ -225,9 +230,27 @@ class McpBusinessDatabaseTest {
         assertEquals(2, count("drama_episode")); assertEquals(1, count("mcp_business_operation"));
     }
 
+    @Test void projectCreationRequiresExplicitEnabledRatioAndKeepsSelectedLandscape() {
+        McpPrincipal creator = new McpPrincipal(true, false, true, Set.of());
+        var missing = new McpRecordInputs.Create("ratio-missing-001", null, Map.of("title", "Needs user choice"));
+        assertEquals(400, assertThrows(BizException.class, () -> call("create_project", creator, missing)).getCode());
+        assertEquals(2, count("drama"));
+        var unsupported = new McpRecordInputs.Create("ratio-invalid-001", null, Map.of("title", "Unknown ratio", "aspectRatio", "7:5"));
+        assertEquals(400, assertThrows(BizException.class, () -> call("create_project", creator, unsupported)).getCode());
+        assertEquals(2, count("drama"));
+        var landscape = new McpRecordInputs.Create("ratio-landscape1", null, Map.of("title", "AI choice", "aspectRatio", "16:9"));
+        Map<String, Object> created = map(call("create_project", creator, landscape));
+        assertEquals("16:9", dramas.selectById(McpScope.id((String) created.get("recordId"))).getAspectRatio());
+        SysDictData disabled = new SysDictData(); disabled.setDictValue("16:9"); disabled.setStatus(0);
+        when(dictionaries.listByType("drama_aspect_ratio")).thenReturn(List.of(disabled));
+        var inactive = new McpRecordInputs.Create("ratio-inactive01", null, Map.of("title", "Disabled ratio", "aspectRatio", "16:9"));
+        assertEquals(400, assertThrows(BizException.class, () -> call("create_project", creator, inactive)).getCode());
+        assertEquals(3, count("drama"));
+    }
+
     @Test void projectCreationGrantsAccessOnlyWhenPermissionRemainsEnabled() {
         McpPrincipal creator = new McpPrincipal(true, false, true, Set.of());
-        var input = new McpBatchInputs.Create("new-project-req1", null, List.of(item("project", McpRecordType.PROJECT, Map.of("title", "New project")),
+        var input = new McpBatchInputs.Create("new-project-req1", null, List.of(item("project", McpRecordType.PROJECT, Map.of("title", "New project", "aspectRatio", "16:9")),
                 item("ep", McpRecordType.EPISODE, Map.of("title", "First"))));
         String id = (String) map(call("batch_create_records", creator, input)).get("dramaId");
         assertEquals(McpScope.id(id), scope.project(creator, id));
@@ -579,7 +602,7 @@ class McpBusinessDatabaseTest {
 
     @Test void everyObjectHasWorkingSingleCrudAndDedicatedBatchUpdate() {
         McpPrincipal creator = new McpPrincipal(true, false, true, Set.of());
-        var projectInput = new McpRecordInputs.Create("single-create-project", null, Map.of("title", "Isolated project"));
+        var projectInput = new McpRecordInputs.Create("single-create-project", null, Map.of("title", "Isolated project", "aspectRatio", "16:9"));
         Map<String, Object> created = map(call("create_project", creator, projectInput));
         assertEquals(created, map(call("create_project", creator, projectInput)));
         String project = (String) created.get("recordId");

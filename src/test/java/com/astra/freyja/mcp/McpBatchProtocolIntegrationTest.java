@@ -178,6 +178,51 @@ class McpBatchProtocolIntegrationTest {
         assertEquals(2, fixture.count("mcp_business_operation"));
     }
 
+    @Test void customProjectGenreIsPersistedAndLegacySuggestedValuesRemainValid() throws Exception {
+        var existing = fixture.dramas.selectById(McpBusinessDatabaseTest.PROJECT);
+        existing.setAspectRatio("9:16"); fixture.dramas.updateById(existing);
+        org.mockito.Mockito.when(fixture.dictionaries.listByType("drama_aspect_ratio")).thenReturn(List.of());
+        for (JsonNode tool : rpc("tools/list", Map.of()).path("tools")) if (tool.path("name").asText().equals("update_project")) {
+            JsonNode genre = tool.path("inputSchema").path("properties").path("data").path("properties").path("genre");
+            assertEquals("string", genre.path("type").asText()); assertEquals(64, genre.path("maxLength").asInt()); assertFalse(genre.has("enum"));
+        }
+        for (String genre : List.of("都市复仇悬疑", "DOMINANT_CEO")) {
+            JsonNode before = rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("dramaId", McpBusinessDatabaseTest.ROOT))).path("structuredContent").path("data");
+            Map<String, Object> args = Map.of("requestId", "genre-update-" + (genre.equals("DOMINANT_CEO") ? "legacy" : "custom"), "dramaId", McpBusinessDatabaseTest.ROOT,
+                    "recordId", McpBusinessDatabaseTest.ROOT, "expectedFingerprint", before.path("editFingerprint").asText(), "data", Map.of("genre", genre));
+            JsonNode updated = rpc("tools/call", Map.of("name", "update_project", "arguments", args)); assertFalse(updated.path("isError").asBoolean(), updated.toString());
+            assertEquals(genre, fixture.dramas.selectById(McpBusinessDatabaseTest.PROJECT).getGenre());
+            JsonNode read = rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("dramaId", McpBusinessDatabaseTest.ROOT)));
+            assertEquals(genre, read.path("structuredContent").path("data").path("genre").asText());
+            assertEquals("9:16", read.path("structuredContent").path("data").path("aspectRatio").asText());
+        }
+        JsonNode before = rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("dramaId", McpBusinessDatabaseTest.ROOT))).path("structuredContent").path("data");
+        JsonNode tooLong = rpc("tools/call", Map.of("name", "update_project", "arguments", Map.of("requestId", "genre-too-long01", "dramaId", McpBusinessDatabaseTest.ROOT,
+                "recordId", McpBusinessDatabaseTest.ROOT, "expectedFingerprint", before.path("editFingerprint").asText(), "data", Map.of("genre", "a".repeat(65)))));
+        assertTrue(tooLong.path("isError").asBoolean()); assertEquals("DOMINANT_CEO", fixture.dramas.selectById(McpBusinessDatabaseTest.PROJECT).getGenre());
+    }
+
+    @Test void singleAndBatchProjectCreationRequireSupportedRatioThroughHttp() throws Exception {
+        fixture.properties.setAllowCreateProjects(true);
+        try {
+            JsonNode schema = null;
+            for (JsonNode tool : rpc("tools/list", Map.of()).path("tools")) if (tool.path("name").asText().equals("create_project"))
+                schema = tool.path("inputSchema").path("properties").path("data");
+            assertNotNull(schema);
+            assertTrue(json.convertValue(schema.path("required"), List.class).contains("aspectRatio"));
+            for (Map<String, Object> data : List.of(Map.<String, Object>of("title", "Choose ratio"), Map.<String, Object>of("title", "Invalid ratio", "aspectRatio", "7:5"))) {
+                JsonNode single = rpc("tools/call", Map.of("name", "create_project", "arguments", Map.of("requestId", "http-ratio-single1", "data", data)));
+                assertTrue(single.path("isError").asBoolean(), single.toString());
+                JsonNode batch = rpc("tools/call", Map.of("name", "batch_create_records", "arguments", Map.of("requestId", "http-ratio-batch01", "items",
+                        List.of(Map.of("clientKey", "project", "type", "PROJECT", "data", data)))));
+                assertTrue(batch.path("isError").asBoolean(), batch.toString()); assertEquals(2, fixture.count("drama"));
+            }
+            JsonNode created = rpc("tools/call", Map.of("name", "create_project", "arguments", Map.of("requestId", "http-ratio-valid01", "data", Map.of("title", "Landscape", "aspectRatio", "16:9"))));
+            assertFalse(created.path("isError").asBoolean(), created.toString());
+            assertEquals("16:9", created.path("structuredContent").path("data").path("data").path("aspectRatio").asText());
+        } finally { fixture.properties.setAllowCreateProjects(false); }
+    }
+
     @Test void singleAndElevenShotBatchAcceptLookAliasAndExposeConcreteMediaSchema() throws Exception {
         fixture.character(50L, McpBusinessDatabaseTest.PROJECT); fixture.look(60L, 50L, 1);
         for (JsonNode tool : rpc("tools/list", Map.of()).path("tools")) if (tool.path("name").asText().equals("create_shot")) {
