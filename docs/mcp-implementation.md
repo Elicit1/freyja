@@ -58,6 +58,18 @@
 
 ## 验证结果（2026-10-13）
 
+### 题材输入与 MCP 专属画幅策略
+
+功能提交 `a4b35fd` 已部署至 WSL Docker。项目题材支持自由文本与字典建议，原建议代码继续兼容；画幅要求仅增加在 MCP 创建/显式修改入口，未修改前端画幅选择器、`9:16` 默认值或内部 AI 拆解的画幅行为。外部 Agent 从初始化说明、`freyja://guide` 及创建参数 Schema 得知：用户未提供画幅时先读取启用选项并询问；明确委托 AI 决定时优先启用的 `16:9`。单条和批量创建均拒绝遗漏或不受支持的画幅，修改其他字段时保留原画幅；是否询问用户由客户端 Agent 执行。
+
+100项 MCP/短剧专项回归全部通过；补充后的11项真实 HTTP 测试全部通过，覆盖单条/批量创建画幅校验及停用旧画幅后的无关字段更新。前端 TypeScript/Vite 构建、JAR 打包及7项浏览器检查通过，浏览器创建请求全部模拟，没有写入真实业务数据。日志为 `logs/mcp-genre-final-tests.log`、`logs/mcp-genre-http-final.log`、`logs/mcp-genre-final-front.log`、`logs/mcp-genre-final-package.log`、`logs/mcp-genre-browser-final.log`。
+
+部署仅重建 backend/frontend，MySQL、Redis、MinIO、网关容器 ID 保持一致。部署前后现有6个项目、165个分镜、23个人物、23个造型、18个场景、13个道具、16个关键图数量一致，MCP 配置摘要一致。经原鉴权完成72个工具发现、必填画幅/自由题材 Schema、初始化与指南、人物设定图及 H3 Skill 正文/参考文件读取，当前启用画幅为 `9:16/16:9/1:1/4:3`；运行 JAR 哈希、前端首页与本轮构建产物一致，Nginx 配置检查通过。
+
+镜像为 `astrag1/freyja-backend:genre-a4b35fd`、`astrag1/freyja-frontend:genre-a4b35fd`，同时更新运行标签 `1.0.0`；回退标签为对应的 `rollback-before-genre-a4b35fd`。部署及验收记录保存在 `logs/mcp-genre-release/`，不含明文凭据。客户端重连或刷新 `tools/list` 后执行下一轮测试。
+
+### 前一轮图片上传与 Skill 指引
+
 本轮日志定位：运行中容器在 12:27:52 拒绝 `create_shot` 的 `url/type/assetId` 未知字段及缺失 `sourceType/imageUrl`；12:28:04 缺失 `sourceId`；补齐后 12:28:21 单条创建成功。12:29:16 十一镜批量请求因造型来源枚举失败，并展开了全部联合 Schema 的重复错误。由此修复参数可发现性和类型兼容，未把已有单条 CRUD 误判为不可用。
 
 本轮已于2026-10-13部署至 WSL Docker，功能提交为 `b25692f`。沿用现有运行镜像的 JDK/FFmpeg/Nginx 环境，将验证过的 JAR、前端构建和技能包打入新镜像，仅重建 backend/frontend，保留原 Compose 覆盖配置及挂载。客户端需重新连接或刷新 `tools/list`，才能发现新增工具和 Schema。
