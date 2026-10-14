@@ -13,7 +13,7 @@
           <el-table :data="bindingRows" stripe row-key="id">
             <el-table-column label="工具" min-width="240"><template #default="{ row }"><strong>{{ row.name }}</strong><p class="muted">{{ row.description }}</p></template></el-table-column>
             <el-table-column label="入口" width="110"><template #default="{ row }">{{ row.consumer === 'MCP' ? '外部 MCP' : '内置助手' }}</template></el-table-column>
-            <el-table-column label="执行与项目要求" min-width="220"><template #default="{ row }"><el-tag :type="row.effect === 'WRITE' ? 'warning' : 'info'" size="small">{{ row.effect === 'WRITE' ? '可修改数据' : '只读' }}</el-tag><p class="muted">{{ row.projectRequired ? (row.consumer === 'MCP' ? '调用时需指定项目' : '需预先绑定项目') : '不要求预先绑定项目' }}</p></template></el-table-column>
+            <el-table-column label="执行与项目要求" min-width="220"><template #default="{ row }"><p v-if="row.consumer === 'MCP'" class="handler-id"><code>{{ row.handlerKey }}</code></p><el-tag :type="row.effect === 'WRITE' ? 'warning' : 'info'" size="small">{{ row.effect === 'WRITE' ? '可修改数据' : '只读' }}</el-tag><p class="muted">{{ row.projectRequired ? (row.consumer === 'MCP' ? '调用时需指定项目' : '需预先绑定项目') : '不要求预先绑定项目' }}</p></template></el-table-column>
             <el-table-column label="启用" width="90"><template #default="{ row }"><el-switch v-model="row.enabled" :disabled="row.required || busy" @change="dirty = true" /></template></el-table-column>
             <el-table-column label="操作" width="80"><template #default="{ row }"><el-button link type="primary" @click="edit(row)">编辑</el-button></template></el-table-column>
           </el-table>
@@ -82,5 +82,6 @@ h1 { font-size: 24px; font-weight: 700; } p { margin-top: 8px; }
 .hint { margin: 14px 0; }.toolbar { margin: 16px 0; }.toolbar .el-input { max-width: 360px; }.toolbar .el-select { width: 150px; }
 code { overflow-wrap: anywhere; font-size: 12px; }.schema-editor :deep(textarea) { font-family: monospace; }
 .technical-details { margin-top: 12px; }.technical-details summary { cursor: pointer; color: var(--text-secondary); }
+.handler-id { margin: 0 0 8px; }
 @media (max-width: 850px) { .heading { align-items: flex-start; flex-direction: column; }.actions { flex-wrap: wrap; } }
 </style>
