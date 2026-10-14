@@ -3,7 +3,7 @@
 <p align="center">
   <strong>基于 Spring Boot 4 + Vue 3 + MiniMax H3 影视级模型的 AI 短剧分镜制作与 ComfyUI 调度平台</strong>
   <br />
-  四层剧作大纲 ｜ 角色造型资产 ｜ 结构化导演规划 ｜ 并行剧本拆解 ｜ ComfyUI 调度网关 ｜ 视频超分与补帧
+  四层剧作大纲 ｜ 角色造型资产 ｜ 官方 H3 与人脸修复 ｜ 内置 Agent ｜ MCP 统一能力 ｜ 视频超分与补帧
 </p>
 
 <p align="center">
@@ -33,9 +33,11 @@
 - 🎬 **首尾帧驱动影视镜头生成 (First-Last Frame Generation)**：支持为分镜精准指定起始首帧与结束尾帧，调用 MiniMax H3 FL2VA 模型生成具备高物理连贯性、自然运镜轨迹与逼真动效的镜头视频；在镜头组（ShotGroup）内支持自动抽取上一镜尾帧作为下一镜首帧，实现分镜间的丝滑连贯过渡；
 - 🖼️ **多参考图+台词配音驱动演播 (Reference Image Generation)**：支持基于角色设定立绘、特定造型与场景环境多张参考图，联动角色克隆音色台词，调用 MiniMax H3 Ref2VA 模型驱动角色的生动演播、表情变化与动作呈现；
 - 👥 **全流程人物视觉一致性维护 (Character Consistency)**：采用“角色身份层 (`ResCharacter`) + 造型层 (`ResCharacterLook`)”双层资产架构，配合跨集实体消歧流水线与 Character Blackboard 看板，确保角色在不同集数、多场景变换中面部外观、服装发型与设定的高保真视觉一致；
-- ✍️ **构建符合 MiniMax H3 规范的专业提示词 (H3 Prompt Architecture)**：基于视听导演语言体系，将镜头剧本、角色动作与机位调度自动智能转译为标准的 MiniMax H3 双轨提示词（包含机位运镜、主体动作、环境光影、伴生声效与音乐的三段式/六段式结构），彻底告别传统生硬的关键字正则猜谜；
+- ✍️ **构建符合 MiniMax H3 规范的专业提示词 (H3 Prompt Architecture)**：基于视听导演语言体系，将镜头剧本、角色动作与机位调度转译为标准的 MiniMax H3 双轨提示词（三段式/六段式结构），语义决策交给模型，后端负责结构校验。默认保留对白、环境声和必要音效，不加入背景音乐；用户明确要求配乐时可开启；
 - 🧩 **Agent Skill 领域知识按需迭代与装载 (Iterative Agent Skills)**：内置标准化 Agent Skill 知识包（电影摄影构图、运镜机位、角色消歧与 H3 提示词编写规范），创作者可根据短剧题材与风格需要自由发布新版本、持续迭代优化正文规约，驱动大模型根据需要动态加载与进化。
-- 💬 **Agent 基础助手**：独立配置页 `/system/agent` 可设置模型、指令、工具、Skills、记忆、预算与 Codex Pet 精灵图宠物与 ZIP 导入；提供持久化聊天、项目/资产/分镜查询、明确规则保存、任务进度、取消及失败恢复。启用和数据库升级步骤见 [Agent 使用与 API](docs/agent-api.md)。小说制作准备业务 Profile 为后续接入阶段。
+- 🎞️ **官方 MiniMax H3 工作流与人脸修复**：接入 Comfy-Org 官方 FL2VA / Ref2VA 模板及 LightX2V Turbo4 / Turbo8 LoRA，支持文生、首帧、首尾帧、多参考图与音频生视频；可选择 H3 FaceRefine 二阶段人脸修复版本。
+- 💬 **内置 FREYJA Agent**：支持对话中明确需求、创作小说、剧本拆解入库、资产整理、分镜制作规划与提示词准备；提供任务计划、进度、历史摘要、取消和恢复，以及可配置的模型、工具、Skills 和 Codex Pet 虚拟形象。
+- 🔌 **MCP 服务与统一 AI 能力管理**：外部 Agent 可通过 MCP 操作授权项目、资产与分镜；内部 Agent 与 MCP 复用共享业务能力，工具名称、参数约束和公共规则由 MySQL 发布版本驱动，Redis 提供缓存与刷新通知。
 
 ## 💻 运行环境与硬件配置要求 (System Requirements)
 
@@ -131,8 +133,10 @@ ComfyUI 作为独立的图像与视频生成算力节点，运行在配备 NVIDI
 
 #### 2. 安装必要插件与显存优化加速包
 - **安装节点管理器**：安装常用 `ComfyUI-Manager` 便于缺失节点一键排查；
-- **安装 H3 显存优化加速插件 (强烈推荐)**：
+- **使用原 16GB HiFi 工作流时安装显存优化插件**：
   前往 ModelScope 页面下载 **[ComfyUI-sol-attn-main.zip](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/files)**，解压至 `ComfyUI/custom_nodes/ComfyUI-sol-attn`。该插件针对 MiniMax H3 注意力算子显存进行了专门优化，可显著降低显存峰值并加快视频生成速度。
+
+官方 INT8 ConvRot / Turbo 工作流使用另一套原生节点与权重组合，依赖及下载步骤见下方「官方 MiniMax H3 工作流与人脸修复」。按选用的工作流准备 ComfyUI 环境。
 
 #### 3. 验证网络通信
 在运行 Freyja 的机器上，浏览器或命令行访问 `http://<ComfyUI所在IP>:8188`，若能正常打开 ComfyUI 界面即代表通信打通。
@@ -144,6 +148,8 @@ ComfyUI 作为独立的图像与视频生成算力节点，运行在配备 NVIDI
 将生图与影视级生视频所需的预训练模型权重下载并放置到 **ComfyUI 根目录下的对应文件夹** 中：
 
 #### 1. 核心模型存放路径清单
+
+下表为原 16GB HiFi 路线的基础权重。选用官方 INT8 ConvRot / Turbo 工作流时，请按「官方 MiniMax H3 工作流与人脸修复」中的对应部署文档准备独立的主模型、编码器、VAE 和 LoRA。
 
 | 类别 | 推荐/默认文件名 | 存放路径 (ComfyUI目录下) | 官方/开源下载来源 | 用途说明 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -159,7 +165,7 @@ ComfyUI 作为独立的图像与视频生成算力节点，运行在配备 NVIDI
 #### 2. 进入 Web 工作台配置大模型 API Key
 模型就绪后，打开创作工作台 **[http://localhost](http://localhost)**：
 1. **配置大模型提供商**：进入【系统管理 -> AI 提供商管理】，录入你的大语言模型 API Key（用于剧本拆解 Planner / Worker，兼容 OpenAI 规范、DeepSeek、MiMo、硅基流动等各大服务商或本地 Ollama）；
-2. **确认视听技能包 (Skills)**：进入【系统管理 -> AI 技能管理】，系统已自动扫描并装载了预置的 4 个视听/导演 Skill 包（`character-disambiguation`、`camera-direction`、`cinematography`、`h3-prompt-writing`），开箱即用！
+2. **确认视听技能包 (Skills)**：进入【系统管理 -> AI 技能管理】，系统启动时会扫描并导入预置的 5 个 Skill 包（`character-disambiguation`、`character-sheet-design`、`camera-direction`、`cinematography`、`h3-prompt-writing`）；已有有效发布版本会保留。
 
 ---
 
@@ -195,7 +201,62 @@ ComfyUI 作为独立的图像与视频生成算力节点，运行在配备 NVIDI
 
 ### 7. AI 技能知识资产管理 (Agent Skills)
 - **标准 Agent Skill 规范**：支持导入标准 ZIP 格式的 Skill 资源包，支持版本控制、回滚、在线预览与动态装载。
-- **内置视听与拆解规约**：预置 4 个核心视听与业务规则 Skill，为剧本拆解与提示词衍生大模型提供领域专业知识与指令规约。
+- **内置视听与拆解规约**：预置 5 个 Skill，覆盖人物消歧、人物/造型设定图、电影摄影、运镜和 H3 提示词编写。Agent 配置中的「工具」和「Skills」分别选择执行能力与知识包，支持搜索、分页与跨页勾选。
+
+### 8. 官方 MiniMax H3 工作流与人脸修复
+
+在原 16GB HiFi 工作流基础上，增加基于 [Comfy-Org 官方模板](https://github.com/Comfy-Org/workflow_templates) 和 [官方适配权重](https://huggingface.co/Comfy-Org/MiniMax-H3) 的入口，并结合 [LightX2V Turbo LoRA](https://github.com/ModelTC/Minimax-H3-Turbo) 提供固定四步、八步采样。模型编码与 API 模板的实际绑定见 [默认算力节点配置](comfy_gateway/nodes/machine_default.yaml)。
+
+| 网关模型编码 | 工作流能力 | 采样与说明 |
+| --- | --- | --- |
+| `minimax-h3-fl2va-turbo4` | 官方 FL2VA 模板适配，文生/首帧/首尾帧视频及原生音频 | 固定 4 步，使用 FL2V 四步 768p LoRA；[部署说明](docs/minimax-h3-fl2va-turbo4.md) |
+| `minimax-h3-fl2va-turbo8` | 官方 FL2VA 模板适配，文生/首帧/首尾帧视频及原生音频 | 固定 8 步，默认使用标准版 544p LoRA；[部署说明](docs/minimax-h3-fl2va-turbo8.md) |
+| `minimax-h3-ref` | 官方 Ref2VA 模板适配，多参考图与音频生视频 | 固定 4 步 |
+| `minimax-h3-ref-turbo8` | 官方 Ref2VA 模板适配，多参考图与音频生视频 | 固定 8 步，使用 Ref2V 八步 768p LoRA；[部署说明](docs/minimax-h3-ref2va-turbo8.md) |
+| `minimax-h3-face-refine` | 原 Ref2VA 生成与 H3 FaceRefine 人脸修复 | 二阶段处理，基础生成默认 20 步 |
+| `minimax-h3-ref-turbo4-face-refine` | 官方 Ref2VA Turbo4 与 H3 FaceRefine 组合 | 生成和修复阶段均为 4 步 |
+| `minimax-h3-ref-turbo8-face-refine` | 官方 Ref2VA Turbo8 与 H3 FaceRefine 组合 | 生成和修复阶段均为 8 步；[接入说明](docs/minimax-h3-ref2va-turbo8.md) |
+
+**人脸修复接入方式**：在 AI 提供商与模型管理中注册对应网关模型编码，参考图模式选择带 FaceRefine 的模型。修复工作流将参考图片送入生成、修复两个阶段，最终合流修复后画面与首段原生音频；GPU 节点需安装 H3 FaceRefine 节点及其检测器（当前配置为 `face_yolov8m.pt`）。这是视频生成工作流内的二阶段修复，当前没有独立的人脸修复工作台。
+
+UI 工作流位于 [`comfyUI_workflow/`](comfyUI_workflow/)，API 图位于 [`comfy_gateway/comfyUIApi/`](comfy_gateway/comfyUIApi/)。官方模板的人脸修复版是本项目组合扩展。不同 Turbo LoRA 对应固定采样步数，须下载匹配权重；通用 `steps` 参数不会覆盖 Turbo 入口的固定步数。尺寸、时长和显存需求按所选模型与节点环境核对。
+
+### 9. 内置 Agent 与模型调用优化
+
+- **对话驱动制作**：内置助手支持结构化需求确认、小说创作、剧本拆解及入库、文字资产整理、分镜模式与参考素材规划、提示词准备和交付检查；缺少输入或待补图片时会显示相应状态。任务计划和运行进度可在聊天及任务中心查看。
+- **独立配置**：在 `/system/agent` 选择支持 Tool Calling 的 CHAT 模型，配置系统指令、工具、Skills、记忆、主模型与摘要模型预算、流式/完整回复、重试和执行时限。支持历史摘要、持久化检查点、取消、失败恢复及 Codex Pet ZIP 导入。
+- **提供商能力继承**：在 AI 提供商页配置上下文上限、输出预算、工具调用与思考协议，具体模型可覆盖；任务创建时固定配置，模型能力由显式声明决定。
+- **DeepSeek / MiMo 适配**：支持 DeepSeek Chat、MiMo Chat 等思考协议。DeepSeek 关闭思考时清理不适用的推理强度参数，开启时按协议处理采样参数；MiMo 支持思考开关，开启思考时清理不生效的温度与 Top P。请求兼容处理在 SDK 合并参数后执行。
+- **长任务与摘要恢复**：主模型和摘要模型可以独立设置输出预算及思考方式；摘要截断或恢复耗尽时保留任务检查点，支持调整摘要配置后继续同一任务。模型轮数可选择不限制，工具次数、超时和预算策略仍可配置。
+
+启用与接口说明见 [Agent 使用与 API](docs/agent-api.md)，最新能力目录和升级规则见 [统一能力平台](docs/mcp-mysql-redis-refactor-plan.md)。升级到统一能力平台后，内部 Agent 请新建会话，并在助手设置中核对所选工具。
+
+提供商能力字段和思考协议示例见 [AI 提供商与模型 API](docs/ai-provider-api.md)。
+
+### 10. MCP 服务与统一 AI 能力管理
+
+| 管理入口 | 用途 |
+| --- | --- |
+| `/system/ai-capabilities` | 工具与入口绑定、名称/说明/参数约束、公共创作规则、外部指南、草稿发布和版本回滚 |
+| `/system/agent` | 为内部助手选择已授权工具与 Skills，配置模型和运行策略 |
+| `/system/mcp` | 外部 MCP 服务开关、Bearer 令牌、Origin、项目范围、写入权限与工具开关；工具和 Skills 独立展示 |
+
+内部 Agent 直接调用共享 Java 能力层；外部 Agent 通过 **Streamable HTTP MCP** 访问同一批业务处理器。MySQL 保存能力身份、版本、绑定、规则与完整发布快照；Redis 用于缓存、刷新通知及实例状态，缓存故障时回源 MySQL。页面列表支持搜索、筛选和分页，公开工具名称从数据库绑定读取。
+
+**发布流程**：编辑后「保存草稿」，再「发布版本」让新任务和后续 MCP 请求使用新配置，无需重启 Docker；运行中的内部任务固定规则与工具契约，停用工具会阻止后续调用。发布记录支持回滚。
+
+**外部能力**：支持项目、剧集、场次、分镜及人物/造型/场景/道具/关键帧的查询和 CRUD，事务批量导入、参考图上传、视频版本读取/选择，以及已发布 Skills 的目录与正文读取。写入使用稳定 `requestId` 防止重复提交，修改前读取 `editFingerprint`，关键写入后读回核对。内部会话、AI 模型执行和系统设置接口保持内部授权。
+
+在 `/system/mcp` 配置至少 24 字符的随机访问令牌，设置允许的项目及写入范围后开启服务。客户端连接示例：
+
+```toml
+[mcp_servers.freyja]
+url = "http://localhost/api/mcp"
+bearer_token_env_var = "FREYJA_MCP_TOKEN"
+tool_timeout_sec = 300
+```
+
+将令牌放入客户端的 `FREYJA_MCP_TOKEN` 环境变量。远程客户端使用可访问的工作台地址；直接连接后端时路径为 `http://<host>:8080/mcp`。连接与业务 Schema 见 [MCP API](docs/mcp-api.md)，共享目录与发布机制见 [统一能力平台](docs/mcp-mysql-redis-refactor-plan.md)。
 
 ---
 
@@ -203,21 +264,22 @@ ComfyUI 作为独立的图像与视频生成算力节点，运行在配备 NVIDI
 
 系统引入了标准 **Agent Skill** 机制，通过将专业影视与拆解规约模块化，在执行大模型调用时按需注入上下文或通过 Tool Calling 动态加载。
 
-### 1. 系统默认内置的 4 个核心 Skill
+### 1. 系统默认内置的 5 个 Skill
 
-系统默认自带 4 个核心 Skill 包，预置存放于项目根目录 **`skills/`** 文件夹中：
+系统默认自带 5 个 Skill 包，预置存放于项目根目录 **`skills/`** 文件夹中：
 
 | Skill 标识 (name) | 预置文件路径 | 核心职责说明 | 关联调用链路 |
 | :--- | :--- | :--- | :--- |
 | **`character-disambiguation`** | `skills/character-disambiguation.zip` | 角色身份识别与实体消歧规约，用于判断登场角色身份、代词归一并锚定系统角色注册表 ID | Planner 剧本拆解阶段（强制依赖） |
+| **`character-sheet-design`** | `skills/character-sheet-design.zip` | 人物与多造型设定图设计、三视图、头像与细节组织，以及按需求选择透明或纯色背景 | 角色/造型设定图创作 |
 | **`camera-direction`** | `skills/camera-direction.zip` | 影视镜头运镜方式与机位轨迹规划规范（推拉摇移跟升降旋转） | 镜头编辑与视听导演规划 |
 | **`cinematography`** | `skills/cinematography.zip` | 影视景别（特写/近景/中景/全景/远景）、构图与视听节奏设计规约 | 镜头景别规划与视听提示词衍生 |
 | **`h3-prompt-writing`** | `skills/h3-prompt-writing.zip` | MiniMax H3 视频生成模型的双轨与三段式提示词撰写标准范式 | 分镜视频动态提示词生成 |
 
 > ⚠️ **核心原则（可修改，切勿删除）**：
-> - **切勿移除这 4 个默认 Skill**：系统的核心业务链路（如 Planner 剧本拆解、分镜双轨提示词衍生、导演规划）在后端逻辑中对这 4 个 Skill 标识有显式的依赖校验与强制加载要求，删除会导致业务流程异常；
-> - **允许自由修改与调优**：创作者完全可以基于这 4 个 Skill 进行业务调整。在后台【系统管理 -> AI 技能管理 (`/system/skills`)】中查看其内容细节，在保留原 Skill 标识（name）的前提下发布新版本、微调其正文规约或补充参考资料；
-> - **初始装载方式**：系统部署初始化后，进入后台【系统管理 -> AI 技能管理 (`/system/skills`)】，点击“导入技能”，分别上传项目根目录 `skills/` 下的 4 个 ZIP 文件即可完成装载。
+> - **保留业务依赖的 Skill 标识**：Planner、导演规划与 H3 提示词链路会按固定名称加载所需知识，删除相关 Skill 会影响对应流程；
+> - **允许自由修改与调优**：在后台【系统管理 -> AI 技能管理 (`/system/skills`)】中保留 Skill 的 `name`，发布新版本、微调正文或补充参考资料；
+> - **初始装载方式**：后端启动扫描内置 `skills/` 目录，自动导入尚缺失或无有效发布版本的技能；可在管理页核对结果，或手动导入 ZIP。已有有效版本不会被启动扫描覆盖。
 
 ---
 
@@ -381,16 +443,16 @@ docker compose down -v
 
 硬件配置要求详情请参阅文档开篇的 [💻 运行环境与硬件配置要求](#-运行环境与硬件配置要求-system-requirements)。
 
-- **视频生成模型**：系统视频生成工作流配套采用 ModelScope 开源的 **[MiniMax H3 混合高精度量化 (16G显存优化版)](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi)**；
-- **推理加速包**：强烈建议配合下载 ModelScope 文件列表中的 **[ComfyUI-sol-attn-main.zip](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/files)** 加速插件（解压至 `ComfyUI/custom_nodes/ComfyUI-sol-attn`），专用于优化注意力算子显存占用并提升生成速度。
+- **16GB HiFi 工作流**：配套采用 ModelScope 的 **[MiniMax H3 混合高精度量化版](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi)**，相应显存优化插件按该工作流要求安装；
+- **官方模板与 Turbo 工作流**：使用 Comfy-Org INT8 ConvRot 权重与匹配的 Turbo LoRA，具体依赖、模型下载和人脸修复接入见上方「官方 MiniMax H3 工作流与人脸修复」及对应部署文档。
 
 ### 2. 工作流机制说明
-- **工作流固定机制**：系统的提示词组装流水线、首尾帧与参考图槽位注入逻辑与内置工作流的特定节点 ID 深度耦合。**系统不支持自动接入或直接运行任意外部第三方的 ComfyUI 工作流，开箱仅支持系统内置的 5 套预置工作流**；
+- **工作流适配机制**：首尾帧与参考素材注入依赖已注册模板的节点 ID、映射与处理器；内置模板已覆盖 FLUX.2、16GB HiFi、官方 H3 Turbo4/Turbo8、FaceRefine、RIFE 和 RealESRGAN。第三方工作流需先完成网关适配再调用；
 - **开发者接入新工作流逻辑**：
   若需扩展新工作流，需遵循三步工程链路：
   1. ComfyUI 开启开发者模式，导出 **Save (API Format)** 格式的纯参数 JSON 模板并放入 `comfy_gateway/comfyUIApi/`；
   2. 在 `comfy_gateway/nodes/*.yaml` 中配置节点参数映射关系；
-  3. 在 `comfy_gateway/adapters.py` 中编写对应的 Handler 数据处理逻辑（**可借助 Codex、Gemini、Claude Code、Cursor、OpenCode 等 AI 工具，将 API JSON 与需求发给 AI 快速生成适配代码**）。
+  3. 在 `comfy_gateway/workflow_engine.py` 中复用或增加对应的 Handler 处理逻辑，并验证参数注入与输出节点。
 
 ### 3. ComfyUI 启动与连接配置
 1. **允许外部网络连接**：
