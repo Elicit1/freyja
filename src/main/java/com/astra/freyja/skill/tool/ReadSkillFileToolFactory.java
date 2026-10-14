@@ -26,64 +26,73 @@ public class ReadSkillFileToolFactory {
     private final SkillRepository skillRepository;
 
     public ToolCallback createTool(LoadSkillToolSession session) {
-        return createTool(session, null);
+        return createTool(session, null, null);
     }
 
     public ToolCallback createTool(LoadSkillToolSession session, Consumer<String> stageListener) {
+        return createTool(session, stageListener, null);
+    }
+
+    public ToolCallback createTool(LoadSkillToolSession session, Consumer<String> stageListener, Consumer<String> warningListener) {
         return FunctionToolCallback.builder("read_skill_file", (ReadSkillFileRequest request) -> {
-            String name = request == null ? null : StringUtils.trimToNull(request.getName());
-            String path = request == null ? null : StringUtils.trimToNull(request.getPath());
-            log.info("[ReadSkillFile] requested: name={}, path={}", name, StringUtils.abbreviate(path, 256));
-            if (name == null || path == null) {
-                return error(name, path, "必须提供 Skill 名称和 references/ 下的相对路径");
-            }
-            name = name.toLowerCase(Locale.ROOT);
-            // 只接受包内的规范相对路径，不允许 URL、绝对路径、路径折叠或分隔符别名。
-            if (!path.startsWith("references/") || path.contains("\\") || path.contains(":")
-                    || path.length() > 256 || !path.matches("references/[A-Za-z0-9._/-]+\\.(?:txt|md)")
-                    || path.contains("//") || path.contains("/./") || path.contains("/../")
-                    || path.endsWith("/.") || path.endsWith("/..")) {
-                return error(name, path, "只允许读取 Skill 包 references/ 下的 .txt 或 .md 文件");
-            }
-            if (!session.hasLoaded(name)) {
-                return error(name, path, "请先成功调用 load_skill 加载该 Skill");
-            }
-            Long versionId = session.resolveVersion(name).orElse(null);
-            if (versionId == null) {
-                return error(name, path, "Skill 不在本次请求的版本快照中");
-            }
             try {
-                AiSkillFile file = fileMapper.selectOne(new LambdaQueryWrapper<AiSkillFile>()
-                        .eq(AiSkillFile::getSkillVersionId, versionId)
-                        .eq(AiSkillFile::getRelativePath, path));
-                if (file == null || !"REFERENCE".equals(file.getFileType())) {
-                    return error(name, path, "当前 Skill 版本中不存在该参考文本文件");
+                String name = request == null ? null : StringUtils.trimToNull(request.getName());
+                String path = request == null ? null : StringUtils.trimToNull(request.getPath());
+                log.info("[ReadSkillFile] requested: name={}, path={}", name, StringUtils.abbreviate(path, 256));
+                if (name == null || path == null) {
+                    return reportError(warningListener, name, path, "必须提供 Skill 名称和 references/ 下的相对路径");
                 }
-                if (file.getContentSize() == null || file.getContentSize() < 0
-                        || file.getContentSize() > MAX_REFERENCE_BYTES) {
-                    return error(name, path, "参考文本文件超过读取大小限制");
+                name = name.toLowerCase(Locale.ROOT);
+                // 只接受包内的规范相对路径，不允许 URL、绝对路径、路径折叠或分隔符别名。
+                if (!path.startsWith("references/") || path.contains("\\") || path.contains(":")
+                        || path.length() > 256 || !path.matches("references/[A-Za-z0-9._/-]+\\.(?:txt|md)")
+                        || path.contains("//") || path.contains("/./") || path.contains("/../")
+                        || path.endsWith("/.") || path.endsWith("/..")) {
+                    return reportError(warningListener, name, path, "只允许读取 Skill 包 references/ 下的 .txt 或 .md 文件");
                 }
-                if (StringUtils.isBlank(file.getObjectKey()) || StringUtils.isBlank(file.getContentHash())) {
-                    return error(name, path, "参考文本文件缺少存储或校验信息");
+                if (!session.hasLoaded(name)) {
+                    return reportError(warningListener, name, path, "请先成功调用 load_skill 加载该 Skill");
                 }
-                String fileLabel = name + "/" + path;
-                if (stageListener != null) stageListener.accept("正在加载 " + fileLabel + " 文件…\n");
-                String content = skillRepository.loadTextFile(
-                        file.getObjectKey(), file.getContentHash(), file.getContentSize());
-                if (StringUtils.isBlank(content)) {
-                    if (stageListener != null) stageListener.accept("加载 " + fileLabel + " 文件失败\n");
-                    return error(name, path, "参考文本文件正文为空");
+                Long versionId = session.resolveVersion(name).orElse(null);
+                if (versionId == null) {
+                    return reportError(warningListener, name, path, "Skill 不在本次请求的版本快照中");
                 }
-                session.recordReferenceFile(name, path);
-                if (stageListener != null) stageListener.accept("已加载 " + fileLabel + " 文件\n");
-                log.info("[ReadSkillFile] loaded: name={}, versionId={}, path={}, bytes={}, chars={}, estimatedTokens={}",
-                        name, versionId, path, file.getContentSize(), content.length(), Math.ceilDiv(content.length(), 4));
-                return new ReadSkillFileResponse("SUCCESS", name, path, content, null);
-            } catch (Exception e) {
-                if (stageListener != null) stageListener.accept("加载 " + name + "/" + path + " 文件失败\n");
-                log.warn("[ReadSkillFile] failed: name={}, versionId={}, path={}, reason={}",
-                        name, versionId, path, e.getMessage());
-                return new ReadSkillFileResponse("ERROR", name, path, null, "读取 Skill 参考文件失败");
+                try {
+                    AiSkillFile file = fileMapper.selectOne(new LambdaQueryWrapper<AiSkillFile>()
+                            .eq(AiSkillFile::getSkillVersionId, versionId)
+                            .eq(AiSkillFile::getRelativePath, path));
+                    if (file == null || !"REFERENCE".equals(file.getFileType())) {
+                        return reportError(warningListener, name, path, "当前 Skill 版本中不存在该参考文本文件");
+                    }
+                    if (file.getContentSize() == null || file.getContentSize() < 0
+                            || file.getContentSize() > MAX_REFERENCE_BYTES) {
+                        return reportError(warningListener, name, path, "参考文本文件超过读取大小限制");
+                    }
+                    if (StringUtils.isBlank(file.getObjectKey()) || StringUtils.isBlank(file.getContentHash())) {
+                        return reportError(warningListener, name, path, "参考文本文件缺少存储或校验信息");
+                    }
+                    String fileLabel = name + "/" + path;
+                    if (stageListener != null) stageListener.accept("正在加载 " + fileLabel + " 文件…\n");
+                    String content = skillRepository.loadTextFile(
+                            file.getObjectKey(), file.getContentHash(), file.getContentSize());
+                    if (StringUtils.isBlank(content)) {
+                        if (stageListener != null) stageListener.accept("加载 " + fileLabel + " 文件失败\n");
+                        return reportError(warningListener, name, path, "参考文本文件正文为空");
+                    }
+                    session.recordReferenceFile(name, path);
+                    if (stageListener != null) stageListener.accept("已加载 " + fileLabel + " 文件\n");
+                    log.info("[ReadSkillFile] loaded: name={}, versionId={}, path={}, bytes={}, chars={}, estimatedTokens={}",
+                            name, versionId, path, file.getContentSize(), content.length(), Math.ceilDiv(content.length(), 4));
+                    return new ReadSkillFileResponse("SUCCESS", name, path, content, null);
+                } catch (Exception e) {
+                    if (stageListener != null) stageListener.accept("加载 " + name + "/" + path + " 文件失败\n");
+                    log.warn("[ReadSkillFile] failed: name={}, versionId={}, path={}, reason={}",
+                            name, versionId, path, e.getMessage());
+                    return reportError(warningListener, name, path, "读取 Skill 参考文件失败: " + e.getMessage());
+                }
+            } catch (Throwable t) {
+                log.error("[ReadSkillFile] unexpected error: {}", t.getMessage(), t);
+                return reportError(warningListener, null, null, "工具内部异常: " + t.getMessage());
             }
         })
                 .description("当已加载 Skill 的 SKILL.md 指示读取 references/ 文件时，在生成最终答案前调用本工具获取完整正文。name 是 Skill 名称，path 是 SKILL.md 中的相对路径。返回当前版本的文件正文。")
@@ -91,9 +100,17 @@ public class ReadSkillFileToolFactory {
                 .build();
     }
 
-    private ReadSkillFileResponse error(String name, String path, String message) {
-        log.warn("[ReadSkillFile] rejected: name={}, path={}, reason={}",
-                name, StringUtils.abbreviate(path, 256), message);
-        return new ReadSkillFileResponse("ERROR", name, path, null, message);
+    private ReadSkillFileResponse reportError(Consumer<String> warningListener, String name, String path, String message) {
+        String label = (name != null ? name : "unknown") + (path != null ? "/" + path : "");
+        String warnMsg = "读取技能参考文件 [" + label + "] 失败: " + message;
+        log.warn("[ReadSkillFile] rejected/failed: {}", warnMsg);
+        if (warningListener != null) {
+            try {
+                warningListener.accept(warnMsg);
+            } catch (Exception e) {
+                log.warn("[ReadSkillFile] warning listener execution failed", e);
+            }
+        }
+        return new ReadSkillFileResponse("ERROR", name, path, null, message + "。请基于已有上下文继续完成生成，切勿中断。");
     }
 }

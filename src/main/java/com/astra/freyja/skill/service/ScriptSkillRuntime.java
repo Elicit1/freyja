@@ -17,13 +17,19 @@ import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.micrometer.observation.ObservationRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.DefaultChatClientBuilder;
+import org.springframework.ai.chat.client.advisor.ToolCallingAdvisor;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.model.tool.DefaultToolCallingManager;
 import org.springframework.ai.tool.ToolCallback;
+import org.springframework.ai.tool.definition.ToolDefinition;
+import org.springframework.ai.tool.resolution.ToolCallbackResolver;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -31,6 +37,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CancellationException;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
@@ -165,14 +172,21 @@ public class ScriptSkillRuntime {
             log.info("[ScriptSkill] taskId={} stage={} segment={} attempt={} load_skill tool registered, catalogSize={}",
                     taskId, stageName, segmentId, attempt, versions.size());
         }
-        ToolCallback readFileTool = !session.getLoadedSkillNames().isEmpty() || stage.isAllowDynamicLoad()
+        ToolCallback readFileTool = stage.isAllowDynamicLoad()
                 ? readSkillFileToolFactory.createTool(session, message -> {
                     log.info("[ScriptSkill] taskId={} stage={} segment={} attempt={} {}",
                             taskId, stageName, segmentId, attempt, message.trim());
                     if (channel != null) channel.accept("PLANNER".equalsIgnoreCase(stageName) ? "PLANNER" : segmentId,
                             "📄 " + message);
+                }, warnMessage -> {
+                    log.warn("[ScriptSkill] taskId={} stage={} segment={} attempt={} {}",
+                            taskId, stageName, segmentId, attempt, warnMessage);
+                    if (channel != null) {
+                        String warnText = "⚠️ [AI Skill 警告] " + warnMessage + "\n";
+                        channel.accept("PLANNER".equalsIgnoreCase(stageName) ? "PLANNER" : segmentId, warnText);
+                    }
                 }) : null;
-        return new Invocation(prompt, tool, readFileTool, session, taskId, stageName, segmentId, attempt);
+        return new Invocation(prompt, tool, readFileTool, session, taskId, stageName, segmentId, attempt, channel);
     }
 
     public String streamWithTool(ChatModel model, Invocation invocation,
@@ -182,25 +196,80 @@ public class ScriptSkillRuntime {
 
     public String streamWithTool(ChatModel model, Invocation invocation, String userPrompt,
                                  Consumer<String> finalTextChunk) {
-        ChatClient.Builder builder = ChatClient.builder(model);
         ChatOptions options = model.getOptions();
         if (options == null) throw new BizException("所选模型缺少 ChatOptions，无法执行 Skill Tool Calling");
+
+        ToolCallbackResolver fallbackResolver = toolName -> createUnknownToolFallback(toolName, invocation);
+
+        DefaultToolCallingManager toolCallingManager = DefaultToolCallingManager.builder()
+                .observationRegistry(ObservationRegistry.NOOP)
+                .resolutionFallbackEnabled(true)
+                .toolCallbackResolver(fallbackResolver)
+                .build();
+
+        ToolCallingAdvisor.Builder<?> advisorBuilder = ToolCallingAdvisor.builder()
+                .toolCallingManager(toolCallingManager);
+
+        ChatClient.Builder builder = new DefaultChatClientBuilder(
+                model,
+                ObservationRegistry.NOOP,
+                null,
+                null,
+                advisorBuilder
+        );
         builder.defaultOptions(options.mutate());
         StringBuilder answer = new StringBuilder();
         var requestSpec = builder.build().prompt().system(invocation.systemPrompt());
         if (userPrompt != null) requestSpec = requestSpec.user(userPrompt);
-        try (var stream = requestSpec.tools(invocation.tools()).stream().content().toStream()) { stream.forEach(chunk -> {
-                    if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("AI Skill 调用已取消");
-                    if (StringUtils.isNotEmpty(chunk)) {
-                        answer.append(chunk);
-                        if (finalTextChunk != null) finalTextChunk.accept(chunk);
-                    }
-                }); }
+        if (invocation.hasTools()) {
+            requestSpec = requestSpec.tools((Object[]) invocation.tools());
+        }
+        try (var stream = requestSpec.stream().content().toStream()) {
+            stream.forEach(chunk -> {
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new CancellationException("AI Skill 调用已取消");
+                }
+                if (StringUtils.isNotEmpty(chunk)) {
+                    answer.append(chunk);
+                    if (finalTextChunk != null) finalTextChunk.accept(chunk);
+                }
+            });
+        }
         log.info("[ScriptSkill] taskId={} stage={} segment={} attempt={} model completed, loaded={}, loadedReferenceFiles={}, toolCalls={}",
                 invocation.taskId(), invocation.stage(), invocation.segmentId(), invocation.attempt(),
-                invocation.session().getLoadedSkillNames(), invocation.session().getLoadedReferenceFiles(),
-                invocation.session().getInvocationHistory());
+                invocation.session() == null ? null : invocation.session().getLoadedSkillNames(),
+                invocation.session() == null ? null : invocation.session().getLoadedReferenceFiles(),
+                invocation.session() == null ? null : invocation.session().getInvocationHistory());
         return answer.toString();
+    }
+
+    private ToolCallback createUnknownToolFallback(String toolName, Invocation invocation) {
+        return new ToolCallback() {
+            @Override
+            public ToolDefinition getToolDefinition() {
+                return ToolDefinition.builder()
+                        .name(toolName)
+                        .description("未识别工具: " + toolName)
+                        .inputSchema("{}")
+                        .build();
+            }
+
+            @Override
+            public String call(String input) {
+                Long taskId = invocation != null ? invocation.taskId() : null;
+                String stage = invocation != null ? invocation.stage() : null;
+                String segmentId = invocation != null ? invocation.segmentId() : null;
+                int attempt = invocation != null ? invocation.attempt() : 1;
+
+                log.warn("[ScriptSkill] taskId={} stage={} segment={} attempt={} 模型调用了未注册工具: name={}, input={}",
+                        taskId, stage, segmentId, attempt, toolName, input);
+                if (invocation != null && invocation.channel() != null) {
+                    String warnText = "⚠️ [AI Skill 警告] 模型调用了未注册工具 [" + toolName + "]，已跳过并引导模型继续生成...\n";
+                    invocation.channel().accept("PLANNER".equalsIgnoreCase(stage) ? "PLANNER" : segmentId, warnText);
+                }
+                return "工具 [" + toolName + "] 不存在或不支持。请勿尝试调用此工具，直接基于已有上下文输出最终业务 JSON 结果。";
+            }
+        };
     }
 
     private void onToolResult(LoadSkillResponse response, LoadSkillToolSession session,
@@ -215,6 +284,11 @@ public class ScriptSkillRuntime {
         emit(context, channel, new ScriptSkillEvent(stage, segmentId, attempt, name,
                 session.resolveVersion(name).orElse(null), response.getVersion(),
                 response.getContentHash(), "TOOL", response.getStatus()));
+        if ("ERROR".equalsIgnoreCase(response.getStatus()) && channel != null) {
+            String warnMsg = "⚠️ [AI Skill 警告] 阶段 " + stage + " 调用技能 [" + name + "] 失败: "
+                    + StringUtils.defaultIfBlank(response.getMessage(), "未知错误") + "\n";
+            channel.accept("PLANNER".equalsIgnoreCase(stage) ? "PLANNER" : segmentId, warnMsg);
+        }
     }
 
     private void emit(GlobalStoryContext context, BiConsumer<String, String> channel, ScriptSkillEvent event) {
@@ -233,10 +307,19 @@ public class ScriptSkillRuntime {
     }
 
     public record Invocation(String systemPrompt, ToolCallback tool, ToolCallback readFileTool, LoadSkillToolSession session,
-                             Long taskId, String stage, String segmentId, int attempt) {
+                             Long taskId, String stage, String segmentId, int attempt, BiConsumer<String, String> channel) {
+        public Invocation(String systemPrompt, ToolCallback tool, ToolCallback readFileTool, LoadSkillToolSession session,
+                          Long taskId, String stage, String segmentId, int attempt) {
+            this(systemPrompt, tool, readFileTool, session, taskId, stage, segmentId, attempt, null);
+        }
+
         public Invocation(String systemPrompt, ToolCallback tool, LoadSkillToolSession session,
                           Long taskId, String stage, String segmentId, int attempt) {
-            this(systemPrompt, tool, null, session, taskId, stage, segmentId, attempt);
+            this(systemPrompt, tool, null, session, taskId, stage, segmentId, attempt, null);
+        }
+
+        public Invocation withSystemPrompt(String newSystemPrompt) {
+            return new Invocation(newSystemPrompt, tool, readFileTool, session, taskId, stage, segmentId, attempt, channel);
         }
 
         public boolean hasTools() {

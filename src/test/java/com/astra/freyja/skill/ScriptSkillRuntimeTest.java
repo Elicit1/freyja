@@ -32,8 +32,10 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiConsumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -60,7 +62,7 @@ class ScriptSkillRuntimeTest {
                 .thenReturn(new SkillPromptContext("SKILL RULES", "hash", List.of("story-structure@v1")));
         when(promptContextService.appendToSystemPrompt(anyString(), any())).thenAnswer(call ->
                 call.getArgument(0, String.class) + "\n" + ((SkillPromptContext) call.getArgument(1)).prompt());
-        when(readSkillFileToolFactory.createTool(any(), any())).thenReturn(mock(ToolCallback.class));
+        // allowDynamicLoad 为 false 时不再创建 readFileTool，无需 stub
 
         runtime.prepareRequest(request);
         assertEquals(List.of("story-structure"), request.getSkillPolicy().getPlanner().getRequiredSkillNames());
@@ -74,9 +76,9 @@ class ScriptSkillRuntimeTest {
         assertNotSame(first.session(), second.session());
         assertTrue(first.systemPrompt().contains("SKILL RULES"));
         assertNull(first.tool());
-        assertTrue(first.hasTools());
-        assertEquals(1, first.tools().length);
-        assertNotNull(first.readFileTool());
+        assertNull(first.readFileTool());
+        assertFalse(first.hasTools());
+        assertEquals(0, first.tools().length);
         assertEquals(2, context.getSkillEvents().size());
         assertEquals("REQUIRED", context.getSkillEvents().getFirst().source());
         assertEquals(11L, context.getSkillEvents().getFirst().versionId());
@@ -120,7 +122,7 @@ class ScriptSkillRuntimeTest {
         when(toolFactory.createTool(any(LoadSkillToolSession.class), any(), any())).thenAnswer(call ->
                 new LoadSkillToolFactory(contentService).createTool(
                         call.getArgument(0), call.getArgument(1), call.getArgument(2)));
-        when(readSkillFileToolFactory.createTool(any(), any())).thenReturn(mock(ToolCallback.class));
+        when(readSkillFileToolFactory.createTool(any(), any(), any())).thenReturn(mock(ToolCallback.class));
         GlobalStoryContext context = new GlobalStoryContext();
 
         var invocation = runtime.begin(request, request.getSkillPolicy().getPlanner(), context,
@@ -174,6 +176,91 @@ class ScriptSkillRuntimeTest {
         assertEquals(answer, streamed.toString());
         assertEquals(2, modelCalls.get());
         assertEquals("SUCCESS", context.getSkillEvents().getFirst().status());
+    }
+
+    @Test
+    void toolFailurePushesWarningToWebsocketChannelAndDoesNotThrow() {
+        ScriptDecomposeRequestDTO request = request(policy(true, List.of()));
+        request.setSkillCatalogSnapshot(List.of(item("story-structure", 11L)));
+        when(promptContextService.loadSelected(anyString(), anyString(), anyList(), anyMap()))
+                .thenReturn(SkillPromptContext.empty());
+        when(promptContextService.appendToSystemPrompt(anyString(), any())).thenAnswer(call -> call.getArgument(0));
+        when(catalogService.formatCatalogForPrompt(anyList())).thenReturn("story-structure v1");
+        when(toolFactory.createTool(any(LoadSkillToolSession.class), any(), any())).thenAnswer(call ->
+                new LoadSkillToolFactory(contentService).createTool(
+                        call.getArgument(0), call.getArgument(1), call.getArgument(2)));
+        when(readSkillFileToolFactory.createTool(any(), any(), any())).thenReturn(mock(ToolCallback.class));
+        GlobalStoryContext context = new GlobalStoryContext();
+
+        java.util.List<String> channelMessages = new java.util.ArrayList<>();
+        java.util.function.BiConsumer<String, String> channel = (ch, msg) -> channelMessages.add(ch + ":" + msg);
+
+        var invocation = runtime.begin(request, request.getSkillPolicy().getPlanner(), context,
+                "PLANNER", "PLANNER", null, 0, channel);
+
+        // 调用一个不在快照中的技能，期望软失败，记录 ERROR 事件并向 channel 发送 ⚠️ 警告
+        String toolResult = invocation.tool().call("{\"name\":\"non-existent-skill\"}");
+
+        assertNotNull(toolResult);
+        assertTrue(toolResult.contains("ERROR"));
+        assertEquals(1, context.getSkillEvents().size());
+        assertEquals("ERROR", context.getSkillEvents().getFirst().status());
+
+        // 验证 WebSocket / SSE channel 收到了醒目的警告消息
+        assertTrue(channelMessages.stream().anyMatch(msg -> msg.startsWith("PLANNER:") && msg.contains("⚠️ [AI Skill 警告]")),
+                "PLANNER 阶段频道应收到警告消息");
+    }
+
+    @Test
+    void streamingChatClientHandlesUnknownToolCallGracefully() {
+        ScriptDecomposeRequestDTO request = request(policy(true, List.of()));
+        request.setSkillCatalogSnapshot(List.of(item("story-structure", 11L)));
+        when(promptContextService.loadSelected(anyString(), anyString(), anyList(), anyMap()))
+                .thenReturn(SkillPromptContext.empty());
+        when(promptContextService.appendToSystemPrompt(anyString(), any())).thenAnswer(call -> call.getArgument(0));
+        when(catalogService.formatCatalogForPrompt(anyList())).thenReturn("story-structure v1");
+        when(toolFactory.createTool(any(LoadSkillToolSession.class), any(), any())).thenAnswer(call ->
+                new LoadSkillToolFactory(contentService).createTool(
+                        call.getArgument(0), call.getArgument(1), call.getArgument(2)));
+        ToolCallback mockReadFileTool = mock(ToolCallback.class);
+        when(mockReadFileTool.getToolDefinition()).thenReturn(
+                org.springframework.ai.tool.definition.ToolDefinition.builder()
+                        .name("read_skill_file")
+                        .description("mock")
+                        .inputSchema("{}")
+                        .build());
+        when(readSkillFileToolFactory.createTool(any(), any(), any())).thenReturn(mockReadFileTool);
+
+        GlobalStoryContext context = new GlobalStoryContext();
+        List<String> channelMessages = new ArrayList<>();
+        BiConsumer<String, String> channel = (ch, msg) -> channelMessages.add(ch + ":" + msg);
+
+        var invocation = runtime.begin(request, request.getSkillPolicy().getPlanner(), context,
+                "PLANNER", "PLANNER", null, 0, channel);
+
+        AtomicInteger modelCalls = new AtomicInteger();
+        ChatModel model = new ChatModel() {
+            @Override public ChatResponse call(Prompt prompt) {
+                throw new AssertionError("streaming path should be used");
+            }
+            @Override public Flux<ChatResponse> stream(Prompt prompt) {
+                if (modelCalls.getAndIncrement() == 0) {
+                    var toolCall = new AssistantMessage.ToolCall("call-return", "function", "return",
+                            "{\"result\":[]}");
+                    return Flux.just(response(AssistantMessage.builder().toolCalls(List.of(toolCall)).build()));
+                }
+                return Flux.just(response(new AssistantMessage("{\"segments\":[]}")));
+            }
+            @Override public ChatOptions getOptions() { return OpenAiChatOptions.builder().model("mock").build(); }
+        };
+        StringBuilder streamed = new StringBuilder();
+        String answer = runtime.streamWithTool(model, invocation, "chapter text", streamed::append);
+
+        assertEquals("{\"segments\":[]}", answer);
+        assertEquals(answer, streamed.toString());
+        assertEquals(2, modelCalls.get());
+        assertTrue(channelMessages.stream().anyMatch(msg -> msg.startsWith("PLANNER:") && msg.contains("未注册工具 [return]")),
+                "PLANNER 阶段频道应收到未注册工具警告消息");
     }
 
     private ChatResponse response(AssistantMessage message) {

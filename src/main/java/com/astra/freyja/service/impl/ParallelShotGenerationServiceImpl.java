@@ -421,10 +421,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                 globalContext, systemPrompt, "WORKER", segment.getId(), attempt, channelChunkConsumer);
         if (skillInvocation != null) {
             systemPrompt = skillInvocation.systemPrompt();
-            skillInvocation = new ScriptSkillRuntime.Invocation(
-                    systemPrompt,
-                    skillInvocation.tool(), skillInvocation.readFileTool(), skillInvocation.session(), skillInvocation.taskId(),
-                    skillInvocation.stage(), skillInvocation.segmentId(), skillInvocation.attempt());
+            skillInvocation = skillInvocation.withSystemPrompt(systemPrompt);
         }
 
         Prompt prompt = new Prompt(List.of(new SystemMessage(systemPrompt)));

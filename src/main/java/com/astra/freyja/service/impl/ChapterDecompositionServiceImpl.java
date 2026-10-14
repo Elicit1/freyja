@@ -177,6 +177,7 @@ public class ChapterDecompositionServiceImpl implements ChapterDecompositionServ
         systemPrompt = skillInvocation.systemPrompt() + "\n\n【人物衣着输入边界】已有角色注册表只提供身份信息，不包含衣着或混合外貌资料。"
                 + "本阶段只提取稳定身份和非服饰外貌；appearanceDesc 不写衣着造型，outfitPrompt 必须为 null。"
                 + "不得自行设计默认服装，Worker 的角色资料也不得包含衣着设定。";
+        skillInvocation = skillInvocation.withSystemPrompt(systemPrompt);
         // 读取软参考字数配置
         int minChars = getIntConfig("story.decomposition.minSegmentCharacters", 1200);
         int targetChars = getIntConfig("story.decomposition.targetSegmentCharacters", 2000);
