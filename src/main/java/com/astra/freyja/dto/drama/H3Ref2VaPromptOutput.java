@@ -10,6 +10,9 @@ import lombok.Data;
 @Data
 public class H3Ref2VaPromptOutput {
 
+    @JsonPropertyDescription("从统一剧本提取的声音列表；逐字保留对白、画外音、旁白及独白，无口语声音时显式返回 []。不是新的剧本事实源。")
+    private java.util.List<ShotSpeechLine> speechLines;
+
     @JsonPropertyDescription("完整 MiniMax H3 多模态视频提示词 (Ref2VA Prompt)，包含 subject_definitions、summary、retention_analysis、detailed_description 等完整规范段落")
     private String prompt;
 

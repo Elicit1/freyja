@@ -281,7 +281,7 @@ let currentAudio: HTMLAudioElement | null = null
 const enabledProviders = ref<AiProviderVO[]>([])
 const models = ref<AiModel[]>([])
 const selectedProviderId = ref<string | undefined>()
-const selectedModelCode = ref<string>('mimo-v2.5-tts-voicedesign')
+const selectedModelCode = ref<string>()
 
 const currentContext = reactive({
   id: undefined as number | string | undefined,
@@ -323,13 +323,13 @@ async function loadProviders() {
         selectedProviderId.value = undefined
       }
     }
-    // 智能优选：若未选，优先选中支持语音/TTS 的提供商（如 Xiaomi），避免误选到纯生图的本地网关
-    if (!selectedProviderId.value && enabledProviders.value.length > 0) {
-      const ttsPreferred = enabledProviders.value.find(p =>
-        /xiaomi|mimo|tts|voice|audio|语音/i.test(p.providerName || '') ||
-        /xiaomi|mimo|tts|voice|audio|语音/i.test(p.providerCode || '')
-      )
-      selectedProviderId.value = ttsPreferred ? String(ttsPreferred.id) : String(enabledProviders.value[0].id)
+    if (!selectedProviderId.value) {
+      const entries = await Promise.all(enabledProviders.value.map(async provider => {
+        const configured = await aiProviderApi.getModelList(provider.id, 'TTS,AUDIO,VOICE')
+        return { provider, configured: (configured || []).filter(model => model.status === 1) }
+      }))
+      const available = entries.find(entry => entry.configured.length > 0)
+      selectedProviderId.value = available ? String(available.provider.id) : undefined
     }
     if (selectedProviderId.value) {
       await handleProviderChange(selectedProviderId.value)
@@ -344,11 +344,9 @@ async function handleProviderChange(pid?: number | string) {
   if (!pid) return
   try {
     const list = await aiProviderApi.getModelList(pid, 'TTS,AUDIO,VOICE')
-    const validModels = (list || []).filter(m => m.status === 1 && m.modelCode !== 'mimo-v2.5-tts-voiceclone')
+    const validModels = (list || []).filter(m => m.status === 1)
     models.value = validModels
-    // 优先匹配 mimo-v2.5-tts-voicedesign，或者保留已有有效选择
-    const targetModel = models.value.find(m => m.modelCode === 'mimo-v2.5-tts-voicedesign')
-      || models.value.find(m => m.modelCode === selectedModelCode.value)
+    const targetModel = models.value.find(m => m.modelCode === selectedModelCode.value)
       || models.value[0]
     selectedModelCode.value = targetModel?.modelCode
   } catch (e) {

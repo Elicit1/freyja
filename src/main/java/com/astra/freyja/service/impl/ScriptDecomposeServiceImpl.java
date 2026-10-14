@@ -1010,9 +1010,6 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                                         shot.setSeed(com.astra.freyja.util.ShotSeedUtil.next());
                                         shot.setScriptContent(shotVO.getScriptContent());
                                         shot.setActionDescription(shotVO.getActionDescription());
-                                        shot.setDialogueSpeaker(shotVO.getDialogueSpeaker());
-                                        shot.setDialogue(shotVO.getDialogue());
-                                        shot.setVoiceover(shotVO.getVoiceover());
                                         shot.setSoundEffect(shotVO.getSoundEffect());
                                         shot.setResSceneId(shotResSceneId);
                                         shot.setCharacterRefsJson(charRefsJson);
@@ -1196,9 +1193,6 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                                             shot.setSeed(com.astra.freyja.util.ShotSeedUtil.next());
                                             shot.setScriptContent(shotVO.getScriptContent());
                                             shot.setActionDescription(shotVO.getActionDescription());
-                                            shot.setDialogueSpeaker(shotVO.getDialogueSpeaker());
-                                            shot.setDialogue(shotVO.getDialogue());
-                                            shot.setVoiceover(shotVO.getVoiceover());
                                             shot.setSoundEffect(shotVO.getSoundEffect());
                                             shot.setResSceneId(shotResSceneId);
                                             shot.setCharacterRefsJson(charRefsJson);

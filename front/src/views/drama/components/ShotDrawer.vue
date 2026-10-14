@@ -168,6 +168,7 @@
             </el-col>
           </el-row>
 
+          <el-alert v-if="form.legacyScriptPending" title="历史对白和旁白已完整附加到剧本，请核对并整理；保存后完成迁移。" type="warning" :closable="false" class="mb-3" />
           <el-form-item label="镜头剧本文本 (Shot Script)" prop="scriptContent">
             <el-input
               v-model="form.scriptContent"
@@ -186,130 +187,7 @@
             />
           </el-form-item>
 
-          <el-row :gutter="16">
-            <el-col :span="12">
-              <el-form-item label="对白台词">
-                <el-input v-model="form.dialogue" type="textarea" :rows="2" placeholder="本镜头台词..." />
-              </el-form-item>
-            </el-col>
-            <el-col :span="12">
-              <el-form-item label="旁白 / 独白">
-                <el-input v-model="form.voiceover" type="textarea" :rows="2" placeholder="内心独白或旁白..." />
-              </el-form-item>
-            </el-col>
-          </el-row>
 
-          <!-- TTS 配音生成与试听 -->
-          <div v-if="form.dialogue" class="bg-indigo-50/50 border border-indigo-100 rounded-lg p-3 text-xs flex items-center justify-between gap-3 mt-2">
-            <div class="flex items-center gap-2 overflow-hidden">
-              <span class="text-base">🎙️</span>
-              <div class="overflow-hidden">
-                <div class="font-medium text-gray-800 flex items-center gap-1.5">
-                  <span>{{ form.audioUrl ? 'TTS 配音已就绪' : 'MiMo 角色声音克隆' }}</span>
-                  <span v-if="form.audioUrl" class="text-[10px] text-emerald-600 font-mono">✓ 已生成</span>
-                </div>
-                <div v-if="form.audioUrl" class="text-[10px] text-gray-400 truncate max-w-[280px]" :title="form.audioUrl">
-                  {{ form.audioUrl }}
-                </div>
-                <div v-else class="text-[10px] text-gray-400">
-                  自动匹配说话人专属母音，将台词克隆合成为高质量音频
-                </div>
-              </div>
-            </div>
-
-            <div class="flex items-center gap-1.5 flex-shrink-0">
-              <el-popover placement="bottom-end" :width="330" trigger="click">
-                <template #reference>
-                  <el-button size="small" text type="primary" class="!px-1.5">
-                    ⚙️ 模型设置
-                  </el-button>
-                </template>
-                <div class="space-y-2.5 p-1 text-xs">
-                  <div class="font-bold text-gray-800 pb-1 border-b border-gray-100 flex items-center justify-between">
-                    <span>🎙️ TTS 克隆配音模型设置</span>
-                    <span class="text-[10px] text-gray-400 font-normal">支持自定义</span>
-                  </div>
-                  <div>
-                    <label class="text-[11px] font-medium text-gray-600 mb-1 block">AI 提供商</label>
-                    <el-select
-                      v-model="voiceProviderId"
-                      placeholder="系统默认提供商"
-                      clearable
-                      size="small"
-                      class="w-full"
-                      @change="handleVoiceProviderChange"
-                    >
-                      <el-option
-                        v-for="p in voiceProviders"
-                        :key="String(p.id)"
-                        :label="p.providerName"
-                        :value="String(p.id)"
-                      />
-                    </el-select>
-                  </div>
-                  <div>
-                    <label class="text-[11px] font-medium text-gray-600 mb-1 block">语音克隆模型代码</label>
-                    <el-select
-                      v-model="voiceModelCode"
-                      placeholder="请选择已配置的语音模型"
-                      clearable
-                      filterable
-                      size="small"
-                      class="w-full"
-                    >
-                      <el-option
-                        v-for="m in voiceModels"
-                        :key="m.modelCode"
-                        :label="`${m.modelName} (${m.modelCode})`"
-                        :value="m.modelCode"
-                      />
-                      <el-option
-                        v-if="isXiaomiVoiceProvider && !voiceModels.some(m => m.modelCode === 'mimo-v2.5-tts-voiceclone')"
-                        label="MiMo 角色声音克隆 (mimo-v2.5-tts-voiceclone)"
-                        value="mimo-v2.5-tts-voiceclone"
-                      />
-                    </el-select>
-                  </div>
-                  <div>
-                    <label class="text-[11px] font-medium text-gray-600 mb-1 block">情绪与语气提示 (选填)</label>
-                    <el-input
-                      v-model="voiceEmotion"
-                      placeholder="如：语气急促紧张、压抑怒火、带有哭腔..."
-                      size="small"
-                      clearable
-                    />
-                  </div>
-                </div>
-              </el-popover>
-              <el-button
-                v-if="form.audioUrl"
-                size="small"
-                type="success"
-                plain
-                @click="togglePlayDrawerAudio"
-              >
-                {{ isPlayingDrawerAudio ? '⏸ 暂停' : '▶ 播放配音' }}
-              </el-button>
-              <el-button
-                size="small"
-                type="primary"
-                plain
-                :loading="generatingDrawerVoice"
-                @click="handleGenerateDrawerVoice"
-              >
-                {{ form.audioUrl ? '重新克隆' : '生成配音' }}
-              </el-button>
-              <el-button
-                v-if="form.audioUrl"
-                size="small"
-                type="danger"
-                text
-                @click="handleClearDrawerAudio"
-              >
-                清除
-              </el-button>
-            </div>
-          </div>
         </div>
 
         <!-- 角色出场装配卡片 -->
@@ -755,13 +633,13 @@
                       Audio {{ aIdx + 1 }}
                     </span>
                     <span class="font-medium text-slate-800 truncate">{{ aud.name || `音频 ${aIdx + 1}` }}</span>
-                    <span class="text-[10px] text-gray-400 font-mono">{{ (aud.duration || 0).toFixed(1) }}s</span>
+                    <span class="text-[10px] text-gray-400 font-mono">{{ aud.duration === undefined ? '待检测' : `${aud.duration.toFixed(1)}s` }}</span>
                     <el-tag size="small" :type="(aud.duration || 0) >= 2 && (aud.duration || 0) <= 15 ? 'success' : 'danger'" class="!text-[9px] !px-1">
-                      {{ (aud.duration || 0) >= 2 && (aud.duration || 0) <= 15 ? '✓ 2~15s' : '⚠️ 需2~15s' }}
+                      {{ aud.duration === undefined ? '待检测' : aud.duration >= 2 && aud.duration <= 15 ? '✓ 2~15s' : '⚠️ 需2~15s' }}
                     </el-tag>
                   </div>
                   <div class="flex items-center gap-2 flex-shrink-0">
-                    <el-button size="small" link type="danger" @click="refAudios.splice(aIdx, 1)">
+                    <el-button size="small" link type="danger" @click="removeReferenceAudio(aIdx)">
                       移除
                     </el-button>
                   </div>
@@ -1002,7 +880,11 @@
     append-to-body
     destroy-on-close
   >
-    <div class="max-h-96 overflow-y-auto space-y-2 p-1">
+    <div class="p-2.5 rounded-lg bg-sky-50 border border-sky-100 text-xs text-sky-800 mb-2 flex items-center gap-2">
+        <span>💡</span>
+        <span>角色的配音母音仅作为 MiniMax H3 视频生成的<b>音色/声线参考（VOICE_TIMBRE）</b>，当前分镜的实际台词内容由镜头剧本（scriptContent）决定，严禁混淆。</span>
+      </div>
+      <div class="max-h-96 overflow-y-auto space-y-2 p-1">
       <div v-if="drawerAssetPickerList.length === 0" class="text-center py-8 text-xs text-gray-400">
         暂无可用资产素材
       </div>
@@ -1033,7 +915,7 @@
   <!-- 角色专属配音选取子弹窗 (直接从人物库引入已设计的母音配音) -->
   <el-dialog
     v-model="characterVoicePickerVisible"
-    title="从人物库引入角色专属配音"
+    title="从人物库引入角色音色参考 (仅供声线参考)"
     width="560px"
     append-to-body
     destroy-on-close
@@ -1080,7 +962,7 @@
               type="primary"
               @click="handleConfirmSelectCharacterVoice(char)"
             >
-              引入配音
+              引入音色参考
             </el-button>
           </div>
         </div>
@@ -1097,9 +979,9 @@ import FullScreenPage from '@/components/common/FullScreenPage.vue'
 import StatusPill from '@/components/status/StatusPill.vue'
 import DictSelect from '@/components/DictSelect.vue'
 import { shotApi, shotGroupApi, episodeApi, dramaApi } from '@/api/drama'
-import { voiceApi } from '@/api/voice'
-import { aiProviderApi } from '@/api/ai-provider'
 import { characterApi } from '@/api/res-character'
+import { characterVoiceReferences, probeReferenceAudioDuration } from '@/utils/reference-audio'
+import { MAX_REF_AUDIOS, MIN_AUDIO_DURATION, MAX_AUDIO_DURATION, MAX_TOTAL_AUDIO_DURATION } from '../composables/useShotReferenceAssets'
 import { sceneApi } from '@/api/res-scene'
 import { resPropApi, type ResPropItem } from '@/api/res-prop'
 import { keyframeApi } from '@/api/res-keyframe'
@@ -1109,7 +991,6 @@ import DirectorPlanEditor from './DirectorPlanEditor.vue'
 import { useDirectorInputCheck, directorPlanInput } from '@/utils/director-plan-input'
 import type { DramaShot, DramaShotSaveRequest, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, DirectorPlan } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResKeyframeOption } from '@/types/resource'
-import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import ShotPromptDeriveModal from './ShotPromptDeriveModal.vue'
 import ShotPromptPreviewModal from './ShotPromptPreviewModal.vue'
 import ShotFirstEndFrameRenderModal from './ShotFirstEndFrameRenderModal.vue'
@@ -1212,9 +1093,6 @@ const form = reactive<DramaShot>({
   seed: undefined,
   scriptContent: '',
   actionDescription: '',
-  dialogue: '',
-  dialogueSpeaker: '',
-  voiceover: '',
   soundEffect: '',
   resSceneId: undefined,
   resKeyframeId: undefined,
@@ -1231,7 +1109,6 @@ const form = reactive<DramaShot>({
   stylePreset: '',
   previewImageUrl: '',
   videoUrl: '',
-  audioUrl: '',
   renderStatus: 'INIT',
   latestTaskId: '',
   comfyWorkflowTemplateId: 'SDXL_TXT2IMG',
@@ -1663,46 +1540,23 @@ function togglePreviewCharacterVoice(url: string) {
   previewAudio.play()
 }
 
-function handleConfirmSelectCharacterVoice(char: ResCharacterOption) {
+async function handleConfirmSelectCharacterVoice(char: ResCharacterOption) {
   if (!char.voiceSampleUrl) return
-  if (previewAudio) {
-    previewAudio.pause()
-    previewingVoiceUrl.value = null
+  if (refAudios.value.length >= MAX_REF_AUDIOS) return void ElMessage.warning(`最多选择 ${MAX_REF_AUDIOS} 段音频`)
+  if (refAudios.value.some(audio => audio.audioUrl === char.voiceSampleUrl)) return void ElMessage.info('该母音已在参考列表中')
+  const reference = characterVoiceReferences([char.id], [char])[0]
+  const duration = await probeReferenceAudioDuration(char.voiceSampleUrl)
+  if (!visible.value || refAudios.value.length >= MAX_REF_AUDIOS) return
+  reference.duration = duration
+  if (duration !== undefined && (duration < MIN_AUDIO_DURATION || duration > MAX_AUDIO_DURATION || totalAudioDuration.value + duration > MAX_TOTAL_AUDIO_DURATION)) {
+    ElMessage.warning('母音时长不符合参考音频限制，请在人物资产中调整样音')
+    return
   }
-  const testAudio = new Audio(char.voiceSampleUrl)
-  testAudio.addEventListener('loadedmetadata', () => {
-    const dur = Math.round(testAudio.duration * 10) / 10
-    refAudios.value.push({
-      id: `aud_${Date.now()}`,
-      sourceType: 'CHARACTER',
-      characterId: char.id,
-      characterName: char.name,
-      name: `${char.name} (角色母音)`,
-      text: char.voiceSampleText || char.voiceDesc || '',
-      audioUrl: char.voiceSampleUrl || '',
-      duration: dur,
-      usageMode: 'VOICE_TIMBRE',
-      language: 'zh'
-    })
-    characterVoicePickerVisible.value = false
-    ElMessage.success(`已引入 ${char.name} 角色母音配音 (${dur}s)`)
-  })
-  testAudio.addEventListener('error', () => {
-    refAudios.value.push({
-      id: `aud_${Date.now()}`,
-      sourceType: 'CHARACTER',
-      characterId: char.id,
-      characterName: char.name,
-      name: `${char.name} (角色母音)`,
-      text: char.voiceSampleText || char.voiceDesc || '',
-      audioUrl: char.voiceSampleUrl || '',
-      duration: 3.5,
-      usageMode: 'VOICE_TIMBRE',
-      language: 'zh'
-    })
-    characterVoicePickerVisible.value = false
-    ElMessage.success(`已引入 ${char.name} 角色母音配音`)
-  })
+  refAudios.value.push(reference)
+  form.refAudiosConfigured = true
+  characterVoicePickerVisible.value = false
+  if (duration === undefined) ElMessage.warning('已引入音色参考，时长待检测，渲染前将检查实际媒体')
+  else ElMessage.success(`已引入 ${char.name} 的音色参考`)
 }
 
 
@@ -1829,6 +1683,11 @@ async function bindAsset(assetType: ShotAssetType, assetId: string | number): Pr
   return saved
 }
 
+function removeReferenceAudio(index: number) {
+  refAudios.value.splice(index, 1)
+  form.refAudiosConfigured = true
+}
+
 function openCreate(dramaId: string | number, episodeId: string | number, sceneId: string | number, nextShotNo = 1, defaultResSceneId?: string | number, defaultGroupId?: string | number, dramaAspectRatio?: string, insertion?: { shotId: string | number; position: 'before' | 'after' }) {
   isEdit.value = false
   insertionAnchor.value = insertion
@@ -1843,9 +1702,9 @@ function openCreate(dramaId: string | number, episodeId: string | number, sceneI
     }).catch(() => {})
   }
   loadOptions(dramaId, sceneId)
-  loadVoiceProviders()
   Object.assign(form, {
     id: undefined,
+    refAudiosConfigured: false,
     dramaId,
     episodeId,
     sceneId,
@@ -1860,9 +1719,6 @@ function openCreate(dramaId: string | number, episodeId: string | number, sceneI
     seed: undefined,
     scriptContent: '',
     actionDescription: '',
-    dialogue: '',
-    dialogueSpeaker: '',
-    voiceover: '',
     soundEffect: '',
     resSceneId: defaultResSceneId,
     resKeyframeId: undefined,
@@ -1883,7 +1739,6 @@ function openCreate(dramaId: string | number, episodeId: string | number, sceneI
     directorPlanRevision: 0,
     previewImageUrl: '',
     videoUrl: '',
-    audioUrl: '',
     renderStatus: 'INIT',
     latestTaskId: '',
     comfyWorkflowTemplateId: 'SDXL_TXT2IMG',
@@ -1931,8 +1786,11 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
     const res = await shotApi.getById(id)
     if (res) {
       await loadOptions(dramaId, res.sceneId)
-      loadVoiceProviders()
       Object.assign(form, res)
+      form.scriptContent = res.scriptContent ?? ''
+      form.actionDescription = res.actionDescription ?? ''
+      form.soundEffect = res.soundEffect ?? ''
+      form.legacyScriptPending = res.legacyScriptPending === true
       savedSeed.value = form.seed
       // 兼容服务端省略 null 字段的序列化配置，始终以本次详情结果为准。
       form.directorPlanJson = res.directorPlanJson || undefined
@@ -1945,6 +1803,7 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
       propRefs.value = res.propRefs ? [...res.propRefs] : []
       refImages.value = res.refImages ? [...res.refImages] : []
       refAudios.value = res.refAudios ? [...res.refAudios] : []
+      form.refAudiosConfigured = res.refAudiosConfigured === true
     }
   } catch (e: any) {
     ElMessage.error(e.message || '加载分镜详情失败')
@@ -2031,6 +1890,8 @@ async function handleSave(closeAfter = false): Promise<boolean> {
     }
     if (isEdit.value && form.id) {
       await shotApi.update(payload)
+      form.refAudiosConfigured = true
+      form.legacyScriptPending = false
       savedSeed.value = seed || savedSeed.value
       form.seed = savedSeed.value
       ElMessage.success('分镜保存成功')
@@ -2315,6 +2176,7 @@ function handleApplyDerivedPrompts(res: DerivedPromptResult) {
     refImages.value = res.refImages.map(item => ({ ...item }))
   }
   if (res.refAudios) {
+    form.refAudiosConfigured = true
     refAudios.value = res.refAudios.map(item => ({ ...item }))
   }
   // Always show the latest persisted plan, independently of the result being adopted.
@@ -2396,127 +2258,6 @@ async function handleHistoryDeleted() {
 async function handleModalSuccess(shotId: string | number) {
   visible.value = false
   emit('success', shotId)
-}
-
-// 🎙️ 分镜台词声音克隆操作
-const generatingDrawerVoice = ref(false)
-const isPlayingDrawerAudio = ref(false)
-let drawerAudio: HTMLAudioElement | null = null
-
-const voiceProviders = ref<AiProviderVO[]>([])
-const voiceModels = ref<AiModel[]>([])
-const voiceProviderId = ref<number | string>()
-const voiceModelCode = ref<string>('mimo-v2.5-tts-voiceclone')
-const voiceEmotion = ref<string>('')
-const isXiaomiVoiceProvider = computed(() => voiceProviders.value.some(p =>
-  String(p.id) === String(voiceProviderId.value) && p.providerName === 'Xiaomi'
-))
-
-async function loadVoiceProviders() {
-  try {
-    const list = await aiProviderApi.getListEnabled()
-    voiceProviders.value = list || []
-    if (voiceProviderId.value) {
-      const exists = voiceProviders.value.some(p => String(p.id) === String(voiceProviderId.value))
-      if (!exists) voiceProviderId.value = undefined
-    }
-    // 智能优选：若未选，优先选中支持语音/TTS 的提供商（如 Xiaomi），避免误选到纯生图的本地网关
-    if (!voiceProviderId.value && voiceProviders.value.length > 0) {
-      const ttsPreferred = voiceProviders.value.find(p =>
-        /xiaomi|mimo|tts|voice|audio|语音/i.test(p.providerName || '') ||
-        /xiaomi|mimo|tts|voice|audio|语音/i.test(p.providerCode || '')
-      )
-      voiceProviderId.value = ttsPreferred ? String(ttsPreferred.id) : String(voiceProviders.value[0].id)
-    }
-    if (voiceProviderId.value) {
-      await handleVoiceProviderChange(voiceProviderId.value)
-    }
-  } catch (err) {
-    console.error('加载配音提供商失败', err)
-  }
-}
-
-async function handleVoiceProviderChange(pid?: number | string) {
-  voiceModels.value = []
-  if (!pid) return
-  try {
-    const list = await aiProviderApi.getModelList(pid, 'TTS,AUDIO,VOICE')
-    const validModels = (list || []).filter(m => m.status === 1 && m.modelCode !== 'mimo-v2.5-tts-voicedesign')
-    voiceModels.value = validModels
-    // 优先匹配 mimo-v2.5-tts-voiceclone，或者保留已有有效选择
-    const targetModel = voiceModels.value.find(m => m.modelCode === 'mimo-v2.5-tts-voiceclone')
-      || voiceModels.value.find(m => m.modelCode === voiceModelCode.value)
-      || voiceModels.value[0]
-    voiceModelCode.value = targetModel?.modelCode || (isXiaomiVoiceProvider.value ? 'mimo-v2.5-tts-voiceclone' : '')
-  } catch (e) {
-    console.error('加载配音模型列表失败:', e)
-  }
-}
-
-async function handleGenerateDrawerVoice() {
-  if (!voiceProviderId.value || !(voiceModels.value.some(m => m.modelCode === voiceModelCode.value)
-      || (isXiaomiVoiceProvider.value && voiceModelCode.value === 'mimo-v2.5-tts-voiceclone'))) {
-    return ElMessage.warning('请选择已配置的语音模型')
-  }
-  if (!form.id) {
-    return ElMessage.warning('请先保存分镜基础信息，再生成配音')
-  }
-  if (!form.dialogue) {
-    return ElMessage.warning('请先输入分镜台词对白')
-  }
-  try {
-    generatingDrawerVoice.value = true
-    const res = await voiceApi.generateShotVoice(form.id, {
-      customDialogue: form.dialogue,
-      providerId: voiceProviderId.value,
-      modelCode: voiceModelCode.value,
-      emotion: voiceEmotion.value
-    })
-    form.audioUrl = res.audioUrl
-    if (res.duration) {
-      const audioSec = Math.ceil(res.duration * 10) / 10
-      if (!form.duration || form.duration < audioSec) {
-        form.duration = audioSec
-      }
-    }
-    ElMessage.success('分镜配音克隆生成成功！')
-    emit('success', form.id)
-  } catch (error: any) {
-    ElMessage.error(error?.message || '配音生成失败')
-  } finally {
-    generatingDrawerVoice.value = false
-  }
-}
-
-function togglePlayDrawerAudio() {
-  if (!form.audioUrl) return
-  if (isPlayingDrawerAudio.value && drawerAudio) {
-    drawerAudio.pause()
-    isPlayingDrawerAudio.value = false
-    return
-  }
-  if (drawerAudio) {
-    drawerAudio.pause()
-  }
-  drawerAudio = new Audio(form.audioUrl)
-  isPlayingDrawerAudio.value = true
-  drawerAudio.onended = () => {
-    isPlayingDrawerAudio.value = false
-  }
-  drawerAudio.onerror = () => {
-    isPlayingDrawerAudio.value = false
-    ElMessage.error('音频播放失败')
-  }
-  drawerAudio.play()
-}
-
-function handleClearDrawerAudio() {
-  if (drawerAudio) {
-    drawerAudio.pause()
-    drawerAudio = null
-  }
-  isPlayingDrawerAudio.value = false
-  form.audioUrl = ''
 }
 
 function close() {

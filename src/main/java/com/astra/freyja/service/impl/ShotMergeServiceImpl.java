@@ -122,20 +122,17 @@ public class ShotMergeServiceImpl implements ShotMergeService {
                         shotVO.setDuration(ShotDurationUtil.resolve(rawShot.getDuration()));
 
                         String scriptContent = rawShot.getScriptContent();
-                        String action = StringUtils.firstNonBlank(rawShot.getAction(), scriptContent, "主体角色在场中");
+                        String action = StringUtils.firstNonBlank(rawShot.getAction(), scriptContent);
                         shotVO.setScriptContent(scriptContent);
                         shotVO.setActionDescription(action);
                         // Worker AI 不再生成首帧图/运镜 prompt，置空供后续专属AI结合原文与镜头剧本生成
                         shotVO.setFirstFrameVisual(null);
                         shotVO.setPrompt(null);
                         shotVO.setVideoPrompt(null);
-                        shotVO.setDialogueSpeaker(rawShot.getDialogueSpeaker());
-                        shotVO.setDialogue(rawShot.getDialogue());
-                        shotVO.setVoiceover(rawShot.getVoiceover());
                         shotVO.setSoundEffect(rawShot.getSoundEffect());
                         shotVO.setPropIds(rawShot.getPropIds());
 
-                        // 智能提取、动作文本扫描与拼音/别名归一化绑定出场人物
+                        // 仅对 Worker 明确声明的出场角色进行精确名称/别名映射
                         List<String> resolvedCharacterNames = extractAndNormalizeCharacterNames(rawShot, globalContext);
                         shotVO.setCharacterNames(resolvedCharacterNames);
 
@@ -169,8 +166,7 @@ public class ShotMergeServiceImpl implements ShotMergeService {
         );
         String genre = StringUtils.firstNonBlank(
                 globalContext != null ? globalContext.getGenre() : null,
-                plannerResult.getGenre(),
-                "DOMINANT_CEO"
+                plannerResult.getGenre()
         );
         String synopsis = StringUtils.defaultIfBlank(plannerResult.getSynopsis(), "小说剧本大纲");
 
@@ -254,35 +250,6 @@ public class ShotMergeServiceImpl implements ShotMergeService {
                 if (StringUtils.isNotBlank(rawId)) {
                     String matchedName = matchKnownCharacter(rawId.trim(), knownChars);
                     resultNames.add(matchedName != null ? matchedName : rawId.trim());
-                }
-            }
-        }
-
-        // 2. 补偿：如果有对白说话人 (dialogueSpeaker)，自动加入出场人物
-        if (StringUtils.isNotBlank(rawShot.getDialogueSpeaker())) {
-            String speaker = rawShot.getDialogueSpeaker().trim();
-            String matchedName = matchKnownCharacter(speaker, knownChars);
-            resultNames.add(matchedName != null ? matchedName : speaker);
-        }
-
-        // 3. 自愈补偿：如果出场人物仍为空，从 action 画面描述中扫描已知角色名
-        if (resultNames.isEmpty() && !knownChars.isEmpty()) {
-            String action = rawShot.getAction();
-            String dialogue = rawShot.getDialogue();
-            String combinedText = (action != null ? action : "") + " " + (dialogue != null ? dialogue : "");
-            if (StringUtils.isNotBlank(combinedText)) {
-                for (DecomposedCharacterVO ch : knownChars) {
-                    String primaryName = StringUtils.firstNonBlank(ch.getCanonicalName(), ch.getName(), ch.getDisplayName());
-                    if (StringUtils.isNotBlank(primaryName) && combinedText.contains(primaryName)) {
-                        resultNames.add(primaryName.trim());
-                    } else if (ch.getAliases() != null) {
-                        for (String alias : ch.getAliases()) {
-                            if (StringUtils.isNotBlank(alias) && combinedText.contains(alias)) {
-                                resultNames.add(primaryName != null ? primaryName.trim() : alias.trim());
-                                break;
-                            }
-                        }
-                    }
                 }
             }
         }

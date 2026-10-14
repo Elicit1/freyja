@@ -68,15 +68,6 @@ public class DramaShotDTO {
     /** 画面动作与视觉描述 */
     private String actionDescription;
 
-    /** 对白台词 */
-    private String dialogue;
-
-    /** 台词说话人 */
-    private String dialogueSpeaker;
-
-    /** 旁白/内心独白 */
-    private String voiceover;
-
     /** 音效描述 */
     private String soundEffect;
 
@@ -198,9 +189,6 @@ public class DramaShotDTO {
     /** 当前选中的分镜视频 Take ID */
     private Long currentVideoTakeId;
 
-    /** TTS配音音频 (MinIO URL) */
-    private String audioUrl;
-
     /** 渲染状态 (INIT/QUEUED/RENDERING/SUCCESS/FAILED) */
     private String renderStatus;
 
@@ -215,4 +203,24 @@ public class DramaShotDTO {
 
     /** 备注 */
     private String remark;
+
+    @com.fasterxml.jackson.annotation.JsonSetter("dialogue")
+    public void rejectDialogue(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "dialogue 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("dialogueSpeaker")
+    public void rejectDialogueSpeaker(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "dialogueSpeaker 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("voiceover")
+    public void rejectVoiceover(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "voiceover 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("audioUrl")
+    public void rejectAudioUrl(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "audioUrl 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
 }

@@ -88,15 +88,6 @@ public class ShotPromptDeriveDTO {
     /** 画面动作与微观物理动态描述 (核心) */
     private String actionDescription;
 
-    /** 对白台词 */
-    private String dialogue;
-
-    /** 对白说话人 */
-    private String dialogueSpeaker;
-
-    /** 旁白独白 */
-    private String voiceover;
-
     /** 音效标注 */
     private String soundEffect;
 
@@ -155,4 +146,19 @@ public class ShotPromptDeriveDTO {
     /** 是否包含背景配乐 (BGM)，默认为 false (禁用 BGM，仅生成现场环境声与台词，为后期混音留出纯净声轨) */
     @Builder.Default
     private Boolean includeBgm = Boolean.FALSE;
+
+    @com.fasterxml.jackson.annotation.JsonSetter("dialogue")
+    public void rejectDialogue(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "dialogue 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("dialogueSpeaker")
+    public void rejectDialogueSpeaker(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "dialogueSpeaker 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("voiceover")
+    public void rejectVoiceover(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "voiceover 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
 }

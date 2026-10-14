@@ -1332,33 +1332,10 @@
                                 />
                               </div>
 
-                              <!-- 💬 角色台词对白气泡 -->
-                              <div
-                                v-if="shot.dialogue"
-                                class="bg-amber-50/80 border border-amber-200 rounded-lg p-2.5 flex items-start gap-2 text-xs shadow-sm"
-                              >
-                                <span class="text-amber-800 font-bold flex-shrink-0 mt-0.5">💬 对白台词:</span>
-                                <el-input
-                                  v-model="shot.dialogue"
-                                  type="textarea"
-                                  :rows="1"
-                                  autosize
-                                  size="small"
-                                  placeholder="对白台词内容..."
-                                  class="flex-1 font-medium !text-amber-950"
-                                />
-                              </div>
-
-                              <!-- 旁白独白 / 音效 -->
-                              <div v-if="shot.voiceover || shot.soundEffect" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                                <div v-if="shot.voiceover" class="flex items-center gap-1.5 bg-purple-50/60 p-1.5 rounded border border-purple-100">
-                                  <span class="text-purple-700 flex-shrink-0">💭 旁白:</span>
-                                  <el-input v-model="shot.voiceover" size="small" class="flex-1" />
-                                </div>
-                                <div v-if="shot.soundEffect" class="flex items-center gap-1.5 bg-gray-100/70 p-1.5 rounded border border-gray-200">
-                                  <span class="text-gray-600 flex-shrink-0">🔊 音效:</span>
-                                  <el-input v-model="shot.soundEffect" size="small" class="flex-1" />
-                                </div>
+                              <!-- 🔊 音效 -->
+                              <div v-if="shot.soundEffect" class="flex items-center gap-1.5 bg-gray-100/70 p-1.5 rounded border border-gray-200 text-xs">
+                                <span class="text-gray-600 flex-shrink-0">🔊 音效:</span>
+                                <el-input v-model="shot.soundEffect" size="small" class="flex-1" />
                               </div>
                             </div>
                           </div>
@@ -1486,33 +1463,10 @@
                             />
                           </div>
 
-                          <!-- 💬 角色台词对白气泡 -->
-                          <div
-                            v-if="shot.dialogue"
-                            class="bg-amber-50/80 border border-amber-200 rounded-lg p-2.5 flex items-start gap-2 text-xs shadow-sm"
-                          >
-                            <span class="text-amber-800 font-bold flex-shrink-0 mt-0.5">💬 对白台词:</span>
-                            <el-input
-                              v-model="shot.dialogue"
-                              type="textarea"
-                              :rows="1"
-                              autosize
-                              size="small"
-                              placeholder="对白台词内容..."
-                              class="flex-1 font-medium !text-amber-950"
-                            />
-                          </div>
-
-                          <!-- 旁白独白 / 音效 -->
-                          <div v-if="shot.voiceover || shot.soundEffect" class="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-                            <div v-if="shot.voiceover" class="flex items-center gap-1.5 bg-purple-50/60 p-1.5 rounded border border-purple-100">
-                              <span class="text-purple-700 flex-shrink-0">💭 旁白:</span>
-                              <el-input v-model="shot.voiceover" size="small" class="flex-1" />
-                            </div>
-                            <div v-if="shot.soundEffect" class="flex items-center gap-1.5 bg-gray-100/70 p-1.5 rounded border border-gray-200">
-                              <span class="text-gray-600 flex-shrink-0">🔊 音效:</span>
-                              <el-input v-model="shot.soundEffect" size="small" class="flex-1" />
-                            </div>
+                          <!-- 🔊 音效 -->
+                          <div v-if="shot.soundEffect" class="flex items-center gap-1.5 bg-gray-100/70 p-1.5 rounded border border-gray-200 text-xs">
+                            <span class="text-gray-600 flex-shrink-0">🔊 音效:</span>
+                            <el-input v-model="shot.soundEffect" size="small" class="flex-1" />
                           </div>
                         </div>
                       </div>

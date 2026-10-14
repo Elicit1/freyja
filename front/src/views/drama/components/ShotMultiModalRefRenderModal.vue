@@ -229,15 +229,6 @@
 
           <!-- 添加入口按钮组 -->
           <div class="flex items-center gap-2">
-            <el-button
-              size="small"
-              type="primary"
-              plain
-              :disabled="refAudios.length >= maxRefAudios"
-              @click="handleSelectTtsAudio"
-            >
-              🎙️ 从人物配音选取
-            </el-button>
             <el-upload
               :show-file-list="false"
               :before-upload="handleUploadRefAudio"
@@ -264,6 +255,7 @@
           <!-- 达标状态胶囊 -->
           <div>
             <el-tag v-if="refAudios.length === 0" size="small" type="info">可选（未添加）</el-tag>
+            <el-tag v-else-if="refAudios.some(audio => audio.duration === undefined)" size="small" type="warning">部分时长待检测，渲染前检查</el-tag>
             <el-tag v-else-if="totalAudioDuration <= 15" size="small" type="success">✓ 总长 ≤ 15s 合规</el-tag>
             <el-tag v-else size="small" type="danger">⚠️ 总长超标 (&gt;15s，请裁减)</el-tag>
           </div>
@@ -413,6 +405,7 @@ import type { DramaShot, ShotRefImage, ShotRefAudio } from '@/types/drama'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
 import { KEY_IMAGE_ROLE_OPTIONS } from '@/constants/keyImageRoles'
+import { MAX_REF_AUDIOS } from '../composables/useShotReferenceAssets'
 
 const emit = defineEmits<{
   (e: 'success', shotId: string | number): void
@@ -430,8 +423,6 @@ const shotSeed = ref<string>('')
 const prompt = ref<string>('')
 const negativePrompt = ref<string>('')
 const videoUrl = ref<string>('')
-const currentShotAudio = ref<string>('')
-const currentShotDialogue = ref<string>('')
 
 const refImages = ref<ShotRefImage[]>([])
 const refAudios = ref<ShotRefAudio[]>([])
@@ -467,9 +458,9 @@ const maxRefImages = computed(() => {
 
 const maxRefAudios = computed(() => {
   if (currentModel.value && currentModel.value.maxAudios !== undefined && currentModel.value.maxAudios !== null) {
-    return currentModel.value.maxAudios
+    return Math.min(currentModel.value.maxAudios, MAX_REF_AUDIOS)
   }
-  return 3
+  return MAX_REF_AUDIOS
 })
 
 // 通用资产多选弹窗引用
@@ -554,8 +545,6 @@ async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
   prompt.value = shot.prompt || shot.scriptContent || shot.actionDescription || ''
   negativePrompt.value = shot.negativePrompt || ''
   videoUrl.value = shot.videoUrl || ''
-  currentShotAudio.value = shot.audioUrl || ''
-  currentShotDialogue.value = shot.dialogue || ''
 
   refImages.value = shot.refImages ? [...shot.refImages] : []
   refAudios.value = shot.refAudios ? [...shot.refAudios] : []
@@ -678,48 +667,6 @@ function togglePlayAudio(item: ShotRefAudio, id: string | number) {
   }
 }
 
-// 从人物配音选取
-function handleSelectTtsAudio() {
-  if (refAudios.value.length >= maxRefAudios.value) {
-    ElMessage.warning(`参考音频最多支持 ${maxRefAudios.value} 段`)
-    return
-  }
-  if (!currentShotAudio.value) {
-    ElMessage.info('当前分镜尚未生成台词 TTS 配音，可在抽屉详情中生成')
-    return
-  }
-  // 测量当前分镜音频时长
-  const testAudio = new Audio(currentShotAudio.value)
-  testAudio.addEventListener('loadedmetadata', () => {
-    const dur = Math.round(testAudio.duration * 10) / 10
-    refAudios.value.push({
-      id: `aud_${Date.now()}`,
-      sourceType: 'TTS',
-      name: `${shotName.value} 台词配音`,
-      text: currentShotDialogue.value,
-      audioUrl: currentShotAudio.value,
-      duration: dur,
-      usageMode: 'DIALOGUE_REUSE',
-      language: 'zh'
-    })
-    ElMessage.success(`已添加本镜配音，时长 ${dur}s`)
-  })
-  testAudio.addEventListener('error', () => {
-    refAudios.value.push({
-      id: `aud_${Date.now()}`,
-      sourceType: 'TTS',
-      name: `${shotName.value} 台词配音`,
-      text: currentShotDialogue.value,
-      audioUrl: currentShotAudio.value,
-      duration: 3.5,
-      usageMode: 'DIALOGUE_REUSE',
-      language: 'zh'
-    })
-    ElMessage.success('已添加本镜配音')
-  })
-}
-
-// 本地上传音频
 async function handleUploadRefAudio(file: File) {
   if (refAudios.value.length >= maxRefAudios.value) {
     ElMessage.warning(`参考音频最多支持 ${maxRefAudios.value} 段`)
@@ -805,7 +752,7 @@ async function handleStartRender() {
     ElMessage.warning(`参考音频总时长不能超过 15 秒（当前 ${totalAudioDuration.value.toFixed(1)} 秒）`)
     return
   }
-  const invalidAudio = refAudios.value.find(a => !isAudioDurationValid(a.duration))
+  const invalidAudio = refAudios.value.find(a => a.duration !== undefined && !isAudioDurationValid(a.duration))
   if (invalidAudio) {
     ElMessage.warning(`参考音频「${invalidAudio.name || '音频'}」时长 (${invalidAudio.duration}s) 不在 2~15 秒规范区间内`)
     return

@@ -185,6 +185,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             throw new BizException(400, "归属场次 ID 不能为空");
         }
         validateSeed(dto.getSeed());
+        com.astra.freyja.util.ShotAudioReferenceValidator.validate(dto.getRefAudios());
         KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
         DramaScene scene = sceneMapper.selectById(dto.getSceneId());
         if (scene == null) {
@@ -348,11 +349,11 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
 
         // 序列化参考音频列表
-        if (dto.getRefAudios() != null && !dto.getRefAudios().isEmpty()) {
+        if (dto.getRefAudios() != null) {
             try {
                 shot.setRefAudiosJson(objectMapper.writeValueAsString(dto.getRefAudios()));
             } catch (Exception e) {
-                log.warn("[DramaShotService] 序列化 refAudios 异常: {}", e.getMessage());
+                throw new BizException(400, "参考音频选择保存失败，请重试：" + e.getMessage());
             }
         }
 
@@ -381,6 +382,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             throw new BizException(400, "分镜 ID 不能为空");
         }
         validateSeed(dto.getSeed());
+        com.astra.freyja.util.ShotAudioReferenceValidator.validate(dto.getRefAudios());
         KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
         DramaShot existing = shotMapper.selectById(dto.getId());
         if (existing == null) {
@@ -389,6 +391,7 @@ public class DramaShotServiceImpl implements DramaShotService {
 
         DramaShot shot = new DramaShot();
         BeanUtils.copyProperties(dto, shot, "directorPlan", "directorPlanMode");
+        shot.setScriptContent(dto.getScriptContent() != null ? dto.getScriptContent() : com.astra.freyja.util.UnifiedShotScript.fromShot(existing));
         // 视频产物及其来源只能通过视频 Take 选择/渲染流程更新，不能被旧的编辑表单覆盖。
         // 详情页可能在用户切换历史版本前已打开，直接保存 DTO 会把旧 videoUrl 写回数据库。
         shot.setVideoUrl(existing.getVideoUrl());
@@ -406,6 +409,11 @@ public class DramaShotServiceImpl implements DramaShotService {
 
         // 局部更新省略背景字段时保留原值；只对主动清空或互斥切换显式写入 NULL。
         UpdateWrapper<DramaShot> backgroundUpdate = new UpdateWrapper<>();
+        // Retire legacy speech only together with a lossless canonical script update.
+        // Other sparse updates (sorting/group/render state) must never clear these columns.
+        if (com.astra.freyja.util.UnifiedShotScript.hasLegacySpeech(existing) || StringUtils.isNotBlank(existing.getDialogueSpeaker())) {
+            backgroundUpdate.set("dialogue", null).set("dialogue_speaker", null).set("voiceover", null);
+        }
         if (dto.getResKeyframeId() != null && dto.getResKeyframeId() > 0) {
             shot.setResKeyframeId(dto.getResKeyframeId());
             shot.setResSceneId(null);
@@ -465,7 +473,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             try {
                 shot.setRefAudiosJson(objectMapper.writeValueAsString(dto.getRefAudios()));
             } catch (Exception e) {
-                log.warn("[DramaShotService] 序列化 refAudios 异常: {}", e.getMessage());
+                throw new BizException(400, "参考音频选择保存失败，请重试：" + e.getMessage());
             }
         }
 
@@ -535,6 +543,8 @@ public class DramaShotServiceImpl implements DramaShotService {
         clone.setEndFrameImageUrl(null);
         clone.setVideoUrl(null);
         clone.setAudioUrl(null);
+        clone.setScriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(source));
+        clone.setDialogue(null); clone.setDialogueSpeaker(null); clone.setVoiceover(null);
         clone.setLatestTaskId(null);
 
         shotMapper.insert(clone);
@@ -1105,6 +1115,9 @@ public class DramaShotServiceImpl implements DramaShotService {
     private DramaShotVO enrichShotVO(DramaShot shot) {
         DramaShotVO vo = new DramaShotVO();
         BeanUtils.copyProperties(shot, vo);
+        vo.setScriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(shot));
+        vo.setLegacyScriptPending(com.astra.freyja.util.UnifiedShotScript.hasLegacySpeech(shot));
+        vo.setRefAudiosConfigured(StringUtils.isNotBlank(shot.getRefAudiosJson()));
 
         // 1. 补充环境场景或关键帧信息 (二者严格互斥)
         if (shot.getResKeyframeId() != null && shot.getResKeyframeId() > 0) {

@@ -306,9 +306,6 @@ export interface DramaShot {
   seed?: string
   scriptContent?: string
   actionDescription?: string
-  dialogue?: string
-  dialogueSpeaker?: string
-  voiceover?: string
   soundEffect?: string
   resSceneId?: number | string
   resSceneName?: string
@@ -326,6 +323,8 @@ export interface DramaShot {
   endFrameImageUrl?: string
   refImages?: ShotRefImage[]
   refAudios?: ShotRefAudio[]
+  refAudiosConfigured?: boolean
+  legacyScriptPending?: boolean
   startState?: ShotState
   endState?: ShotState
   startStateJson?: string
@@ -343,7 +342,6 @@ export interface DramaShot {
   videoUrl?: string
   currentVideoTakeId?: string | number
   videoTakeCount?: number
-  audioUrl?: string
   lastFrameUrl?: string
   lastFrameSourceVideoUrl?: string
   lastFrameSourceTakeId?: string | number
@@ -418,9 +416,6 @@ export interface DirectorPlanInput {
   cameraMovement: string | null
   scriptContent: string | null
   actionDescription: string | null
-  dialogue: string | null
-  dialogueSpeaker: string | null
-  voiceover: string | null
   soundEffect: string | null
 }
 
@@ -477,9 +472,6 @@ export interface ShotPromptDeriveDTO {
   duration?: number
   scriptContent?: string
   actionDescription?: string
-  dialogue?: string
-  dialogueSpeaker?: string
-  voiceover?: string
   soundEffect?: string
   resSceneId?: number | string
   resKeyframeId?: number | string
@@ -503,6 +495,15 @@ export interface ShotPromptDeriveDTO {
 }
 
 export interface ShotPromptDeriveVO {
+  speechLines?: Array<{
+    kind: 'ON_SCREEN_DIALOGUE' | 'OFF_SCREEN_DIALOGUE' | 'VOICEOVER' | 'INNER_MONOLOGUE'
+    characterId?: string | number | null
+    speakerName?: string | null
+    text: string
+    language: string
+    dialogueTag: string
+    audioIndex?: number | null
+  }>
   directorPlanMode?: 'AUTO' | 'MANUAL'
   directorPlanRevision?: number
   prompt?: string
@@ -540,7 +541,7 @@ export interface ShotPromptPackageVO {
       audioIndex: number
       referenceId?: string
       sourceType?: string
-      characterId?: number
+      characterId?: string | number
       characterName?: string
       usageMode?: string
       language?: string
@@ -554,6 +555,7 @@ export interface ShotPromptPackageVO {
 }
 
 export interface ShotPromptParseRequestDTO {
+  scriptContent?: string
   directorPlanMode?: 'AUTO' | 'MANUAL'
   directorPlanRevision?: number
   directorPlan?: DirectorPlan
@@ -566,7 +568,6 @@ export interface ShotPromptParseRequestDTO {
   generationMode?: 'FIRST_LAST_FRAME' | 'REFERENCE_MODE' | string
   rawResponse: string
   contextFingerprint?: string
-  dialogue?: string
   characterRefs?: CharacterShotRefInfo[]
   propRefs?: PropShotRefInfo[]
   refImages?: ShotRefImage[]
@@ -642,8 +643,6 @@ export interface ShotSummary {
   duration: number
   scriptContent?: string
   actionDescription?: string
-  dialogue?: string
-  dialogueSpeaker?: string
   renderStatus: string
   generationMode?: 'FIRST_LAST_FRAME' | 'REFERENCE_MODE'
   previewImageUrl?: string

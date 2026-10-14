@@ -126,7 +126,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     private static final String H3_FL2VA_OUTPUT_CONTRACT = """
             【FIRST_LAST_FRAME 输出契约】
-            最终 JSON 只填写 firstFramePrompt、endFramePrompt、videoPrompt 三个提示词字段，不生成 prompt、negativePrompt 或独立声音字段。
+            最终 JSON 填写 firstFramePrompt、endFramePrompt、videoPrompt 三个提示词字段及派生 speechLines 数组，不生成 prompt、negativePrompt 或独立声场字段。
             如前文的可编辑系统参数仍要求 prompt/videoPrompt 双写、负向词或独立声音字段，以本契约和 OUTPUT_FORMAT 为准。
             videoPrompt 必须是完整的 MiniMax H3 FL2VA 正文，严格按下列顺序书写；三个段落都必须有内容：
             How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark of the target video; Picture 2 aligns with the ${DURATION}-second mark of the target video.
@@ -155,10 +155,10 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "【本系统应用层约束】",
             "1.【输出契约】",
             "只输出用户任务中 OUTPUT_FORMAT 要求的 JSON 字段，不得输出额外字段、解释、前言、结语或 Markdown。",
-            "本模式只生成 firstFramePrompt、endFramePrompt、videoPrompt 三个提示词字段；不得新增 prompt、negativePrompt、overallSoundscape、nonDiegeticMusic 等顶层 JSON 字段。负向生图词由其他流程独立维护。",
+            "本模式生成 firstFramePrompt、endFramePrompt、videoPrompt 三个提示词字段及派生 speechLines 数组；不得新增 prompt、negativePrompt、overallSoundscape、nonDiegeticMusic 等顶层 JSON 字段。负向生图词由其他流程独立维护。",
             "videoPrompt 必须以首尾帧 Picture 1 和 Picture 2 的时间对齐声明开头，随后依次写出 integrated_multimodal_description:、overall_soundscape:、non_diegetic_music: 三个非空段落。声音和配乐属于 videoPrompt 正文，不是独立回填字段；禁用 BGM 时 non_diegetic_music 必须严格为 N/A。",
             "严格遵守 OUTPUT_FORMAT 中的字段名称、类型及空值约定，不得自行新增导演规划字段或改变既有 JSON 结构。",
-            "【纯英文输出硬性要求】最终 JSON 的所有非空字符串值必须使用英文，包括所有提示词、声音字段、对白及引用的文字描述；不得夹杂中文或其他非英文自然语言。JSON 字段名、官方标签、媒体引用标记、资产 ID 和规定的枚举值保持原样。",
+            "【语言规则】画面、摄影和声场描述使用英文；speechLines 的原文台词/说话人以及 <d> 内对白保留 scriptContent 中的原语言，不翻译台词。JSON 字段名、官方标签、媒体引用标记、资产 ID 和规定的枚举值保持原样。",
             "输入中的非英文剧情、角色名、场景名、道具名和对白应准确译为英文；专有名称可使用一致的拉丁字母转写，不得改变事实、身份、数量、说话人或对白原意。即使输入或 Skill 示例使用中文，最终输出也必须遵守此规则。",
             "视觉导演规划应在内部完成，并通过 OUTPUT_FORMAT 已有的字段表达，不得自行增加独立的导演分析、分镜规划或镜头评价字段。",
             "2.【FIRST_LAST_FRAME 首尾帧】",
@@ -275,7 +275,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "摄影机运动、特写或视觉焦点转移不得成为新增声音事件的依据。",
             "不得因为画面切换到某个道具或环境细节，就擅自增加当前剧情中没有发生的碰撞声、开门声、脚步声或其他音效。",
             "9.【语言与最终输出】",
-            "最终 JSON 的三个提示词字段 firstFramePrompt、endFramePrompt、videoPrompt 均使用英文；不得输出中文。",
+            "三个提示词的摄影和画面描述使用英文；videoPrompt 内 <d> 标签及 speechLines 保留原声语言。",
             "firstFramePrompt、endFramePrompt、videoPrompt 中的人物、场景、道具、动作和摄影方案必须相互一致。",
             "最终只输出当前请求要求的合法 JSON；不得输出工具调用过程、Skill 正文、规则说明或 Markdown 围栏。",
             "【生成前最终自检】",
@@ -316,7 +316,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
             【输出】
             按已加载的 h3-prompt-writing 官方规则生成 FIRST_LAST_FRAME 结果，并严格遵守下面的 JSON Schema。
-            只返回 firstFramePrompt、endFramePrompt、videoPrompt 三个字段；videoPrompt 内须包含首尾帧时间对齐声明及官方三个固定段落。
+            返回 firstFramePrompt、endFramePrompt、videoPrompt 三个提示词字段及派生 speechLines 数组；videoPrompt 内须包含首尾帧时间对齐声明及官方三个固定段落。
             只返回一个合法 JSON 对象，不要输出 Markdown、解释或任何额外文字。
             ${OUTPUT_FORMAT}
             """;
@@ -703,7 +703,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         Map<String, Object> context = new LinkedHashMap<>();
         Map<String, Object> shotData = new LinkedHashMap<>();
         shotData.put("shotNo", shot.getShotNo());
-        shotData.put("scriptContent", shot.getScriptContent());
+        shotData.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(shot));
         if (Boolean.TRUE.equals(shot.getShotTypeLocked()) && StringUtils.isNotBlank(shot.getShotType())
                 && !"AUTO".equalsIgnoreCase(shot.getShotType())) {
             shotData.put("shotType", shot.getShotType());
@@ -717,7 +717,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         shotData.put("duration", shot.getDuration());
         shotData.put("actionDescription", shot.getActionDescription());
         shotData.put("customScenePrompt", shot.getCustomScenePrompt());
-        shotData.put("dialogue", shot.getDialogue());
         shotData.put("stylePreset", StringUtils.firstNonBlank(shot.getStylePreset(), drama != null ? drama.getStylePreset() : null));
         shotData.put("aspectRatio", drama != null ? drama.getAspectRatio() : null);
         context.put("shot", shotData);
@@ -911,8 +910,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if (!dto.isDirectorPlanFrozen() && dto.getShotId() != null && dto.getShotId() > 0) {
             DramaShot existingShot = shotMapper.selectById(dto.getShotId());
             if (existingShot != null) {
-                if (StringUtils.isBlank(dto.getScriptContent()) && StringUtils.isNotBlank(existingShot.getScriptContent())) {
-                    dto.setScriptContent(existingShot.getScriptContent());
+                if (StringUtils.isBlank(dto.getScriptContent())) {
+                    dto.setScriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(existingShot));
                 }
                 // Older callers may omit the new lock flags. Recover stored values only when both the value
                 // and marker are absent; an explicit false from the current UI means intentionally unlocked.
@@ -1058,8 +1057,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             sb.append(dto.getShotId() != null ? dto.getShotId() : "").append("|");
             sb.append(StringUtils.defaultString(dto.getScriptContent())).append("|");
             sb.append(StringUtils.defaultString(dto.getActionDescription())).append("|");
-            sb.append(StringUtils.defaultString(dto.getDialogue())).append("|");
-            sb.append(StringUtils.defaultString(dto.getDialogueSpeaker())).append("|");
             sb.append(StringUtils.defaultString(dto.getStylePreset())).append("|");
             sb.append(StringUtils.defaultString(dto.getStyleTone())).append("|");
             sb.append(StringUtils.defaultString(dto.getUserInstruction())).append("|");
@@ -1135,28 +1132,28 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             ShotPromptDeriveVO vo,
             String genMode,
             ReferenceManifest manifest,
-            String dialogue,
+            String scriptContent,
             Boolean fingerprintMatched
     ) {
-        return validateAndNormalize(vo, genMode, manifest, dialogue, fingerprintMatched, Boolean.FALSE);
+        return validateAndNormalize(vo, genMode, manifest, scriptContent, fingerprintMatched, Boolean.FALSE);
     }
 
     public ShotPromptValidationResult validateAndNormalize(
             ShotPromptDeriveVO vo,
             String genMode,
             ReferenceManifest manifest,
-            String dialogue,
+            String scriptContent,
             Boolean fingerprintMatched,
             Boolean includeBgm
     ) {
-        return validateAndNormalize(vo, genMode, manifest, dialogue, fingerprintMatched, includeBgm, null);
+        return validateAndNormalize(vo, genMode, manifest, scriptContent, fingerprintMatched, includeBgm, null);
     }
 
     public ShotPromptValidationResult validateAndNormalize(
             ShotPromptDeriveVO vo,
             String genMode,
             ReferenceManifest manifest,
-            String dialogue,
+            String scriptContent,
             Boolean fingerprintMatched,
             Boolean includeBgm,
             Double duration
@@ -1230,12 +1227,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 }
             }
 
-            // 对白台词检查 (警告级别)
-            if (StringUtils.isNotBlank(dialogue)) {
-                if (!p.contains("<d>") || !p.contains("</d>")) {
-                    warnings.add("当前分镜包含对白台词，但提示词中未检测到 <d>[Language] ...</d> 标签包裹");
-                }
-            }
         } else {
             // FIRST_LAST_FRAME 模式
             if (StringUtils.isBlank(vo.getVideoPrompt())) {
@@ -1258,6 +1249,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             vo.setOverallSoundscape(null);
             vo.setNonDiegeticMusic(null);
         }
+
+        validateSpeechLines(vo, scriptContent, manifest, errors);
 
         // 2.5 BGM 业务约束：结构化字段是唯一权威来源，禁止从自由文本中猜测或修补配乐。
         boolean bgmEnabled = Boolean.TRUE.equals(includeBgm);
@@ -1307,6 +1300,55 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 .build();
     }
 
+    private String speechOutputContract() {
+        return "\n【结构化声音输出契约】最终 JSON 必须包含 speechLines 数组，不能省略；无对白/画外音/旁白/独白时返回 []。"
+                + "每项明确 kind、characterId（不明时 null）、speakerName、原文 text、language、dialogueTag、audioIndex（不用母音时 null）。"
+                + "dialogueTag 使用 <d>[原声语言] 说话人: \"逐字原文\"</d>，并原样放入最终视频提示词。"
+                + "角色母音按 VOICE_TIMBRE 与角色 ID 绑定，不复用样音旧台词；仅显式授权的 DIALOGUE_REUSE 可复用本镜录音。"
+                + "声音人物与画面出场人物独立，不能把被提及的人物当成出场人物；以最新 scriptContent 重提取，禁止旧声音列表覆盖新剧本。\n";
+    }
+
+    /** Validate explicit AI structure and literal protocol references; never infer speech from punctuation. */
+    private void validateSpeechLines(ShotPromptDeriveVO vo, String script, ReferenceManifest manifest, List<String> errors) {
+        if (vo.getSpeechLines() == null) {
+            errors.add("AI 结果缺少 speechLines；请按最新任务 Prompt 重生成，无口语声音时显式返回 []");
+            return;
+        }
+        String prompt = StringUtils.defaultIfBlank(vo.getVideoPrompt(), StringUtils.defaultString(vo.getPrompt()));
+        for (com.astra.freyja.dto.drama.ShotSpeechLine line : vo.getSpeechLines()) {
+            if (line == null || line.getKind() == null || StringUtils.isBlank(line.getText()) || StringUtils.isBlank(line.getLanguage())) {
+                errors.add("speechLines 必须明确声音类型、原文台词与语言");
+                continue;
+            }
+            String tag = line.getDialogueTag();
+            if (tag == null || !tag.startsWith("<d>") || !tag.endsWith("</d>")
+                    || !tag.contains("[" + line.getLanguage() + "]") || !tag.contains(line.getText()) || !prompt.contains(tag)) {
+                errors.add("speechLines 台词必须使用匹配语言的完整 <d> 标签，逐字保留原文并出现在视频提示词中");
+            }
+            if (StringUtils.isNotBlank(script) && !script.contains(line.getText())) {
+                errors.add("speechLines 含有统一剧本中不存在的台词，请核对后重新生成");
+            }
+            if (line.getAudioIndex() != null) {
+                var audios = manifest == null ? null : manifest.getAudios();
+                int index = line.getAudioIndex();
+                if (audios == null || index < 1 || index > audios.size()) {
+                    errors.add("speechLines 引用了未选择的音色参考 Audio " + index);
+                } else {
+                    var audio = audios.get(index - 1);
+                    if ("VOICE_TIMBRE".equals(audio.getUsageMode())) {
+                        boolean sameId = audio.getCharacterId() != null && java.util.Objects.equals(audio.getCharacterId(), line.getCharacterId());
+                        boolean sameExplicitName = audio.getCharacterId() == null && StringUtils.isNotBlank(audio.getCharacterName())
+                                && audio.getCharacterName().equals(line.getSpeakerName());
+                        if (!sameId && !sameExplicitName) errors.add("speechLines 的音色参考必须明确绑定当前说话人");
+                    } else if ("DIALOGUE_REUSE".equals(audio.getUsageMode())) {
+                        if (audio.getCharacterId() != null && !java.util.Objects.equals(audio.getCharacterId(), line.getCharacterId())) errors.add("本镜授权录音的说话人绑定不一致");
+                    } else errors.add("音效、背景音乐或节奏参考不能充当对白音色/录音");
+                    if (!prompt.contains("<Audio " + index + ">")) errors.add("视频提示词未引用 speechLines 中选择的音色参考");
+                }
+            }
+        }
+    }
+
     private boolean isNoMusicValue(String value) {
         String normalized = StringUtils.trimToEmpty(value)
                 .replaceAll("[。.!！]+$", "")
@@ -1343,8 +1385,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         Drama drama = populateContext(dto);
 
         // 2. 检查必要参数
-        if (StringUtils.isBlank(dto.getScriptContent()) && StringUtils.isBlank(dto.getActionDescription()) && StringUtils.isBlank(dto.getDialogue()) && StringUtils.isBlank(dto.getUserInstruction())) {
-            throw new BizException("镜头剧本文本、画面动作描述、台词或创作者要求至少填写一项");
+        if (StringUtils.isBlank(dto.getScriptContent()) && StringUtils.isBlank(dto.getActionDescription()) && StringUtils.isBlank(dto.getUserInstruction())) {
+            throw new BizException("镜头剧本文本、画面动作描述或创作者要求至少填写一项");
         }
 
         // 3. 构建 ReferenceManifest 并选择 MiniMax H3 专属提示词模板 (FL2VA / Ref2VA)
@@ -1390,6 +1432,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             systemPrompt += manifest.toSystemRoleGuidance();
         }
         systemPrompt = appendFl2VaOutputContract(systemPrompt, genMode, dto.getDuration());
+        systemPrompt += speechOutputContract();
 
         String userPrompt = resolveTemplate(userTemplate, vars);
         if (directorPlan != null && !userTemplate.contains("${DIRECTOR_PLAN}")) userPrompt += formatDirectorPlan(directorPlan);
@@ -1451,7 +1494,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 .shotNo(request.getShotNo())
                 .generationMode(genMode)
                 .includeBgm(request.getIncludeBgm())
-                .dialogue(request.getDialogue())
+                .scriptContent(request.getScriptContent())
                 .characterRefs(request.getCharacterRefs())
                 .propRefs(request.getPropRefs())
                 .refImages(request.getRefImages())
@@ -1486,6 +1529,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             currentSystemPrompt += manifest.toSystemRoleGuidance();
         }
         currentSystemPrompt = appendFl2VaOutputContract(currentSystemPrompt, genMode, contextDto.getDuration());
+        currentSystemPrompt += speechOutputContract();
         String currentUserTemplate = "REFERENCE_MODE".equalsIgnoreCase(genMode)
                 ? sysConfigService.getConfigValue("ai.prompt.minimax_h3_ref2va_user", DEFAULT_MINIMAX_H3_REF2VA_USER_TEMPLATE)
                 : sysConfigService.getConfigValue("ai.prompt.minimax_h3_fl2va_user", DEFAULT_MINIMAX_H3_FL2VA_USER_TEMPLATE);
@@ -1506,13 +1550,14 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         }
 
         // 3. 执行统一校验与归一化
-        return validateAndNormalize(parsedVo, genMode, manifest, contextDto.getDialogue(), fingerprintMatched,
+        return validateAndNormalize(parsedVo, genMode, manifest, contextDto.getScriptContent(), fingerprintMatched,
                 request.getIncludeBgm(), contextDto.getDuration());
     }
 
     @Override
     public SseEmitter derivePromptStream(ShotPromptDeriveDTO dto) {
         resolveRefImages(dto);
+        resolveRefAudios(dto);
         prepareDirectorPlan(dto);
         SseEmitter emitter = new SseEmitter(180_000L);
         ConcurrentSseBridge sseBridge = new ConcurrentSseBridge(emitter);
@@ -1533,6 +1578,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     @Override
     public String startPromptTask(ShotPromptDeriveDTO dto) {
         resolveRefImages(dto);
+        resolveRefAudios(dto);
         prepareDirectorPlan(dto);
         if (shotPromptEventStore == null) throw new BizException("提示词事件缓存不可用");
         AiTask task = createPromptTask(dto);
@@ -1554,7 +1600,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         var saved = aiTaskService.getTaskById(taskId);
         if (saved == null || !java.util.Set.of("PENDING", "RUNNING").contains(saved.getStatus())) return;
         try {
-            var dto = objectMapper.readValue(saved.getInputPayload(), ShotPromptDeriveDTO.class);
+            var storedInput = com.astra.freyja.util.LegacyShotJsonMigration.projectPromptInput(objectMapper.readTree(saved.getInputPayload()));
+            var dto = objectMapper.treeToValue(storedInput, ShotPromptDeriveDTO.class);
             // Only persisted server payload may restore this read-only snapshot.
             var rules = objectMapper.readTree(saved.getInputPayload()).get("capabilityRulesSnapshot");
             if (rules != null && rules.isTextual()) dto.setCapabilityRulesSnapshot(rules.asText());
@@ -1656,7 +1703,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                         vo,
                         packageVO.getGenerationMode(),
                         packageVO.getReferenceManifest(),
-                        dto.getDialogue(),
+                        dto.getScriptContent(),
                         true,
                         dto.getIncludeBgm(),
                         dto.getDuration()
@@ -1799,15 +1846,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if (StringUtils.isNotBlank(dto.getActionDescription())) {
             sb.append("- 画面动作简述 (核心动作): ").append(dto.getActionDescription()).append("\n");
         }
-        if (StringUtils.isNotBlank(dto.getDialogueSpeaker())) {
-            sb.append("- 对白说话人: ").append(dto.getDialogueSpeaker()).append("\n");
-        }
-        if (StringUtils.isNotBlank(dto.getDialogue())) {
-            sb.append("- 台词对白: ").append(dto.getDialogue()).append("\n");
-        }
-        if (StringUtils.isNotBlank(dto.getVoiceover())) {
-            sb.append("- 旁白内心独白: ").append(dto.getVoiceover()).append("\n");
-        }
+        sb.append("- 【统一剧本与声音契约】: scriptContent 是动作、台词、画外音、旁白和独白的唯一事实源。AI 必须提取 speechLines，逐字保留原文声音内容及原语言并明确声音类型；无口语声音时返回 []。说话人不必出现在画面中，不能按出场列表顺序猜测身份。\n");
+        sb.append("- 【参考音频用途】: 每条 Audio N 按 ReferenceManifest 的角色绑定和 usageMode 独立使用。角色母音 VOICE_TIMBRE 仅提供声线，禁止复用旧试音台词；DIALOGUE_REUSE 仅复用创作者明确授权的本镜录音；音效参考不充当角色母音。未选择参考音频只表示不用音色参考，不表示静音。创作者静音要求由 AI 理解并在 speechLines/声场中明确执行，Java 不解析自然语言。\n");
         if (StringUtils.isNotBlank(dto.getSoundEffect())) {
             sb.append("- 音效与环境声: ").append(dto.getSoundEffect()).append("\n");
         }
@@ -1989,6 +2029,23 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         return asset != null ? asset.getFrameType() : null;
     }
 
+    private List<ShotRefAudioDTO> resolveRefAudios(ShotPromptDeriveDTO dto) {
+        if (dto == null) throw new BizException(400, "提示词生成请求不能为空");
+        List<ShotRefAudioDTO> audios = dto.getRefAudios();
+        if (audios == null && dto.getShotId() != null) {
+            DramaShot shot = shotMapper.selectById(dto.getShotId());
+            if (shot != null && StringUtils.isNotBlank(shot.getRefAudiosJson())) {
+                try {
+                    audios = new com.fasterxml.jackson.databind.ObjectMapper().readValue(shot.getRefAudiosJson(), new TypeReference<List<ShotRefAudioDTO>>() {});
+                } catch (Exception e) { throw new BizException(400, "已保存的参考音频清单无效，请在工作台修复"); }
+            }
+        }
+        if (audios == null) audios = List.of();
+        com.astra.freyja.util.ShotAudioReferenceValidator.validate(audios);
+        dto.setRefAudios(audios);
+        return audios;
+    }
+
     private List<ShotRefImageDTO> resolveRefImages(ShotPromptDeriveDTO dto) {
         if (dto == null) throw new BizException(400, "提示词生成请求不能为空");
         // An explicit empty list means the creator removed all reference images.
@@ -2151,30 +2208,19 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             }
         }
 
-        List<ShotRefAudioDTO> refAuds = dto.getRefAudios();
-        if ((refAuds == null || refAuds.isEmpty()) && dto.getShotId() != null && dto.getShotId() > 0) {
-            DramaShot s = shotMapper.selectById(dto.getShotId());
-            if (s != null && StringUtils.isNotBlank(s.getRefAudiosJson())) {
-                try {
-                    refAuds = jacksonMapper.readValue(s.getRefAudiosJson(), new TypeReference<List<ShotRefAudioDTO>>() {});
-                } catch (Exception ignored) {}
-            }
-        }
-
+        List<ShotRefAudioDTO> refAuds = resolveRefAudios(dto);
         if (refAuds != null) {
             int aIdx = 1;
             for (ShotRefAudioDTO aud : refAuds) {
-                if (aud == null) continue;
-                if (StringUtils.isBlank(aud.getAudioUrl()) && StringUtils.isBlank(aud.getName()) && StringUtils.isBlank(aud.getText())) continue;
 
                 audios.add(ReferenceManifest.AudioManifestItem.builder()
                         .audioIndex(aIdx++)
                         .referenceId(aud.getId())
                         .sourceType(StringUtils.defaultIfBlank(aud.getSourceType(), "UPLOAD"))
                         .characterId(aud.getCharacterId())
-                        .characterName(StringUtils.firstNonBlank(aud.getCharacterName(), aud.getName()))
+                        .characterName(StringUtils.trimToNull(aud.getCharacterName()))
                         .usageMode(StringUtils.defaultIfBlank(aud.getUsageMode(), "VOICE_TIMBRE"))
-                        .language(StringUtils.defaultIfBlank(aud.getLanguage(), "Chinese"))
+                        .language(StringUtils.trimToNull(aud.getLanguage()))
                         .text(aud.getText())
                         .audioUrl(aud.getAudioUrl())
                         .duration(aud.getDuration())
@@ -2183,56 +2229,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         }
 
         return ReferenceManifest.builder().pictures(pictures).audios(audios).build();
-    }
-
-    /**
-     * 校验 MiniMax H3 Ref2VA 六段式输出结构与标签有效性。
-     */
-    public void validateH3Ref2VaOutput(ShotPromptDeriveVO vo, ReferenceManifest manifest, ShotPromptDeriveDTO dto) {
-        String p = vo.getPrompt();
-        if (StringUtils.isBlank(p)) return;
-
-        // 1. 六段式段落检查
-        String[] requiredSections = {
-                "subject_definitions:", "summary:", "retention_analysis:",
-                "detailed_description:", "overall_soundscape:", "non_diegetic_music:"
-        };
-        List<String> missing = new ArrayList<>();
-        for (String sec : requiredSections) {
-            if (!p.contains(sec)) {
-                missing.add(sec);
-            }
-        }
-        if (!missing.isEmpty()) {
-            log.warn("[H3 Ref2VA Validation] 分镜提示词缺少 MiniMax H3 官方必填段落: {}", missing);
-        }
-
-        // 2. 检查 Picture 标签边界与合法性
-        int maxPic = manifest != null && manifest.getPictures() != null ? manifest.getPictures().size() : 0;
-        Matcher picMatcher = Pattern.compile("<Picture\\s*(\\d+)>").matcher(p);
-        while (picMatcher.find()) {
-            int idx = Integer.parseInt(picMatcher.group(1));
-            if (idx < 1 || idx > maxPic) {
-                log.warn("[H3 Ref2VA Validation] 提示词中引用了未分配的 <Picture {}> (清单有效上限: {})", idx, maxPic);
-            }
-        }
-
-        // 3. 检查 Audio 标签边界与合法性
-        int maxAud = manifest != null && manifest.getAudios() != null ? manifest.getAudios().size() : 0;
-        Matcher audMatcher = Pattern.compile("<Audio\\s*(\\d+)>").matcher(p);
-        while (audMatcher.find()) {
-            int idx = Integer.parseInt(audMatcher.group(1));
-            if (idx < 1 || idx > maxAud) {
-                log.warn("[H3 Ref2VA Validation] 提示词中引用了未分配的 <Audio {}> (清单有效上限: {})", idx, maxAud);
-            }
-        }
-
-        // 4. 台词检查
-        if (StringUtils.isNotBlank(dto.getDialogue())) {
-            if (!p.contains("<d>") || !p.contains("</d>")) {
-                log.warn("[H3 Ref2VA Validation] 当前分镜包含对白台词，但提示词中未检测到 <d>[Language] ...</d> 标签包裹");
-            }
-        }
     }
 
     /**

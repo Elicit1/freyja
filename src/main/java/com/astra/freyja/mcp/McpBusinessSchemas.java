@@ -34,7 +34,7 @@ public class McpBusinessSchemas {
             Map.entry(McpRecordType.EPISODE, fields("episodeNo,title,summary,scriptContent,targetDuration,status,sortOrder,remark")),
             Map.entry(McpRecordType.SCENE, fields("episodeId,sceneNo,name,resSceneId,sceneType,timeOfDay,weatherAtmosphere,locationName,summary,scriptContent,sortOrder,remark")),
             Map.entry(McpRecordType.SHOT_GROUP, fields("sceneId,groupNo,name,purpose,sortOrder,remark")),
-            Map.entry(McpRecordType.SHOT, fields("sceneId,shotGroupId,shotNo,shotName,shotType,cameraMovement,shotTypeLocked,cameraMovementLocked,duration,scriptContent,actionDescription,dialogue,dialogueSpeaker,voiceover,soundEffect,resSceneId,resKeyframeId,characterRefs,propRefs,stylePreset,sortOrder,remark,prompt,firstFramePrompt,endFramePrompt,negativePrompt,videoPrompt,customScenePrompt,directorPlan,directorPlanMode,refImages,refAudios,generationMode,seed,previewImageUrl,endFrameImageUrl,audioUrl")),
+            Map.entry(McpRecordType.SHOT, fields("sceneId,shotGroupId,shotNo,shotName,shotType,cameraMovement,shotTypeLocked,cameraMovementLocked,duration,scriptContent,actionDescription,soundEffect,resSceneId,resKeyframeId,characterRefs,propRefs,stylePreset,sortOrder,remark,prompt,firstFramePrompt,endFramePrompt,negativePrompt,videoPrompt,customScenePrompt,directorPlan,directorPlanMode,refImages,refAudios,generationMode,seed,previewImageUrl,endFrameImageUrl")),
             Map.entry(McpRecordType.CHARACTER, fields("name,canonicalName,displayName,gender,ageGroup,roleType,personality,appearanceDesc,referenceImageUrl,voiceSampleUrl,sortOrder,status,firstAppearance,lastAppearance,remark,aliases,appearancePrompt,negativePrompt")),
             Map.entry(McpRecordType.CHARACTER_LOOK, fields("characterId,lookName,isDefault,lookType,designDesc,referenceImageUrl,sortOrder,status,remark,outfitPrompt,appearancePrompt,negativePrompt")),
             Map.entry(McpRecordType.RESOURCE_SCENE, fields("name,description,coverUrl,referenceImageUrl,sceneType,timeOfDay,weatherAtmosphere,sortOrder,status,remark,scenePrompt,negativePrompt")),
@@ -168,7 +168,7 @@ public class McpBusinessSchemas {
             // Conditional requirements are enforced below before any business writes.
         }
         if (type == ShotRefAudioDTO.class) {
-            properties.put("sourceType", Map.of("type", "string", "enum", List.of("TTS", "UPLOAD")));
+            properties.put("sourceType", Map.of("type", "string", "enum", List.of("TTS", "CHARACTER", "UPLOAD")));
             properties.put("audioUrl", described(nonblank(), "必填的已有声音 URL；TTS 只表示来源，不执行声音生成。"));
             properties.put("duration", Map.of("type", List.of("number", "null"), "minimum", 2, "maximum", 15, "description", "可选的真实秒数；已知音频总长不超过15秒，不会猜测时长。"));
             properties.put("usageMode", described(properties.get("usageMode"), "按需指定 VOICE_TIMBRE、DIALOGUE_REUSE、BGM_REUSE、BGM_STYLE、SFX_REUSE、SFX_REFERENCE、RHYTHM_REFERENCE。"));
@@ -266,7 +266,7 @@ public class McpBusinessSchemas {
                 throw new BizException(400, path + ".sourceId 必填；造型图传造型 ID，人物图传人物 ID");
             if (image && "UPLOAD".equals(source) && item.get("sourceId") != null)
                 throw new BizException(400, path + ".sourceId 在 UPLOAD 时必须省略或为 null");
-            if ((image && Set.of("CHARACTER_LOOK", "CHARACTER_REFERENCE").contains(source) || !image && "TTS".equals(source)) && item.get("characterId") == null)
+            if ((image && Set.of("CHARACTER_LOOK", "CHARACTER_REFERENCE").contains(source) || !image && Set.of("TTS", "CHARACTER").contains(source)) && item.get("characterId") == null)
                 throw new BizException(400, path + ".characterId 必填");
         }
     }

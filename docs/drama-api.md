@@ -309,3 +309,14 @@
 - **URL**: `DELETE /drama/shot/{shotId}/video-takes/{takeId}`
 - **说明**: 删除候选记录及其所属 MinIO 桶中的视频对象。仅允许删除本系统 MinIO 视频；若文件仍被其他分镜、候选版本或正在处理的任务引用，返回 409。删除当前版本会清空分镜的 `current_video_take_id`、`video_url` 和尾帧缓存。关联的视频后处理任务保留历史记录，但清空已删除产物的地址。
 - **返回**: `R<Void>`。
+
+
+## 统一剧本与声音契约（2026-10-14）
+
+分镜动作、角色对白、画外音、旁白及内心独白统一写入 `scriptContent`。新写入不接受 `dialogue/dialogueSpeaker/voiceover/audioUrl`；分镜及整集 TTS 生成接口已移除。
+
+分镜详情返回 `legacyScriptPending`，表示历史对白/旁白已完整附加于剧本供核对，保存后完成迁移。`refAudiosConfigured=true` 包含已保存的空列表，前端不能重新默认加入角色母音。参考选择通过 `refAudios` 保存，显式 `[]` 表示不用参考音频，省略表示保留现有选择。
+
+FL2VA / Ref2VA 提示词衍生结果新增只读 `speechLines` 数组：`kind, characterId, speakerName, text, language, dialogueTag, audioIndex`。无口语声音时返回 `[]`；缺失结构、台词标签或绑定不一致的结果校验失败。它是本次剧本的 AI 派生数据，修改台词需修改 `scriptContent` 后重新生成。
+
+角色母音用途为 `VOICE_TIMBRE`，本镜授权录音可显式选择 `DIALOGUE_REUSE`；移除母音不代表静音。未知时长不估算，渲染前读取实际媒体并验证单段及总时长、协议和模型数量限制。详见 [执行与验收方案](character-voice-and-unified-script-plan.md)。

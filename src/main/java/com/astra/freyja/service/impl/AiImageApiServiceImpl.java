@@ -544,12 +544,6 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             payload.put("last_frame", lastFrameB64);
         }
 
-        // TTS 配音 Base64 转换
-        if (StringUtils.isNotBlank(shot.getAudioUrl())) {
-            String audioB64 = prepareMediaAsBase64(shot.getAudioUrl(), "audio/wav");
-            payload.put("audio_url", audioB64);
-        }
-
         // 解析并组装 references 绑定 (人物造型、场景、道具等)
         List<Map<String, Object>> references = new ArrayList<>();
 
@@ -599,26 +593,38 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 List<com.astra.freyja.dto.drama.ShotRefAudioDTO> refAudioList = objectMapper.readValue(
                         shot.getRefAudiosJson(), new com.fasterxml.jackson.core.type.TypeReference<List<com.astra.freyja.dto.drama.ShotRefAudioDTO>>() {});
                 if (refAudioList != null) {
-                    int aCount = 0;
+                    com.astra.freyja.util.ShotAudioReferenceValidator.validate(refAudioList);
+                    AiModel selectedVideoModel = modelMapper.selectOne(new LambdaQueryWrapper<AiModel>()
+                            .eq(AiModel::getProviderId, provider.getId()).eq(AiModel::getModelCode, modelCode).eq(AiModel::getStatus, 1).last("LIMIT 1"));
+                    if (selectedVideoModel != null && selectedVideoModel.getMaxAudios() != null && refAudioList.size() > selectedVideoModel.getMaxAudios()) {
+                        throw new BizException(400, "参考音频超过所选视频模型的能力上限，请重新选择素材或模型");
+                    }
+                    java.math.BigDecimal actualTotal = java.math.BigDecimal.ZERO;
                     for (com.astra.freyja.dto.drama.ShotRefAudioDTO refAudio : refAudioList) {
-                        if (aCount >= 3) break;
                         if (StringUtils.isNotBlank(refAudio.getAudioUrl())) {
                             String b64Audio = prepareMediaAsBase64(refAudio.getAudioUrl(), "audio/wav");
+                            if (!b64Audio.startsWith("data:") || !b64Audio.contains(";base64,")) throw new BizException(400, "参考音频无法读取，请重新上传或检查素材 URL");
+                            byte[] audioBytes = Base64.getDecoder().decode(b64Audio.substring(b64Audio.indexOf(',') + 1));
+                            var metadata = videoFrameExtractService.probeVideoInfo(audioBytes, "audio");
+                            if (metadata == null || !Boolean.TRUE.equals(metadata.getHasAudio()) || metadata.getDuration() == null) throw new BizException(400, "无法测量参考音频实际时长，请检查 FFprobe 配置及音频格式");
+                            refAudio.setDuration(metadata.getDuration());
+                            com.astra.freyja.util.ShotAudioReferenceValidator.validate(List.of(refAudio));
+                            actualTotal = actualTotal.add(metadata.getDuration());
+                            if (actualTotal.compareTo(com.astra.freyja.util.ShotAudioReferenceValidator.MAX_SECONDS) > 0) throw new BizException(400, "参考音频实际总时长超过 15 秒，请调整选择");
                             Map<String, Object> binding = new HashMap<>();
                             binding.put("referenceId", refAudio.getId());
                             binding.put("referenceType", "REFERENCE_AUDIO");
                             binding.put("entityId", refAudio.getCharacterId() != null ? String.valueOf(refAudio.getCharacterId()) : null);
                             binding.put("entityName", StringUtils.firstNonBlank(refAudio.getCharacterName(), refAudio.getName()));
                             binding.put("usageMode", StringUtils.defaultIfBlank(refAudio.getUsageMode(), "VOICE_TIMBRE"));
-                            binding.put("language", StringUtils.defaultIfBlank(refAudio.getLanguage(), "Chinese"));
+                            binding.put("language", StringUtils.trimToNull(refAudio.getLanguage()));
                             binding.put("referenceAudio", b64Audio);
                             references.add(binding);
-                            aCount++;
                         }
                     }
                 }
             } catch (Exception e) {
-                log.warn("[AiImageApi] 解析分镜 refAudiosJson 失败: {}", e.getMessage());
+                throw new BizException(400, "参考音频处理失败: " + e.getMessage());
             }
         }
 

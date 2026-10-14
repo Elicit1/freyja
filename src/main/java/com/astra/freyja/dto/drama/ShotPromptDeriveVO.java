@@ -14,6 +14,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ShotPromptDeriveVO {
+
+    @JsonPropertyDescription("从统一剧本提取的声音列表；逐字保留对白、画外音、旁白及独白，无口语声音时显式返回 []。不是新的剧本事实源。")
+    private java.util.List<ShotSpeechLine> speechLines;
     private String directorPlanMode;
     private Integer directorPlanRevision;
 

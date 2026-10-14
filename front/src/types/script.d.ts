@@ -51,9 +51,6 @@ export interface DecomposedShot {
   duration: number
   scriptContent?: string | null
   actionDescription: string
-  dialogueSpeaker?: string | null
-  dialogue?: string | null
-  voiceover?: string | null
   soundEffect?: string | null
   primaryCharacter?: string | null
   secondaryCharacter?: string | null

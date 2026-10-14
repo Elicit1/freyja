@@ -8,8 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 /** Only AI inputs from the basic shot specification card. No semantic inference. */
 public record DirectorPlanInput(Integer shotNo, String shotName, Double duration,
         Boolean shotTypeLocked, String shotType, Boolean cameraMovementLocked, String cameraMovement,
-        String scriptContent, String actionDescription, String dialogue, String dialogueSpeaker,
-        String voiceover, String soundEffect) {
+        String scriptContent, String actionDescription, String soundEffect) {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     public DirectorPlanInput normalized() {
@@ -17,7 +16,7 @@ public record DirectorPlanInput(Integer shotNo, String shotName, Double duration
         boolean movementLocked = Boolean.TRUE.equals(cameraMovementLocked) && text(cameraMovement) != null && !"AUTO".equalsIgnoreCase(cameraMovement.trim());
         return new DirectorPlanInput(shotNo == null ? 1 : shotNo, text(shotName), duration,
                 sizeLocked, sizeLocked ? text(shotType) : null, movementLocked, movementLocked ? text(cameraMovement) : null,
-                text(scriptContent), text(actionDescription), text(dialogue), text(dialogueSpeaker), text(voiceover), text(soundEffect));
+                text(scriptContent), text(actionDescription), text(soundEffect));
     }
 
     private static String text(String value) { return value == null || value.isBlank() ? null : value.trim(); }
@@ -25,15 +24,13 @@ public record DirectorPlanInput(Integer shotNo, String shotName, Double duration
     public static DirectorPlanInput fromShot(DramaShot shot) {
         return new DirectorPlanInput(shot.getShotNo(), shot.getShotName(), shot.getDuration() == null ? null : shot.getDuration().doubleValue(),
                 shot.getShotTypeLocked(), shot.getShotType(), shot.getCameraMovementLocked(), shot.getCameraMovement(),
-                shot.getScriptContent(), shot.getActionDescription(), shot.getDialogue(), shot.getDialogueSpeaker(),
-                shot.getVoiceover(), shot.getSoundEffect()).normalized();
+                com.astra.freyja.util.UnifiedShotScript.fromShot(shot), shot.getActionDescription(), shot.getSoundEffect()).normalized();
     }
 
     public static DirectorPlanInput fromRequest(ShotPromptDeriveDTO dto) {
         return new DirectorPlanInput(dto.getShotNo(), dto.getShotName(), dto.getDuration(),
                 dto.getShotTypeLocked(), dto.getShotType(), dto.getCameraMovementLocked(), dto.getCameraMovement(),
-                dto.getScriptContent(), dto.getActionDescription(), dto.getDialogue(), dto.getDialogueSpeaker(),
-                dto.getVoiceover(), dto.getSoundEffect()).normalized();
+                dto.getScriptContent(), dto.getActionDescription(), dto.getSoundEffect()).normalized();
     }
 
     public void applyTo(ShotPromptDeriveDTO dto) {
@@ -41,8 +38,7 @@ public record DirectorPlanInput(Integer shotNo, String shotName, Double duration
         dto.setShotTypeLocked(shotTypeLocked); dto.setShotType(shotType);
         dto.setCameraMovementLocked(cameraMovementLocked); dto.setCameraMovement(cameraMovement);
         dto.setScriptContent(scriptContent); dto.setActionDescription(actionDescription);
-        dto.setDialogue(dialogue); dto.setDialogueSpeaker(dialogueSpeaker);
-        dto.setVoiceover(voiceover); dto.setSoundEffect(soundEffect);
+        dto.setSoundEffect(soundEffect);
     }
 
     public String encode() {

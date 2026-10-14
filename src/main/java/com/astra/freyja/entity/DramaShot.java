@@ -61,12 +61,21 @@ public class DramaShot extends BaseEntity {
     private String actionDescription;
 
     /** 对白台词 */
+    @Deprecated
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String dialogue;
 
     /** 台词说话人 */
+    @Deprecated
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String dialogueSpeaker;
 
     /** 旁白/内心独白 */
+    @Deprecated
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    @TableField(updateStrategy = FieldStrategy.NEVER)
     private String voiceover;
 
     /** 音效描述 */
@@ -120,10 +129,10 @@ public class DramaShot extends BaseEntity {
     /** 尾帧图URL (MinIO URL) */
     private String endFrameImageUrl;
 
-    /** 参考图列表 JSON (上限5个) */
+    /** 参考图列表 JSON (上限9个) */
     private String refImagesJson;
 
-    /** 参考音频列表 JSON (上限4个, 单段3-8s, 总长20-30s) */
+    /** 参考音频列表 JSON (上限3个, 单段2-15s, 总长≤15s；null=未配置，[]=明确不使用) */
     private String refAudiosJson;
 
     /** 本镜生成视频末帧图 (MinIO URL, 供组内下一镜首帧续接) */
@@ -160,6 +169,8 @@ public class DramaShot extends BaseEntity {
     private Long currentVideoTakeId;
 
     /** TTS配音音频 (MinIO URL) */
+    @Deprecated
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private String audioUrl;
 
     /** 渲染状态 (INIT/QUEUED/RENDERING/SUCCESS/FAILED) */

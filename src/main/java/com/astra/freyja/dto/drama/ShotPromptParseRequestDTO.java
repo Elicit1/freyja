@@ -44,11 +44,11 @@ public class ShotPromptParseRequestDTO {
     /** 外部 AI 返回的原始纯文本 (支持包含 `json 代码块或少量说明) */
     private String rawResponse;
 
+    /** Unified script used to validate literal fidelity of AI-derived speech. */
+    private String scriptContent;
+
     /** 导出任务包时的上下文指纹 (用于比对校验镜头上下文是否在复制期间发生变动) */
     private String contextFingerprint;
-
-    /** 台词对白 (用于校验 <d> 标签是否正确包裹) */
-    private String dialogue;
 
     /** 出场角色列表 */
     private List<CharacterShotRefInfoVO> characterRefs;
@@ -68,4 +68,19 @@ public class ShotPromptParseRequestDTO {
 
     /** 导出任务包时用户选择并展开的 Skill 名称。 */
     private List<String> selectedSkillNames;
+
+    @com.fasterxml.jackson.annotation.JsonSetter("dialogue")
+    public void rejectDialogue(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "dialogue 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("dialogueSpeaker")
+    public void rejectDialogueSpeaker(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "dialogueSpeaker 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
+
+    @com.fasterxml.jackson.annotation.JsonSetter("voiceover")
+    public void rejectVoiceover(Object ignored) {
+        throw new com.astra.freyja.common.BizException(400, "voiceover 已退出分镜写入契约，请使用统一剧本 scriptContent 和显式 refAudios");
+    }
 }

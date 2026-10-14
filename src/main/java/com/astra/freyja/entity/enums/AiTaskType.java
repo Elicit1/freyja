@@ -21,7 +21,9 @@ public enum AiTaskType {
     SHOT_VISUAL_PLAN("分镜视觉导演规划"),
     CHARACTER_VOICE_DESIGN("角色母音设计"),
     VOICE_PREVIEW("音色试听"),
+    @Deprecated // Read historical task records only; generation endpoint removed.
     SHOT_VOICE_GENERATE("分镜配音"),
+    @Deprecated // Read historical task records only; generation endpoint removed.
     EPISODE_VOICE_GENERATE("剧集批量配音"),
     SHOT_FRAME_GENERATE("分镜关键帧生图"),
     ASSET_IMAGE_GENERATE("资产生图"),

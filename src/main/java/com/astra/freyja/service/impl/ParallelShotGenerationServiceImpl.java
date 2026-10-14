@@ -55,7 +55,8 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
         你是剧情分镜编剧，负责将当前 Segment 原文整理为完整的剧情分镜。
 
         ### 固定职责与强制约束
-        1. Worker 只负责剧情拆镜、scriptContent、人物动作与表演、对白与声音、人物及道具连续性、资产引用和合理时长。
+        1. 台词、旁白与动作统一写入 scriptContent；不输出独立的 dialogue/dialogueSpeaker/voiceover 字段。characterIds 仅明确声明画面出场人物。
+        Worker 只负责剧情拆镜、scriptContent、人物动作与表演、对白与声音、人物及道具连续性、资产引用和合理时长。
         2. 多个 Shot 必须在整个 Segment 范围内保持剧情、时空、人物动作及道具状态连续，不得无依据改变已确定的事实。
         3. scriptContent 和 action 必须保持艺术风格中立。剥离原文中的艺术风格与媒介修辞，仅保留客观、可观察的剧情及环境信息。
         4. 不得自行设计景别、机位、摄影机角度、运镜及构图，不得生成生图或视频 Prompt。
@@ -305,12 +306,8 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                                 previewSb.append(String.format("  - 镜 %s [%.1fs]: %s",
                                         sh.getSequence() != null ? sh.getSequence().toString() : "",
                                         ShotDurationUtil.resolve(sh.getDuration()),
-                                        StringUtils.defaultIfBlank(sh.getAction(), "")));
-                                if (StringUtils.isNotBlank(sh.getDialogue())) {
-                                    previewSb.append(String.format(" 【对白 (%s): %s】",
-                                            StringUtils.defaultIfBlank(sh.getDialogueSpeaker(), "角色"),
-                                            sh.getDialogue()));
-                                }
+                                        StringUtils.defaultIfBlank(sh.getScriptContent(), "")));
+
                                 previewSb.append("\n");
                             }
                         }
@@ -415,6 +412,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
 
         String baseSystemPrompt = sysConfigService.getConfigValue("ai.prompt.shot_worker_system", DEFAULT_WORKER_SYSTEM_PROMPT);
         String systemPrompt = baseSystemPrompt
+                + "\n\n【统一剧本契约】scriptContent 必须完整包含动作、逐字原文台词、画外音和旁白/独白；不输出 dialogue、dialogueSpeaker、voiceover 字段。characterIds 只包含实际画面出场人物，不含仅被提到或仅画外发声的人物；缺值保持空列表，Java 不扫描剧本补猜。"
                 + "\n\n【输入事实优先级】originalContent 为最高剧情事实来源；优先按 normalizedContent 拆镜，明确冲突时以 originalContent 为准。已标准化的空间关系无需重新推断或扩写。"
                 + "\n\n### 本次 Worker 任务输入（动态事实）\n" + taskInput;
         ScriptSkillRuntime.Invocation skillInvocation = scriptSkillRuntime == null ? null

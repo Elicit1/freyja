@@ -99,7 +99,12 @@ public class ScriptDecomposeDraftStore {
     private <T> T get(Long taskId, String field, Class<T> type) {
         if (taskId == null) return null;
         Object value = redis.opsForHash().get(key(taskId), field);
-        return value instanceof String json ? objectMapper.readValue(json, type) : null;
+        if (!(value instanceof String json)) return null;
+        if (type == ScriptDecomposeResultVO.class || type == SegmentShotResult.class) {
+            var projected = com.astra.freyja.util.LegacyShotJsonMigration.projectDraft(objectMapper.readTree(json));
+            return objectMapper.treeToValue(projected, type);
+        }
+        return objectMapper.readValue(json, type);
     }
 
     private String key(Long taskId) {

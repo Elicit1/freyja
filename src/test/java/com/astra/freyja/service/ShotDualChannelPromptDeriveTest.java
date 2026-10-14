@@ -216,7 +216,7 @@ class ShotDualChannelPromptDeriveTest {
                 .build();
 
         // prompt 引用了未分配的 <Picture 5>，且缺少部分必填段落与 <d> 标签
-        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder().speechLines(java.util.List.of())
                 .prompt("subject_definitions: <Picture 5> 林辰. summary: test")
                 .firstFramePrompt("invalid first frame")
                 .build();
@@ -233,7 +233,7 @@ class ShotDualChannelPromptDeriveTest {
         assertTrue(result.hasErrors());
         assertTrue(result.getErrors().stream().anyMatch(e -> e.contains("<Picture 5>")));
         assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("缺少 MiniMax H3 官方必填段落")));
-        assertTrue(result.getWarnings().stream().anyMatch(w -> w.contains("<d>[Language] ...</d>")));
+        assertTrue(result.getResult().getSpeechLines().isEmpty());
         // 首尾帧提示词被强制归一化置空
         assertNull(result.getResult().getFirstFramePrompt());
         assertNull(result.getResult().getEndFramePrompt());
@@ -245,6 +245,7 @@ class ShotDualChannelPromptDeriveTest {
         String rawResponse = """
                 `json
                 {
+                  "speechLines": [],
                   "videoPrompt": "How the reference pictures align with the target video — Picture 1 aligns with the 0.00-second mark of the target video; Picture 2 aligns with the 5.00-second mark of the target video.\\nintegrated_multimodal_description: Camera pushes in.\\noverall_soundscape: Wind blowing.\\nnon_diegetic_music: N/A",
                   "firstFramePrompt": "Cinematic shot of hero standing on cliff",
                   "endFramePrompt": "Hero turning around looking at distance",

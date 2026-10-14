@@ -76,7 +76,7 @@ public class CharacterVoiceServiceImpl implements CharacterVoiceService {
         vo.setSampleText(sampleText);
         vo.setVoiceSampleUrl(archiveResult.audioUrl());
         vo.setDuration(archiveResult.durationSeconds());
-        vo.setModelCode(StringUtils.defaultIfBlank(dto.getModelCode(), AiAudioApiServiceImpl.DEFAULT_VOICE_DESIGN_MODEL));
+        vo.setModelCode(dto.getModelCode());
         return vo;
     }
 
@@ -102,7 +102,7 @@ public class CharacterVoiceServiceImpl implements CharacterVoiceService {
         vo.setSampleText(sampleText);
         vo.setVoiceSampleUrl(archiveResult.audioUrl());
         vo.setDuration(archiveResult.durationSeconds());
-        vo.setModelCode(StringUtils.defaultIfBlank(dto.getModelCode(), AiAudioApiServiceImpl.DEFAULT_VOICE_DESIGN_MODEL));
+        vo.setModelCode(dto.getModelCode());
         return vo;
     }
 }

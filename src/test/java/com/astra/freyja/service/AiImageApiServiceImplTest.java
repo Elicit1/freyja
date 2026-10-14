@@ -114,6 +114,8 @@ class AiImageApiServiceImplTest {
         DramaShot shot = new DramaShot();
         shot.setPrompt("cinematic shot");
         shot.setSeed(1234L);
+        // Stored legacy TTS audio must not leak into a new video request.
+        shot.setAudioUrl("https://unreachable.example.invalid/legacy.mp3");
         shot.setDuration(new java.math.BigDecimal("3.5"));
         DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
         request.setProviderId(5L);
@@ -129,6 +131,27 @@ class AiImageApiServiceImplTest {
         verify(objectMapper).writeValueAsString(payload.capture());
         assertEquals(5678L, ((Map<?, ?>) payload.getValue()).get("seed"));
         assertEquals(3.5, ((Map<?, ?>) payload.getValue()).get("duration"));
+        org.junit.jupiter.api.Assertions.assertFalse(((Map<?, ?>) payload.getValue()).containsKey("audio_url"));
+    }
+
+    @Test
+    void actualAudioDurationOverridesFakeClientMetadataAndRejectsOversizedMedia() throws Exception {
+        AiProvider provider = new AiProvider(); provider.setId(5L); provider.setStatus(1);
+        provider.setBaseUrl("https://gateway.example.test/v1");
+        when(providerMapper.selectById(5L)).thenReturn(provider);
+        DramaShot shot = new DramaShot(); shot.setGenerationMode("REFERENCE_MODE"); shot.setPrompt("video");
+        shot.setRefAudiosJson("audio-json");
+        var audio = com.astra.freyja.dto.drama.ShotRefAudioDTO.builder().sourceType("UPLOAD")
+                .audioUrl("data:audio/wav;base64,YXVkaW8=").duration(java.math.BigDecimal.valueOf(3)).build();
+        when(objectMapper.readValue(eq("audio-json"), org.mockito.ArgumentMatchers.<TypeReference<List<com.astra.freyja.dto.drama.ShotRefAudioDTO>>>any()))
+                .thenReturn(List.of(audio));
+        var metadata = new com.astra.freyja.dto.video.VideoProbeInfoVO(); metadata.setHasAudio(true);
+        metadata.setDuration(java.math.BigDecimal.valueOf(20));
+        when(videoFrameExtractService.probeVideoInfo(any(byte[].class), eq("audio"))).thenReturn(metadata);
+        DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO(); request.setProviderId(5L);
+        doReturn("video-model").when(aiImageApiService).resolveVideoModelCode(eq(request), eq(5L), eq("REFERENCE_MODE"));
+        BizException failure = assertThrows(BizException.class, () -> aiImageApiService.generateAndArchiveVideo(1L, 2L, shot, request));
+        assertEquals(400, failure.getCode()); assertTrue(failure.getMessage().contains("2–15"));
     }
 
     @Test

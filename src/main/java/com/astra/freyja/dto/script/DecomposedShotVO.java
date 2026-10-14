@@ -9,7 +9,7 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * 剧本拆解提取的单分镜镜头信息 VO（含台词说话人与对白）。
+ * 剧本拆解提取的单分镜镜头信息 VO；动作与全部声音文本统一写入 scriptContent。
  */
 @Data
 @Builder
@@ -46,15 +46,6 @@ public class DecomposedShotVO {
 
     @JsonPropertyDescription("首帧画面纯英文静态视觉与构图描述 (Worker不再生成，置空供后续专属AI生成)")
     private String firstFrameVisual;
-
-    @JsonPropertyDescription("本镜头的对白说话人姓名（必须与出场人物名称一致），若无台词则为null")
-    private String dialogueSpeaker;
-
-    @JsonPropertyDescription("本镜头的角色台词对白文本，若无台词则为null")
-    private String dialogue;
-
-    @JsonPropertyDescription("旁白/内心独白文本，若无则为null")
-    private String voiceover;
 
     @JsonPropertyDescription("音效或环境音描述，例如: 大门撞击声，倒吸冷气声")
     private String soundEffect;

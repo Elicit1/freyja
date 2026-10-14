@@ -184,11 +184,8 @@ class ShotAiVisualPlanServiceTest {
                 .cameraMovement("PUSH_IN")
                 .cameraMovementLocked(true)
                 .duration(4.5)
-                .scriptContent("林远拔出残剑，剑锋微颤，冷冽寒芒倒映在双眸之中。")
+                .scriptContent("林远拔出残剑，剑锋微颤，冷冽寒芒倒映在双眸之中。林远：“宗门欠我的，今日一并奉还。”旁白：“十年隐忍，终于等到这刻。”")
                 .actionDescription("手腕转动拔剑，剑尖直指前方")
-                .dialogue("宗门欠我的，今日一并奉还。")
-                .dialogueSpeaker("林远")
-                .voiceover("十年隐忍，终于等到这刻。")
                 .soundEffect("残剑出鞘的清脆龙吟声，伴随山风呼啸")
                 .userInstruction("突出瞳孔内的剑光反光，眼神必须杀气逼人，浅景深虚化背景悬崖")
                 .generationMode("FIRST_LAST_FRAME")
@@ -212,6 +209,7 @@ class ShotAiVisualPlanServiceTest {
 
         String fakeAiResult = """
                 {
+                  "speechLines": [],
                   "prompt": "Slow cinematic push in on Lin Yuan drawing the ancient jade sword, cold frost light gleaming.",
                   "firstFramePrompt": "Cinematic close-up, Lin Yuan gripping the scabbard, eyes cold and resolute, tattered blue robe.",
                   "endFramePrompt": "The frost blade fully drawn, pointing forward with sharp killing intent in eyes.",
@@ -249,9 +247,9 @@ class ShotAiVisualPlanServiceTest {
 
         // 验证用户提示词上下文
         assertTrue(userText.contains("林远拔出残剑，剑锋微颤"));
-        assertTrue(userText.contains("- 对白说话人: 林远"));
-        assertTrue(userText.contains("- 台词对白: 宗门欠我的，今日一并奉还。"));
-        assertTrue(userText.contains("- 旁白内心独白: 十年隐忍，终于等到这刻。"));
+        assertTrue(userText.contains("统一剧本与声音契约"));
+        assertTrue(userText.contains("speechLines"));
+        assertFalse(userText.contains("历史兼容台词"));
         assertTrue(userText.contains("- 音效与环境声: 残剑出鞘的清脆龙吟声，伴随山风呼啸"));
         assertTrue(userText.contains("* 本镜情绪与微表情: 杀气毕露，嘴角泛起冷笑"));
         assertTrue(userText.contains("【创作者特别指令与补充要求】: 突出瞳孔内的剑光反光"));
@@ -281,6 +279,7 @@ class ShotAiVisualPlanServiceTest {
 
         String fakeAiResult = """
                 {
+                  "speechLines": [],
                   "prompt": "Lin Yuan walks down the path.",
                   "firstFramePrompt": "Lin Yuan starts walking.",
                   "endFramePrompt": "Lin Yuan reaches the gate.",
@@ -319,6 +318,7 @@ class ShotAiVisualPlanServiceTest {
         // 即使 AI 误返回了首尾帧
         String fakeAiResult = """
                 {
+                  "speechLines": [],
                   "prompt": "Camera tracks protagonist running through heavy rain, water splashing.",
                   "firstFramePrompt": "SHOULD_BE_NULLIFIED",
                   "endFramePrompt": "SHOULD_BE_NULLIFIED",
@@ -348,6 +348,7 @@ class ShotAiVisualPlanServiceTest {
         // 缺少 firstFramePrompt
         String fakeAiResult = """
                 {
+                  "speechLines": [],
                   "prompt": "Camera tracks protagonist running through heavy rain, water splashing.",
                   "firstFramePrompt": "",
                   "endFramePrompt": "End frame",
@@ -375,6 +376,7 @@ class ShotAiVisualPlanServiceTest {
         // 缺少 prompt 与 videoPrompt
         String fakeAiResult = """
                 {
+                  "speechLines": [],
                   "prompt": "",
                   "videoPrompt": "",
                   "negativePrompt": "jitter, distortion"
@@ -427,6 +429,7 @@ class ShotAiVisualPlanServiceTest {
 
         String fakeAiResult = """
                 {
+                  "speechLines": [],
                   "prompt": "Cinematic shot of protagonist looking into distant misty mountains, robes fluttering in gentle breeze.",
                   "firstFramePrompt": "A solitary traveler standing on a cliff edge overlooking endless misty mountains at dawn.",
                   "endFramePrompt": "The traveler slowly turns around as wind sweeps through the high peak.",

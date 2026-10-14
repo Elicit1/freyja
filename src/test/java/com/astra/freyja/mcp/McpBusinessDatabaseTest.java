@@ -344,10 +344,10 @@ class McpBusinessDatabaseTest {
         new JdbcTemplate(dataSource).update("UPDATE drama_shot SET director_plan_json=?,director_plan_mode=? WHERE id=80", shot.getDirectorPlanJson(), shot.getDirectorPlanMode());
         DramaShot before = shots.selectById(80L);
         var input = new McpRecordInputs.BatchUpdate("patch-request-01", ROOT, List.of(new McpRecordInputs.UpdateItem( "80", views.fingerprint(before),
-                Map.of("dialogue", "New dialogue", "characterRefs", List.of(Map.of("characterId", "50", "lookId", "60")), "propRefs", List.of(Map.of("propId", "70"))))));
+                Map.of("scriptContent", "New dialogue", "characterRefs", List.of(Map.of("characterId", "50", "lookId", "60")), "propRefs", List.of(Map.of("propId", "70"))))));
         Object result = call("batch_update_shots", caller, input);
         DramaShot after = shots.selectById(80L);
-        assertEquals("New dialogue", after.getDialogue()); assertEquals(before.getPrompt(), after.getPrompt());
+        assertEquals("New dialogue", after.getScriptContent()); assertEquals(before.getPrompt(), after.getPrompt());
         assertEquals(before.getVideoPrompt(), after.getVideoPrompt()); assertEquals(before.getDirectorPlanJson(), after.getDirectorPlanJson());
         assertEquals(before.getDirectorPlanMode(), after.getDirectorPlanMode()); assertEquals(before.getSeed(), after.getSeed());
         assertTrue(after.getCharacterRefsJson().contains("private action")); assertTrue(after.getPropRefsJson().contains("private prop"));
@@ -359,11 +359,11 @@ class McpBusinessDatabaseTest {
     @Test void staleFingerprintAndCreatorLocksRollbackTheWholeUpdate() {
         DramaShot a = shot(80L), b = shot(81L); b.setShotType("CLOSE_UP"); b.setShotTypeLocked(true); shots.updateById(b); b = shots.selectById(81L);
         var change = new McpRecordInputs.BatchUpdate("locked-update-01", ROOT, List.of(
-                new McpRecordInputs.UpdateItem( "80", views.fingerprint(a), Map.of("dialogue", "Temporary")),
+                new McpRecordInputs.UpdateItem( "80", views.fingerprint(a), Map.of("scriptContent", "Temporary")),
                 new McpRecordInputs.UpdateItem( "81", views.fingerprint(b), Map.of("shotType", "FULL_SHOT"))));
         assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_shots", caller, change)).getCode());
-        assertNull(shots.selectById(80L).getDialogue()); assertEquals(0, count("mcp_business_operation"));
-        var stale = new McpRecordInputs.BatchUpdate("stale-update-01", ROOT, List.of(new McpRecordInputs.UpdateItem( "80", "0".repeat(64), Map.of("dialogue", "Stale"))));
+        assertNull(shots.selectById(80L).getScriptContent()); assertEquals(0, count("mcp_business_operation"));
+        var stale = new McpRecordInputs.BatchUpdate("stale-update-01", ROOT, List.of(new McpRecordInputs.UpdateItem( "80", "0".repeat(64), Map.of("scriptContent", "Stale"))));
         assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_shots", caller, stale)).getCode());
     }
 
@@ -529,10 +529,10 @@ class McpBusinessDatabaseTest {
     @Test void invalidDirectorPlanRollsBackShotAndEarlierBatchItems() {
         DramaShot before = shot(80L); DramaShot earlier = shot(81L);
         Map<String, Object> invalid = new LinkedHashMap<>(plan(5)); invalid.put("cameraBeats", List.of(Map.of("startSec", 1, "endSec", 5, "movement", "STATIC", "speed", "NONE")));
-        var input = new McpRecordInputs.BatchUpdate("invalid-plan-001", ROOT, List.of(new McpRecordInputs.UpdateItem("81", views.fingerprint(earlier), Map.of("dialogue", "Temporary")),
+        var input = new McpRecordInputs.BatchUpdate("invalid-plan-001", ROOT, List.of(new McpRecordInputs.UpdateItem("81", views.fingerprint(earlier), Map.of("scriptContent", "Temporary")),
                 new McpRecordInputs.UpdateItem( "80", views.fingerprint(before), Map.of("prompt", "Temporary", "directorPlan", invalid))));
         assertEquals(400, assertThrows(BizException.class, () -> call("batch_update_shots", caller, input)).getCode());
-        assertNull(shots.selectById(81L).getDialogue()); assertNull(shots.selectById(80L).getPrompt()); assertEquals(0, count("mcp_business_operation"));
+        assertNull(shots.selectById(81L).getScriptContent()); assertNull(shots.selectById(80L).getPrompt()); assertEquals(0, count("mcp_business_operation"));
     }
 
     @Test void referenceMediaCannotCrossProjectsAndInternalSkillProvenanceCannotBeSpoofed() {

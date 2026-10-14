@@ -20,10 +20,10 @@ public class ShotRefAudioDTO {
     /** 唯一标识 (前端生成或自增) */
     private String id;
 
-    /** 来源类型: TTS(人物TTS配音)/UPLOAD(自行上传) */
+    /** 来源类型: CHARACTER(人物母音)/TTS(历史来源标记)/UPLOAD(自行上传) */
     private String sourceType;
 
-    /** 关联角色 ID (当 sourceType=TTS 时) */
+    /** 明确关联的说话人角色 ID；CHARACTER/TTS 来源必填 */
     private Long characterId;
 
     /** 说话人名称 */
@@ -32,7 +32,7 @@ public class ShotRefAudioDTO {
     /** 音频 URL (MinIO URL) */
     private String audioUrl;
 
-    /** 音频时长 (秒, 3.0 ~ 8.0) */
+    /** 探测的音频时长 (秒, 2~15)；未知为 null，渲染前验证实际媒体 */
     private BigDecimal duration;
 
     /** 音频名称/文件名/标题 */

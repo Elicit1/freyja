@@ -352,7 +352,7 @@ class ShotPromptDeriveH3Test {
                 .build();
 
         ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder()
-                .dialogue("这是最后的警告。")
+                .scriptContent("这是最后的警告。")
                 .build();
 
         String validPrompt = """
@@ -379,15 +379,14 @@ class ShotPromptDeriveH3Test {
                 N/A.
                 """;
 
-        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder().speechLines(java.util.List.of())
                 .prompt(validPrompt)
                 .videoPrompt(validPrompt)
                 .build();
 
         // Should not throw exceptions
-        assertDoesNotThrow(() -> service.validateH3Ref2VaOutput(vo, manifest, dto));
         ShotPromptValidationResult result = service.validateAndNormalize(
-                vo, "REFERENCE_MODE", manifest, dto.getDialogue(), true, false);
+                vo, "REFERENCE_MODE", manifest, dto.getScriptContent(), true, false);
         assertFalse(result.hasErrors());
         assertTrue(result.getWarnings().stream().anyMatch(warning -> warning.contains("中文")));
         assertEquals(validPrompt, result.getResult().getPrompt());
@@ -564,7 +563,7 @@ class ShotPromptDeriveH3Test {
     @Test
     @DisplayName("首尾帧普通镜头描述不能再以 H3 格式通过校验")
     void testFl2VaRejectsPlainMotionPrompt() {
-        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder().speechLines(java.util.List.of())
                 .firstFramePrompt("The subject stands at the doorway.")
                 .endFramePrompt("The subject stands inside the room.")
                 .videoPrompt("The camera follows the subject through the doorway.")
@@ -586,7 +585,7 @@ class ShotPromptDeriveH3Test {
                 overall_soundscape: Footsteps on the floor.
                 non_diegetic_music: N/A
                 """;
-        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder().speechLines(java.util.List.of())
                 .firstFramePrompt("The subject stands at the doorway.")
                 .endFramePrompt("The subject stands inside the room.")
                 .videoPrompt(h3Prompt)
@@ -619,7 +618,7 @@ class ShotPromptDeriveH3Test {
             String video = field == 2
                     ? englishVideoPrompt.replace("The subject walks through the doorway.", "人物穿过门口。")
                     : englishVideoPrompt;
-            ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+            ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder().speechLines(java.util.List.of())
                     .firstFramePrompt(first).endFramePrompt(end).videoPrompt(video).build();
 
             ShotPromptValidationResult result = service.validateAndNormalize(
@@ -645,7 +644,7 @@ class ShotPromptDeriveH3Test {
                 overall_soundscape: N/A
                 non_diegetic_music: N/A
                 """;
-        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder()
+        ShotPromptDeriveVO vo = ShotPromptDeriveVO.builder().speechLines(java.util.List.of())
                 .firstFramePrompt("The subject stands at the doorway.")
                 .endFramePrompt("The subject stands inside the room.")
                 .videoPrompt(h3Prompt)
@@ -685,7 +684,7 @@ class ShotPromptDeriveH3Test {
                 non_diegetic_music: Intense dramatic orchestral violin strings.
                 """;
 
-        ShotPromptDeriveVO fl2vaVo = ShotPromptDeriveVO.builder()
+        ShotPromptDeriveVO fl2vaVo = ShotPromptDeriveVO.builder().speechLines(java.util.List.of())
                 .firstFramePrompt("start frame")
                 .endFramePrompt("end frame")
                 .prompt(fl2vaPromptWithMusic)
@@ -718,7 +717,7 @@ class ShotPromptDeriveH3Test {
                 Melancholic piano chords slowly building.
                 """;
 
-        ShotPromptDeriveVO refVo = ShotPromptDeriveVO.builder()
+        ShotPromptDeriveVO refVo = ShotPromptDeriveVO.builder().speechLines(java.util.List.of())
                 .prompt(ref2vaPromptWithMusic)
                 .videoPrompt(ref2vaPromptWithMusic)
                 .nonDiegeticMusic("Melancholic piano chords slowly building")

@@ -62,8 +62,8 @@ public class ProductionPlans {
         ShotProductionPlan p = current(shot.getId());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("shotId", shot.getId()); out.put("shotGroupId", shot.getShotGroupId()); out.put("shotNo", shot.getShotNo()); out.put("shotName", shot.getShotName());
-        out.put("scriptContent", shot.getScriptContent()); out.put("actionDescription", shot.getActionDescription()); out.put("dialogue", shot.getDialogue());
-        out.put("voiceover", shot.getVoiceover()); out.put("duration", shot.getDuration()); out.put("characterRefs", readMaps(shot.getCharacterRefsJson()));
+        out.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(shot)); out.put("actionDescription", shot.getActionDescription());
+        out.put("duration", shot.getDuration()); out.put("characterRefs", readMaps(shot.getCharacterRefsJson()));
         out.put("propRefs", readMaps(shot.getPropRefsJson())); out.put("resSceneId", shot.getResSceneId()); out.put("resKeyframeId", shot.getResKeyframeId());
         out.put("generationMode", shot.getGenerationMode()); out.put("expectedRevision", p == null ? 0 : p.getRevision());
         out.put("expectedFingerprint", fingerprint(shot, p == null ? null : read(p))); out.put("plan", p == null ? null : read(p));
@@ -76,12 +76,13 @@ public class ProductionPlans {
 
     public String fingerprint(DramaShot s, Plan p) {
         Map<String, Object> basis = new TreeMap<>();
-        for (String key : List.of("id", "dramaId", "episodeId", "sceneId", "shotGroupId", "shotNo", "shotName", "scriptContent", "actionDescription", "dialogue", "dialogueSpeaker", "voiceover", "soundEffect", "duration",
+        for (String key : List.of("id", "dramaId", "episodeId", "sceneId", "shotGroupId", "shotNo", "shotName", "scriptContent", "actionDescription", "soundEffect", "duration",
                 "shotTypeLocked", "cameraMovementLocked", "resSceneId", "resKeyframeId", "customScenePrompt", "characterRefsJson", "propRefsJson", "generationMode", "refImagesJson", "refAudiosJson", "stylePreset",
                 "prompt", "videoPrompt", "firstFramePrompt", "endFramePrompt", "negativePrompt", "previewImageUrl", "endFrameImageUrl", "firstFrameSourceType", "firstFrameSourceShotId")) {
             try { basis.put(key, new org.springframework.beans.BeanWrapperImpl(s).getPropertyValue(key)); }
             catch (RuntimeException e) { throw new IllegalStateException(key, e); }
         }
+        basis.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(s));
         if (Boolean.TRUE.equals(s.getShotTypeLocked())) basis.put("shotType", s.getShotType());
         if (Boolean.TRUE.equals(s.getCameraMovementLocked())) basis.put("cameraMovement", s.getCameraMovement());
         basis.put("directorPlanMode", s.getDirectorPlanMode());
@@ -305,7 +306,7 @@ public class ProductionPlans {
         // Resource image updates are absent here; every manually editable shot input remains protected.
         Map<String, Object> state = new TreeMap<>();
         var bean = new org.springframework.beans.BeanWrapperImpl(s);
-        for (String key : List.of("scriptContent", "actionDescription", "dialogue", "dialogueSpeaker", "voiceover", "soundEffect", "duration", "generationMode", "resSceneId", "resKeyframeId", "customScenePrompt",
+        for (String key : List.of("scriptContent", "actionDescription", "soundEffect", "duration", "generationMode", "resSceneId", "resKeyframeId", "customScenePrompt",
                 "characterRefsJson", "propRefsJson", "refImagesJson", "refAudiosJson", "stylePreset", "prompt", "videoPrompt", "firstFramePrompt", "endFramePrompt", "negativePrompt", "previewImageUrl", "endFrameImageUrl", "shotTypeLocked", "cameraMovementLocked")) state.put(key, bean.getPropertyValue(key));
         return digest(json.write(state));
     }

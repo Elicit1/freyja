@@ -297,6 +297,7 @@ public class McpBusinessRecords {
             binding.readerForUpdating(dto).readValue(binding.writeValueAsString(data));
             if (dto instanceof DramaShotDTO shot) {
                 if (current instanceof DramaShot existing) {
+                    if (!data.containsKey("scriptContent")) shot.setScriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(existing));
                     preserveReferenceDetails(shot, existing, data);
                     cameraLock(existing.getShotTypeLocked(), existing.getShotType(), shot.getShotTypeLocked(), shot.getShotType());
                     cameraLock(existing.getCameraMovementLocked(), existing.getCameraMovement(), shot.getCameraMovementLocked(), shot.getCameraMovement());
@@ -355,7 +356,7 @@ public class McpBusinessRecords {
     }
     private void updateManualMedia(DramaShotDTO shot, Map<String, Object> data) {
         UpdateWrapper<DramaShot> update = new UpdateWrapper<DramaShot>().eq("id", shot.getId());
-        Map.of("previewImageUrl", "preview_image_url", "endFrameImageUrl", "end_frame_image_url", "audioUrl", "audio_url").forEach((field, column) -> {
+        Map.of("previewImageUrl", "preview_image_url", "endFrameImageUrl", "end_frame_image_url").forEach((field, column) -> {
             if (data.containsKey(field) && "".equals(data.get(field))) update.set(column, null);
         });
         if (data.containsKey("previewImageUrl")) update.set("first_frame_source_type", "".equals(data.get("previewImageUrl")) ? null : "MANUAL_UPLOAD")

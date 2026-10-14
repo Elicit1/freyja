@@ -52,14 +52,13 @@ public class AiAudioApiServiceImpl implements AiAudioApiService {
     private final MinioProperties minioProperties;
     private final CryptoUtil cryptoUtil;
     private final ObjectMapper objectMapper;
+    private final com.astra.freyja.service.VideoFrameExtractService videoFrameExtractService;
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .version(HttpClient.Version.HTTP_1_1)
             .connectTimeout(Duration.ofSeconds(30))
             .build();
 
-    public static final String DEFAULT_VOICE_DESIGN_MODEL = "mimo-v2.5-tts-voicedesign";
-    public static final String DEFAULT_VOICE_CLONE_MODEL = "mimo-v2.5-tts-voiceclone";
 
     @Override
     public AudioArchiveResult designVoice(Long providerId, String modelCode, String voiceDesc, String sampleText, String archivePath) {
@@ -67,7 +66,7 @@ public class AiAudioApiServiceImpl implements AiAudioApiService {
             throw new BizException(400, "自然语言声音设计提示词 (voiceDesc) 不能为空");
         }
         String effectiveSampleText = StringUtils.defaultIfBlank(sampleText, "你好，我是为你全新定制的专属声音，很高兴与你相遇。");
-        String effectiveModel = StringUtils.defaultIfBlank(modelCode, DEFAULT_VOICE_DESIGN_MODEL);
+        String effectiveModel = StringUtils.trimToNull(modelCode);
 
         AiProvider provider = resolveProvider(providerId, effectiveModel);
         String baseUrl = provider.getBaseUrl();
@@ -92,58 +91,11 @@ public class AiAudioApiServiceImpl implements AiAudioApiService {
         audioBytes = prependSilenceIfWav(audioBytes, 0.25);
 
         // 计算音频时长
-        Double duration = calculateAudioDuration(audioBytes, effectiveSampleText);
+        Double duration = calculateAudioDuration(audioBytes);
 
         // 归档 MinIO
         String finalUrl = uploadToMinio(archivePath, audioBytes, "audio/wav");
         log.info("[AiAudioApi] 声音设计样音归档完成: url={}, duration={}s, size={} bytes", finalUrl, duration, audioBytes.length);
-
-        return new AudioArchiveResult(finalUrl, duration, audioBytes.length);
-    }
-
-    @Override
-    public AudioArchiveResult cloneVoice(Long providerId, String modelCode, String referenceAudioUrl, String targetDialogue, String emotion, String archivePath) {
-        if (StringUtils.isBlank(referenceAudioUrl)) {
-            throw new BizException(400, "参考基准音源 (referenceAudioUrl) 不能为空，请先在角色管理中设计或上传声音母音");
-        }
-        if (StringUtils.isBlank(targetDialogue)) {
-            throw new BizException(400, "目标配音台词文本 (targetDialogue) 不能为空");
-        }
-        String effectiveModel = StringUtils.defaultIfBlank(modelCode, DEFAULT_VOICE_CLONE_MODEL);
-
-        AiProvider provider = resolveProvider(providerId, effectiveModel);
-        String baseUrl = provider.getBaseUrl();
-        String apiKey = cryptoUtil.decrypt(provider.getApiKey());
-
-        // 准备参考音频的 Base64 Data URI
-        String referenceAudioDataUri = prepareReferenceAudioDataUri(referenceAudioUrl);
-
-        // 构造请求
-        String instruction = StringUtils.isNotBlank(emotion) ? emotion.trim() : "自然流畅、富有情感与戏剧表现力地进行台词配音。";
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("model", effectiveModel);
-        payload.put("messages", List.of(
-                Map.of("role", "user", "content", instruction),
-                Map.of("role", "assistant", "content", targetDialogue.trim())
-        ));
-        payload.put("audio", Map.of(
-                "format", "mp3",
-                "voice", referenceAudioDataUri
-        ));
-        payload.put("stream", false);
-
-        String requestUrl = buildEndpointUrl(baseUrl);
-        log.info("[AiAudioApi] 正在调用声音克隆模型: url={}, model={}, dialogueLen={}", requestUrl, effectiveModel, targetDialogue.length());
-
-        byte[] audioBytes = executeAudioRequest(requestUrl, apiKey, payload, provider.getTimeout());
-        audioBytes = prependSilenceIfWav(audioBytes, 0.25);
-
-        // 计算音频时长
-        Double duration = calculateAudioDuration(audioBytes, targetDialogue);
-
-        // 归档 MinIO
-        String finalUrl = uploadToMinio(archivePath, audioBytes, "audio/mpeg");
-        log.info("[AiAudioApi] 声音克隆台词归档完成: url={}, duration={}s, size={} bytes", finalUrl, duration, audioBytes.length);
 
         return new AudioArchiveResult(finalUrl, duration, audioBytes.length);
     }
@@ -221,74 +173,6 @@ public class AiAudioApiServiceImpl implements AiAudioApiService {
         }
     }
 
-    private String prepareReferenceAudioDataUri(String referenceAudioUrl) {
-        if (StringUtils.isBlank(referenceAudioUrl)) {
-            return "";
-        }
-        String trimmed = referenceAudioUrl.trim();
-        if (trimmed.startsWith("data:audio")) {
-            return trimmed;
-        }
-
-        byte[] bytes = null;
-        String bucket = minioProperties.getBucketName();
-
-        // 1. 优先尝试从本地 MinIO 存储直接读取对象
-        if (trimmed.contains("/" + bucket + "/")) {
-            try {
-                int bucketIndex = trimmed.indexOf("/" + bucket + "/");
-                String objectName = trimmed.substring(bucketIndex + bucket.length() + 2);
-                if (objectName.contains("?")) {
-                    objectName = objectName.substring(0, objectName.indexOf("?"));
-                }
-                log.info("[AiAudioApi] 正在从本地 MinIO 提取参考样音: bucket={}, objectName={}", bucket, objectName);
-                try (InputStream stream = minioClient.getObject(
-                        GetObjectArgs.builder()
-                                .bucket(bucket)
-                                .object(objectName)
-                                .build())) {
-                    bytes = stream.readAllBytes();
-                }
-            } catch (Exception e) {
-                log.warn("[AiAudioApi] 从 MinIO 提取样音失败，尝试 HTTP 下载: err={}", e.getMessage());
-            }
-        }
-
-        // 2. HTTP 下载兜底
-        if (bytes == null && (trimmed.startsWith("http://") || trimmed.startsWith("https://"))) {
-            try {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(trimmed))
-                        .timeout(Duration.ofSeconds(30))
-                        .GET()
-                        .build();
-                HttpResponse<byte[]> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofByteArray());
-                if (response.statusCode() == 200) {
-                    bytes = response.body();
-                }
-            } catch (Exception e) {
-                log.warn("[AiAudioApi] HTTP 下载参考样音失败: url={}, err={}", trimmed, e.getMessage());
-            }
-        }
-
-        if (bytes != null && bytes.length > 0) {
-            String mime = "audio/wav";
-            String lower = trimmed.toLowerCase();
-            if (lower.contains(".mp3")) {
-                mime = "audio/mp3";
-            } else if (lower.contains(".ogg")) {
-                mime = "audio/ogg";
-            } else if (lower.contains(".flac")) {
-                mime = "audio/flac";
-            }
-            String b64 = Base64.getEncoder().encodeToString(bytes);
-            log.info("[AiAudioApi] 成功转换参考样音为 Base64 Data URI (size={} KB)", bytes.length / 1024);
-            return "data:" + mime + ";base64," + b64;
-        }
-
-        return trimmed;
-    }
-
     private String uploadToMinio(String archivePath, byte[] audioBytes, String contentType) {
         String bucket = minioProperties.getBucketName();
         ensureBucketExists(bucket);
@@ -313,122 +197,26 @@ public class AiAudioApiServiceImpl implements AiAudioApiService {
         return String.format("%s/%s/%s", cleanBase, bucket, cleanObject);
     }
 
-    private Double calculateAudioDuration(byte[] audioBytes, String fallbackText) {
-        if (audioBytes == null || audioBytes.length == 0) {
-            return 0.0;
-        }
-        try {
-            // 尝试使用标准 Java AudioSystem 读取 (支持 WAV 等)
-            try (AudioInputStream ais = AudioSystem.getAudioInputStream(new ByteArrayInputStream(audioBytes))) {
-                AudioFormat format = ais.getFormat();
-                long frames = ais.getFrameLength();
-                if (frames > 0 && format.getFrameRate() > 0) {
-                    double sec = (double) frames / format.getFrameRate();
-                    return BigDecimal.valueOf(sec).setScale(2, RoundingMode.HALF_UP).doubleValue();
-                }
+    private Double calculateAudioDuration(byte[] audioBytes) {
+        if (audioBytes == null || audioBytes.length == 0) return null;
+        try (AudioInputStream ais = AudioSystem.getAudioInputStream(new ByteArrayInputStream(audioBytes))) {
+            if (ais.getFrameLength() > 0 && ais.getFormat().getFrameRate() > 0) {
+                return BigDecimal.valueOf(ais.getFrameLength() / (double) ais.getFormat().getFrameRate()).setScale(2, RoundingMode.HALF_UP).doubleValue();
             }
-        } catch (Exception ignored) {
-            // 对于 MP3 等非原生 SPI 格式，使用字节或文本长度估算
-        }
-
-        // WAV 头部直接计算兜底
-        if (audioBytes.length > 44 && audioBytes[0] == 'R' && audioBytes[1] == 'I' && audioBytes[2] == 'F' && audioBytes[3] == 'F') {
-            try {
-                int channels = ((audioBytes[23] & 0xFF) << 8) | (audioBytes[22] & 0xFF);
-                int sampleRate = ((audioBytes[27] & 0xFF) << 24) | ((audioBytes[26] & 0xFF) << 16) | ((audioBytes[25] & 0xFF) << 8) | (audioBytes[24] & 0xFF);
-                int bitsPerSample = ((audioBytes[35] & 0xFF) << 8) | (audioBytes[34] & 0xFF);
-                if (channels > 0 && sampleRate > 0 && bitsPerSample > 0) {
-                    int bytesPerSec = sampleRate * channels * (bitsPerSample / 8);
-                    double sec = (double) (audioBytes.length - 44) / bytesPerSec;
-                    return BigDecimal.valueOf(Math.max(0.5, sec)).setScale(2, RoundingMode.HALF_UP).doubleValue();
-                }
-            } catch (Exception ignored) {}
-        }
-
-        // 文本语速估算 (中文正常语速约 3.8 ~ 4.2 字/秒 + 停顿)
-        if (StringUtils.isNotBlank(fallbackText)) {
-            double estimatedSec = Math.max(1.0, (double) fallbackText.length() / 4.0 + 0.5);
-            return BigDecimal.valueOf(estimatedSec).setScale(2, RoundingMode.HALF_UP).doubleValue();
-        }
-
-        return 2.5;
+        } catch (Exception ignored) { }
+        var metadata = videoFrameExtractService.probeVideoInfo(audioBytes, "audio");
+        return metadata != null && metadata.getDuration() != null ? metadata.getDuration().doubleValue() : null;
     }
 
     private AiProvider resolveProvider(Long providerId, String modelCode) {
-        AiProvider specifiedProvider = null;
-        if (providerId != null && providerId > 0) {
-            specifiedProvider = providerMapper.selectById(providerId);
-            if (specifiedProvider != null && Integer.valueOf(1).equals(specifiedProvider.getStatus())) {
-                // 若指定了模型，校验该提供商下是否存在该模型或支持语音模型
-                if (StringUtils.isNotBlank(modelCode)) {
-                    Long modelCount = modelMapper.selectCount(new LambdaQueryWrapper<AiModel>()
-                            .eq(AiModel::getProviderId, specifiedProvider.getId())
-                            .eq(AiModel::getModelCode, modelCode.trim())
-                            .eq(AiModel::getStatus, 1));
-                    if (modelCount != null && modelCount > 0) {
-                        return specifiedProvider;
-                    }
-                    // 检查该提供商是否挂载了任何语音/TTS模型
-                    Long ttsCount = modelMapper.selectCount(new LambdaQueryWrapper<AiModel>()
-                            .eq(AiModel::getProviderId, specifiedProvider.getId())
-                            .in(AiModel::getModelType, List.of("TTS", "AUDIO", "VOICE"))
-                            .eq(AiModel::getStatus, 1));
-                    if (ttsCount != null && ttsCount > 0) {
-                        return specifiedProvider;
-                    }
-                    // 若传入的提供商不具备语音模型（如误选了本地生图网关），则发出告警并自动通过模型编码重定向
-                    log.warn("[AiAudioApi] 指定提供商 (id={}, name={}) 未配置语音模型 {}，自动重定向到所属语音提供商",
-                            specifiedProvider.getId(), specifiedProvider.getProviderName(), modelCode);
-                } else {
-                    return specifiedProvider;
-                }
-            }
-        }
-
-        // 1. 根据 modelCode 查找所属真实提供商 (如 mimo-v2.5-tts-* -> Xiaomi)
-        if (StringUtils.isNotBlank(modelCode)) {
-            AiModel model = modelMapper.selectOne(new LambdaQueryWrapper<AiModel>()
-                    .eq(AiModel::getModelCode, modelCode.trim())
-                    .eq(AiModel::getStatus, 1)
-                    .orderByDesc(AiModel::getId)
-                    .last("LIMIT 1"));
-            if (model != null && model.getProviderId() != null) {
-                AiProvider p = providerMapper.selectById(model.getProviderId());
-                if (p != null && p.getStatus() != null && p.getStatus() == 1) {
-                    return p;
-                }
-            }
-        }
-
-        // 2. 查找任意配置了 TTS 类型模型的激活提供商
-        AiModel anyTtsModel = modelMapper.selectOne(new LambdaQueryWrapper<AiModel>()
-                .in(AiModel::getModelType, List.of("TTS", "AUDIO", "VOICE"))
-                .eq(AiModel::getStatus, 1)
-                .orderByDesc(AiModel::getId)
-                .last("LIMIT 1"));
-        if (anyTtsModel != null && anyTtsModel.getProviderId() != null) {
-            AiProvider p = providerMapper.selectById(anyTtsModel.getProviderId());
-            if (p != null && p.getStatus() != null && p.getStatus() == 1) {
-                return p;
-            }
-        }
-
-        // 3. 兜底已启用的 OPENAI 协议提供商
-        AiProvider fallback = providerMapper.selectOne(new LambdaQueryWrapper<AiProvider>()
-                .eq(AiProvider::getStatus, 1)
-                .eq(AiProvider::getProviderType, "OPENAI")
-                .orderByAsc(AiProvider::getId)
-                .last("LIMIT 1"));
-
-        if (fallback != null) {
-            return fallback;
-        }
-
-        if (specifiedProvider != null) {
-            return specifiedProvider;
-        }
-
-        throw new BizException(400, "系统未配置可用的语音 AI 提供商，请在系统设置中添加并启用提供商");
+        if (providerId == null || StringUtils.isBlank(modelCode)) throw new BizException(400, "请明确选择已配置的语音提供商和模型");
+        AiProvider provider = providerMapper.selectById(providerId);
+        if (provider == null || !Integer.valueOf(1).equals(provider.getStatus())) throw new BizException(400, "所选语音提供商不存在或已停用");
+        AiModel model = modelMapper.selectOne(new LambdaQueryWrapper<AiModel>()
+                .eq(AiModel::getProviderId, providerId).eq(AiModel::getModelCode, modelCode.trim())
+                .in(AiModel::getModelType, List.of("TTS", "AUDIO", "VOICE")).eq(AiModel::getStatus, 1).last("LIMIT 1"));
+        if (model == null) throw new BizException(400, "所选提供商未配置该语音模型，请重新选择");
+        return provider;
     }
 
     private String buildEndpointUrl(String baseUrl) {

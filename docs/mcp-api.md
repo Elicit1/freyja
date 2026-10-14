@@ -178,7 +178,7 @@ tool_timeout_sec = 300
   "requestId":"edit-20261013-001",
   "dramaId":"2032095628944588801",
   "items":[
-    {"recordId":"2032095628944588802","expectedFingerprint":"<读取返回的64位十六进制指纹>","data":{"dialogue":"终于到了。"}}
+    {"recordId":"2032095628944588802","expectedFingerprint":"<读取返回的64位十六进制指纹>","data":{"scriptContent":"旅客停步，说：“终于到了。”"}}
   ]
 }
 ```
@@ -217,7 +217,7 @@ tool_timeout_sec = 300
 - 多模态参考模式：填写 `generationMode=REFERENCE_MODE`、工作台主卡片 `prompt` 和有序媒体列表。
 - 首尾帧模式：填写 `generationMode=FIRST_LAST_FRAME`、视频卡片 `videoPrompt`；图片提示词 `firstFramePrompt / endFramePrompt` 和已有图片 `previewImageUrl / endFrameImageUrl` 按需提供。负向词与场景补充词按需填写。
 - 人物引用：`characterId,lookId,designDesc,actionPrompt,emotionPrompt,positionTag`；道具引用：`propId,propName,propType,propPrompt`。
-- `refImages` 最多 9 项，每项需要 `sourceType,imageUrl`；非 `UPLOAD` 来源还需要 `sourceId`，造型图 `CHARACTER_LOOK`（兼容 `CHARACTER_REFERENCE`）还需要 `characterId`。人物图 `sourceId` 是人物 ID，造型图则是造型 ID；服务端将造型来源统一保存为 `CHARACTER_REFERENCE` 并补齐 `lookId`。不能用 `url/type/assetId` 代替这些字段。`refAudios` 最多 3 项，每项需要 `sourceType,audioUrl`；`TTS` 还需要 `characterId`，只引用已有声音，不执行 TTS。外键仍使用字符串或创建批次的 `clientKey` 引用，资产来源必须在授权范围，造型与人物必须匹配。
+- `refImages` 最多 9 项，每项需要 `sourceType,imageUrl`；非 `UPLOAD` 来源还需要 `sourceId`，造型图 `CHARACTER_LOOK`（兼容 `CHARACTER_REFERENCE`）还需要 `characterId`。人物图 `sourceId` 是人物 ID，造型图则是造型 ID；服务端将造型来源统一保存为 `CHARACTER_REFERENCE` 并补齐 `lookId`。不能用 `url/type/assetId` 代替这些字段。`refAudios` 最多 3 项，每项需要 `sourceType,audioUrl`；`CHARACTER` / `TTS` 还需要 `characterId`，只引用已有声音，不执行 TTS。外键仍使用字符串或创建批次的 `clientKey` 引用，资产来源必须在授权范围，造型与人物必须匹配。
 - 图像/音频数组顺序就是 `<Picture N> / <Audio N>` 顺序，不能提交空 URL。槽位 `id` 可省略，服务端生成；提交时须在数组中唯一。人物图通过 `characterId/lookId` 与主体弱绑定，`usageRole=NON_SUBJECT` 可关联画外人物，不强制加入出镜人物列表。用途由外部 Agent 明确指定，服务端不解析文字猜测绑定。重排时应同时更新最终 Prompt。
 - 音频真实时长 `duration` 可选；提交时必须为 2–15 秒，已知时长总和不得超过 15 秒。`usageMode` 按需明确音色、对白、音乐或音效用途。
 - `generationMode=FIRST_LAST_FRAME/REFERENCE_MODE`；`seed` 使用 1 到 9007199254740991 的整数字符串。已有首帧、尾帧和音频 URL 可以保存；视频版本仍使用专用选择工具。

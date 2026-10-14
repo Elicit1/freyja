@@ -27,9 +27,6 @@ public class DramaShotVO {
     private Long seed;
     private String scriptContent;
     private String actionDescription;
-    private String dialogue;
-    private String dialogueSpeaker;
-    private String voiceover;
     private String soundEffect;
 
     /** 关联环境场景信息 */
@@ -70,6 +67,10 @@ public class DramaShotVO {
     private String endFrameImageUrl;
     private List<ShotRefImageDTO> refImages;
     private List<ShotRefAudioDTO> refAudios;
+    /** Includes a persisted empty selection; opening a dialog must not restore defaults. */
+    private Boolean refAudiosConfigured;
+    /** Legacy speech has been projected into scriptContent for creator review. */
+    private Boolean legacyScriptPending;
 
     /** 产物媒体 */
     private String previewImageUrl;
@@ -80,7 +81,6 @@ public class DramaShotVO {
     private String videoUrl;
     private Long currentVideoTakeId;
     private Integer videoTakeCount;
-    private String audioUrl;
     private String lastFrameUrl;
     private String lastFrameSourceVideoUrl;
     private Long lastFrameSourceTakeId;

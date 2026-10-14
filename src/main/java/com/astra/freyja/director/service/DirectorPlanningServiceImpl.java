@@ -266,14 +266,7 @@ public class DirectorPlanningServiceImpl implements DirectorPlanningService {
         if (StringUtils.isNotBlank(dto.getActionDescription())) {
             sb.append("【画面核心动作简述】: ").append(dto.getActionDescription()).append("\n");
         }
-        if (StringUtils.isNotBlank(dto.getDialogueSpeaker())) {
-            sb.append("【台词说话人】: ").append(dto.getDialogueSpeaker()).append("\n");
-        }
-        if (StringUtils.isNotBlank(dto.getDialogue())) {
-            sb.append("【对白台词】: ").append(dto.getDialogue()).append("\n");
-        }
         if (StringUtils.isNotBlank(dto.getShotName())) sb.append("【镜头标识】: ").append(dto.getShotName()).append("\n");
-        if (StringUtils.isNotBlank(dto.getVoiceover())) sb.append("【旁白 / 独白】: ").append(dto.getVoiceover()).append("\n");
         if (StringUtils.isNotBlank(dto.getSoundEffect())) sb.append("【音效】: ").append(dto.getSoundEffect()).append("\n");
         if (StringUtils.isNotBlank(dto.getStylePreset())) {
             sb.append("【短剧画风预设】: ").append(dto.getStylePreset()).append("\n");

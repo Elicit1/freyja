@@ -12,8 +12,7 @@ export function directorPlanInput(shot: Partial<DramaShot> | DirectorPlanInput):
     shotTypeLocked: sizeLocked, shotType: sizeLocked ? text(shot.shotType) : null,
     cameraMovementLocked: movementLocked, cameraMovement: movementLocked ? text(shot.cameraMovement) : null,
     scriptContent: text(shot.scriptContent), actionDescription: text(shot.actionDescription),
-    dialogue: text(shot.dialogue), dialogueSpeaker: text(shot.dialogueSpeaker),
-    voiceover: text(shot.voiceover), soundEffect: text(shot.soundEffect)
+    soundEffect: text(shot.soundEffect)
   }
 }
 

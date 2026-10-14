@@ -222,7 +222,7 @@
                 :type="(aud.duration || 0) >= 2 && (aud.duration || 0) <= 15 ? 'success' : 'danger'"
                 class="!text-[9px] !px-1 font-mono"
               >
-                {{ (aud.duration || 0).toFixed(1) }}s
+                {{ aud.duration === undefined ? '待检测' : `${aud.duration.toFixed(1)}s` }}
               </el-tag>
             </div>
 
@@ -467,7 +467,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { probeReferenceAudioDuration } from '@/utils/reference-audio'
 import { ElMessage } from 'element-plus'
 import type { ShotRefImage, ShotRefAudio } from '@/types/drama'
 import { KEY_IMAGE_ROLE_OPTIONS, keyImageRoleLabel, normalizeKeyImageRole } from '@/constants/keyImageRoles'
@@ -516,8 +517,10 @@ const totalAudioDuration = computed(() => {
 
 const validationAlerts = computed(() => {
   const alerts: string[] = []
+  if (props.refAudios.length > maxAudios) alerts.push(`参考音频超过 ${maxAudios} 段，请明确移除多余音频。`)
+  if (props.refAudios.some(a => a.duration === undefined)) alerts.push('部分音频时长待检测，当前总长仅包含已检测素材；服务端会在渲染前校验实际时长。')
   if (totalAudioDuration.value > maxTotalAudioDuration) {
-    alerts.push(`参考音频总时长 (${totalAudioDuration.value.toFixed(1)}s) 已超过 15 秒上限，渲染时可能被模型截断。`)
+    alerts.push(`参考音频总时长 (${totalAudioDuration.value.toFixed(1)}s) 已超过 15 秒上限，请调整选择后渲染。`)
   }
   if (props.refAudios.length > 0 && props.refImages.length === 0) {
     alerts.push('注意：已配置参考音频，MiniMax H3 规范要求必须至少配置 1 张参考图。')
@@ -636,24 +639,32 @@ function createRefAudio(cand: CandidateAudioItem): ShotRefAudio {
     characterId: cand.characterId,
     characterName: cand.characterName,
     text: cand.text,
-    duration: cand.duration || 3.5,
+    duration: cand.duration,
     usageMode: cand.usageMode || 'VOICE_TIMBRE',
     language: cand.language || 'zh'
   }
 }
 
-function probeAudioDuration(audio: ShotRefAudio) {
-  const probe = new Audio(audio.audioUrl)
-  probe.addEventListener('loadedmetadata', () => {
-    if (!Number.isFinite(probe.duration) || probe.duration <= 0) return
-    const index = props.refAudios.findIndex(item => item.id === audio.id)
-    if (index < 0) return
-    const next = props.refAudios.map(item => ({ ...item }))
-    next[index].duration = Math.round(probe.duration * 10) / 10
-    emit('update:refAudios', next)
-    emit('change')
-  }, { once: true })
+const probingAudioIds = new Set<string>()
+async function probeAudioDuration(audio: ShotRefAudio) {
+  const key = `${audio.id}|${audio.audioUrl}`
+  if (audio.duration !== undefined || probingAudioIds.has(key)) return
+  probingAudioIds.add(key)
+  const duration = await probeReferenceAudioDuration(audio.audioUrl)
+  const index = props.refAudios.findIndex(item => item.id === audio.id && item.audioUrl === audio.audioUrl)
+  if (index < 0) return
+  if (duration === undefined) {
+    ElMessage.warning(`无法读取「${audio.name || '参考音频'}」的时长，渲染前将由服务端检查实际媒体`)
+    return
+  }
+  const next = props.refAudios.map(item => ({ ...item }))
+  next[index].duration = duration
+  emit('update:refAudios', next)
+  emit('change')
 }
+watch(() => props.refAudios.map(audio => `${audio.id}|${audio.audioUrl}`).join(';'), () => {
+  props.refAudios.forEach(audio => { void probeAudioDuration(audio) })
+}, { immediate: true })
 
 function handleSelectCandidateAudio(cand: CandidateAudioItem) {
   if (props.disabled) return
@@ -684,11 +695,11 @@ function handleAddAllAudios() {
   let duration = totalAudioDuration.value
   for (const cand of available) {
     if (props.refAudios.length + selected.length >= maxAudios) break
-    const candidateDuration = Number(cand.duration) || 3.5
-    if (candidateDuration < MIN_AUDIO_DURATION || candidateDuration > MAX_AUDIO_DURATION
-      || duration + candidateDuration > maxTotalAudioDuration) continue
+    const candidateDuration = cand.duration
+    if (candidateDuration !== undefined && (candidateDuration < MIN_AUDIO_DURATION || candidateDuration > MAX_AUDIO_DURATION
+      || duration + candidateDuration > maxTotalAudioDuration)) continue
     selected.push(createRefAudio(cand))
-    duration += candidateDuration
+    duration += candidateDuration ?? 0
   }
   if (selected.length === 0) {
     ElMessage.warning('剩余音频槽位或时长不足，无法批量添加')

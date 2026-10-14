@@ -108,8 +108,8 @@ public class McpReadTools {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", s.getId()); row.put("episodeId", s.getEpisodeId()); row.put("sceneId", s.getSceneId()); row.put("shotGroupId", s.getShotGroupId());
             row.put("shotNo", s.getShotNo()); row.put("shotName", s.getShotName()); row.put("duration", s.getDuration());
-            row.put("scriptContent", s.getScriptContent()); row.put("actionDescription", s.getActionDescription());
-            row.put("dialogue", s.getDialogue()); return row;
+            row.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(s)); row.put("actionDescription", s.getActionDescription());
+            return row;
         }).toList());
     }
 

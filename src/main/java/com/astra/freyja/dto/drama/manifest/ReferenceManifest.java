@@ -113,9 +113,10 @@ public class ReferenceManifest {
                 sb.append(String.format("- 标签引用: <Audio %d>\n", aud.getAudioIndex()));
                 sb.append(String.format("- 对应说话人/实体: %s\n", StringUtils.defaultString(aud.getCharacterName(), "环境音/未指定")));
                 sb.append(String.format("- 音频用途模式: %s\n", StringUtils.defaultString(aud.getUsageMode(), "VOICE_TIMBRE")));
-                sb.append(String.format("- 发音语言: %s\n", StringUtils.defaultString(aud.getLanguage(), "Chinese")));
+                sb.append(String.format("- 发音语言: %s\n", StringUtils.defaultIfBlank(aud.getLanguage(), "未指定，不得由服务端猜测")));
+                if (aud.getCharacterId() != null) sb.append("- 明确绑定的角色 ID: ").append(aud.getCharacterId()).append("\n");
                 if (StringUtils.isNotBlank(aud.getText())) {
-                    sb.append(String.format("- 关联台词/源文本: %s\n", aud.getText().trim()));
+                    sb.append(String.format("- %s: %s\n", "VOICE_TIMBRE".equals(aud.getUsageMode()) ? "母音试音文本（仅样音元数据，禁止复用作本镜台词）" : "创作者提供的源录音文本", aud.getText().trim()));
                 }
                 if (aud.getDuration() != null) {
                     sb.append(String.format("- 音频时长: %s 秒\n", aud.getDuration().toPlainString()));

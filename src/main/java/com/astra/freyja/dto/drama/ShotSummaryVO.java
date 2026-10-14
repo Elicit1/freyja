@@ -25,8 +25,7 @@ public class ShotSummaryVO {
     private String cameraMovement;
     private BigDecimal duration;
     private String actionDescription;
-    private String dialogue;
-    private String dialogueSpeaker;
+    private String scriptContent;
     private String renderStatus;
     private String generationMode;
     private String previewImageUrl;

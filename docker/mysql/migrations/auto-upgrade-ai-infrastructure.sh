@@ -19,7 +19,7 @@ mysql_query() {
         --batch --skip-column-names "$@"
 }
 
-for file in agent-foundation.sql agent-production-preparation.sql mcp-business.sql upgrade_unified_capabilities.sql; do
+for file in agent-foundation.sql agent-production-preparation.sql mcp-business.sql upgrade_unified_capabilities.sql migrate_unified_shot_script.sql; do
     [ -r "$SQL_DIR/$file" ] || fail "Missing SQL file: $SQL_DIR/$file. Update the deployment files together with the images."
 done
 
@@ -62,5 +62,6 @@ apply_migration 20261014-agent-foundation-v1 agent-foundation.sql
 apply_migration 20261014-agent-production-v1 agent-production-preparation.sql
 apply_migration 20261014-mcp-business-v1 mcp-business.sql
 apply_migration 20261014-unified-capabilities-v1 upgrade_unified_capabilities.sql
+apply_migration 20261014-unified-shot-script-v1 migrate_unified_shot_script.sql
 
 log 'Upgrade complete. Existing business data, Agent settings and MCP credentials are preserved.'

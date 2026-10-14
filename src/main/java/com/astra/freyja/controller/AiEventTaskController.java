@@ -5,7 +5,6 @@ import com.astra.freyja.dto.res.*;
 import com.astra.freyja.dto.drama.DramaShotFirstFrameDTO;
 import com.astra.freyja.dto.drama.ShotAiVisualPlanRequestDTO;
 import com.astra.freyja.dto.voice.CharacterVoiceDesignDTO;
-import com.astra.freyja.dto.voice.ShotVoiceGenerateDTO;
 import com.astra.freyja.dto.script.ScriptDecomposeRequestDTO;
 import com.astra.freyja.dto.script.WorkerRetryDTO;
 import com.astra.freyja.dto.script.AiTaskDTO;
@@ -26,7 +25,6 @@ public class AiEventTaskController {
     private final ResPropService props;
     private final ShotAiVisualPlanService visualPlans;
     private final CharacterVoiceService characterVoices;
-    private final DramaShotVoiceService shotVoices;
     private final DramaShotService shots;
     private final AssetImageGenerationService images;
     private final ScriptDecomposeService scripts;
@@ -79,21 +77,6 @@ public class AiEventTaskController {
     public R<String> voicePreview(@RequestBody CharacterVoiceDesignDTO dto) {
         return R.ok(tasks.start(AiTaskType.VOICE_PREVIEW, null, String.valueOf(dto.getCharacterId()),
                 dto.getModelCode(), dto, () -> characterVoices.previewVoiceDesign(dto)));
-    }
-
-    @PostMapping("/shot/{shotId}/voice")
-    public R<String> shotVoice(@PathVariable Long shotId, @RequestBody(required = false) ShotVoiceGenerateDTO dto) {
-        var input = dto == null ? new ShotVoiceGenerateDTO() : dto;
-        input.setShotId(shotId);
-        return R.ok(tasks.start(AiTaskType.SHOT_VOICE_GENERATE, null, String.valueOf(shotId),
-                input.getModelCode(), input, () -> shotVoices.generateShotVoice(shotId, input)));
-    }
-
-    @PostMapping("/episode/{episodeId}/voice")
-    public R<String> episodeVoice(@PathVariable Long episodeId) {
-        return R.ok(tasks.start(AiTaskType.EPISODE_VOICE_GENERATE, null, String.valueOf(episodeId),
-                null, java.util.Map.of("episodeId", String.valueOf(episodeId)),
-                () -> shotVoices.batchGenerateEpisodeVoice(episodeId)));
     }
 
     @PostMapping("/shot/{shotId}/frame")

@@ -485,6 +485,18 @@
           </el-tag>
         </div>
 
+        <div v-if="previewResult.speechLines" class="rounded-lg border border-slate-200 bg-white p-3 space-y-2 text-xs">
+          <div class="font-semibold text-slate-800">台词与说话人核对</div>
+          <p class="text-slate-500">从镜头剧本提取。修改台词请编辑剧本后重新生成。</p>
+          <p v-if="previewResult.speechLines.length === 0" class="text-slate-500">本次结果未提取到对白、旁白或独白，请对照剧本核对。</p>
+          <div v-for="(line, index) in previewResult.speechLines" :key="index" class="border-t border-slate-100 pt-2">
+            <span class="font-medium">{{ line.speakerName || '未明确说话人' }}</span>
+            <span class="ml-2 text-slate-500">{{ speechKindLabels[line.kind] }} · {{ line.language }}</span>
+            <span v-if="line.audioIndex" class="ml-2 text-indigo-600">参考音频 {{ line.audioIndex }}</span>
+            <p class="mt-1 whitespace-pre-wrap">{{ line.text }}</p>
+          </div>
+        </div>
+
         <el-tabs v-model="activePreviewTab" type="border-card" class="rounded-xl overflow-hidden shadow-xs">
           <!-- 槽位 1: 🌅 首帧生图 Prompt (仅首尾帧模式展示) -->
           <el-tab-pane
@@ -786,8 +798,10 @@ import DictSelect from '@/components/DictSelect.vue'
 import SkillSelector from '@/components/SkillSelector.vue'
 import ShotAssetReferenceComposer from './ShotAssetReferenceComposer.vue'
 import ReferenceMediaSlots from './ReferenceMediaSlots.vue'
+import { initialVoiceReferences } from '@/utils/reference-audio'
 import {
   useShotReferenceAssets,
+  MAX_REF_AUDIOS,
   type ShotPromptDraft
 } from '../composables/useShotReferenceAssets'
 import { usePromptTaskStore } from '@/store/promptTask'
@@ -833,6 +847,9 @@ const emit = defineEmits<{
   (e: 'panel-close'): void
 }>()
 
+const speechKindLabels = {
+  ON_SCREEN_DIALOGUE: '画内对白', OFF_SCREEN_DIALOGUE: '画外对白', VOICEOVER: '旁白', INNER_MONOLOGUE: '内心独白'
+}
 const visible = ref(false)
 const isStreaming = ref(false)
 const isApplying = ref(false)
@@ -1092,7 +1109,7 @@ async function open(params: {
     resSceneId: params.resSceneId !== undefined ? params.resSceneId : params.shot.resSceneId,
     resKeyframeId: params.resKeyframeId !== undefined ? params.resKeyframeId : params.shot.resKeyframeId,
     refImages: (params.refImages || params.shot.refImages || []).map(img => ({ ...img })),
-    refAudios: (params.refAudios || params.shot.refAudios || []).map(aud => ({ ...aud }))
+    refAudios: (params.refAudios ?? params.shot.refAudios ?? []).map(aud => ({ ...aud }))
   }
 
   // 2. 载入资产选项
@@ -1102,7 +1119,16 @@ async function open(params: {
   keyframeOptions.value = params.keyframeOptions ? [...params.keyframeOptions] : []
 
   if (params.shot.dramaId) {
-    void loadAssetOptions(params.shot.dramaId, viewVersion)
+    await loadAssetOptions(params.shot.dramaId, viewVersion)
+    if (viewVersion !== promptViewVersion) return
+  }
+
+  // Defaults apply once to an unconfigured shot, after asset loading; saved [] is an explicit opt-out.
+  if (!params.taskId) {
+    const initial = initialVoiceReferences(params.shot.refAudiosConfigured, draft.value.refAudios,
+      draft.value.characterRefs.flatMap(c => c.characterId ? [c.characterId] : []), characterOptions.value, MAX_REF_AUDIOS)
+    draft.value.refAudios = initial.audios
+    if (initial.requiresSelection) ElMessage.warning(`角色音色超过 ${MAX_REF_AUDIOS} 个槽位；请在音频参考中明确选择`)
   }
 
   generationMode.value = params.generationMode || params.shot.generationMode || 'FIRST_LAST_FRAME'
@@ -1290,9 +1316,6 @@ function restorePromptInputSnapshot(inputPayload?: string, expectedShotId?: stri
         duration: payload.duration ?? currentShotContext.value.duration,
         scriptContent: payload.scriptContent ?? currentShotContext.value.scriptContent,
         actionDescription: payload.actionDescription ?? currentShotContext.value.actionDescription,
-        dialogue: payload.dialogue ?? currentShotContext.value.dialogue,
-        dialogueSpeaker: payload.dialogueSpeaker ?? currentShotContext.value.dialogueSpeaker,
-        voiceover: payload.voiceover ?? currentShotContext.value.voiceover,
         soundEffect: payload.soundEffect ?? currentShotContext.value.soundEffect,
         customScenePrompt: payload.customScenePrompt ?? currentShotContext.value.customScenePrompt
       }
@@ -1385,9 +1408,6 @@ function buildDerivePayload(): ShotPromptDeriveDTO {
     duration: currentShotContext.value?.duration,
     scriptContent: optionalText(currentShotContext.value?.scriptContent),
     actionDescription: optionalText(currentShotContext.value?.actionDescription),
-    dialogue: optionalText(currentShotContext.value?.dialogue),
-    dialogueSpeaker: optionalText(currentShotContext.value?.dialogueSpeaker),
-    voiceover: optionalText(currentShotContext.value?.voiceover),
     soundEffect: optionalText(currentShotContext.value?.soundEffect),
     includeBgm: includeBgm.value,
     resSceneId: draft.value.resSceneId,
@@ -1402,8 +1422,8 @@ function buildDerivePayload(): ShotPromptDeriveDTO {
     modelCode: optionalText(modelCode.value),
     userInstruction: optionalText(instruction.value),
     generationMode: generationMode.value,
-    refImages: draft.value.refImages.length > 0 ? draft.value.refImages : undefined,
-    refAudios: draft.value.refAudios.length > 0 ? draft.value.refAudios : undefined,
+    refImages: draft.value.refImages.map(image => ({ ...image })),
+    refAudios: draft.value.refAudios.map(audio => ({ ...audio })),
     requiredSkillNames: executionMode.value === 'API' && skillNames.value.length > 0 ? skillNames.value : undefined,
     selectedSkillNames: executionMode.value === 'MANUAL' && skillNames.value.length > 0 ? skillNames.value : undefined
   }
@@ -1518,12 +1538,12 @@ async function handleParseManualResponse() {
       directorPlanRevision: promptPackage.value?.directorPlanRevision,
       exportedContext: exportedContext.value,
       rawResponse: rawManualResponse.value,
+      scriptContent: currentShotContext.value?.scriptContent,
       contextFingerprint: promptPackage.value?.contextFingerprint,
-      dialogue: currentShotContext.value?.dialogue,
       characterRefs: buildPromptCharacterRefs(),
       propRefs: draft.value.propRefs.length > 0 ? draft.value.propRefs : undefined,
-      refImages: draft.value.refImages.length > 0 ? draft.value.refImages : undefined,
-      refAudios: draft.value.refAudios.length > 0 ? draft.value.refAudios : undefined,
+      refImages: draft.value.refImages.map(image => ({ ...image })),
+      refAudios: draft.value.refAudios.map(audio => ({ ...audio })),
       includeBgm: includeBgm.value,
       selectedSkillNames: skillNames.value.length > 0 ? skillNames.value : undefined
     })

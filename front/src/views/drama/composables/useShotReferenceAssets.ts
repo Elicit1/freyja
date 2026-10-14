@@ -36,7 +36,7 @@ export interface CandidateAudioItem {
   name: string
   audioUrl: string
   text?: string
-  duration: number
+  duration?: number
   sourceType: 'CHARACTER' | 'UPLOAD' | 'TTS'
   usageMode: 'VOICE_TIMBRE' | 'DIALOGUE_REUSE' | string
   language: string
@@ -253,10 +253,10 @@ export function useShotReferenceAssets(
           name: `${char.name} (角色母音)`,
           audioUrl: char.voiceSampleUrl,
           text: char.voiceSampleText || char.voiceDesc || '',
-          duration: 3.5, // 默认估算时长，若有元数据后续自动更新
+          duration: undefined, // 未知时长必须探测，不能估算
           sourceType: 'CHARACTER',
           usageMode: 'VOICE_TIMBRE', // 规避模型复用旧台词，默认音色参考
-          language: 'zh',
+          language: '',
           tag: '专属母音'
         })
       }
@@ -271,7 +271,7 @@ export function useShotReferenceAssets(
           name: aud.name || '本地上传音频',
           audioUrl: aud.audioUrl,
           text: aud.text || '',
-          duration: aud.duration || 3.0,
+          duration: aud.duration,
           sourceType: 'UPLOAD',
           usageMode: aud.usageMode || 'VOICE_TIMBRE',
           language: aud.language || 'zh',
@@ -304,7 +304,8 @@ export function useShotReferenceAssets(
     }
 
     draft.value.refAudios.forEach((aud, idx) => {
-      const dur = Number(aud.duration) || 0
+      const dur = aud.duration
+      if (dur === undefined) return
       if (dur < MIN_AUDIO_DURATION || dur > MAX_AUDIO_DURATION) {
         errs.push(`音频 <Audio ${idx + 1}>「${aud.name || '音频'}」时长为 ${dur.toFixed(1)}s，官方要求在 2~15 秒之间`)
       }
@@ -436,7 +437,7 @@ export function useShotReferenceAssets(
     const keyframe = String(draft.value.resKeyframeId || '')
     const props = draft.value.propRefs.map(p => String(p.propId || '')).sort().join(';')
     const imgs = draft.value.refImages.map(i => `${i.imageUrl}|${i.usageRole || ''}`).join(';')
-    const auds = draft.value.refAudios.map(a => `${a.audioUrl}|${a.usageMode || ''}`).join(';')
+    const auds = draft.value.refAudios.map(a => `${a.audioUrl}|${a.usageMode || ''}|${a.characterId || ''}|${a.language || ''}`).join(';')
     return `${chars}__${scene}__${keyframe}__${props}__${imgs}__${auds}`
   }
 
