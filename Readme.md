@@ -28,16 +28,42 @@
 
 **Freyja** 是一个面向 AI 短剧影视级分镜工业化制作的开源管理与算力调度系统。
 
+> [!TIP]
+> **🆕 新功能：内部 Agent + 外部 MCP**
+>
+> **内部 Agent**：在 Freyja 工作台里直接对话，完成需求确认、小说创作、剧本拆解入库、资产整理与分镜制作准备。
+>
+> **外部 MCP**：把你已有的 AI 客户端连接到 Freyja，让它通过授权工具读取和编辑项目、人物、场景、分镜及提示词，并按需读取系统 Skills。两种入口共享业务能力与创作规则。
+
 系统围绕短剧创作的全链路视听需求，深度融合大模型与影视级开源生成模型，提供以下 **核心创作功能**：
 
+- 🆕 **内部 FREYJA Agent（新功能）**：在 `/system/agent` 选择支持工具调用的 CHAT 模型、工具及 Skills，保存并启用后，从全局 Agent 入口打开聊天。支持任务计划、运行进度、历史摘要、取消与恢复，以及 Codex Pet 虚拟形象。[配置与使用](docs/agent-api.md)。
+- 🆕 **外部 MCP 与统一 AI 能力管理（新功能）**：外部 AI 客户端通过 Streamable HTTP 操作授权项目、资产与分镜；在 `/system/mcp` 管理令牌、项目范围、写入权限和工具开关，在 `/system/ai-capabilities` 发布共享能力与规则。[连接与 API](docs/mcp-api.md)。
 - 🎬 **首尾帧驱动影视镜头生成 (First-Last Frame Generation)**：支持为分镜精准指定起始首帧与结束尾帧，调用 MiniMax H3 FL2VA 模型生成具备高物理连贯性、自然运镜轨迹与逼真动效的镜头视频；在镜头组（ShotGroup）内支持自动抽取上一镜尾帧作为下一镜首帧，实现分镜间的丝滑连贯过渡；
 - 🖼️ **多参考图+台词配音驱动演播 (Reference Image Generation)**：支持基于角色设定立绘、特定造型与场景环境多张参考图，联动角色克隆音色台词，调用 MiniMax H3 Ref2VA 模型驱动角色的生动演播、表情变化与动作呈现；
 - 👥 **全流程人物视觉一致性维护 (Character Consistency)**：采用“角色身份层 (`ResCharacter`) + 造型层 (`ResCharacterLook`)”双层资产架构，配合跨集实体消歧流水线与 Character Blackboard 看板，确保角色在不同集数、多场景变换中面部外观、服装发型与设定的高保真视觉一致；
 - ✍️ **构建符合 MiniMax H3 规范的专业提示词 (H3 Prompt Architecture)**：基于视听导演语言体系，将镜头剧本、角色动作与机位调度转译为标准的 MiniMax H3 双轨提示词（三段式/六段式结构），语义决策交给模型，后端负责结构校验。默认保留对白、环境声和必要音效，不加入背景音乐；用户明确要求配乐时可开启；
 - 🧩 **Agent Skill 领域知识按需迭代与装载 (Iterative Agent Skills)**：内置标准化 Agent Skill 知识包（电影摄影构图、运镜机位、角色消歧与 H3 提示词编写规范），创作者可根据短剧题材与风格需要自由发布新版本、持续迭代优化正文规约，驱动大模型根据需要动态加载与进化。
 - 🎞️ **官方 MiniMax H3 工作流与人脸修复**：接入 Comfy-Org 官方 FL2VA / Ref2VA 模板及 LightX2V Turbo4 / Turbo8 LoRA，支持文生、首帧、首尾帧、多参考图与音频生视频；可选择 H3 FaceRefine 二阶段人脸修复版本。
-- 💬 **内置 FREYJA Agent**：支持对话中明确需求、创作小说、剧本拆解入库、资产整理、分镜制作规划与提示词准备；提供任务计划、进度、历史摘要、取消和恢复，以及可配置的模型、工具、Skills 和 Codex Pet 虚拟形象。
-- 🔌 **MCP 服务与统一 AI 能力管理**：外部 Agent 可通过 MCP 操作授权项目、资产与分镜；内部 Agent 与 MCP 复用共享业务能力，工具名称、参数约束和公共规则由 MySQL 发布版本驱动，Redis 提供缓存与刷新通知。
+
+### 🆕 外部 MCP 怎么用
+
+MCP 是外部 AI 客户端访问 Freyja 业务工具的连接入口。连接后，你可以在客户端聊天中要求它查询项目、整理角色资产、创建分镜或填写提示词，客户端根据需要调用 Freyja 的工具。
+
+1. **在 Freyja 开启服务**：进入【管理 → MCP 服务】（`/system/mcp`），配置至少 24 字符的随机访问令牌，选择允许访问的项目与工具。需要创建或修改记录时开启写入权限；需要新建项目时再开启新建项目权限，保存并开启服务。
+2. **在 AI 客户端添加连接**：选择 **Streamable HTTP**，经前端代理填写 `http://localhost/api/mcp`，直连后端填写 `http://localhost:8080/mcp`。远程部署换成服务器实际地址，并通过认证头 `Authorization: Bearer <你的令牌>` 传入令牌；工具调用超时建议设为 300 秒。使用支持环境变量的客户端时，将令牌保存在环境变量中，再按下方配置引用。
+3. **开始创作**：刷新客户端工具列表，然后提出任务，例如「先读取《项目名》的人物和场景，加载相关 Skills，再把这章小说整理成剧集、场次和分镜，保留原文对白，写入后读回核对」。外部 Agent 先读取项目与 Skills，再使用授权的查询、创建和修改工具完成任务。
+
+支持 TOML 配置的客户端可参考：
+
+```toml
+[mcp_servers.freyja]
+url = "http://localhost/api/mcp"
+bearer_token_env_var = "FREYJA_MCP_TOKEN"
+tool_timeout_sec = 300
+```
+
+在客户端运行环境设置 `FREYJA_MCP_TOKEN` 为管理页配置的同一令牌。人物、场景、分镜与提示词的业务写入通过 MCP 完成；视频生成和内部 AI 执行接口仍由 Freyja 工作台管理。已生成的参考图可以通过 MCP 上传并关联到资产。详细字段、授权和工作流见 [MCP 使用说明](docs/mcp-api.md)。
 
 ## 💻 运行环境与硬件配置要求 (System Requirements)
 
@@ -147,83 +173,57 @@ ComfyUI 作为独立的图像与视频生成算力节点，运行在配备 NVIDI
 
 ### 🌟 第三步：下载模型权重并放入对应目录 (Model Downloads)
 
-将生图与影视级生视频所需的预训练模型权重下载并放置到 **ComfyUI 根目录下的对应文件夹** 中：
+将所选工作流需要的权重放入 **运行 ComfyUI 的 GPU 节点** 对应目录。生图、官方 H3 FL2VA / Ref2VA、Turbo 加速、人脸修复和原 16GB HiFi 工作流按下表分别准备；Freyja 的 Docker 镜像包含业务服务与工作流配置，模型权重由 GPU 节点单独下载。
 
 #### 1. 核心模型存放路径清单
 
-下表为原 16GB HiFi 路线的基础权重。选用官方 INT8 ConvRot / Turbo 工作流时，请按「官方 MiniMax H3 工作流与人脸修复」中的对应部署文档准备独立的主模型、编码器、VAE 和 LoRA。
+**生图与官方 MiniMax H3 权重**：官方 FL2VA 负责文生、首帧和首尾帧生视频；官方 Ref2VA 负责多参考图、参考音频及二阶段人脸修复。两者共享下表的官方文本编码器与音视频 VAE。
 
 | 类别 | 推荐/默认文件名 | 存放路径 (ComfyUI目录下) | 官方/开源下载来源 | 用途说明 |
 | :--- | :--- | :--- | :--- | :--- |
 | **生图主干** | `flux-2-klein-9b.safetensors` | `models/unet/` | HuggingFace / 镜像站 | FLUX.2 Klein 9B 角色设定图、造型设计图生成 |
 | **生图编码器** | `qwen_3_8b_fp8mixed.safetensors` | `models/clip/` | HuggingFace / 镜像站 | FLUX.2 文本提示词特征提取编码器 |
 | **生图 VAE** | `flux2-vae.safetensors` | `models/vae/` | HuggingFace / 镜像站 | FLUX.2 图像潜空间编解码器 |
-| **视频主干 (首尾帧)** | `minimax_h3_fl2va_dit_16g.safetensors` | `models/unet/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 首尾帧驱动影视镜头生成 (带音效) |
-| **视频主干 (参考图)** | `minimax_h3_ref2va_dit_16g.safetensors` | `models/unet/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 多参考图+台词配音驱动角色演播生成 |
-| **视频文本编码** | `qwen3vl_text_encoder.safetensors` | `models/clip/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 视频生成提示词与多模态特征编码 |
-| **视频视觉 VAE** | `minimax_h3_video_vae_fp16.safetensors` | `models/vae/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 视频潜空间编解码器 |
-| **伴生音频 VAE** | `minimax_h3_audio_vae_fp32.safetensors` | `models/vae/` | [ModelScope 直达下载](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) | MiniMax H3 原生伴生音频潜空间编解码器 |
+| **官方 FL2VA 主模型** | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | `models/diffusion_models/` | [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/diffusion_models) | 文生 / 首帧 / 首尾帧视频与原生音频 |
+| **官方 Ref2VA 主模型** | `minimax_h3_ref2va_pruned_int8_convrot.safetensors` | `models/diffusion_models/` | [Comfy-Org/MiniMax-H3](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/diffusion_models) | 多参考图 / 参考音频视频与人脸修复 |
+| **官方 H3 文本编码器** | `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` | `models/text_encoders/` | [官方文本编码器](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/text_encoders) | FL2VA / Ref2VA 提示词与多模态编码 |
+| **官方视频 VAE** | `minimax_h3_video_vae_int8_convrot.safetensors` | `models/vae/` | [官方 VAE](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/vae) | 官方视频潜空间编解码 |
+| **H3 音频 VAE** | `minimax_h3_audio_vae_fp32.safetensors` | `models/vae/` | [官方 VAE](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/vae) | H3 原生音频解码，两条路线均使用 |
+
+**Turbo LoRA 与人脸修复依赖**：只下载所选入口对应的 LoRA，FL2VA / Ref2VA 与四步 / 八步权重需要分别匹配。
+
+| 用途 | 文件 / 模型包 | 存放目录 | 下载来源与使用说明 |
+| --- | --- | --- | --- |
+| FL2VA Turbo4 | `minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors` | `models/loras/` | [官方 LoRA](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/loras)，固定 4 步，768p |
+| FL2VA Turbo8 | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` | `models/loras/` | [官方 LoRA](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/loras)，当前模板使用标准 544p 版，固定 8 步 |
+| Ref2VA Turbo4 | `minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors` | `models/loras/` | [官方 LoRA](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/loras)，固定 4 步 |
+| Ref2VA Turbo8 | `minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors` | `models/loras/` | [LightX2V](https://huggingface.co/lightx2v/Minimax-h3-Turbo)，固定 8 步，768p |
+| 人脸检测 | `face_yolov8m.pt` | `models/ultralytics/bbox/` | [Bingsu/adetailer](https://huggingface.co/Bingsu/adetailer)，当前 FaceRefine 模板选择的检测器 |
+| 人脸身份匹配 | InsightFace `buffalo_l` | `models/insightface/models/buffalo_l/` | FaceRefine 使用 `identity_model=insightface` 时按需自动下载；离线 GPU 节点需提前准备 |
+
+人脸修复需要安装 [ComfyUI-H3-FaceRefine](https://github.com/Carasibana/ComfyUI-H3-FaceRefine) 并安装其 Python 依赖。修复阶段复用 Ref2VA 主模型、编码器和 VAE，对人脸逐帧跟踪、裁剪、重绘并贴回原视频；在 ComfyUI 中确认 `H3FaceTrackCrop` 的检测器选项能找到 `face_yolov8m.pt`。模型路径由节点的 `folder_paths` 注册或 `extra_model_paths.yaml` 决定时，以实际下拉列表为准。
+
+**原 16GB HiFi 工作流的额外权重**：选择 `minimax-h3-fl2va`、`minimax-h3-ref2va` 或 `minimax-h3-face-refine` 时准备以下文件，沿用其 SolAttention 等节点依赖。
+
+| 文件 | 存放目录 | 下载来源 |
+| --- | --- | --- |
+| `minimax_h3_fl2va_dit_16g.safetensors` | `models/unet/` | [MiniMax-H3-16G-HiFi](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) |
+| `minimax_h3_ref2va_dit_16g.safetensors` | `models/unet/` | [MiniMax-H3-16G-HiFi](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) |
+| `qwen3vl_text_encoder.safetensors` | `models/clip/` | [MiniMax-H3-16G-HiFi](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) |
+| `minimax_h3_video_vae_fp16.safetensors` | `models/vae/` | [MiniMax-H3-16G-HiFi](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) |
+
+下载后刷新模型列表或重启 ComfyUI，在 Freyja 的 AI 提供商与模型管理中登记对应网关模型编码，再选择该模型渲染。工作流、模型编码、固定采样步数和文件对应关系见下方「官方 MiniMax H3 工作流与人脸修复」与 [工作流目录说明](comfyUI_workflow/README.md)。
 
 #### 2. 进入 Web 工作台配置大模型 API Key
 模型就绪后，打开创作工作台 **[http://localhost](http://localhost)**：
 1. **配置大模型提供商**：进入【系统管理 -> AI 提供商管理】，录入你的大语言模型 API Key（用于剧本拆解 Planner / Worker，兼容 OpenAI 规范、DeepSeek、MiMo、硅基流动等各大服务商或本地 Ollama）；
-2. **确认视听技能包 (Skills)**：进入【系统管理 -> AI 技能管理】，系统启动时会扫描并导入预置的 5 个 Skill 包（`character-disambiguation`、`character-sheet-design`、`camera-direction`、`cinematography`、`h3-prompt-writing`）；已有有效发布版本会保留。
+2. **确认视听技能包 (Skills)**：进入【系统管理 -> AI 技能管理】，系统启动时会扫描并导入项目 `skills/` 中从当前本地系统导出的 5 个完整包（`character-disambiguation`、`character-sheet-design`、`camera-direction`、`cinematography`、`h3-prompt-writing`），包含正文与参考文件；版本及哈希见 [技能包清单](skills/builtin-manifest.json)。已有有效发布版本会保留，更新已有技能时在管理页导入对应 ZIP。
 
 ---
 
 ## 🛠️ 功能模块
 
-### 1. 四层剧作大纲与连续镜头组 (Drama Structure & ShotGroup)
-- **四层大纲组织**：支持 `短剧 (Drama) -> 剧集 (Episode) -> 场次 (Scene) -> 分镜 (Shot)` 的树状结构维护。
-- **连续镜头组 (ShotGroup)**：支持将连续镜头划归为镜头组；支持调用系统 FFmpeg 自动截取上一镜视频末帧，并将其直接指定为下一镜的首帧输入。
-- **双模态生成支持**：支持配置「首尾帧驱动生视频 (First-Last Frame)」与「多参考图+配音驱动 (Reference-Audio)」两种生成模式。
-
-### 2. 角色多造型管理与引用装配 (Character & Look Management)
-- **身份层与造型层设计**：角色表（`res_character`）维护姓名、性别与基础特征；造型表（`res_character_look`）维护不同服装、发型与外观，支持指定默认造型与设定图。
-- **提示词与资产关联**：在分镜配置与提示词组装时，自动关联当前镜头选定角色的外观提示词与参考图。
-- **角色别名与实体消歧**：提供角色别名表（`res_character_alias`）与消歧记录，用于登记小说中同一角色的代词、称谓及别称映射。
-
-### 3. 结构化导演规划与提示词转译 (DirectorPlan)
-- **视听结构化字段**：提供景别（Shot Type）、运镜方式（Camera Movement）及 Camera Beats 运镜节拍时间轴的结构化配置。
-- **提示词格式化转译**：支持将分镜的对白、动作与机位规划转译为适配 MiniMax H3 等模型的提示词结构。
-
-### 4. 剧本并行分段拆解 (Parallel Script Decompose)
-- **两阶段拆解流水线**：
-  - **Planner 模型**：对长文本剧情进行结构化分段（Story Segments），并提取登场角色与场景列表；
-  - **Worker 模型**：针对各剧情分段并发生成具体镜头的剧本内容、动作描述与对白；
-- **服务端处理**：Java 服务端执行分镜序号重排、状态清洗去重与持久化落盘。
-
-### 5. 服务容器化与外部算力调度 (Docker & ComfyUI Gateway)
-- **容器化编排**：Web 前端、后端 API、MySQL、Redis、MinIO 及 FastAPI 网关支持通过 Docker Compose 一键启动。
-- **外部算力直连**：ComfyUI 作为独立算力节点运行在 Windows 宿主机或 Linux GPU 服务器上，通过 HTTP / WebSocket 接收网关生成的任务与回传进度。
-
-### 6. 分镜抽卡版本与视频后期处理 (Take History & Video Processing)
-- **分镜视频抽卡历史 (Takes)**：支持单个分镜保留多次生成的视频历史记录，并支持在历史版本之间切换与重新选定。
-- **视频超分与插帧**：接入 RealESRGAN x2 视频超分辨率与 RIFE 4.9 视频插帧（24 FPS 插帧至 48 FPS）工作流。
-
-### 7. AI 技能知识资产管理 (Agent Skills)
-- **标准 Agent Skill 规范**：支持导入标准 ZIP 格式的 Skill 资源包，支持版本控制、回滚、在线预览与动态装载。
-- **内置视听与拆解规约**：预置 5 个 Skill，覆盖人物消歧、人物/造型设定图、电影摄影、运镜和 H3 提示词编写。Agent 配置中的「工具」和「Skills」分别选择执行能力与知识包，支持搜索、分页与跨页勾选。
-
-### 8. 官方 MiniMax H3 工作流与人脸修复
-
-在原 16GB HiFi 工作流基础上，增加基于 [Comfy-Org 官方模板](https://github.com/Comfy-Org/workflow_templates) 和 [官方适配权重](https://huggingface.co/Comfy-Org/MiniMax-H3) 的入口，并结合 [LightX2V Turbo LoRA](https://github.com/ModelTC/Minimax-H3-Turbo) 提供固定四步、八步采样。模型编码与 API 模板的实际绑定见 [默认算力节点配置](comfy_gateway/nodes/machine_default.yaml)。
-
-| 网关模型编码 | 工作流能力 | 采样与说明 |
-| --- | --- | --- |
-| `minimax-h3-fl2va-turbo4` | 官方 FL2VA 模板适配，文生/首帧/首尾帧视频及原生音频 | 固定 4 步，使用 FL2V 四步 768p LoRA；[部署说明](docs/minimax-h3-fl2va-turbo4.md) |
-| `minimax-h3-fl2va-turbo8` | 官方 FL2VA 模板适配，文生/首帧/首尾帧视频及原生音频 | 固定 8 步，默认使用标准版 544p LoRA；[部署说明](docs/minimax-h3-fl2va-turbo8.md) |
-| `minimax-h3-ref` | 官方 Ref2VA 模板适配，多参考图与音频生视频 | 固定 4 步 |
-| `minimax-h3-ref-turbo8` | 官方 Ref2VA 模板适配，多参考图与音频生视频 | 固定 8 步，使用 Ref2V 八步 768p LoRA；[部署说明](docs/minimax-h3-ref2va-turbo8.md) |
-| `minimax-h3-face-refine` | 原 Ref2VA 生成与 H3 FaceRefine 人脸修复 | 二阶段处理，基础生成默认 20 步 |
-| `minimax-h3-ref-turbo4-face-refine` | 官方 Ref2VA Turbo4 与 H3 FaceRefine 组合 | 生成和修复阶段均为 4 步 |
-| `minimax-h3-ref-turbo8-face-refine` | 官方 Ref2VA Turbo8 与 H3 FaceRefine 组合 | 生成和修复阶段均为 8 步；[接入说明](docs/minimax-h3-ref2va-turbo8.md) |
-
-**人脸修复接入方式**：在 AI 提供商与模型管理中注册对应网关模型编码，参考图模式选择带 FaceRefine 的模型。修复工作流将参考图片送入生成、修复两个阶段，最终合流修复后画面与首段原生音频；GPU 节点需安装 H3 FaceRefine 节点及其检测器（当前配置为 `face_yolov8m.pt`）。这是视频生成工作流内的二阶段修复，当前没有独立的人脸修复工作台。
-
-UI 工作流位于 [`comfyUI_workflow/`](comfyUI_workflow/)，API 图位于 [`comfy_gateway/comfyUIApi/`](comfy_gateway/comfyUIApi/)。官方模板的人脸修复版是本项目组合扩展。不同 Turbo LoRA 对应固定采样步数，须下载匹配权重；通用 `steps` 参数不会覆盖 Turbo 入口的固定步数。尺寸、时长和显存需求按所选模型与节点环境核对。
-
-### 9. 内置 Agent 与模型调用优化
+### 1. 内置 Agent：配置与对话使用
 
 - **对话驱动制作**：内置助手支持结构化需求确认、小说创作、剧本拆解及入库、文字资产整理、分镜模式与参考素材规划、提示词准备和交付检查；缺少输入或待补图片时会显示相应状态。任务计划和运行进度可在聊天及任务中心查看。
 - **独立配置**：在 `/system/agent` 选择支持 Tool Calling 的 CHAT 模型，配置系统指令、工具、Skills、记忆、主模型与摘要模型预算、流式/完整回复、重试和执行时限。支持历史摘要、持久化检查点、取消、失败恢复及 Codex Pet ZIP 导入。
@@ -231,11 +231,19 @@ UI 工作流位于 [`comfyUI_workflow/`](comfyUI_workflow/)，API 图位于 [`co
 - **DeepSeek / MiMo 适配**：支持 DeepSeek Chat、MiMo Chat 等思考协议。DeepSeek 关闭思考时清理不适用的推理强度参数，开启时按协议处理采样参数；MiMo 支持思考开关，开启思考时清理不生效的温度与 Top P。请求兼容处理在 SDK 合并参数后执行。
 - **长任务与摘要恢复**：主模型和摘要模型可以独立设置输出预算及思考方式；摘要截断或恢复耗尽时保留任务检查点，支持调整摘要配置后继续同一任务。模型轮数可选择不限制，工具次数、超时和预算策略仍可配置。
 
+**开始使用**：
+
+1. 在 `/system/ai-provider` 配置并启用提供商与支持 Tool Calling 的 CHAT 模型。
+2. 打开 `/system/agent`，选择模型，勾选需要的工具和 Skills；按任务长度设置主模型、摘要模型、执行预算及输出方式，保存并启用助手。
+3. 点击全局 Agent 入口打开聊天；通用查询使用通用会话，围绕某部短剧制作时建立关联项目的会话。
+4. 提交明确任务，例如「读取这个项目的人物资产」「把这章小说拆解并入库」「检查这些分镜还缺哪些参考图」。助手需要澄清时在聊天中回答，并在聊天或任务中心查看计划和进度。
+5. 制作准备完成后，在资产页补齐图片，并在分镜渲染工坊选择模型生成视频。当前助手负责文字、规划和准备，不直接提交生图或视频渲染。
+
 启用与接口说明见 [Agent 使用与 API](docs/agent-api.md)，最新能力目录和升级规则见 [统一能力平台](docs/mcp-mysql-redis-refactor-plan.md)。升级到统一能力平台后，内部 Agent 请新建会话，并在助手设置中核对所选工具。
 
 提供商能力字段和思考协议示例见 [AI 提供商与模型 API](docs/ai-provider-api.md)。
 
-### 10. MCP 服务与统一 AI 能力管理
+### 2. MCP 服务与统一 AI 能力管理
 
 | 管理入口 | 用途 |
 | --- | --- |
@@ -249,7 +257,14 @@ UI 工作流位于 [`comfyUI_workflow/`](comfyUI_workflow/)，API 图位于 [`co
 
 **外部能力**：支持项目、剧集、场次、分镜及人物/造型/场景/道具/关键帧的查询和 CRUD，事务批量导入、参考图上传、视频版本读取/选择，以及已发布 Skills 的目录与正文读取。写入使用稳定 `requestId` 防止重复提交，修改前读取 `editFingerprint`，关键写入后读回核对。内部会话、AI 模型执行和系统设置接口保持内部授权。
 
-在 `/system/mcp` 配置至少 24 字符的随机访问令牌，设置允许的项目及写入范围后开启服务。客户端连接示例：
+**开始使用**：
+
+1. 在 `/system/mcp` 配置至少 24 字符的随机访问令牌、允许的项目及所需工具；需要修改业务记录时启用写入权限，需要新建项目时再开启对应权限，最后开启 MCP 服务。
+2. 在外部客户端添加 **Streamable HTTP** 连接：经前端代理访问 `http://<工作台地址>/api/mcp`，直连后端访问 `http://<后端地址>:8080/mcp`，请求携带 `Authorization: Bearer <令牌>`，工具调用超时建议 300 秒。
+3. 连接后刷新工具列表，在创作开始和阶段变化时读取 `list_skills`，通过 `read_skill` / `read_skill_file` 加载需要的知识；先读取项目、人物和分镜，再创建或修改卡片。
+4. 外部 Agent 可按要求整理小说大纲、创建分镜、填写提示词、上传参考图并关联资产。修改前读取 `editFingerprint`，写入复用稳定 `requestId`，关键写入后读回核对；生图和视频模型执行仍由内部渲染工作台负责。
+
+支持 TOML 配置的客户端可参考以下连接示例：
 
 ```toml
 [mcp_servers.freyja]
@@ -259,6 +274,59 @@ tool_timeout_sec = 300
 ```
 
 将令牌放入客户端的 `FREYJA_MCP_TOKEN` 环境变量。远程客户端使用可访问的工作台地址；直接连接后端时路径为 `http://<host>:8080/mcp`。连接与业务 Schema 见 [MCP API](docs/mcp-api.md)，共享目录与发布机制见 [统一能力平台](docs/mcp-mysql-redis-refactor-plan.md)。
+
+### 3. 四层剧作大纲与连续镜头组 (Drama Structure & ShotGroup)
+- **四层大纲组织**：支持 `短剧 (Drama) -> 剧集 (Episode) -> 场次 (Scene) -> 分镜 (Shot)` 的树状结构维护。
+- **连续镜头组 (ShotGroup)**：支持将连续镜头划归为镜头组；支持调用系统 FFmpeg 自动截取上一镜视频末帧，并将其直接指定为下一镜的首帧输入。
+- **双模态生成支持**：支持配置「首尾帧驱动生视频 (First-Last Frame)」与「多参考图+配音驱动 (Reference-Audio)」两种生成模式。
+
+### 4. 角色多造型管理与引用装配 (Character & Look Management)
+- **身份层与造型层设计**：角色表（`res_character`）维护姓名、性别与基础特征；造型表（`res_character_look`）维护不同服装、发型与外观，支持指定默认造型与设定图。
+- **提示词与资产关联**：在分镜配置与提示词组装时，自动关联当前镜头选定角色的外观提示词与参考图。
+- **角色别名与实体消歧**：提供角色别名表（`res_character_alias`）与消歧记录，用于登记小说中同一角色的代词、称谓及别称映射。
+
+### 5. 结构化导演规划与提示词转译 (DirectorPlan)
+- **视听结构化字段**：提供景别（Shot Type）、运镜方式（Camera Movement）及 Camera Beats 运镜节拍时间轴的结构化配置。
+- **提示词格式化转译**：支持将分镜的对白、动作与机位规划转译为适配 MiniMax H3 等模型的提示词结构。
+
+### 6. 剧本并行分段拆解 (Parallel Script Decompose)
+- **两阶段拆解流水线**：
+  - **Planner 模型**：对长文本剧情进行结构化分段（Story Segments），并提取登场角色与场景列表；
+  - **Worker 模型**：针对各剧情分段并发生成具体镜头的剧本内容、动作描述与对白；
+- **服务端处理**：Java 服务端执行分镜序号重排、状态清洗去重与持久化落盘。
+
+### 7. 服务容器化与外部算力调度 (Docker & ComfyUI Gateway)
+- **容器化编排**：Web 前端、后端 API、MySQL、Redis、MinIO 及 FastAPI 网关支持通过 Docker Compose 一键启动。
+- **外部算力直连**：ComfyUI 作为独立算力节点运行在 Windows 宿主机或 Linux GPU 服务器上，通过 HTTP / WebSocket 接收网关生成的任务与回传进度。
+
+### 8. 分镜抽卡版本与视频后期处理 (Take History & Video Processing)
+- **分镜视频抽卡历史 (Takes)**：支持单个分镜保留多次生成的视频历史记录，并支持在历史版本之间切换与重新选定。
+- **视频超分与插帧**：接入 RealESRGAN x2、SeedVR2 3B INT8 视频超分及 RIFE 4.9 插帧（24 FPS 标准化后输出 48 FPS）。后处理模型与参数由模型中心动态驱动，可选择分镜或历史 Take 作为来源。
+
+### 9. AI 技能知识资产管理 (Agent Skills)
+- **标准 Agent Skill 规范**：支持导入标准 ZIP 格式的 Skill 资源包，支持版本控制、回滚、在线预览与动态装载。
+- **内置视听与拆解规约**：从本地系统已发布版本导出 5 个完整 Skill，覆盖 Planner 人物消歧、Worker 连续分镜与状态继承、人物/造型设定图、视觉导演及 H3 提示词编写。Agent 配置中的「工具」和「Skills」分别选择执行能力与知识包，支持搜索、分页与跨页勾选。
+
+### 10. 官方 MiniMax H3 工作流与人脸修复
+
+在原 16GB HiFi 工作流基础上，增加基于 [Comfy-Org 官方模板](https://github.com/Comfy-Org/workflow_templates) 和 [官方适配权重](https://huggingface.co/Comfy-Org/MiniMax-H3) 的 FL2VA / Ref2VA 入口，并结合 [LightX2V Turbo LoRA](https://github.com/ModelTC/Minimax-H3-Turbo) 提供固定四步、八步采样。以下 9 个视频入口均在 [默认算力节点配置](comfy_gateway/nodes/machine_default.yaml) 中注册；对应 UI 工作流可导入 ComfyUI 检查节点和权重。
+
+| 网关模型编码 | UI 工作流（`comfyUI_workflow/`） | 使用方式与采样 |
+| --- | --- | --- |
+| `minimax-h3-fl2va` | `minimax_h3_fl2va_fast.json` | 原 16GB HiFi 首尾帧路线，默认 20 步 |
+| `minimax-h3-ref2va` | `minimax_h3_ref2va_fast.json` | 原 16GB HiFi 多参考图 / 音频路线，默认 20 步 |
+| `minimax-h3-fl2va-turbo4` | `video_minimax_h3_i2v_official_turbo4.json` | 官方 FL2VA 文生 / 首帧 / 首尾帧，固定 4 步，768p LoRA；[部署说明](docs/minimax-h3-fl2va-turbo4.md) |
+| `minimax-h3-fl2va-turbo8` | `video_minimax_h3_i2v_official_turbo8.json` | 官方 FL2VA 文生 / 首帧 / 首尾帧，固定 8 步，当前使用标准 544p LoRA；[部署说明](docs/minimax-h3-fl2va-turbo8.md) |
+| `minimax-h3-ref` | `video_minimax_h3_r2v_official_turbo4.json` | 官方 Ref2VA 多参考图 / 音频，固定 4 步 |
+| `minimax-h3-ref-turbo8` | `video_minimax_h3_r2v_official_turbo8.json` | 官方 Ref2VA 多参考图 / 音频，固定 8 步，768p LoRA；[部署说明](docs/minimax-h3-ref2va-turbo8.md) |
+| `minimax-h3-face-refine` | `minimax-h3-face-refine.json` | 原 Ref2VA 生成与人脸修复，基础生成默认 20 步 |
+| `minimax-h3-ref-turbo4-face-refine` | `video_minimax_h3_r2v_turbo4_face_refine.json` | 官方 Ref2VA Turbo4 与人脸修复，生成 / 修复均为 4 步 |
+| `minimax-h3-ref-turbo8-face-refine` | `video_minimax_h3_r2v_turbo8_face_refine.json` | 官方 Ref2VA Turbo8 与人脸修复，生成 / 修复均为 8 步；[接入说明](docs/minimax-h3-ref2va-turbo8.md) |
+
+**人脸修复接入方式**：在 AI 提供商与模型管理中注册对应网关模型编码，参考图模式选择带 FaceRefine 的模型。修复工作流将参考图片送入生成、修复两个阶段，最终合流修复后画面与首段原生音频；GPU 节点需安装 H3 FaceRefine 节点及其检测器（当前配置为 `face_yolov8m.pt`）。这是视频生成工作流内的二阶段修复，当前没有独立的人脸修复工作台。
+
+UI 工作流位于 [`comfyUI_workflow/`](comfyUI_workflow/)，API 图位于 [`comfy_gateway/comfyUIApi/`](comfy_gateway/comfyUIApi/)。官方模板的人脸修复版是本项目组合扩展。不同 Turbo LoRA 对应固定采样步数，须下载匹配权重；通用 `steps` 参数不会覆盖 Turbo 入口的固定步数。尺寸、时长和显存需求按所选模型与节点环境核对。
+
 
 ---
 
@@ -274,9 +342,11 @@ tool_timeout_sec = 300
 | :--- | :--- | :--- | :--- |
 | **`character-disambiguation`** | `skills/character-disambiguation.zip` | 角色身份识别与实体消歧规约，用于判断登场角色身份、代词归一并锚定系统角色注册表 ID | Planner 剧本拆解阶段（强制依赖） |
 | **`character-sheet-design`** | `skills/character-sheet-design.zip` | 人物与多造型设定图设计、三视图、头像与细节组织，以及按需求选择透明或纯色背景 | 角色/造型设定图创作 |
-| **`camera-direction`** | `skills/camera-direction.zip` | 影视镜头运镜方式与机位轨迹规划规范（推拉摇移跟升降旋转） | 镜头编辑与视听导演规划 |
-| **`cinematography`** | `skills/cinematography.zip` | 影视景别（特写/近景/中景/全景/远景）、构图与视听节奏设计规约 | 镜头景别规划与视听提示词衍生 |
-| **`h3-prompt-writing`** | `skills/h3-prompt-writing.zip` | MiniMax H3 视频生成模型的双轨与三段式提示词撰写标准范式 | 分镜视频动态提示词生成 |
+| **`camera-direction`** | `skills/camera-direction.zip` | Worker 连续剧情分镜编排、ShotGroup / Shot 组织、自然动作、三维世界状态与人物道具连续性 | Worker 分段拆解与状态继承 |
+| **`cinematography`** | `skills/cinematography.zip` | 从剧情事实与三维状态选择可读机位，完成二维空间投影、景别构图、运镜及 H3 动作语言编译 | 视觉导演规划与视听提示词衍生 |
+| **`h3-prompt-writing`** | `skills/h3-prompt-writing.zip` | MiniMax H3 首尾帧三段式与全参考六段式提示词规范、参考素材标记与音画结构 | 分镜视频动态提示词生成 |
+
+本次预置包从本地系统的当前发布版本完整导出：`camera-direction` 第 32 版、`cinematography` 第 49 版、`h3-prompt-writing` 第 2 版，另两个 Skill 为第 1 版；共 17 个文件，保留 `refs/`、`references/` 和 `agents/` 中的附属内容。[技能包说明](skills/README.md) 与 [版本 / SHA-256 清单](skills/builtin-manifest.json) 可用于核对。后端镜像构建会复制整个 `skills/` 目录，Compose 也挂载该目录，因此新部署无需访问开发者本地数据库或 MinIO。
 
 > ⚠️ **核心原则（可修改，切勿删除）**：
 > - **保留业务依赖的 Skill 标识**：Planner、导演规划与 H3 提示词链路会按固定名称加载所需知识，删除相关 Skill 会影响对应流程；
@@ -321,8 +391,15 @@ ComfyUI 算力节点预置工作流所依赖的专用模型权重清单（存放
 | **FLUX.2 Klein 9B** | UNET (DiT) | `flux-2-klein-9b.safetensors` | 角色设定参考图、造型设计图、分镜首帧/关键帧生成 | `models/unet/` |
 | **Qwen3 8B CLIP** | CLIP | `qwen_3_8b_fp8mixed.safetensors` | FLUX.2 生图提示词特征编码器 | `models/clip/` |
 | **FLUX.2 VAE** | VAE | `flux2-vae.safetensors` | FLUX.2 图像潜空间编解码 | `models/vae/` |
-| **MiniMax H3 FL2VA** | UNET (DiT) | `minimax_h3_fl2va_dit_16g.safetensors` | 首尾帧驱动影视镜头生成 (带音效) | [ModelScope](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) -> `models/unet/` |
-| **MiniMax H3 Ref2VA**| UNET (DiT) | `minimax_h3_ref2va_dit_16g.safetensors` | 多参考图+台词配音驱动角色演播生成 | [ModelScope](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) -> `models/unet/` |
+| **官方 H3 FL2VA** | INT8 ConvRot DiT | `minimax_h3_fl2va_pruned_int8_convrot.safetensors` | 官方文生 / 首帧 / 首尾帧视频 | [Comfy-Org](https://huggingface.co/Comfy-Org/MiniMax-H3) -> `models/diffusion_models/` |
+| **官方 H3 Ref2VA** | INT8 ConvRot DiT | `minimax_h3_ref2va_pruned_int8_convrot.safetensors` | 官方多参考图 / 音频视频与二阶段人脸修复 | [Comfy-Org](https://huggingface.co/Comfy-Org/MiniMax-H3) -> `models/diffusion_models/` |
+| **官方 Qwen3-VL Encoder** | NVFP4 AWQ 编码器 | `qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors` | 两个官方 H3 模型共享的多模态编码 | [Comfy-Org](https://huggingface.co/Comfy-Org/MiniMax-H3) -> `models/text_encoders/` |
+| **官方 H3 Video VAE** | INT8 ConvRot VAE | `minimax_h3_video_vae_int8_convrot.safetensors` | 官方视频潜空间编解码 | [Comfy-Org](https://huggingface.co/Comfy-Org/MiniMax-H3) -> `models/vae/` |
+| **H3 Turbo LoRA** | LoRA | FL2V / Ref2V 四步与八步文件见「第三步」下载清单 | 与所选主模型、采样步数和分辨率对应 | `models/loras/` |
+| **人脸检测器** | YOLO | `face_yolov8m.pt` | FaceRefine 逐帧人脸定位与裁剪 | [Bingsu/adetailer](https://huggingface.co/Bingsu/adetailer) -> `models/ultralytics/bbox/` |
+| **人脸身份匹配** | InsightFace | `buffalo_l` 模型包 | 使用 `identity_model=insightface` 时按需加载 | `models/insightface/models/buffalo_l/` |
+| **16GB HiFi H3 FL2VA** | UNET (DiT) | `minimax_h3_fl2va_dit_16g.safetensors` | 原首尾帧工作流 | [ModelScope](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) -> `models/unet/` |
+| **16GB HiFi H3 Ref2VA** | UNET (DiT) | `minimax_h3_ref2va_dit_16g.safetensors` | 原参考图与人脸修复工作流 | [ModelScope](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) -> `models/unet/` |
 | **Qwen3-VL Encoder** | CLIP | `qwen3vl_text_encoder.safetensors` | MiniMax H3 视频生成提示词与多模态特征编码 | [ModelScope](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) -> `models/clip/` |
 | **MiniMax Video VAE** | VAE | `minimax_h3_video_vae_fp16.safetensors` | MiniMax H3 视频潜空间编解码器 | [ModelScope](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) -> `models/vae/` |
 | **MiniMax Audio VAE** | VAE | `minimax_h3_audio_vae_fp32.safetensors` | MiniMax H3 原生伴生音频潜空间编解码器 | [ModelScope](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) -> `models/vae/` |
@@ -334,6 +411,8 @@ ComfyUI 算力节点预置工作流所依赖的专用模型权重清单（存放
 | :--- | :--- | :--- | :--- |
 | **RIFE 4.9** | `rife49.pth` | 视频智能光流插帧（将生成的 24 FPS 镜头平滑倍增至 48 FPS 影视帧率） | `custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/` |
 | **RealESRGAN x2plus**| `RealESRGAN_x2plus.pth` | 视频 2 倍超分辨率无损重建（提升镜头清晰度与纹理细节） | `models/upscale_models/` |
+| **SeedVR2 3B INT8** | `seedvr2_3b_int8_convrot.safetensors` | 原生视频超分与时间分块；[官方权重](https://huggingface.co/Comfy-Org/SeedVR2) | `models/diffusion_models/` |
+| **SeedVR2 VAE** | `seedvr2_ema_vae_fp16.safetensors` | SeedVR2 视频潜空间编解码 | `models/vae/` |
 
 ---
 
@@ -470,7 +549,7 @@ docker compose up -d --force-recreate db-upgrade backend frontend
 - **官方模板与 Turbo 工作流**：使用 Comfy-Org INT8 ConvRot 权重与匹配的 Turbo LoRA，具体依赖、模型下载和人脸修复接入见上方「官方 MiniMax H3 工作流与人脸修复」及对应部署文档。
 
 ### 2. 工作流机制说明
-- **工作流适配机制**：首尾帧与参考素材注入依赖已注册模板的节点 ID、映射与处理器；内置模板已覆盖 FLUX.2、16GB HiFi、官方 H3 Turbo4/Turbo8、FaceRefine、RIFE 和 RealESRGAN。第三方工作流需先完成网关适配再调用；
+- **工作流适配机制**：首尾帧与参考素材注入依赖已注册模板的节点 ID、映射与处理器；内置模板已覆盖 FLUX.2、16GB HiFi、官方 H3 Turbo4/Turbo8、FaceRefine、RIFE、RealESRGAN 和 SeedVR2。第三方工作流需先完成网关适配再调用；
 - **开发者接入新工作流逻辑**：
   若需扩展新工作流，需遵循三步工程链路：
   1. ComfyUI 开启开发者模式，导出 **Save (API Format)** 格式的纯参数 JSON 模板并放入 `comfy_gateway/comfyUIApi/`；
@@ -531,9 +610,11 @@ freyja/
 ├── image/                  # 项目视觉海报与角色立绘
 │   ├── freyja1.png         # Freyja 角色立绘 (吉祥物)
 │   └── freyja2.png         # FREYJA AI DIGITAL STUDIO 全景概念海报
-├── skills/                 # 预置 AI 技能知识包 (内置 4 个核心 Skill ZIP 包)
+├── skills/                 # 从本地发布版本导出的 5 个完整 Skill ZIP 包
+│   ├── builtin-manifest.json # 来源版本、包与文件 SHA-256 清单
 │   ├── camera-direction.zip
 │   ├── character-disambiguation.zip
+│   ├── character-sheet-design.zip
 │   ├── cinematography.zip
 │   └── h3-prompt-writing.zip
 ├── src/                    # Spring Boot 4 后端源码
@@ -555,7 +636,7 @@ freyja/
    - **提示词衍生质量有待提升**：负责提示词生成的 AI 有时转译出的镜头描述不够地道或不够贴合画面细节，同样需要创作者手动润色。
 
 3. **求影视/视听领域大佬参与优化两个核心 Skill**：
-   - 系统内置的 **`cinematography`**（电影摄影构图与景别设计规约）和 **`camera-direction`**（镜头运镜与机位轨迹规约）是决定全流程分镜专业感的核心知识基石；
+   - 系统内置的 **`cinematography`**（视觉导演、机位投影与 H3 动作编译）和 **`camera-direction`**（连续剧情分镜编排与世界状态继承）是决定全流程分镜专业感的核心知识基石；
    - 非常欢迎熟悉专业影视摄影、分镜设计的大佬针对 `skills/cinematography.zip` 与 `skills/camera-direction.zip` 中的规则文档（`SKILL.md`）进行专业化升级、补充高质量范例，欢迎提交 PR 共同打磨！
 
 ![Freyja Mascot](image/freyja1.png)

@@ -138,9 +138,9 @@ docker exec -i freyja-mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -
 | **磁盘存储** | 预留 **100 GB** 以上（SSD 固态硬盘） | 预留 **200 GB** 以上（NVMe M.2 高速固态） | 存放基础模型权重、缓存与高清视频渲染资产 |
 | **操作系统** | Windows 10/11 64位 或 Linux (Ubuntu 20.04/22.04 LTS) | Windows 11 / Linux (Ubuntu 22.04+ LTS) | 支持 NVIDIA 专有驱动、CUDA 环境与 Docker 编排 |
 
-- **视频生成模型**：系统配套采用 ModelScope 发布的 **[MiniMax H3 混合高精度量化 (16G显存优化版)](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi)**；
-- **推理加速包**：建议配合下载 ModelScope 文件列表中的 **[ComfyUI-sol-attn-main.zip](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/files)**（解压到 `ComfyUI/custom_nodes/ComfyUI-sol-attn`），专用于降低注意力计算显存开销与加速生视频；
-- **工作流固定机制**：系统提示词组装与镜头注入与预置的 5 套工作流严格绑定，**不支持自动或随意接入第三方工作流**，开箱只使用系统内置工作流（新工作流接入逻辑与 AI 编写指引详见 [comfyUI_workflow/README.md](../comfyUI_workflow/README.md)）。
+- **视频生成模型**：同时支持 [原 16GB HiFi 权重](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi) 与 [Comfy-Org 官方 H3 INT8 ConvRot 权重](https://huggingface.co/Comfy-Org/MiniMax-H3)。官方 FL2VA / Ref2VA、四步 / 八步 LoRA、人脸检测器及目录清单见 [README 模型下载步骤](../Readme.md)；
+- **节点依赖**：原 16GB HiFi 工作流按需安装 [SolAttention 加速包](https://www.modelscope.cn/models/l1ngzi/MiniMax-H3-16G-HiFi/files)；官方工作流使用其原生节点，FaceRefine 入口额外安装对应人脸修复节点及检测器；
+- **工作流适配机制**：平台按已注册的模型编码、API 图、节点映射与 handler 调度；默认包含生图、H3 视频、人脸修复及后处理等 13 个入口。新增 UI 工作流需先完成网关适配，当前清单与接入流程见 [工作流目录说明](../comfyUI_workflow/README.md)。
 
 ### 2. ComfyUI 监听与网络配置
 为了让 Docker 容器顺利访问宿主机或局域网中的 ComfyUI，请确保 ComfyUI 允许外部连接与跨域访问：

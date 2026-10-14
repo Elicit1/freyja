@@ -1,0 +1,141 @@
+{
+  "formatVersion": 1,
+  "source": "FREYJA current published system Skills",
+  "skills": [
+    {
+      "name": "camera-direction",
+      "displayName": "camera-direction",
+      "description": "Worker连续剧情分镜编排 Skill：负责 ShotGroup/Shot 组织、动作负载、自然动作、三维世界状态、人物道具连续性与事件状态继承。",
+      "sourceRevision": "32",
+      "package": "camera-direction.zip",
+      "sha256": "b6f14ae48a758cbaad428c379dc403bac5bc2c9889e735aefb028d81e68f23bf",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "3df284575832e3fe466691963640cedd2e383f46ba9ec0510cca101ffd396dc6",
+          "size": 10369
+        },
+        {
+          "path": "refs/continuity-and-state.md",
+          "sha256": "c33234d8daccbb610421d916a556d000f70805b1f156a8bf32468dde84049528",
+          "size": 1992
+        },
+        {
+          "path": "refs/natural-action.md",
+          "sha256": "7882bb375fa050d801e281123e0f190282e1770dd094b903e60ef1ba08b4447d",
+          "size": 2509
+        },
+        {
+          "path": "refs/shot-structure.md",
+          "sha256": "facac2bcfed16bbca5f10bc6b696d897b46de8e1d1fadaee96dc568b20760f3c",
+          "size": 3778
+        },
+        {
+          "path": "refs/spatial-topology.md",
+          "sha256": "ab3fc0fa92ab58b4606b0be2db5216b498b6e65a9d5fc67b68187c903e73e719",
+          "size": 2240
+        }
+      ]
+    },
+    {
+      "name": "character-disambiguation",
+      "displayName": "character-disambiguation",
+      "description": "供 Planner 在剧情规划时依据项目角色资料与原文上下文识别人物，消解名称、别名、称谓、代词、省略主语和跨段落指代歧义，并保持角色引用一致；不负责分镜、运镜或视频提示词。",
+      "sourceRevision": "1",
+      "package": "character-disambiguation.zip",
+      "sha256": "2fa89035208be56cf04780daf9e826f055d464ba83e25d04863da1a87444916b",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "1f03e7edf7e867a80c347cd0b07b20be693f88e0fd1735f92cae4b0b3545cc25",
+          "size": 3778
+        }
+      ]
+    },
+    {
+      "name": "character-sheet-design",
+      "displayName": "character-sheet-design",
+      "description": "Design character identity and outfit reference images, including single-sheet front/side/back views, separate head portraits, costume details, and transparent or white backgrounds. Use before generating character or character-look design images; follow an explicit portrait or other layout request when provided.",
+      "sourceRevision": "1",
+      "package": "character-sheet-design.zip",
+      "sha256": "0e0e7a063c9f8db97abec624231f9d3ffe8795ef5af8290263bde263f5f620a3",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "4be318acf19b869d358d7fb923186d32d8b89f54bc7525ef8eca574bfb5ce1cc",
+          "size": 5289
+        }
+      ]
+    },
+    {
+      "name": "cinematography",
+      "displayName": "电影摄影与分镜运镜",
+      "description": "MiniMax H3视觉导演Skill。基于Worker提供的剧情与三维世界状态，自主选择可读机位，将剧情事件与动作编译为低歧义、可执行的H3视觉语言，并完成二维空间、构图、运镜与连续性控制。",
+      "sourceRevision": "49",
+      "package": "cinematography.zip",
+      "sha256": "3989a8f026794c3e8445deca5d1e790cfb28acac731441ca9bfab0190a7e0321",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "57a4283c17b06ff5009ab4737a884c0d7bc0a0a553a653e838371b6e8eb0324b",
+          "size": 11077
+        },
+        {
+          "path": "refs/camera-selection.md",
+          "sha256": "3538b6e5fe27cc71377ea38274ff1b34e1d304123e2d5c4c9a993b0f7dd122c6",
+          "size": 3705
+        },
+        {
+          "path": "refs/continuity.md",
+          "sha256": "3c8a18a7d42bda7f7da683fdba16b6c58eebe66e45771dd668974d0619e4aa22",
+          "size": 1668
+        },
+        {
+          "path": "refs/framing-and-motion.md",
+          "sha256": "789080ca47ee5fbf601fd0964b7c9f1da8600a4e81ece52a825901c7369707af",
+          "size": 1268
+        },
+        {
+          "path": "refs/h3-action-compiler.md",
+          "sha256": "c23cc15762576672458f5cc392eed8dab522fb140b13b4ae2791c0976544172f",
+          "size": 7686
+        },
+        {
+          "path": "refs/spatial-projection.md",
+          "sha256": "c62eb8c08411fc9c3166541218df901c006fd3228a80ec9bf5229000c514205a",
+          "size": 1405
+        }
+      ]
+    },
+    {
+      "name": "h3-prompt-writing",
+      "displayName": "MiniMax H3 官方提示词编写",
+      "description": "Write MiniMax H3 video generation prompts for T2VA, I2VA, FL2VA, L2VA, and Ref2VA. Use when rewriting multimodal requests into H3 prompt structures, composing integrated_multimodal_description, overall_soundscape, and non_diegetic_music, aligning keyframes, or defining reference labels for images, videos, and audio.",
+      "sourceRevision": "2",
+      "package": "h3-prompt-writing.zip",
+      "sha256": "4081364970235ee550562a4dc8da0e8775e8a44be94eee3fb6fd1cbe8239a408",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "a7000443588ca3f145e3b3fd8900f14e0325dc460bd811268fac89a9dc8e56d0",
+          "size": 2623
+        },
+        {
+          "path": "agents/openai.yaml",
+          "sha256": "7770c9d784b7251ab882ee29a738219a3f01811e57ba7fc7822fa83eb8438c1a",
+          "size": 240
+        },
+        {
+          "path": "references/base-en.txt",
+          "sha256": "2cfebc096a6e08370f288d468d90b60f7f9bcb938f94bf090816e910e48e75fc",
+          "size": 15773
+        },
+        {
+          "path": "references/ref-en.txt",
+          "sha256": "1e574f356716ad55612247ffb7bbccbcdb484ad96599d63c7dca1af186b1fab7",
+          "size": 23553
+        }
+      ]
+    }
+  ]
+}
