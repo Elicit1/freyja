@@ -9,11 +9,11 @@
       <el-alert :title="`当前发布修订 ${view.active.revision} · 配置修订 ${view.revision}${dirty ? ' · 有未保存修改' : ''}`" type="info" :closable="false" />
       <el-tabs v-model="tab" class="mt-4">
         <el-tab-pane label="能力与入口绑定" name="bindings">
-          <div class="toolbar"><el-input v-model="keyword" placeholder="搜索名称、说明或处理器" clearable /><el-select v-model="consumer"><el-option value="ALL" label="全部入口" /><el-option value="INTERNAL_AGENT" label="内置助手" /><el-option value="MCP" label="外部 MCP" /></el-select></div>
+          <div class="toolbar"><el-input v-model="keyword" placeholder="搜索工具名称或说明" clearable /><el-select v-model="consumer"><el-option value="ALL" label="全部入口" /><el-option value="INTERNAL_AGENT" label="内置助手" /><el-option value="MCP" label="外部 MCP" /></el-select></div>
           <el-table :data="bindingRows" stripe row-key="id">
             <el-table-column label="工具" min-width="240"><template #default="{ row }"><strong>{{ row.name }}</strong><p class="muted">{{ row.description }}</p></template></el-table-column>
             <el-table-column label="入口" width="110"><template #default="{ row }">{{ row.consumer === 'MCP' ? '外部 MCP' : '内置助手' }}</template></el-table-column>
-            <el-table-column label="执行与项目要求" min-width="240"><template #default="{ row }"><el-tooltip content="内部处理器标识。实际使用方以「入口」列为准，MCP 前缀不表示仅供外部 Agent 使用。" placement="top"><code>{{ row.handlerKey }}</code></el-tooltip><p class="muted">{{ row.effect === 'WRITE' ? '可修改数据' : '只读' }} · {{ row.projectRequired ? (row.consumer === 'MCP' ? '调用时需指定项目' : '需预先绑定项目') : '不要求预先绑定项目' }}</p></template></el-table-column>
+            <el-table-column label="执行与项目要求" min-width="220"><template #default="{ row }"><el-tag :type="row.effect === 'WRITE' ? 'warning' : 'info'" size="small">{{ row.effect === 'WRITE' ? '可修改数据' : '只读' }}</el-tag><p class="muted">{{ row.projectRequired ? (row.consumer === 'MCP' ? '调用时需指定项目' : '需预先绑定项目') : '不要求预先绑定项目' }}</p></template></el-table-column>
             <el-table-column label="启用" width="90"><template #default="{ row }"><el-switch v-model="row.enabled" :disabled="row.required || busy" @change="dirty = true" /></template></el-table-column>
             <el-table-column label="操作" width="80"><template #default="{ row }"><el-button link type="primary" @click="edit(row)">编辑</el-button></template></el-table-column>
           </el-table>
@@ -27,6 +27,7 @@
     </template>
     <el-dialog v-model="editing" title="编辑能力绑定" width="min(900px, 95vw)">
       <el-form v-if="selected" label-position="top"><el-form-item label="工具名称"><el-input v-model="selected.name" maxlength="128" /></el-form-item><el-form-item label="工具说明"><el-input v-model="selected.description" type="textarea" :rows="5" /></el-form-item><el-form-item label="参数 Schema"><el-input v-model="schemaText" type="textarea" :rows="17" class="schema-editor" /><p class="hint">可以修改字段说明或收紧支持的约束；字段、类型、处理器与权限边界会在发布前校验。</p></el-form-item></el-form>
+      <details v-if="selected" class="technical-details"><summary>技术信息</summary><p>底层处理器：<code>{{ selected.handlerKey }}</code></p><p class="muted">注册名称保留了初始实现来源；实际调用入口由当前绑定决定。内置助手直接调用共享业务处理器。</p></details>
       <template #footer><el-button @click="editing = false">取消</el-button><el-button type="primary" @click="applyEdit">应用到草稿</el-button></template>
     </el-dialog>
   </div>
@@ -42,7 +43,7 @@ const view = ref<CapabilityView>(), draft = ref<CapabilityRelease>()
 const loading = ref(false), busy = ref(false), dirty = ref(false), error = ref('')
 const tab = ref('bindings'), keyword = ref(''), consumer = ref('ALL')
 const editing = ref(false), selected = ref<CapabilityBinding>(), schemaText = ref('')
-const filtered = computed(() => draft.value?.bindings.filter(b => (consumer.value === 'ALL' || b.consumer === consumer.value) && `${b.name} ${b.description} ${b.handlerKey}`.toLowerCase().includes(keyword.value.toLowerCase())) || [])
+const filtered = computed(() => draft.value?.bindings.filter(b => (consumer.value === 'ALL' || b.consumer === consumer.value) && `${b.name} ${b.description}`.toLowerCase().includes(keyword.value.toLowerCase())) || [])
 const { page: bindingPage, pageSize: bindingPageSize, total: bindingTotal, rows: bindingRows, reset: resetBindings } = useLocalPagination(filtered)
 watch([keyword, consumer], resetBindings)
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
@@ -80,5 +81,6 @@ h1 { font-size: 24px; font-weight: 700; } p { margin-top: 8px; }
 .muted, .hint, .heading p { color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 .hint { margin: 14px 0; }.toolbar { margin: 16px 0; }.toolbar .el-input { max-width: 360px; }.toolbar .el-select { width: 150px; }
 code { overflow-wrap: anywhere; font-size: 12px; }.schema-editor :deep(textarea) { font-family: monospace; }
+.technical-details { margin-top: 12px; }.technical-details summary { cursor: pointer; color: var(--text-secondary); }
 @media (max-width: 850px) { .heading { align-items: flex-start; flex-direction: column; }.actions { flex-wrap: wrap; } }
 </style>
