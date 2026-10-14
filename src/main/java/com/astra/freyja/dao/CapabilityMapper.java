@@ -12,6 +12,9 @@ public interface CapabilityMapper {
     int initializeState();
     CapabilityRow draft();
     int saveDraft(@Param("json") String json);
+    int alignDraft(@Param("json") String json);
+    String versionContract(@Param("id") Long id, @Param("capabilityId") Long capabilityId);
+    String latestContract(@Param("capabilityId") Long capabilityId);
     CapabilityRow release(@Param("id") Long id);
     List<CapabilityRow> releases();
     int saveRelease(@Param("id") Long id, @Param("revision") long revision, @Param("json") String json,

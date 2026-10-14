@@ -6,6 +6,9 @@
     <insert id="initializeState">INSERT IGNORE INTO ai_capability_catalog_state(id,revision) VALUES(1,0)</insert>
     <select id="draft" resultType="com.astra.freyja.capability.model.CapabilityRow">SELECT revision,payload_json FROM ai_capability_catalog_state WHERE id=1</select>
     <update id="saveDraft">UPDATE ai_capability_catalog_state SET payload_json=#{json},revision=revision+1 WHERE id=1</update>
+    <update id="alignDraft">UPDATE ai_capability_catalog_state SET payload_json=#{json} WHERE id=1</update>
+    <select id="versionContract" resultType="java.lang.String">SELECT contract_json FROM ai_capability_version WHERE id=#{id} AND capability_id=#{capabilityId}</select>
+    <select id="latestContract" resultType="java.lang.String">SELECT contract_json FROM ai_capability_version WHERE capability_id=#{capabilityId} ORDER BY version_no DESC LIMIT 1</select>
     <select id="release" resultType="com.astra.freyja.capability.model.CapabilityRow">SELECT id,revision,payload_json,content_hash,note,create_time FROM ai_capability_release WHERE id=#{id}</select>
     <select id="releases" resultType="com.astra.freyja.capability.model.CapabilityRow">SELECT id,revision,content_hash,note,create_time FROM ai_capability_release ORDER BY revision DESC LIMIT 100</select>
     <insert id="saveRelease">INSERT INTO ai_capability_release(id,revision,payload_json,content_hash,note,create_time) VALUES(#{id},#{revision},#{json},#{hash},#{note},CURRENT_TIMESTAMP)</insert>

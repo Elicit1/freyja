@@ -7,6 +7,8 @@
     <el-alert v-if="error" :title="error" type="error" :closable="false" class="mb-4" />
     <template v-if="view && draft">
       <el-alert :title="`当前发布修订 ${view.active.revision} · 配置修订 ${view.revision}${dirty ? ' · 有未保存修改' : ''}`" type="info" :closable="false" />
+      <el-alert v-for="issue in view.issues" :key="`${issue.source}-${issue.bindingId}`" class="mt-3" type="warning" :closable="false"
+        :title="`${issue.source === 'draft' ? '草稿' : '已发布'}能力 ${issue.name} 需要处理`" :description="issue.message" />
       <el-tabs v-model="tab" class="mt-4">
         <el-tab-pane label="能力与入口绑定" name="bindings">
           <div class="toolbar"><el-input v-model="keyword" placeholder="搜索工具名称或说明" clearable /><el-select v-model="consumer"><el-option value="ALL" label="全部入口" /><el-option value="INTERNAL_AGENT" label="内置助手" /><el-option value="MCP" label="外部 MCP" /></el-select></div>
@@ -15,7 +17,7 @@
             <el-table-column label="入口" width="110"><template #default="{ row }">{{ row.consumer === 'MCP' ? '外部 MCP' : '内置助手' }}</template></el-table-column>
             <el-table-column label="执行与项目要求" min-width="220"><template #default="{ row }"><p v-if="row.consumer === 'MCP'" class="handler-id"><code>{{ row.handlerKey }}</code></p><el-tag :type="row.effect === 'WRITE' ? 'warning' : 'info'" size="small">{{ row.effect === 'WRITE' ? '可修改数据' : '只读' }}</el-tag><p class="muted">{{ row.projectRequired ? (row.consumer === 'MCP' ? '调用时需指定项目' : '需预先绑定项目') : '不要求预先绑定项目' }}</p></template></el-table-column>
             <el-table-column label="启用" width="90"><template #default="{ row }"><el-switch v-model="row.enabled" :disabled="row.required || busy" @change="dirty = true" /></template></el-table-column>
-            <el-table-column label="操作" width="80"><template #default="{ row }"><el-button link type="primary" @click="edit(row)">编辑</el-button></template></el-table-column>
+            <el-table-column label="操作" width="100"><template #default="{ row }"><el-button link type="primary" @click="edit(row)">{{ view.issues.some(i => i.source === 'draft' && i.bindingId === row.id) ? '修复 / 编辑' : '编辑' }}</el-button></template></el-table-column>
           </el-table>
           <el-pagination v-model:current-page="bindingPage" v-model:page-size="bindingPageSize" :total="bindingTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" class="list-pagination" />
           <p class="hint">只读工具仅查询数据；可修改数据的工具会写入或更新记录。项目要求说明调用前提，实际可访问的数据仍受项目授权限制。</p>
@@ -26,7 +28,7 @@
       </el-tabs>
     </template>
     <el-dialog v-model="editing" title="编辑能力绑定" width="min(900px, 95vw)">
-      <el-form v-if="selected" label-position="top"><el-form-item label="工具名称"><el-input v-model="selected.name" maxlength="128" /></el-form-item><el-form-item label="工具说明"><el-input v-model="selected.description" type="textarea" :rows="5" /></el-form-item><el-form-item label="参数 Schema"><el-input v-model="schemaText" type="textarea" :rows="17" class="schema-editor" /><p class="hint">可以修改字段说明或收紧支持的约束；字段、类型、处理器与权限边界会在发布前校验。</p></el-form-item></el-form>
+      <el-form v-if="selected" label-position="top"><el-form-item label="工具名称"><el-input v-model="selected.name" maxlength="128" /></el-form-item><el-form-item label="工具说明"><el-input v-model="selected.description" type="textarea" :rows="5" /></el-form-item><el-form-item label="参数 Schema"><el-input v-model="schemaText" type="textarea" :rows="17" class="schema-editor" /><p class="hint">可以修改字段说明或收紧支持的约束；字段、类型、处理器与权限边界会在发布前校验。</p><el-button v-if="view?.repairs[selected.id]" link type="warning" @click="restoreSchema">恢复当前参数结构</el-button></el-form-item></el-form>
       <details v-if="selected" class="technical-details"><summary>技术信息</summary><p>底层处理器：<code>{{ selected.handlerKey }}</code></p><p class="muted">注册名称保留了初始实现来源；实际调用入口由当前绑定决定。内置助手直接调用共享业务处理器。</p></details>
       <template #footer><el-button @click="editing = false">取消</el-button><el-button type="primary" @click="applyEdit">应用到草稿</el-button></template>
     </el-dialog>
@@ -47,7 +49,7 @@ const filtered = computed(() => draft.value?.bindings.filter(b => (consumer.valu
 const { page: bindingPage, pageSize: bindingPageSize, total: bindingTotal, rows: bindingRows, reset: resetBindings } = useLocalPagination(filtered)
 watch([keyword, consumer], resetBindings)
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
-function accept(value: CapabilityView) { view.value = value; draft.value = clone(value.draft); dirty.value = false }
+function accept(value: CapabilityView) { view.value = { ...value, issues: value.issues || [], repairs: value.repairs || {} }; draft.value = clone(value.draft); dirty.value = false }
 async function load() { loading.value = true; error.value = ''; try { accept(await capabilitiesApi.get()) } catch (e) { error.value = e instanceof Error ? e.message : '读取能力目录失败' } finally { loading.value = false } }
 async function save() { if (!view.value || !draft.value) return; busy.value = true; error.value = ''; try { accept(await capabilitiesApi.save(view.value.revision, draft.value)); ElMessage.success('草稿已保存，发布后生效') } catch (e) { error.value = e instanceof Error ? e.message : '保存失败' } finally { busy.value = false } }
 async function publish() {
@@ -61,6 +63,13 @@ async function rollback(id: string) {
   catch (e) { if (e !== 'cancel' && e !== 'close') error.value = e instanceof Error ? e.message : '回滚失败' } finally { busy.value = false }
 }
 function edit(binding: CapabilityBinding) { selected.value = clone(binding); schemaText.value = JSON.stringify(binding.schema, null, 2); editing.value = true }
+async function restoreSchema() {
+  if (!selected.value || !view.value?.repairs[selected.value.id]) return
+  try {
+    await ElMessageBox.confirm('这会替换该能力的参数结构及其自定义参数说明；工具名称和工具说明会保留。', '恢复当前参数结构')
+    schemaText.value = JSON.stringify(view.value.repairs[selected.value.id], null, 2)
+  } catch { /* 取消恢复 */ }
+}
 function applyEdit() {
   if (!selected.value || !draft.value) return
   try { const schema = JSON.parse(schemaText.value); if (!schema || Array.isArray(schema) || typeof schema !== 'object') throw new Error(); selected.value.schema = schema }

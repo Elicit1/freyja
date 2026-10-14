@@ -30,6 +30,8 @@ export interface CapabilityView {
   draft: CapabilityRelease
   releases: { id: string; revision: string | number; note: string; createTime: string }[]
   instanceId: string
+  issues: { source: 'active' | 'draft'; bindingId: string; name: string; message: string }[]
+  repairs: Record<string, Record<string, unknown>>
 }
 export const capabilitiesApi = {
   get: () => request<CapabilityView>({ url: '/system/ai-capabilities', method: 'get' }),

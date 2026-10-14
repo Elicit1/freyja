@@ -76,7 +76,10 @@ public class CapabilityCatalogService {
                     }
                     var initial = new Release(null, 0, bindings, McpServerConfiguration.GUIDE, DEFAULT_RULES);
                     mapper.saveDraft(json.write(initial));
-                    publishLocked(mapper.lockState(), initial, "首次导入内部Agent与MCP能力");
+                    Release published = publishLocked(mapper.lockState(), initial, "首次导入内部Agent与MCP能力");
+                    mapper.alignDraft(json.write(withVersions(initial, published)));
+                } else {
+                    migrateLocked(state);
                 }
             });
             initialized = true;
@@ -86,11 +89,32 @@ public class CapabilityCatalogService {
         initialize();
         CapabilityRow state = mapper.state();
         if (state == null || state.getActiveReleaseId() == null) throw new BizException(503, "能力目录尚未发布");
-        return release(state.getActiveReleaseId().toString());
+        String id = state.getActiveReleaseId().toString();
+        try { return release(id); }
+        catch (BizException failure) {
+            // Keep healthy tools discoverable while an administrator repairs an incompatible binding.
+            Release raw = rawRelease(id);
+            List<Binding> available = new ArrayList<>();
+            for (Binding binding : raw.bindings()) try {
+                Binding projected = migrateBinding(binding, false);
+                verify(List.of(projected));
+                available.add(projected);
+            } catch (BizException ignored) { }
+            Release safe = new Release(raw.id(), raw.revision(), List.copyOf(available), raw.instructions(), raw.rules());
+            local.put(id, safe);
+            log.warn("能力目录存在待修复绑定，已仅开放 {} 个可用能力: {}", available.size(), failure.getMessage());
+            return safe;
+        }
     }
     public Release release(String id) {
         Release cached = local.get(id);
         if (cached != null) return cached;
+        Release value = migrateSnapshot(rawRelease(id), false);
+        verify(value.bindings());
+        local.put(id, value);
+        return value;
+    }
+    private Release rawRelease(String id) {
         CapabilityRow row = mapper.release(Long.valueOf(id));
         if (row == null) throw new BizException(409, "能力发布版本不存在");
         String text = null;
@@ -100,31 +124,47 @@ public class CapabilityCatalogService {
         if (!hash(text).equals(row.getContentHash())) throw new BizException(409, "能力发布快照摘要不一致");
         Release value = read(text);
         if (!id.equals(value.id())) throw new BizException(409, "能力版本标识不一致");
-        verify(value.bindings());
-        local.put(id, value);
         if (client != null) try { client.opsForValue().set(cacheKey(id), text, Duration.ofHours(24)); } catch (RuntimeException ignored) { }
         return value;
     }
     public Map<String, Object> view() {
-        Release active = current();
+        initialize();
         var state = mapper.state();
-        return Map.of("revision", state.getRevision(), "active", active, "draft", read(mapper.draft().getPayloadJson()),
+        Release active = rawRelease(state.getActiveReleaseId().toString());
+        Release draft = read(mapper.draft().getPayloadJson());
+        List<Map<String, String>> issues = new ArrayList<>();
+        for (Binding binding : active.bindings()) issue("active", binding, issues);
+        for (Binding binding : draft.bindings()) issue("draft", binding, issues);
+        Map<String, Map<String, Object>> repairs = new LinkedHashMap<>();
+        for (Binding binding : draft.bindings()) {
+            var handler = handlers.all().get(binding.handlerKey());
+            if (handler != null) repairs.put(binding.id(), baseline(binding, handler));
+        }
+        return Map.of("revision", state.getRevision(), "active", active, "draft", draft, "issues", issues, "repairs", repairs,
                 "releases", mapper.releases(), "instanceId", instanceId,
                 "handlers", handlers.all().values().stream().map(h -> Map.of("key", h.key(), "effect", h.effect(), "recoveryMode", h.recoveryMode(), "schema", h.schema())).toList());
     }
     public void save(Edit input) {
-        initialize(); verify(input.bindings());
+        initialize();
         requireText(input.instructions(), input.rules());
         transactions.executeWithoutResult(tx -> {
             var state = lock(input.revision());
             Map<String, Binding> existing = new HashMap<>();
             read(mapper.draft().getPayloadJson()).bindings().forEach(b -> existing.put(b.id(), b));
             if (input.bindings().size() != existing.size()) throw new BizException(400, "请使用已有能力绑定，不能删除处理器契约");
+            Set<String> names = new HashSet<>();
             for (Binding b : input.bindings()) {
                 Binding old = existing.get(b.id());
                 if (old == null || !old.capabilityId().equals(b.capabilityId()) || !old.handlerKey().equals(b.handlerKey())
                         || old.consumer() != b.consumer() || !old.consumerCode().equals(b.consumerCode()) || old.contextMode() != b.contextMode()
-                        || old.required() != b.required()) throw new BizException(400, "不能通过工具元数据修改能力身份、入口或必要上下文");
+                        || old.required() != b.required() || old.effect() != b.effect() || old.recoveryMode() != b.recoveryMode()
+                        || old.projectRequired() != b.projectRequired() || !Objects.equals(old.versionId(), b.versionId()))
+                    throw new BizException(400, "不能通过工具元数据修改能力身份、入口或必要上下文");
+                if (b.name() == null || !b.name().matches("[A-Za-z0-9_-]{1,128}")
+                        || !names.add(b.consumer() + "/" + b.consumerCode() + "/" + b.name())
+                        || b.description() == null || b.description().isBlank() || b.description().length() > 20000
+                        || b.required() && !b.enabled()) throw new BizException(400, "能力名称、说明或启用状态无效");
+                if (!Objects.equals(old.schema(), b.schema())) verify(List.of(b));
             }
             mapper.saveDraft(json.write(new Release(null, state.getRevision() + 1, input.bindings(), input.instructions(), input.rules())));
         });
@@ -134,7 +174,8 @@ public class CapabilityCatalogService {
         transactions.executeWithoutResult(tx -> {
             var state = lock(input.revision());
             Release draft = read(mapper.draft().getPayloadJson()); verify(draft.bindings());
-            publishLocked(state, draft, input.note());
+            Release published = publishLocked(state, draft, input.note());
+            mapper.alignDraft(json.write(withVersions(draft, published)));
         });
         refresh();
     }
@@ -145,27 +186,95 @@ public class CapabilityCatalogService {
             var state = lock(input.revision());
             verify(previous.bindings());
             mapper.saveDraft(json.write(previous));
-            publishLocked(mapper.lockState(), previous, "回滚至版本 " + previous.id());
+            Release published = publishLocked(mapper.lockState(), previous, "回滚至版本 " + previous.id());
+            mapper.alignDraft(json.write(withVersions(previous, published)));
         });
         refresh();
+    }
+    private void migrateLocked(CapabilityRow state) {
+        Release active = rawRelease(state.getActiveReleaseId().toString());
+        Release draft = read(mapper.draft().getPayloadJson());
+        Release nextActive = null;
+        try { nextActive = migrateSnapshot(active, false); verify(nextActive.bindings()); }
+        catch (BizException e) { log.warn("已发布能力存在待人工修复的兼容冲突: {}", e.getMessage()); }
+        Release nextDraft = migrateCompatibleBindings(draft, true);
+        if (nextActive != null && !active.bindings().equals(nextActive.bindings())) {
+            Release published = publishLocked(state, nextActive, "自动兼容当前处理器契约");
+            mapper.alignDraft(json.write(withVersions(nextDraft, published)));
+        } else if (!draft.bindings().equals(nextDraft.bindings())) {
+            mapper.saveDraft(json.write(new Release(null, state.getRevision() + 1, nextDraft.bindings(), nextDraft.instructions(), nextDraft.rules())));
+        }
+    }
+    private Release migrateCompatibleBindings(Release source, boolean draft) {
+        List<Binding> bindings = new ArrayList<>();
+        for (Binding binding : source.bindings()) try { bindings.add(migrateBinding(binding, draft)); }
+        catch (BizException e) {
+            log.warn("能力绑定待人工修复: {}", e.getMessage());
+            bindings.add(binding);
+        }
+        return new Release(source.id(), source.revision(), List.copyOf(bindings), source.instructions(), source.rules());
+    }
+    private Release migrateSnapshot(Release source, boolean draft) {
+        List<Binding> bindings = source.bindings().stream().map(b -> migrateBinding(b, draft)).toList();
+        return new Release(source.id(), source.revision(), bindings, source.instructions(), source.rules());
+    }
+    private Binding migrateBinding(Binding binding, boolean draft) {
+        var handler = handlers.require(binding.handlerKey());
+        Map<String, Object> currentSchema = baseline(binding, handler);
+        try { schemas.verify(binding.name(), currentSchema, binding.schema()); return binding; }
+        catch (BizException incompatible) {
+            String contract = mapper.versionContract(Long.valueOf(binding.versionId()), Long.valueOf(binding.capabilityId()));
+            if (contract == null && draft) contract = mapper.latestContract(Long.valueOf(binding.capabilityId()));
+            if (contract == null) throw new BizException(409, "能力「" + binding.name() + "」缺少历史处理器契约，需在能力管理页恢复当前参数结构");
+            Map<String, Object> previous = handlers.parse(contract);
+            if (binding.consumer() == Consumer.INTERNAL_AGENT && handler.business() != null) previous = handlers.internalSchema(previous);
+            Map<String, Object> migrated = schemas.rebase(binding.name(), previous, binding.schema(), currentSchema);
+            return withSchema(binding, migrated);
+        }
+    }
+    private Map<String, Object> baseline(Binding binding, CapabilityHandlers.Handler handler) {
+        return binding.consumer() == Consumer.INTERNAL_AGENT && handler.business() != null
+                ? handlers.internalSchema(handler.schema()) : handler.schema();
+    }
+    private void issue(String source, Binding binding, List<Map<String, String>> issues) {
+        try { verify(List.of(migrateBinding(binding, source.equals("draft")))); }
+        catch (BizException e) { issues.add(Map.of("source", source, "bindingId", binding.id(), "name", binding.name(), "message", e.getMessage())); }
+    }
+    private static Binding withSchema(Binding b, Map<String, Object> schema) {
+        return new Binding(b.id(), b.capabilityId(), b.versionId(), b.handlerKey(), b.consumer(), b.consumerCode(), b.name(),
+                b.description(), schema, b.enabled(), b.required(), b.contextMode(), b.projectRequired(), b.effect(), b.recoveryMode());
+    }
+    private Release withVersions(Release draft, Release published) {
+        Map<String, String> versions = new HashMap<>();
+        published.bindings().forEach(b -> versions.put(b.capabilityId(), b.versionId()));
+        List<Binding> bindings = draft.bindings().stream().map(b -> {
+            return new Binding(b.id(), b.capabilityId(), schemaCompatible(b) ? versions.getOrDefault(b.capabilityId(), b.versionId()) : b.versionId(),
+                    b.handlerKey(), b.consumer(), b.consumerCode(), b.name(), b.description(), b.schema(), b.enabled(), b.required(),
+                    b.contextMode(), b.projectRequired(), b.effect(), b.recoveryMode());
+        }).toList();
+        return new Release(null, published.revision(), bindings, draft.instructions(), draft.rules());
+    }
+    private boolean schemaCompatible(Binding binding) {
+        try { schemas.verify(binding.name(), baseline(binding, handlers.require(binding.handlerKey())), binding.schema()); return true; }
+        catch (BizException ignored) { return false; }
     }
     private CapabilityRow lock(Long expected) {
         CapabilityRow state = mapper.lockState();
         if (expected == null || !expected.equals(state.getRevision())) throw new BizException(409, "能力配置已修改，请刷新后重试");
         return state;
     }
-    private void publishLocked(CapabilityRow state, Release draft, String note) {
+    private Release publishLocked(CapabilityRow state, Release draft, String note) {
         long revision = state.getRevision() + 1;
         String id = Long.toString(IdWorker.getId());
         Map<String, String> versions = new HashMap<>();
         List<Binding> bindings = new ArrayList<>();
         for (Binding b : draft.bindings()) {
-            String version = versions.computeIfAbsent(b.capabilityId(), cap -> {
+            String version = schemaCompatible(b) ? versions.computeIfAbsent(b.capabilityId(), cap -> {
                 long v = IdWorker.getId();
                 mapper.insertDefinition(Long.valueOf(cap), b.handlerKey(), b.name());
                 mapper.insertVersion(v, Long.valueOf(cap), revision, json.write(handlers.require(b.handlerKey()).schema()));
                 return Long.toString(v);
-            });
+            }) : b.versionId();
             var next = new Binding(b.id(), b.capabilityId(), version, b.handlerKey(), b.consumer(), b.consumerCode(), b.name(),
                     b.description(), b.schema(), b.enabled(), b.required(), b.contextMode(), b.projectRequired(), b.effect(), b.recoveryMode());
             bindings.add(next);
@@ -178,6 +287,7 @@ public class CapabilityCatalogService {
         mapper.saveRule("MCP_INSTRUCTIONS", draft.instructions());
         mapper.activate(Long.valueOf(id), revision);
         mapper.enqueue(IdWorker.getId(), revision, Long.valueOf(id));
+        return published;
     }
     public void verify(List<Binding> bindings) {
         if (bindings == null || bindings.isEmpty() || bindings.size() > 500) throw new BizException(400, "能力绑定数量无效");
@@ -190,7 +300,7 @@ public class CapabilityCatalogService {
                     || (b.consumer() == Consumer.MCP && h.nativeTool() != null)) throw new BizException(400, "处理器效果、恢复模式或入口上下文不匹配");
             if (b.required() && !b.enabled()) throw new BizException(400, "不能停用内部工作流的必需能力");
             if (b.description() == null || b.description().isBlank() || b.description().length() > 20000) throw new BizException(400, "能力说明无效");
-            schemas.verify(b.consumer() == Consumer.INTERNAL_AGENT && h.business() != null ? handlers.internalSchema(h.schema()) : h.schema(), b.schema());
+            schemas.verify(b.name(), baseline(b, h), b.schema());
         }
     }
     public void validate(Binding binding, Map<String, Object> input) {
@@ -249,14 +359,16 @@ public class CapabilityCatalogService {
         initialize();
         transactions.executeWithoutResult(tx -> {
             var state = mapper.lockState();
-            var active = release(state.getActiveReleaseId().toString());
+            var active = rawRelease(state.getActiveReleaseId().toString());
             var target = active.bindings().stream().filter(b -> b.consumer() == Consumer.MCP && b.name().equals(name)).findFirst()
                     .orElseThrow(() -> new BizException(404, "MCP能力绑定不存在"));
+            verify(List.of(migrateBinding(target, false)));
             var draft = read(mapper.draft().getPayloadJson());
             var edited = draft.bindings().stream().map(b -> b.id().equals(target.id()) ? enabled(b, enabled) : b).toList();
             mapper.saveDraft(json.write(new Release(null, state.getRevision() + 1, edited, draft.instructions(), draft.rules())));
-            var live = active.bindings().stream().map(b -> b.id().equals(target.id()) ? enabled(b, enabled) : b).toList();
-            publishLocked(mapper.lockState(), new Release(null, state.getRevision() + 1, live, active.instructions(), active.rules()), "MCP工具开关修改");
+            var live = migrateCompatibleBindings(active, false).bindings().stream().map(b -> b.id().equals(target.id()) ? enabled(b, enabled) : b).toList();
+            Release published = publishLocked(mapper.lockState(), new Release(null, state.getRevision() + 1, live, active.instructions(), active.rules()), "MCP工具开关修改");
+            mapper.alignDraft(json.write(withVersions(new Release(null, published.revision(), edited, draft.instructions(), draft.rules()), published)));
         });
     }
     @SuppressWarnings("unchecked") private static Class<Map<String, Object>> mapType() { return (Class<Map<String, Object>>) (Class<?>) Map.class; }
@@ -307,7 +419,7 @@ public class CapabilityCatalogService {
         var client = redis.getIfAvailable(); if (client == null) return;
         for (var event : mapper.pendingEvents()) try {
             var release = release(event.getActiveReleaseId().toString());
-            client.opsForValue().set(cacheKey(release.id()), json.write(release), Duration.ofHours(24));
+            client.opsForValue().set(cacheKey(release.id()), mapper.release(Long.valueOf(release.id())).getPayloadJson(), Duration.ofHours(24));
             client.convertAndSend(EVENTS, json.write(Map.of("revision", event.getRevision(), "releaseId", release.id())));
             mapper.sent(event.getId());
         } catch (RuntimeException e) { mapper.retry(event.getId()); break; }
