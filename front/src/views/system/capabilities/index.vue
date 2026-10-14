@@ -10,13 +10,14 @@
       <el-tabs v-model="tab" class="mt-4">
         <el-tab-pane label="能力与入口绑定" name="bindings">
           <div class="toolbar"><el-input v-model="keyword" placeholder="搜索名称、说明或处理器" clearable /><el-select v-model="consumer"><el-option value="ALL" label="全部入口" /><el-option value="INTERNAL_AGENT" label="内置助手" /><el-option value="MCP" label="外部 MCP" /></el-select></div>
-          <el-table :data="filtered" stripe row-key="id">
+          <el-table :data="bindingRows" stripe row-key="id">
             <el-table-column label="工具" min-width="240"><template #default="{ row }"><strong>{{ row.name }}</strong><p class="muted">{{ row.description }}</p></template></el-table-column>
             <el-table-column label="入口" width="110"><template #default="{ row }">{{ row.consumer === 'MCP' ? '外部 MCP' : '内置助手' }}</template></el-table-column>
             <el-table-column label="能力" min-width="170"><template #default="{ row }"><code>{{ row.handlerKey }}</code><p class="muted">{{ row.effect === 'WRITE' ? '写入' : '读取' }} · {{ row.projectRequired ? '需要项目' : '无需项目' }}</p></template></el-table-column>
             <el-table-column label="启用" width="90"><template #default="{ row }"><el-switch v-model="row.enabled" :disabled="row.required || busy" @change="dirty = true" /></template></el-table-column>
             <el-table-column label="操作" width="80"><template #default="{ row }"><el-button link type="primary" @click="edit(row)">编辑</el-button></template></el-table-column>
           </el-table>
+          <el-pagination v-model:current-page="bindingPage" v-model:page-size="bindingPageSize" :total="bindingTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" class="list-pagination" />
         </el-tab-pane>
         <el-tab-pane label="公共创作规则" name="rules"><p class="hint">公共规则同时用于内置助手、新建任务、视频提示词生成和 MCP 指引。已有任务保留创建时的版本。</p><el-input v-model="draft.rules" type="textarea" :rows="16" @input="dirty = true" /></el-tab-pane>
         <el-tab-pane label="外部创作指南" name="guide"><p class="hint">发布后同时更新 MCP 初始化说明与 freyja://guide；公共规则会追加到该指南。</p><el-input v-model="draft.instructions" type="textarea" :rows="20" @input="dirty = true" /></el-tab-pane>
@@ -31,7 +32,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useLocalPagination } from '@/composables/useLocalPagination'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { capabilitiesApi, type CapabilityBinding, type CapabilityRelease, type CapabilityView } from '@/api/capabilities'
 
@@ -40,6 +42,8 @@ const loading = ref(false), busy = ref(false), dirty = ref(false), error = ref('
 const tab = ref('bindings'), keyword = ref(''), consumer = ref('ALL')
 const editing = ref(false), selected = ref<CapabilityBinding>(), schemaText = ref('')
 const filtered = computed(() => draft.value?.bindings.filter(b => (consumer.value === 'ALL' || b.consumer === consumer.value) && `${b.name} ${b.description} ${b.handlerKey}`.toLowerCase().includes(keyword.value.toLowerCase())) || [])
+const { page: bindingPage, pageSize: bindingPageSize, total: bindingTotal, rows: bindingRows, reset: resetBindings } = useLocalPagination(filtered)
+watch([keyword, consumer], resetBindings)
 function clone<T>(value: T): T { return JSON.parse(JSON.stringify(value)) as T }
 function accept(value: CapabilityView) { view.value = value; draft.value = clone(value.draft); dirty.value = false }
 async function load() { loading.value = true; error.value = ''; try { accept(await capabilitiesApi.get()) } catch (e) { error.value = e instanceof Error ? e.message : '读取能力目录失败' } finally { loading.value = false } }
@@ -68,6 +72,7 @@ onMounted(load)
 
 <style scoped>
 .capability-page { padding: 24px; color: var(--text-primary); }
+.list-pagination { margin-top: 18px; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .heading, .actions, .toolbar { display: flex; gap: 12px; align-items: center; }
 .heading { justify-content: space-between; margin-bottom: 20px; }
 h1 { font-size: 24px; font-weight: 700; } p { margin-top: 8px; }

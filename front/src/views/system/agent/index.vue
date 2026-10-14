@@ -60,20 +60,32 @@
             </el-form>
             <details class="field-hint"><summary>查看模板固定约束</summary><pre class="whitespace-pre-wrap mt-2">{{ catalog?.fixedInstructions }}</pre></details>
           </el-tab-pane>
-          <el-tab-pane label="工具与 Skills" name="tools">
+          <el-tab-pane label="工具" name="tools">
+            <p class="field-hint">工具来自 <router-link to="/system/ai-capabilities">AI 能力管理</router-link> 当前发布的内部 Agent 绑定。此处选择助手可使用的工具；必需工具保留勾选。</p>
+            <div class="list-toolbar"><el-input v-model="toolKeyword" clearable placeholder="搜索工具名称或说明" /><el-select v-model="toolEffect"><el-option label="全部操作" value="ALL" /><el-option label="读取工具" value="READ" /><el-option label="写入工具" value="WRITE" /></el-select><el-switch v-model="selectedToolsOnly" active-text="只看已选" /><span class="field-hint">已选 {{ form.tools.names.length }} 个</span></div>
             <el-checkbox-group v-model="form.tools.names" class="tool-grid">
-              <label v-for="tool in catalog?.tools" :key="tool.name" class="tool-card">
-                <el-checkbox :value="tool.name" :disabled="catalog?.requiredTools.includes(tool.name)">{{ toolLabel(tool.name) }}</el-checkbox>
+              <div v-for="tool in toolRows" :key="tool.name" class="tool-card">
+                <el-checkbox :value="tool.name" :disabled="catalog?.requiredTools.includes(tool.name)">{{ tool.name }}</el-checkbox>
                 <el-tag size="small" :type="tool.effect === 'WRITE' ? 'warning' : 'info'">{{ tool.effect === 'WRITE' ? '修改' : '读取' }}</el-tag>
                 <p>{{ tool.description }}</p>
                 <small>{{ tool.projectRequired ? '需要绑定项目' : '通用能力' }} · v{{ tool.version }}</small>
-              </label>
+              </div>
             </el-checkbox-group>
-            <el-divider>专业 Skills</el-divider>
+            <el-empty v-if="!toolTotal" description="没有匹配的工具" />
+            <el-pagination v-model:current-page="toolPage" v-model:page-size="toolPageSize" :total="toolTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" class="list-pagination" />
+          </el-tab-pane>
+          <el-tab-pane label="Skills" name="skills">
+            <p class="field-hint">从 <router-link to="/system/skills">AI Skills</router-link> 已启用、已发布的技能中选择知识包。翻页和搜索保留已选项。</p>
+            <div class="list-toolbar"><el-input v-model="skillKeyword" clearable placeholder="搜索 Skill 名称或说明" /><el-switch v-model="selectedSkillsOnly" active-text="只看已选" /><span class="field-hint">已选 {{ form.skills.names.length }} 个</span></div>
+            <el-checkbox-group v-model="form.skills.names" class="tool-grid">
+              <div v-for="skill in skillRows" :key="String(skill.versionId)" class="tool-card">
+                <el-checkbox :value="skill.name">{{ skill.displayName || skill.name }}</el-checkbox><el-tag size="small">v{{ skill.version }}</el-tag>
+                <p>{{ skill.description }}</p><small>{{ skill.name }}</small>
+              </div>
+            </el-checkbox-group>
+            <el-empty v-if="!skillTotal" description="没有匹配的 Skills" />
+            <el-pagination v-model:current-page="skillPage" v-model:page-size="skillPageSize" :total="skillTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" class="list-pagination" />
             <el-form label-position="top">
-              <el-form-item label="允许使用的 Skills"><el-select v-model="form.skills.names" multiple filterable class="w-full" placeholder="选择已发布的技能">
-                <el-option v-for="skill in catalog?.skills" :key="String(skill.versionId)" :label="skill.displayName + ' · v' + skill.version" :value="skill.name" />
-              </el-select></el-form-item>
               <el-form-item label="按需加载"><el-switch v-model="form.skills.dynamicLoading" /></el-form-item>
               <p class="field-hint">开启后由 Agent 从所选 Skills 中按需加载；关闭后在上下文中预加载所选正文。每个任务固定技能版本。</p>
             </el-form>
@@ -137,7 +149,8 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue'
+import { computed, ref, onMounted, watch } from 'vue'
+import { useLocalPagination } from '@/composables/useLocalPagination'
 import { onBeforeRouteLeave } from 'vue-router'
 import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
 import { ChatDotRound } from '@element-plus/icons-vue'
@@ -153,6 +166,17 @@ import type { AgentConfig, AgentCatalog, ValidationResult } from '@/types/agent'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 const form = ref<AgentConfig>()
 const catalog = ref<AgentCatalog>()
+const toolKeyword = ref(''), toolEffect = ref('ALL'), selectedToolsOnly = ref(false)
+const skillKeyword = ref(''), selectedSkillsOnly = ref(false)
+const filteredTools = computed(() => (catalog.value?.tools || []).filter(tool =>
+  (toolEffect.value === 'ALL' || tool.effect === toolEffect.value) && (!selectedToolsOnly.value || form.value?.tools.names.includes(tool.name)) &&
+  `${tool.name} ${tool.description}`.toLowerCase().includes(toolKeyword.value.trim().toLowerCase())))
+const filteredSkills = computed(() => (catalog.value?.skills || []).filter(skill =>
+  (!selectedSkillsOnly.value || form.value?.skills.names.includes(skill.name)) && `${skill.name} ${skill.displayName} ${skill.description}`.toLowerCase().includes(skillKeyword.value.trim().toLowerCase())))
+const { page: toolPage, pageSize: toolPageSize, total: toolTotal, rows: toolRows, reset: resetTools } = useLocalPagination(filteredTools, 10)
+const { page: skillPage, pageSize: skillPageSize, total: skillTotal, rows: skillRows, reset: resetSkills } = useLocalPagination(filteredSkills, 10)
+watch([toolKeyword, toolEffect, selectedToolsOnly], resetTools)
+watch([skillKeyword, selectedSkillsOnly], resetSkills)
 const providers = ref<AiProviderVO[]>([])
 const models = ref<AiModel[]>([])
 const selectedCode = ref('core-assistant')
@@ -186,15 +210,6 @@ const unlimitedModelTurns = computed({
     else form.value.runtime.maxModelTurns = lastLimitedModelTurns.value
   }
 })
-const toolNames: Record<string, string> = {
-  update_task_plan: '更新任务计划', request_user_input: '确认需求', prepare_script_decomposition: '保存剧本拆解要求',
-  start_script_decomposition: '拆解小说', retry_decomposition_segment: '重试失败段落', commit_decomposition: '保存拆解结果',
-  list_preparation_shots: '读取制作分镜', get_reference_candidates: '盘点参考素材', ensure_text_assets: '保存文字资产',
-  save_shot_production_plans: '应用制作方案', prepare_shot_prompts: '准备分镜提示词', inspect_preparation: '检查并保存报告', get_preparation_report: '读取交付报告',
-  get_project_overview: '读取项目概要', list_project_assets: '查询资产', get_shot_detail: '查询分镜',
-  save_session_note: '保存明确规则', list_session_notes: '读取规则', load_skill: '加载技能', read_skill_file: '读取技能参考'
-}
-function toolLabel(name: string) { return toolNames[name] || name }
 function capability(model: AiModel): boolean | undefined {
   return modelCapabilities(model, providers.value.find(p => String(p.id) === String(model.providerId))).toolCalling
 }
@@ -281,6 +296,10 @@ onMounted(async () => {
 .config-footer { padding: 12px 20px; border-top: 1px solid var(--border-default); font-size: 12px; color: var(--text-secondary); }
 .field-hint { font-size: 12px; color: var(--text-secondary); line-height: 1.7; }
 .tool-grid { display: grid; gap: 10px; }
+.list-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 16px 0; }
+.list-toolbar .el-input { max-width: 320px; }.list-toolbar .el-select { width: 150px; }
+.list-pagination { margin: 18px 0; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.tool-card :deep(.el-checkbox__label) { white-space: normal; overflow-wrap: anywhere; }
 .tool-card { display: block; padding: 12px; border: 1px solid var(--border-default); border-radius: 10px; }
 .tool-card p { margin: 5px 0; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
 .tool-card small { color: var(--text-secondary); font-size: 10px; }

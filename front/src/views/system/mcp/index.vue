@@ -59,15 +59,27 @@
             </el-table-column>
           </el-table>
         </el-tab-pane>
-        <el-tab-pane label="业务与知识工具" name="tools">
+        <el-tab-pane label="工具" name="tools">
           <div class="tool-toolbar"><el-input v-model="keyword" clearable placeholder="搜索工具名称或说明" class="search-input" /><el-select v-model="effect" class="effect-select"><el-option label="全部工具" value="ALL" /><el-option label="读取工具" value="READ" /><el-option label="写入工具" value="WRITE" /></el-select><span class="hint">工具开关即时保存，整体关闭时仍可配置。</span></div>
-          <el-table :data="filteredTools" row-key="name" class="tools-table">
+          <el-table :data="toolRows" row-key="name" class="tools-table">
             <el-table-column label="工具" min-width="300"><template #default="{ row }"><strong>{{ labels[row.name] || row.name }}</strong><div><code>{{ row.name }}</code></div><p class="tool-description">{{ row.description }}</p></template></el-table-column>
             <el-table-column label="操作" width="85"><template #default="{ row }"><el-tag :type="row.effect === 'WRITE' ? 'warning' : 'info'" size="small">{{ row.effect === 'WRITE' ? '写入' : '读取' }}</el-tag></template></el-table-column>
             <el-table-column label="状态" min-width="130"><template #default="{ row }"><el-tag :type="row.published ? 'success' : 'info'" size="small">{{ row.published ? '已发布' : !row.enabled ? '已停用' : !settings.enabled ? '服务已关闭' : '写入权限未开启' }}</el-tag></template></el-table-column>
             <el-table-column label="开启" width="90"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="busy" :loading="pendingTool === row.name" @change="(value: string | number | boolean) => switchTool(row, value)" /></template></el-table-column>
             <el-table-column label="参数" width="90"><template #default="{ row }"><el-button link type="primary" @click="schemaTool = row">查看</el-button></template></el-table-column>
           </el-table>
+          <el-pagination v-model:current-page="toolPage" v-model:page-size="toolPageSize" :total="toolTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" class="list-pagination" />
+        </el-tab-pane>
+        <el-tab-pane label="Skills" name="skills">
+          <p class="hint">这里列出已启用、已发布的知识包；外部 Agent 通过工具读取 Skill。工具开关在「工具」页配置，知识包版本在 <router-link to="/system/skills">AI Skills</router-link> 管理。</p>
+          <div class="tool-toolbar"><el-input v-model="skillKeyword" clearable placeholder="搜索 Skill 名称或说明" class="search-input" /><el-button :loading="skillsLoading" @click="loadSkills">刷新 Skills</el-button></div>
+          <el-alert v-if="skillsError" :title="skillsError" type="error" :closable="false" />
+          <el-table v-loading="skillsLoading" :data="skillRows" row-key="id" class="tools-table">
+            <el-table-column label="Skill" min-width="220"><template #default="{ row }"><strong>{{ row.displayName || row.name }}</strong><div><code>{{ row.name }}</code></div></template></el-table-column>
+            <el-table-column prop="description" label="说明" min-width="300" />
+            <el-table-column label="当前版本" width="130"><template #default="{ row }">v{{ row.currentVersion }}</template></el-table-column>
+          </el-table>
+          <el-pagination v-model:current-page="skillPage" v-model:page-size="skillPageSize" :total="skillTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" class="list-pagination" />
         </el-tab-pane>
       </el-tabs>
       <p class="boundary-note">外部 Agent 可单张或批量上传人物、造型、场景、关键图和道具参考图，读取已启用的 Skill 规范，填写完整分镜与 H3 视频提示词卡片；景别和运镜可选自动，导演计划可省略。Skill 知识仅供读取，内部 Agent、AI 提示词生成和模型执行接口保持私有。</p>
@@ -77,7 +89,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useLocalPagination } from '@/composables/useLocalPagination'
+import { skillApi } from '@/api/skill'
+import type { AiSkill } from '@/types/skill'
 import { ElMessage } from 'element-plus'
 import { mcpApi, type McpSettings, type McpToolInfo } from '@/api/mcp'
 
@@ -88,6 +103,17 @@ const form = reactive({ token: '', writeEnabled: false, allowCreateProjects: fal
 const connectionUrl = computed(() => new URL('/api/mcp', window.location.origin).toString())
 const clientConfig = computed(() => `[mcp_servers.freyja]\nurl = "${connectionUrl.value}"\nbearer_token_env_var = "FREYJA_MCP_TOKEN"\ntool_timeout_sec = 300`)
 const filteredTools = computed(() => settings.value?.tools.filter(t => (effect.value === 'ALL' || t.effect === effect.value) && `${t.name} ${t.description} ${labels[t.name] || ''}`.toLowerCase().includes(keyword.value.toLowerCase())) || [])
+const { page: toolPage, pageSize: toolPageSize, total: toolTotal, rows: toolRows, reset: resetTools } = useLocalPagination(filteredTools)
+watch([keyword, effect], resetTools)
+const skills = ref<AiSkill[]>([]), skillKeyword = ref(''), skillsLoading = ref(false), skillsError = ref('')
+const filteredSkills = computed(() => skills.value.filter(skill => skill.enabled === 1 && !!skill.currentVersionId && `${skill.name} ${skill.displayName} ${skill.description}`.toLowerCase().includes(skillKeyword.value.trim().toLowerCase())))
+const { page: skillPage, pageSize: skillPageSize, total: skillTotal, rows: skillRows, reset: resetSkills } = useLocalPagination(filteredSkills)
+watch(skillKeyword, resetSkills)
+watch(tab, value => { if (value === 'skills') void loadSkills() })
+async function loadSkills() {
+  skillsLoading.value = true; skillsError.value = ''
+  try { skills.value = await skillApi.list() } catch (error) { skillsError.value = error instanceof Error ? error.message : '读取 Skills 失败' } finally { skillsLoading.value = false }
+}
 const labels: Record<string, string> = { search_projects: '搜索项目', get_project: '项目详情', get_project_outline: '读取大纲', list_shots: '分镜列表', get_shot: '完整分镜配置', search_assets: '搜索资产', get_asset: '资产详情', list_character_looks: '人物造型', get_business_options: '业务字典', batch_read_records: '批量读取', batch_create_records: '批量创建', batch_delete_records: '批量删除', append_storyboard: '追加分镜导入', get_business_operation: '业务请求结果', clone_shot: '复制分镜', set_default_character_look: '设置默认造型', reorder_group_shots: '组内分镜重排', list_shot_video_versions: '视频版本列表', select_shot_video_version: '选择视频版本', upload_asset_image: '上传资产参考图' }
 Object.assign(labels, { batch_upload_asset_images: '批量上传资产图片', list_skills: 'Skill 目录', read_skill: '读取 Skill 正文', read_skill_file: '读取 Skill 参考规范' })
 const crudOperations = [
@@ -136,6 +162,7 @@ onMounted(() => load(true))
 
 <style scoped>
 .mcp-page { padding: 24px; color: var(--text-primary); max-width: 1500px; margin: 0 auto; }
+.list-pagination { margin-top: 18px; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 .page-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
 h1 { font-size: 24px; font-weight: 700; margin: 0 0 8px; } h3 { font-weight: 600; margin-bottom: 12px; }
 .page-heading p, .hint, .boundary-note { color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
