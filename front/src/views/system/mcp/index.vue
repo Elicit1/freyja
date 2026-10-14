@@ -60,10 +60,10 @@
           </el-table>
         </el-tab-pane>
         <el-tab-pane label="工具" name="tools">
-          <div class="tool-toolbar"><el-input v-model="keyword" clearable placeholder="搜索工具名称或说明" class="search-input" /><el-select v-model="effect" class="effect-select"><el-option label="全部工具" value="ALL" /><el-option label="读取工具" value="READ" /><el-option label="写入工具" value="WRITE" /></el-select><span class="hint">工具开关即时保存，整体关闭时仍可配置。</span></div>
+          <div class="tool-toolbar"><el-input v-model="keyword" clearable placeholder="搜索工具名称或说明" class="search-input" /><el-select v-model="effect" class="effect-select"><el-option label="全部工具" value="ALL" /><el-option label="只读工具" value="READ" /><el-option label="可修改数据的工具" value="WRITE" /></el-select><span class="hint">工具开关即时保存，整体关闭时仍可配置。</span></div>
           <el-table :data="toolRows" row-key="name" class="tools-table">
             <el-table-column label="工具" min-width="300"><template #default="{ row }"><strong>{{ labels[row.name] || row.name }}</strong><div><code>{{ row.name }}</code></div><p class="tool-description">{{ row.description }}</p></template></el-table-column>
-            <el-table-column label="操作" width="85"><template #default="{ row }"><el-tag :type="row.effect === 'WRITE' ? 'warning' : 'info'" size="small">{{ row.effect === 'WRITE' ? '写入' : '读取' }}</el-tag></template></el-table-column>
+            <el-table-column label="数据操作" width="130"><template #default="{ row }"><el-tag :type="row.effect === 'WRITE' ? 'warning' : 'info'" size="small">{{ row.effect === 'WRITE' ? '可修改数据' : '只读' }}</el-tag></template></el-table-column>
             <el-table-column label="状态" min-width="130"><template #default="{ row }"><el-tag :type="row.published ? 'success' : 'info'" size="small">{{ row.published ? '已发布' : !row.enabled ? '已停用' : !settings.enabled ? '服务已关闭' : '写入权限未开启' }}</el-tag></template></el-table-column>
             <el-table-column label="开启" width="90"><template #default="{ row }"><el-switch :model-value="row.enabled" :disabled="busy" :loading="pendingTool === row.name" @change="(value: string | number | boolean) => switchTool(row, value)" /></template></el-table-column>
             <el-table-column label="参数" width="90"><template #default="{ row }"><el-button link type="primary" @click="schemaTool = row">查看</el-button></template></el-table-column>

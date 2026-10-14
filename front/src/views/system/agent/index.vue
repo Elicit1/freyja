@@ -62,17 +62,18 @@
           </el-tab-pane>
           <el-tab-pane label="工具" name="tools">
             <p class="field-hint">工具来自 <router-link to="/system/ai-capabilities">AI 能力管理</router-link> 当前发布的内部 Agent 绑定。此处选择助手可使用的工具；必需工具保留勾选。</p>
-            <div class="list-toolbar"><el-input v-model="toolKeyword" clearable placeholder="搜索工具名称或说明" /><el-select v-model="toolEffect"><el-option label="全部操作" value="ALL" /><el-option label="读取工具" value="READ" /><el-option label="写入工具" value="WRITE" /></el-select><el-switch v-model="selectedToolsOnly" active-text="只看已选" /><span class="field-hint">已选 {{ form.tools.names.length }} 个</span></div>
+            <div class="list-toolbar"><el-input v-model="toolKeyword" clearable placeholder="搜索工具名称或说明" /><el-select v-model="toolEffect"><el-option label="全部操作" value="ALL" /><el-option label="只读工具" value="READ" /><el-option label="可修改数据的工具" value="WRITE" /></el-select><el-switch v-model="selectedToolsOnly" active-text="只看已选" /><span class="field-hint">已选 {{ form.tools.names.length }} 个</span></div>
             <el-checkbox-group v-model="form.tools.names" class="tool-grid">
               <div v-for="tool in toolRows" :key="tool.name" class="tool-card">
                 <el-checkbox :value="tool.name" :disabled="catalog?.requiredTools.includes(tool.name)">{{ tool.name }}</el-checkbox>
-                <el-tag size="small" :type="tool.effect === 'WRITE' ? 'warning' : 'info'">{{ tool.effect === 'WRITE' ? '修改' : '读取' }}</el-tag>
+                <el-tag size="small" :type="tool.effect === 'WRITE' ? 'warning' : 'info'">{{ tool.effect === 'WRITE' ? '可修改数据' : '只读' }}</el-tag>
                 <p>{{ tool.description }}</p>
-                <small>{{ tool.projectRequired ? '需要绑定项目' : '通用能力' }} · v{{ tool.version }}</small>
+                <small>{{ tool.projectRequired ? '需预先绑定项目' : '不要求预先绑定项目' }} · v{{ tool.version }}</small>
               </div>
             </el-checkbox-group>
             <el-empty v-if="!toolTotal" description="没有匹配的工具" />
             <el-pagination v-model:current-page="toolPage" v-model:page-size="toolPageSize" :total="toolTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" class="list-pagination" />
+            <p class="field-hint">不要求预先绑定项目的工具也受当前会话与项目授权限制。</p>
           </el-tab-pane>
           <el-tab-pane label="Skills" name="skills">
             <p class="field-hint">从 <router-link to="/system/skills">AI Skills</router-link> 已启用、已发布的技能中选择知识包。翻页和搜索保留已选项。</p>

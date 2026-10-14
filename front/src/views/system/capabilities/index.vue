@@ -13,11 +13,12 @@
           <el-table :data="bindingRows" stripe row-key="id">
             <el-table-column label="工具" min-width="240"><template #default="{ row }"><strong>{{ row.name }}</strong><p class="muted">{{ row.description }}</p></template></el-table-column>
             <el-table-column label="入口" width="110"><template #default="{ row }">{{ row.consumer === 'MCP' ? '外部 MCP' : '内置助手' }}</template></el-table-column>
-            <el-table-column label="能力" min-width="170"><template #default="{ row }"><code>{{ row.handlerKey }}</code><p class="muted">{{ row.effect === 'WRITE' ? '写入' : '读取' }} · {{ row.projectRequired ? '需要项目' : '无需项目' }}</p></template></el-table-column>
+            <el-table-column label="执行与项目要求" min-width="240"><template #default="{ row }"><el-tooltip content="内部处理器标识。实际使用方以「入口」列为准，MCP 前缀不表示仅供外部 Agent 使用。" placement="top"><code>{{ row.handlerKey }}</code></el-tooltip><p class="muted">{{ row.effect === 'WRITE' ? '可修改数据' : '只读' }} · {{ row.projectRequired ? (row.consumer === 'MCP' ? '调用时需指定项目' : '需预先绑定项目') : '不要求预先绑定项目' }}</p></template></el-table-column>
             <el-table-column label="启用" width="90"><template #default="{ row }"><el-switch v-model="row.enabled" :disabled="row.required || busy" @change="dirty = true" /></template></el-table-column>
             <el-table-column label="操作" width="80"><template #default="{ row }"><el-button link type="primary" @click="edit(row)">编辑</el-button></template></el-table-column>
           </el-table>
           <el-pagination v-model:current-page="bindingPage" v-model:page-size="bindingPageSize" :total="bindingTotal" :page-sizes="[10, 20, 50]" layout="total, sizes, prev, pager, next" class="list-pagination" />
+          <p class="hint">只读工具仅查询数据；可修改数据的工具会写入或更新记录。项目要求说明调用前提，实际可访问的数据仍受项目授权限制。</p>
         </el-tab-pane>
         <el-tab-pane label="公共创作规则" name="rules"><p class="hint">公共规则同时用于内置助手、新建任务、视频提示词生成和 MCP 指引。已有任务保留创建时的版本。</p><el-input v-model="draft.rules" type="textarea" :rows="16" @input="dirty = true" /></el-tab-pane>
         <el-tab-pane label="外部创作指南" name="guide"><p class="hint">发布后同时更新 MCP 初始化说明与 freyja://guide；公共规则会追加到该指南。</p><el-input v-model="draft.instructions" type="textarea" :rows="20" @input="dirty = true" /></el-tab-pane>
