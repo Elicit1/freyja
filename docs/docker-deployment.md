@@ -76,6 +76,8 @@ docker compose up -d --build
 
 > 3. 后端启动时会自动在 MinIO 中检查并初始化公开只读存储桶 `video-assets`。
 
+> 4. `db-upgrade` 一次性容器会在后端启动前运行 `docker/mysql/migrations/auto-upgrade-ai-infrastructure.sh`，补建 Agent 基础表、制作准备表、MCP 请求记录表和共享能力表；首次安装与已有数据卷升级共用此流程。该容器成功退出后显示 `Exited (0)` 是正常状态。
+
 已有数据库更新场景空间类型为空值支持时，执行一次 `sh docker/mysql/migrations/apply-20260926-res-scene-optional-scene-type.sh`。初始化 SQL 仅在全新 MySQL 数据卷上运行；此迁移保留已有场景的空间类型。
 
 已有数据库如仍有 AI 提供商编码或模型标识的唯一索引，执行 `sh docker/mysql/migrations/apply-20260927-ai-provider-model-logical-delete-indexes.sh`。迁移会移除旧唯一索引，并建立包含 `deleted` 字段的普通查询索引，使逻辑删除后可以复用编码；未删除记录的重复编码仍由服务层校验。
@@ -86,11 +88,21 @@ docker compose up -d --build
 
 已有数据库启用 AI 任务关联渲染取消时，在更新后端容器前执行 `sh docker/mysql/migrations/apply-20260929-render-task-parent-ai-task.sh`。迁移为 `render_task` 增加父 AI 任务 ID 与上游取消状态；脚本可重复执行。全新数据库由初始化 SQL 直接建好这些字段。
 
-已有数据库部署 MCP 业务读写与图片上传功能时，在更新后端容器前执行以下增量 SQL，补建业务请求记录表；脚本可重复执行，不修改原有业务数据。全新数据卷已由初始化 SQL 创建此表。MCP 可视化配置复用现有 `sys_config`，不需要额外建表。
+已有数据库升级 MCP 与内部 Agent 时，更新仓库部署文件（包括 `docker-compose.yml`、`docker/mysql/migrations/`、`src/main/resources/sql/`），并将 `.env` 的 `FREYJA_VERSION` 改为要部署的已发布镜像版本，然后执行：
 
 ```bash
-docker exec -i freyja-mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot --default-character-set=utf8mb4 freyja' < src/main/resources/sql/mcp-business.sql
-docker compose up -d --build --no-deps backend frontend
+docker compose pull
+docker compose up -d
+```
+
+本地源码构建使用 `docker compose up -d --build`，现有 `docker-start.sh` / `docker-start.bat` 也会通过 Compose 自动执行升级。**保留已有数据卷，不要重新执行完整初始化 SQL。** 不要加 `--no-deps` 跳过升级依赖；`docker compose restart` 只重启旧容器，不会拉取新镜像或执行升级服务。
+
+升级脚本复用 `mysql:8.0` 镜像中的客户端，宿主机无需安装 Python、JDK 或 MySQL 客户端。脚本使用现有 MySQL 凭据，增量 SQL 只补建表，并将 `res_keyframe.frame_url` 放宽为可空，不覆盖模型、项目、媒体、Agent 设置或 MCP 令牌。成功记录写入 `freyja_schema_migration`，重复部署跳过已完成步骤；部分失败后可安全重试。自动化范围仅为上述 AI 基础设施；其他历史版本的业务字段升级仍按各自迁移说明执行。
+
+迁移失败会以非零状态退出，Compose 不会启动依赖它的新后端。先使用 `docker compose logs db-upgrade` 查看具体错误（数据库账号需要 CREATE / ALTER 和迁移记录表的读写权限）；修复后执行：
+
+```bash
+docker compose up -d --force-recreate db-upgrade backend frontend
 ```
 
 部署完成后进入 **管理 → MCP 服务**（`/system/mcp`）配置权限、令牌、整体及工具开关。页面保存过的配置优先于环境默认值。图片上传复用现有 MinIO 配置，不调用内部 AI；详见 [MCP 使用说明](mcp-api.md)。
@@ -216,4 +228,4 @@ docker compose down -v
 
 ### 统一能力目录升级
 
-后端启动自动执行 `upgrade_unified_capabilities.sql` 增量建表并首次导入能力。已有 MySQL 卷无需重新初始化；禁止为本次升级删除数据卷。初始化需要 CREATE TABLE 权限，可由管理员预执行同一脚本后使用业务账号。模型、MCP 认证、项目和素材配置保留。升级后内部 Agent 新建会话，并在助手设置中选择共享能力；不兼容旧 Run。发布与回滚在 AI 能力管理页完成，无需重启容器。
+Docker 的 `db-upgrade` 服务先执行 `upgrade_unified_capabilities.sql` 补建能力表，后端保留现有启动检查与首次导入能力逻辑。已有 MySQL 卷无需重新初始化；禁止为本次升级删除数据卷。升级脚本不会修改已发布的能力版本。模型、MCP 认证、项目和素材配置保留。升级后内部 Agent 新建会话，并在助手设置中选择共享能力；不兼容旧 Run。发布与回滚在 AI 能力管理页完成，无需重启容器。

@@ -30,6 +30,31 @@ services:
       - freyja-network
 
   # ============================================================================
+  # 已有 MySQL 数据卷的增量升级：执行成功后才允许后端启动。
+  # 复用 MySQL 镜像内的客户端，不依赖宿主机 Python/JDK/MySQL 客户端。
+  # ============================================================================
+  db-upgrade:
+    image: mysql:8.0
+    container_name: freyja-db-upgrade
+    entrypoint: ["sh", "/migrations/auto-upgrade-ai-infrastructure.sh"]
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_USER: root
+      MYSQL_PWD: ${MYSQL_ROOT_PASSWORD:-root}
+      MYSQL_DATABASE: freyja
+      SQL_DIR: /upgrade/sql
+    volumes:
+      - ./docker/mysql/migrations:/migrations:ro
+      - ./src/main/resources/sql:/upgrade/sql:ro
+    restart: "no"
+    networks:
+      - freyja-network
+
+  # ============================================================================
   # 2. 内存缓存与任务队列：Redis 7.0
   # ============================================================================
   redis:
@@ -126,6 +151,8 @@ services:
         MAINLAND: ${MAINLAND:-false}
     container_name: freyja-backend
     depends_on:
+      db-upgrade:
+        condition: service_completed_successfully
       mysql:
         condition: service_healthy
       redis:

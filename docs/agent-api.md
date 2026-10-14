@@ -10,7 +10,7 @@
 
 ## 1. 数据库升级
 
-新数据库使用已更新的 Docker 初始化脚本。**已有数据库只执行增量文件 `src/main/resources/sql/agent-foundation.sql`，不要执行完整 `init.sql`，后者会重建既有业务表。** 增量文件只创建六张新表，不修改已有业务字段或记录。
+Docker 部署会通过 `db-upgrade` 一次性服务，在后端启动前自动执行 Agent 基础与制作准备增量 SQL。已有数据库保留数据卷，更新部署文件并执行 `docker compose up -d` 即可；镜像拉取与失败重试见 [Docker 部署说明](docker-deployment.md)。**不要对已有数据库执行完整 `init.sql`，后者会重建既有业务表。** 非 Docker 部署仍可手动执行增量文件 `src/main/resources/sql/agent-foundation.sql`，只创建六张新表，不修改已有业务字段或记录。
 
 也可使用项目已有迁移脚本环境（Python + PyMySQL）：
 
@@ -25,7 +25,7 @@ python scripts/migrate_agent_foundation.py --apply
 
 新增表：`agent_config`、`agent_session`、`agent_message`、`agent_run`、`agent_step`、`agent_memory`。没有增加运行时依赖或向量数据库。MySQL 是消息与检查点的权威来源，首版 Agent 事件通过后端进程内发布到既有 WebSocket，不依赖 Redis 缓存恢复。
 
-第二阶段已有数据库使用 `scripts/migrate_agent_production.py`（默认只读预检查，`--apply` 执行），或增量 SQL `src/main/resources/sql/agent-production-preparation.sql`。新增 `agent_preparation_job`、`shot_production_plan`、`agent_material_requirement` 三表，将 `res_keyframe.frame_url` 改为可空。增量迁移不删除已有数据；新数据库初始化脚本包含两个阶段的表。制作拆解复用 Redis 草稿，并将原文、请求、完整预览及子任务检查点持久化到 MySQL。
+制作准备增量迁移新增 `agent_preparation_job`、`shot_production_plan`、`agent_material_requirement` 三表，将 `res_keyframe.frame_url` 改为可空。Docker 已自动执行；非 Docker 部署使用 `scripts/migrate_agent_production.py`（默认只读预检查，`--apply` 执行），或增量 SQL `src/main/resources/sql/agent-production-preparation.sql`。增量迁移不删除已有数据；新数据库初始化脚本包含两个阶段的表。制作拆解复用 Redis 草稿，并将原文、请求、完整预览及子任务检查点持久化到 MySQL。
 
 ## 2. 启用与试用
 

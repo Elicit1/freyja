@@ -103,6 +103,8 @@ cp .env.example .env
   - Linux / macOS 用户：执行 `chmod +x docker-start.sh && ./docker-start.sh`；
   - 或执行源码编译：`docker compose up -d --build`。
 
+首次安装和已有数据卷升级都会先运行 `db-upgrade`，自动补建 MCP、内部 Agent 与共享能力相关表，成功后才启动后端。已有用户应同步更新仓库部署文件和 `.env` 中的镜像版本；升级步骤见下方「已有部署的自动数据库升级」及 [Docker 部署指南](docs/docker-deployment.md)。
+
 #### 3. 核心服务访问入口
 容器启动成功后，浏览器直接打开：
 
@@ -429,11 +431,32 @@ docker compose down -v
 | **ComfyUI 调度网关** | `astrag1/freyja-comfy-gateway` | `1.0.0` / `latest` |
 
 - **多主机/生产服务器极速更新**：
-  在任意部署服务器上，只需通过 `.env` 指定镜像版本，执行 `docker compose pull && docker compose up -d` 即可在几秒内拉取最新镜像平滑热更，彻底免除在生产端安装编译环境；
+  先同步仓库部署文件，再通过 `.env` 指定已发布的镜像版本，执行 `docker compose pull` 和 `docker compose up -d`。Compose 会先完成 MCP / Agent 数据库增量升级，再启动后端，无需在生产端安装编译环境；
 - **自定义发布流水线**：
   开发者 Fork 本仓库后，只需在 GitHub 仓库 `Settings -> Secrets and variables -> Actions` 中配置个人 `DOCKERHUB_USERNAME` 与 `DOCKERHUB_TOKEN`，每次向 `master` 分支推送代码或手动点击 `Run workflow` 即可一键自动化多阶段交叉构建并推送到自己的 Docker Hub 命名空间。
 
 > 详细配置与运维说明请参阅 [Docker 容器化部署指南](docs/docker-deployment.md)。
+
+### 4. 已有部署的自动数据库升级
+
+更新仓库部署文件（可在项目根目录执行 `git pull`），确保 `docker-compose.yml`、`docker/mysql/migrations/` 和 `src/main/resources/sql/` 与目标版本一致，再将 `.env` 中的 `FREYJA_VERSION` 设置为要部署的已发布镜像版本。只拉取镜像不会更新宿主机上的 Compose、迁移脚本或 SQL 文件。
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+本地源码构建也可使用 `docker compose up -d --build` 或现有一键启动脚本，两种方式都会自动运行升级服务。
+
+- **自动执行范围**：MySQL 健康后，`db-upgrade` 容器运行 [自动升级脚本](docker/mysql/migrations/auto-upgrade-ai-infrastructure.sh)，补建 Agent 基础表、制作准备表、MCP 请求记录表及共享能力表，并将关键图图片 URL 放宽为可空。其他历史业务字段升级仍按 [部署指南](docs/docker-deployment.md) 的对应迁移说明执行。
+- **保留数据与配置**：保留已有数据卷，不重建业务库，不覆盖项目、媒体、模型、Agent 设置、MCP 令牌或已发布能力版本。成功步骤写入 `freyja_schema_migration`，重复部署自动跳过；`db-upgrade` 显示 `Exited (0)` 属于正常完成状态。
+- **失败与重试**：SQL 执行失败时，新后端不会启动。使用 `docker compose logs db-upgrade` 查看错误，检查数据库连接及 CREATE / ALTER、迁移记录表读写权限，修复后执行以下命令重试。
+
+```bash
+docker compose up -d --force-recreate db-upgrade backend frontend
+```
+
+升级时保留数据卷，不执行 `docker compose down -v` 或完整初始化 SQL；不要使用 `--no-deps` 跳过迁移依赖。`docker compose restart` 只重启旧容器，不能替代上述升级命令。数据库初始化完成后，MCP 和内部 Agent 仍需在管理页按需配置令牌、模型、权限及启用开关。
 
 ---
 
