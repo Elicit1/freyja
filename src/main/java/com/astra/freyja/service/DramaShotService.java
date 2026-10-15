@@ -94,10 +94,6 @@ public interface DramaShotService {
     ComfyRenderTaskVO submitShotRender(Long id, DramaShotRenderRequestDTO requestDTO);
 
     /**
-     * 异步执行单分镜视频生成与归档任务
-     */
-    void executeShotVideoRenderAsync(Long id, String taskId, DramaShotRenderRequestDTO requestDTO);
-    /**
      * 根据短剧ID获取该剧下所有分镜镜头的轻量级下拉选项
      */
     java.util.List<com.astra.freyja.dto.drama.DramaShotOptionVO> optionsByDramaId(Long dramaId);

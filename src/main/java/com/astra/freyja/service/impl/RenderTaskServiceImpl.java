@@ -67,6 +67,20 @@ public class RenderTaskServiceImpl implements RenderTaskService {
     @Autowired(required = false)
     private AiTaskService aiTaskService;
 
+    @Autowired @Lazy
+    private com.astra.freyja.service.video.VideoRenderBatchService videoBatches;
+
+    @Override
+    public void refreshTaskFromDatabase(String taskId) {
+        RenderTask entity=renderTaskMapper.selectOne(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getTaskId,taskId));
+        if(entity==null)return;
+        RenderTaskVO vo=convertToVO(entity);
+        if(Set.of("QUEUED","RENDERING").contains(entity.getStatus()))saveActiveTaskToRedis(vo);
+        else removeActiveTaskFromRedis(taskId);
+        publishTaskStatusChanged(taskId,entity.getStatus());
+        wsHandler.broadcast(RenderTaskWsMessage.builder().event("TASK_"+entity.getStatus()).timestamp(System.currentTimeMillis()).data(vo).build());
+    }
+
     public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
     }
@@ -120,22 +134,24 @@ public class RenderTaskServiceImpl implements RenderTaskService {
             throw new java.util.concurrent.CancellationException("父 AI 任务已取消，停止提交渲染");
         }
 
-        // 2. 写入 Redis 活跃任务缓存 (Hash + ZSet)
-        saveActiveTaskToRedis(vo);
+        Runnable notifyCreated=()->{
+            // Publish only after the enclosing batch transaction has committed.
+            saveActiveTaskToRedis(vo);
+            publishTaskStatusChanged(vo.getTaskId(), vo.getStatus());
+            wsHandler.broadcast(RenderTaskWsMessage.builder()
+                    .event("TASK_QUEUED")
+                    .timestamp(System.currentTimeMillis())
+                    .activeCount(getActiveTaskCount())
+                    .data(vo)
+                    .build());
+        };
+        if(org.springframework.transaction.support.TransactionSynchronizationManager.isSynchronizationActive()) {
+            org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){
+                @Override public void afterCommit(){notifyCreated.run();}
+            });
+        } else notifyCreated.run();
 
-        // 3. 广播与发布任务状态变更
-        publishTaskStatusChanged(vo.getTaskId(), vo.getStatus());
-
-        int activeCount = getActiveTaskCount();
-        wsHandler.broadcast(RenderTaskWsMessage.builder()
-                .event("TASK_QUEUED")
-                .timestamp(System.currentTimeMillis())
-                .activeCount(activeCount)
-                .data(vo)
-                .build());
-
-        log.info("[RenderTaskService] 渲染任务创建并入队: taskId={}, name={}, activeCount={}",
-                vo.getTaskId(), vo.getTaskName(), activeCount);
+        log.info("[RenderTaskService] 渲染任务创建并入队: taskId={}, name={}", vo.getTaskId(), vo.getTaskName());
         return vo;
     }
 
@@ -312,15 +328,14 @@ public class RenderTaskServiceImpl implements RenderTaskService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public synchronized boolean cancelTask(String taskId) {
+    public boolean cancelTask(String taskId) {
         return cancelTaskDetailed(taskId).isCancelled();
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public synchronized TaskCancelResultVO cancelTaskDetailed(String taskId) {
+    public TaskCancelResultVO cancelTaskDetailed(String taskId) {
         if (StringUtils.isBlank(taskId)) return cancelFailed("任务 ID 不能为空");
+        if(videoBatches!=null && videoBatches.owns(taskId))return videoBatches.cancelByTask(taskId);
 
         RenderTask entity = renderTaskMapper.selectOne(
                 new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getTaskId, taskId)

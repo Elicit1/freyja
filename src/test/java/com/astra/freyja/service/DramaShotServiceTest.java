@@ -91,6 +91,9 @@ class DramaShotServiceTest {
     @Mock
     private com.astra.freyja.dao.RenderTaskMapper renderTaskMapper;
 
+    @Mock
+    private com.astra.freyja.service.video.VideoRenderBatchService videoBatches;
+
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -154,6 +157,15 @@ class DramaShotServiceTest {
         verify(episodeService).recalculateEpisodeDuration(5L);
     }
 
+    @Test
+    void singleVideoSubmissionAlwaysUsesTheGlobalQueue() {
+        DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
+        ComfyRenderTaskVO queued = new ComfyRenderTaskVO(); queued.setTaskId("RENDER_123");
+        when(videoBatches.enqueueSingle(1000L, request)).thenReturn(queued);
+        assertSame(queued, shotService.submitShotRender(1000L, request));
+        verify(videoBatches).enqueueSingle(1000L, request);
+        verifyNoInteractions(renderAsyncExecutor, aiImageApiService, renderTaskService);
+    }
     @Test
     void insertionRejectsTwoAnchorsWithoutCreatingShot() {
         DramaScene scene = new DramaScene();
@@ -523,75 +535,6 @@ class DramaShotServiceTest {
     }
 
     @Test
-    void testSubmitShotRender() {
-        DramaShot shot = new DramaShot();
-        shot.setId(1000L);
-        shot.setSceneId(10L);
-        shot.setDramaId(1L);
-        shot.setPrompt("1man, masterpiece");
-        shot.setNegativePrompt("bad");
-        shot.setComfyWorkflowTemplateId("SDXL_TXT2IMG");
-        shot.setSeed(1234L);
-
-        when(shotMapper.selectById(1000L)).thenReturn(shot);
-
-        DramaShotRenderRequestDTO req = new DramaShotRenderRequestDTO();
-        req.setSeed(9999L);
-
-        ComfyRenderTaskVO result = shotService.submitShotRender(1000L, req);
-        assertNotNull(result);
-        assertNotNull(result.getTaskId());
-        assertEquals(1234L, req.getSeed());
-
-        verify(shotMapper, times(1)).updateById((DramaShot) argThat(s ->
-                s != null &&
-                "QUEUED".equals(((DramaShot) s).getRenderStatus())
-        ));
-        verify(renderAsyncExecutor, times(1)).execute(any(Runnable.class));
-    }
-
-    @Test
-    void testSubmitShotRenderRepairsMissingSeedBeforeQueueing() {
-        DramaShot shot = new DramaShot();
-        shot.setId(1000L);
-        shot.setDramaId(1L);
-        shot.setPrompt("video prompt");
-        when(shotMapper.selectById(1000L)).thenReturn(shot);
-
-        DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
-        shotService.submitShotRender(1000L, request);
-
-        assertNotNull(request.getSeed());
-        assertTrue(request.getSeed() > 0 && request.getSeed() <= ShotSeedUtil.MAX_SEED);
-        verify(shotMapper).updateById(argThat((DramaShot queued) ->
-                "QUEUED".equals(queued.getRenderStatus())
-                        && request.getSeed().equals(queued.getSeed())));
-    }
-
-    @Test
-    void testSubmitShotRenderPersistsAndFreezesEditedReferencePrompt() {
-        DramaShot shot = new DramaShot();
-        shot.setId(1000L);
-        shot.setDramaId(1L);
-        shot.setGenerationMode("REFERENCE_MODE");
-        shot.setPrompt("old image prompt");
-        shot.setVideoPrompt("stale motion prompt");
-        shot.setSeed(1234L);
-        when(shotMapper.selectById(1000L)).thenReturn(shot);
-
-        DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
-        request.setPrompt(" edited reference prompt ");
-        shotService.submitShotRender(1000L, request);
-
-        assertEquals("edited reference prompt", request.getPrompt());
-        assertEquals("edited reference prompt", shot.getPrompt());
-        assertEquals("stale motion prompt", shot.getVideoPrompt());
-        verify(shotMapper).updateById(argThat((DramaShot queued) ->
-                "QUEUED".equals(queued.getRenderStatus())
-                        && "edited reference prompt".equals(queued.getPrompt())));
-    }
-
-    @Test
     void testGenerateFirstFramePersistsSubmittedPromptForNextOpen() {
         DramaShot shot = new DramaShot();
         shot.setId(1000L);
@@ -661,57 +604,6 @@ class DramaShotServiceTest {
         update.setRefImages(refs);
         assertThrows(BizException.class, () -> shotService.update(update));
         verifyNoInteractions(shotMapper, sceneMapper);
-    }
-
-    @Test
-    void renderSubmissionRejectsInvalidStoredKeyImageRoleBeforeQueuing() {
-        DramaShot shot = new DramaShot();
-        shot.setId(1000L);
-        shot.setRefImagesJson("[{\"sourceType\":\"KEYFRAME\",\"usageRole\":\"END_FRAME\"}]");
-        when(shotMapper.selectById(1000L)).thenReturn(shot);
-        assertThrows(BizException.class, () -> shotService.submitShotRender(1000L, null));
-        verifyNoInteractions(aiImageApiService, renderTaskService, renderAsyncExecutor);
-        verify(shotMapper, never()).updateById(any(DramaShot.class));
-    }
-
-    @Test
-    void testExecuteShotVideoRenderAsync_success() {
-        DramaShot shot = new DramaShot();
-        shot.setId(1000L);
-        shot.setDramaId(1L);
-        shot.setShotNo(1);
-        shot.setPrompt("1man, cyberpunk street");
-        shot.setRenderStatus("QUEUED");
-
-        when(shotMapper.selectById(1000L)).thenReturn(shot);
-
-        com.astra.freyja.dto.drama.VideoGenerationResultVO genResult = com.astra.freyja.dto.drama.VideoGenerationResultVO.builder()
-                .videoUrl("http://minio/video_123.mp4")
-                .lastFrameUrl(null)
-                .build();
-        when(aiImageApiService.generateAndArchiveVideo(eq(1000L), eq(1L), any(), any()))
-                .thenReturn(genResult);
-        when(shotVideoTakeService.recordGeneratedTake(any(), any(), any(), any())).thenAnswer(inv -> {
-            shot.setVideoUrl(genResult.getVideoUrl());
-            shot.setRenderStatus("SUCCESS");
-            shot.setLastFrameUrl(null);
-            shot.setLastFrameSourceVideoUrl(null);
-            DramaShotVideoTake take = new DramaShotVideoTake();
-            take.setId(9001L);
-            take.setVideoUrl(genResult.getVideoUrl());
-            return take;
-        });
-
-        shotService.executeShotVideoRenderAsync(1000L, "TASK_123", new DramaShotRenderRequestDTO());
-
-        verify(renderTaskService).updateProgress("TASK_123", 0, "正在生成视频并归档至 MinIO...");
-        verify(aiImageApiService).generateAndArchiveVideo(eq(1000L), eq(1L), any(), any());
-        verify(shotVideoTakeService).recordGeneratedTake(eq(shot), any(), any(), eq(genResult));
-        verify(renderTaskService).finishTask("TASK_123", "http://minio/video_123.mp4", null);
-        assertEquals("http://minio/video_123.mp4", shot.getVideoUrl());
-        assertNull(shot.getLastFrameUrl());
-        assertNull(shot.getLastFrameSourceVideoUrl());
-        assertEquals("SUCCESS", shot.getRenderStatus());
     }
 
     @Test

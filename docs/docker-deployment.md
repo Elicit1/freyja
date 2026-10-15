@@ -85,6 +85,8 @@ docker compose up -d --build
 
 已有数据库启用分镜固定随机种子时，执行一次 `sh docker/mysql/migrations/apply-20260927-drama-shot-seed.sh`。迁移为历史分镜填充安全整数范围内的种子；新建分镜由后端自动生成，视频渲染读取并固定提交时的镜头种子。
 
+分镜视频批量渲染的四张新表由 `db-upgrade` 自动执行 `video-render-batch.sql` 创建，迁移标识为 `20261016-video-render-batch-v1`。更新部署文件和后端镜像时须一并更新此 SQL；宿主机直接运行后端时，先对现有数据库执行 `src/main/resources/sql/video-render-batch.sql`。接口、单消费者运行方式与取消规则见 [批量渲染说明](video-render-batch-api.md)。
+
 已有数据库启用 Story Normalizer 时，执行一次 `sh docker/mysql/migrations/apply-20260927-story-normalizer-prompt.sh`，将可编辑的标准化系统提示词加入系统配置。已有同键配置不会被覆盖。
 
 已有数据库启用 AI 任务关联渲染取消时，在更新后端容器前执行 `sh docker/mysql/migrations/apply-20260929-render-task-parent-ai-task.sh`。迁移为 `render_task` 增加父 AI 任务 ID 与上游取消状态；脚本可重复执行。全新数据库由初始化 SQL 直接建好这些字段。

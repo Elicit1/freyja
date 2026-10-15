@@ -49,6 +49,11 @@ public interface AiImageApiService {
      */
     String resolveVideoModelCode(com.astra.freyja.dto.drama.DramaShotRenderRequestDTO dto, Long providerId, String generationMode);
 
+    /** Recover an already generated video; never calls the generation endpoint. */
+    default com.astra.freyja.dto.drama.VideoGenerationResultVO archiveExistingVideo(Long shotId,Long dramaId,String sourceUrl) {
+        throw new UnsupportedOperationException("此提供商未实现归档恢复");
+    }
+
     /**
      * 向远程 AI 提供商 / ComfyUI 网关发送精准任务取消与中断指令。
      *

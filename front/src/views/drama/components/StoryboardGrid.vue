@@ -24,6 +24,7 @@
 
       <!-- 右侧操作按钮组 -->
       <div v-if="currentScene" class="flex items-center gap-2.5 shrink-0">
+        <el-button @click="emit('batch-render')">批量视频渲染</el-button>
         <el-button type="primary" :icon="Plus" class="!shadow-xs" @click="handleCreateGroup">
           新建镜头组
         </el-button>
@@ -366,6 +367,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  (e: 'batch-render'): void
   (e: 'add-shot', groupId?: any): void
   (e: 'insert-shot', payload: { shot: DramaShot; position: 'before' | 'after' }): void
   (e: 'edit-shot', shotId: any): void

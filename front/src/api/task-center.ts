@@ -17,6 +17,7 @@ export interface TaskCenterItem {
   title: string
   status: TaskCenterStatus | string
   progress?: number
+  revision?: number
   currentStage?: string
   modelCode?: string
   errorMessage?: string

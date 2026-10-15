@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { taskCenterApi, type TaskCenterItem } from '@/api/task-center'
 import type { AgentEvent, AgentStreamEvent } from '@/types/agent'
 
-const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RENDERING', 'WAITING_TASK', 'WAITING_USER', 'BLOCKED', 'CANCELLING'])
+const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RENDERING', 'WAITING_TASK', 'WAITING_USER', 'BLOCKED', 'CANCELLING', 'NEEDS_REVIEW'])
 
 export interface PromptEvent {
   taskId: string
@@ -90,6 +90,8 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
   function handleTaskUpdated(task: TaskCenterItem) {
     const strTaskId = String(task.taskId)
     const normalizedTask: TaskCenterItem = { ...task, taskId: strTaskId }
+    const previous = [...activeTasks.value, ...recentTasks.value].find(t => t.sourceType === normalizedTask.sourceType && String(t.taskId) === strTaskId)
+    if (normalizedTask.revision !== undefined && previous?.revision !== undefined && normalizedTask.revision < previous.revision) return
 
     const activeIndex = activeTasks.value.findIndex(
       t => t.sourceType === normalizedTask.sourceType && String(t.taskId) === strTaskId

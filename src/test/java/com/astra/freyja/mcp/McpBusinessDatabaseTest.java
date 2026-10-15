@@ -119,6 +119,7 @@ class McpBusinessDatabaseTest {
         @Bean AiImageApiService images() { return mock(AiImageApiService.class); }
         @Bean PromptAssembleService prompts() { return mock(PromptAssembleService.class); }
         @Bean RenderTaskService renders() { return mock(RenderTaskService.class); }
+        @Bean com.astra.freyja.service.video.VideoRenderBatchService videoBatches() { return mock(com.astra.freyja.service.video.VideoRenderBatchService.class); }
         @Bean ReadSkillFileToolFactory skillFiles() { return mock(ReadSkillFileToolFactory.class); }
         @Bean com.astra.freyja.skill.service.SkillCatalogService skillCatalog() { return mock(com.astra.freyja.skill.service.SkillCatalogService.class); }
         @Bean com.astra.freyja.skill.service.SkillContentService skillContents() { return mock(com.astra.freyja.skill.service.SkillContentService.class); }

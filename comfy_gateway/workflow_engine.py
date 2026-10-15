@@ -301,7 +301,14 @@ class WorkflowEngine:
         first_img = None
         last_img = None
 
-        if len(uploaded_ref_images) == 1:
+        # Upload order may contain only a last frame, or unrelated references before it.
+        # Preserve explicit input roles instead of interpreting the first image as a first frame.
+        sources = request.get_all_ref_images()
+        if request.first_frame or request.last_frame:
+            uploaded_by_source = dict(zip(sources, uploaded_ref_images))
+            first_img = uploaded_by_source.get(request.first_frame)
+            last_img = uploaded_by_source.get(request.last_frame)
+        elif len(uploaded_ref_images) == 1:
             first_img = uploaded_ref_images[0]
         elif len(uploaded_ref_images) >= 2:
             first_img = uploaded_ref_images[0]

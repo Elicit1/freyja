@@ -40,6 +40,9 @@ public interface RenderTaskService {
 
     TaskCancelResultVO cancelTaskDetailed(String taskId);
 
+    /** Refresh externally coordinated queue state and notify the existing task-center connection. */
+    default void refreshTaskFromDatabase(String taskId) { }
+
     /** Active render jobs created by one or more AI tasks. */
     List<RenderTaskVO> getActiveTasksByParentAiTaskIds(List<Long> parentTaskIds);
 

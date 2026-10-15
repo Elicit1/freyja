@@ -482,6 +482,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
     @Override
     public com.astra.freyja.dto.drama.VideoGenerationResultVO generateAndArchiveVideo(
             Long shotId, Long dramaId, com.astra.freyja.entity.DramaShot shot, com.astra.freyja.dto.drama.DramaShotRenderRequestDTO dto) {
+        com.astra.freyja.service.video.VideoExecutionState.phase("PREPARATION");
         if (shot == null) {
             throw new BizException(404, "分镜实体不能为空");
         }
@@ -673,8 +674,11 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                     .build();
 
+            com.astra.freyja.service.video.VideoExecutionState.phase("SENT");
             HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 300) {
+                if(java.util.Set.of(400,401,403,404,405,413,415,422,429).contains(response.statusCode()))
+                    com.astra.freyja.service.video.VideoExecutionState.phase("REJECTED");
                 log.error("[AiImageApi] 视频生成 API 请求失败: status={}, body={}", response.statusCode(), response.body());
                 throw new BizException(500, "视频生成接口调用失败 (" + response.statusCode() + "): " + response.body());
             }
@@ -693,9 +697,11 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             if (firstItem.hasNonNull("url")) {
                 String remoteVideoUrl = firstItem.get("url").asText();
                 String targetUrl = resolveRemoteImageUrl(remoteVideoUrl, baseUrl);
+                com.astra.freyja.service.video.VideoExecutionState.completed(targetUrl);
                 log.info("[AiImageApi] 成功获取远程视频 URL，正在下载转存至 MinIO: targetUrl={}", targetUrl);
                 videoBytes = downloadRemoteBytes(targetUrl);
             } else if (firstItem.hasNonNull("b64_json")) {
+                com.astra.freyja.service.video.VideoExecutionState.completed(null);
                 String b64 = firstItem.get("b64_json").asText();
                 videoBytes = Base64.getDecoder().decode(b64);
             } else {
@@ -748,6 +754,12 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         String finalUrl = String.format("%s/%s/%s", cleanBase, bucket, cleanObject);
         log.info("[AiImageApi] 视频成功归档至 MinIO: url={}", finalUrl);
         return finalUrl;
+    }
+
+    @Override
+    public com.astra.freyja.dto.drama.VideoGenerationResultVO archiveExistingVideo(Long shotId,Long dramaId,String sourceUrl) {
+        com.astra.freyja.service.video.VideoExecutionState.completed(sourceUrl);
+        return com.astra.freyja.dto.drama.VideoGenerationResultVO.builder().videoUrl(uploadVideoToMinio(shotId,dramaId,downloadRemoteBytes(sourceUrl))).build();
     }
 
     private String uploadFrameToMinio(Long shotId, Long dramaId, byte[] frameBytes) {

@@ -136,7 +136,7 @@ function refresh() {
 }
 
 function canCancel(task: TaskCenterItem) {
-  return ['RENDER_TASK', 'AI_TASK', 'AGENT_RUN'].includes(task.sourceType) && isActive(task.status)
+  return ['RENDER_TASK', 'AI_TASK', 'AGENT_RUN', 'VIDEO_RENDER_BATCH'].includes(task.sourceType) && isActive(task.status)
 }
 
 async function cancelTask(task: TaskCenterItem) {
@@ -154,6 +154,11 @@ async function cancelTask(task: TaskCenterItem) {
 async function openTask(task: TaskCenterItem) {
   store.markRead(task.taskId, task.sourceType)
   drawerVisible.value = false
+
+  if (task.sourceType === 'VIDEO_RENDER_BATCH') {
+    await router.push({ path: '/render/tasks', query: { taskSource: task.sourceType, taskId: task.taskId } })
+    return
+  }
 
   if (task.resumeAction === 'AGENT_CHAT' && task.targetId) {
     window.dispatchEvent(new CustomEvent('agent-open-chat', { detail: { sessionId: task.targetId, runId: task.taskId } }))
@@ -207,11 +212,11 @@ function goToTaskCenter() {
 }
 
 function isActive(status: string) {
-  return ['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'WAITING_TASK', 'WAITING_USER', 'BLOCKED', 'CANCELLING'].includes(status)
+  return ['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'WAITING_TASK', 'WAITING_USER', 'BLOCKED', 'CANCELLING', 'NEEDS_REVIEW'].includes(status)
 }
 
 function statusLabel(status: string) {
-  return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', WAITING_TASK: '子任务执行中', BLOCKED: '需要调整摘要配置', WAITING_USER: '等待回答', CANCELLING: '正在取消', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', FAILED: '失败', CANCELLED: '已取消', CANCEL_UNCONFIRMED: '请求已中断（上游未确认）' } as Record<string, string>)[status] || status
+  return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', WAITING_TASK: '子任务执行中', BLOCKED: '需要调整摘要配置', WAITING_USER: '等待回答', CANCELLING: '正在取消', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', PARTIAL_FAILED: '部分失败', NEEDS_REVIEW: '上游待核实', FAILED: '失败', CANCELLED: '已取消', CANCEL_UNCONFIRMED: '请求已中断（上游未确认）' } as Record<string, string>)[status] || status
 }
 
 function statusTone(status: string): 'success' | 'warning' | 'danger' | 'processing' | 'pending' | 'disabled' {

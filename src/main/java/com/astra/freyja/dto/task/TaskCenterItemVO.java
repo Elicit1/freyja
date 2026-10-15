@@ -26,6 +26,7 @@ public class TaskCenterItemVO implements Serializable {
     private String title;
     private String status;
     private Integer progress;
+    private Integer revision;
     private String currentStage;
     private String modelCode;
     private String errorMessage;

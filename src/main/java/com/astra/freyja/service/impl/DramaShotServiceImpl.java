@@ -58,8 +58,6 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
@@ -98,6 +96,8 @@ public class DramaShotServiceImpl implements DramaShotService {
     private final DramaShotVideoTakeMapper shotVideoTakeMapper;
     private final RenderTaskMapper renderTaskMapper;
 
+    private final com.astra.freyja.service.video.VideoRenderBatchService videoBatches;
+
     public DramaShotServiceImpl(DramaShotMapper shotMapper,
                                 DramaShotGroupMapper shotGroupMapper,
                                 DramaSceneMapper sceneMapper,
@@ -115,7 +115,8 @@ public class DramaShotServiceImpl implements DramaShotService {
                                 @org.springframework.beans.factory.annotation.Qualifier("renderAsyncExecutor") java.util.concurrent.Executor renderAsyncExecutor,
                                 ShotVideoTakeService shotVideoTakeService,
                                 DramaShotVideoTakeMapper shotVideoTakeMapper,
-                                RenderTaskMapper renderTaskMapper) {
+                                RenderTaskMapper renderTaskMapper,
+                                com.astra.freyja.service.video.VideoRenderBatchService videoBatches) {
         this.shotMapper = shotMapper;
         this.shotGroupMapper = shotGroupMapper;
         this.sceneMapper = sceneMapper;
@@ -134,6 +135,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         this.shotVideoTakeService = shotVideoTakeService;
         this.shotVideoTakeMapper = shotVideoTakeMapper;
         this.renderTaskMapper = renderTaskMapper;
+        this.videoBatches = videoBatches;
     }
 
     @Override
@@ -911,98 +913,8 @@ public class DramaShotServiceImpl implements DramaShotService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public ComfyRenderTaskVO submitShotRender(Long id, DramaShotRenderRequestDTO requestDTO) {
-        DramaShot shot = shotMapper.selectById(id);
-        if (shot == null) {
-            throw new BizException(404, "分镜不存在: " + id);
-        }
-        KeyImageReferenceValidator.parseAndValidate(shot.getRefImagesJson(), objectMapper, this::keyImageAssetType);
-
-        if (StringUtils.isBlank(ShotRenderPromptUtil.resolve(
-                shot.getGenerationMode(), shot.getPrompt(), shot.getVideoPrompt(),
-                requestDTO != null ? requestDTO.getPrompt() : null))) {
-            assembleShotPrompt(id);
-            shot = shotMapper.selectById(id);
-        }
-
-        // Freeze the shot seed in this render request so later refreshes affect only future tasks.
-        if (shot.getSeed() == null || shot.getSeed() <= 0 || shot.getSeed() > ShotSeedUtil.MAX_SEED) {
-            shot.setSeed(ShotSeedUtil.next());
-        }
-        if (requestDTO == null) {
-            requestDTO = new DramaShotRenderRequestDTO();
-        }
-        String renderPrompt = ShotRenderPromptUtil.resolve(
-                shot.getGenerationMode(), shot.getPrompt(), shot.getVideoPrompt(), requestDTO.getPrompt());
-        if (StringUtils.isBlank(renderPrompt)) {
-            throw new BizException(400, "视频渲染提示词不能为空");
-        }
-        if (StringUtils.isNotBlank(requestDTO.getPrompt())) {
-            if ("REFERENCE_MODE".equalsIgnoreCase(shot.getGenerationMode())) {
-                shot.setPrompt(renderPrompt);
-            } else {
-                shot.setVideoPrompt(renderPrompt);
-            }
-        }
-        // 冻结本次请求，异步执行时不再受到后续分镜编辑的影响。
-        requestDTO.setPrompt(renderPrompt);
-        requestDTO.setSeed(shot.getSeed());
-
-        String taskId = "RENDER_" + System.currentTimeMillis();
-        shot.setLatestTaskId(taskId);
-        shot.setRenderStatus("QUEUED");
-        shotMapper.updateById(shot);
-
-        if (requestDTO != null) {
-            requestDTO.setTaskId(taskId);
-        }
-
-        // 提前解析实际提供商与视频模型代码，固化至任务实体，杜绝取消时提供商路由丢失
-        com.astra.freyja.entity.AiProvider actualProvider = null;
-        String actualModelCode = null;
-        try {
-            actualProvider = aiImageApiService.resolveProvider(requestDTO != null ? requestDTO.getProviderId() : null);
-            actualModelCode = aiImageApiService.resolveVideoModelCode(requestDTO, actualProvider.getId(), shot.getGenerationMode());
-        } catch (Exception e) {
-            log.warn("[DramaShotService] 预解析视频提供商与模型警告: {}", e.getMessage());
-        }
-
-        com.astra.freyja.dto.render.RenderTaskVO rTask = com.astra.freyja.dto.render.RenderTaskVO.builder()
-                .taskId(taskId)
-                .taskType("SHOT_VIDEO")
-                .taskName(String.format("[S%d %s] 视频渲染", shot.getShotNo() != null ? shot.getShotNo() : 0,
-                        StringUtils.defaultIfBlank(shot.getShotName(), "分镜")))
-                .dramaId(shot.getDramaId())
-                .episodeId(shot.getEpisodeId())
-                .sceneId(shot.getSceneId())
-                .shotId(id)
-                .shotNo(shot.getShotNo())
-                .shotGroupId(shot.getShotGroupId())
-                .prompt(renderPrompt)
-                .negativePrompt(shot.getNegativePrompt())
-                .providerId(actualProvider != null ? actualProvider.getId() : (requestDTO != null ? requestDTO.getProviderId() : null))
-                .providerName(actualProvider != null ? actualProvider.getProviderName() : null)
-                .modelCode(actualModelCode)
-                .status("QUEUED")
-                .progress(0)
-                .currentNode("等待渲染工坊调度...")
-                .build();
-        renderTaskService.createTask(rTask);
-
-        ComfyRenderTaskVO taskVO = new ComfyRenderTaskVO();
-        taskVO.setTaskId(taskId);
-        taskVO.setStatus(ComfyTaskStatus.RUNNING);
-        taskVO.setProgress(0);
-        taskVO.setShotId(id);
-        taskVO.setProjectId(shot.getDramaId());
-        log.info("[DramaShotService] 提交分镜渲染成功: shotId={}, taskId={}", id, taskId);
-
-        // 必须等当前事务提交后再启动异步线程，否则异步查询会读到旧 latestTaskId，
-        // 随后的整行更新又可能把刚提交的任务关联覆盖为空。
-        dispatchRenderAfterCommit(id, taskId, requestDTO);
-
-        return taskVO;
+        return videoBatches.enqueueSingle(id, requestDTO);
     }
 
     public static void interruptTaskThread(String taskId) {
@@ -1013,91 +925,6 @@ public class DramaShotServiceImpl implements DramaShotService {
     private String keyImageAssetType(Long assetId) {
         ResKeyframe asset = resKeyframeMapper != null ? resKeyframeMapper.selectById(assetId) : null;
         return asset != null ? asset.getFrameType() : null;
-    }
-
-    private void dispatchRenderAfterCommit(Long id, String taskId, DramaShotRenderRequestDTO requestDTO) {
-        Runnable renderJob = () -> renderAsyncExecutor.execute(
-                () -> executeShotVideoRenderAsync(id, taskId, requestDTO));
-        if (TransactionSynchronizationManager.isActualTransactionActive()
-                && TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    renderJob.run();
-                }
-            });
-            return;
-        }
-        renderJob.run();
-    }
-
-    @Override
-    public void executeShotVideoRenderAsync(Long id, String taskId, DramaShotRenderRequestDTO requestDTO) {
-        log.info("[DramaShotService] 开始异步执行分镜视频渲染: shotId={}, taskId={}", id, taskId);
-        com.astra.freyja.service.RenderTaskThreadRegistry.register(taskId, Thread.currentThread());
-        DramaShot shot = shotMapper.selectById(id);
-        if (shot == null) {
-            com.astra.freyja.service.RenderTaskThreadRegistry.unregister(taskId);
-            log.error("[DramaShotService] 异步渲染失败，分镜不存在: shotId={}, taskId={}", id, taskId);
-            renderTaskService.failTask(taskId, "分镜不存在: " + id, null);
-            return;
-        }
-
-        if (isTaskCancelled(taskId)) {
-            com.astra.freyja.service.RenderTaskThreadRegistry.unregister(taskId);
-            log.warn("[DramaShotService] 异步渲染前检测到任务已取消，终止执行: shotId={}, taskId={}", id, taskId);
-            return;
-        }
-
-        try {
-            // 1. 更新任务状态为 RENDERING
-            renderTaskService.updateProgress(taskId, 0, "正在生成视频并归档至 MinIO...");
-            // 只按任务归属条件更新状态，禁止旧快照整行回写覆盖 latestTaskId。
-            shotMapper.markRenderingIfLatest(id, taskId);
-
-            if (isTaskCancelled(taskId)) {
-                log.warn("[DramaShotService] 调用视频生成前检测到任务已取消，终止执行: shotId={}, taskId={}", id, taskId);
-                return;
-            }
-
-            // 2. 调用生图/视频 API 服务生成视频并归档 MinIO
-            com.astra.freyja.dto.drama.VideoGenerationResultVO resultVO = aiImageApiService.generateAndArchiveVideo(
-                    id, shot.getDramaId(), shot, requestDTO);
-
-            if (isTaskCancelled(taskId)) {
-                log.warn("[DramaShotService] 视频生成返回后检测到任务已取消，丢弃结果并终止: shotId={}, taskId={}", id, taskId);
-                return;
-            }
-
-            // 3. 记录视频候选版本 Take 并根据任务时间线自动选择
-            RenderTask rTask = renderTaskMapper.selectOne(
-                    new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getTaskId, taskId)
-            );
-            DramaShotVideoTake take = shotVideoTakeService.recordGeneratedTake(shot, rTask, requestDTO, resultVO);
-
-            // 4. 完成任务生命周期 (产物保存本次生成 URL)
-            renderTaskService.finishTask(taskId, resultVO.getVideoUrl(), null);
-            log.info("[DramaShotService] 异步执行分镜视频渲染完成: shotId={}, taskId={}, takeId={}, videoUrl={}",
-                    id, taskId, take != null ? take.getId() : null, resultVO.getVideoUrl());
-        } catch (Exception e) {
-            if (isTaskCancelled(taskId) || Thread.currentThread().isInterrupted()) {
-                log.info("[DramaShotService] 异步视频渲染因任务取消或中断退出: shotId={}, taskId={}", id, taskId);
-                return;
-            }
-            log.error("[DramaShotService] 异步执行分镜视频渲染异常: shotId={}, taskId={}, error={}",
-                    id, taskId, e.getMessage(), e);
-            try {
-                DramaShot failedShot = shotMapper.selectById(id);
-                if (failedShot != null) {
-                    failedShot.setRenderStatus("FAILED");
-                    shotMapper.updateById(failedShot);
-                }
-            } catch (Exception ignored) {
-            }
-            renderTaskService.failTask(taskId, e.getMessage(), org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(e));
-        } finally {
-            com.astra.freyja.service.RenderTaskThreadRegistry.unregister(taskId);
-        }
     }
 
     private boolean isTaskCancelled(String taskId) {

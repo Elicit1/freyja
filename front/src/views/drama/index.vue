@@ -314,6 +314,7 @@
             @clone-shot="handleCloneShot"
             @preview-prompt="handlePreviewShotPrompt"
             @render-shot="handleRenderShot"
+            @batch-render="batchRenderModalRef?.open(currentDramaId, currentDrama?.aspectRatio)"
             @video-history="handleOpenVideoHistory"
             @process-video="handleProcessVideo"
             @reorder-shots="handleReorderShots"
@@ -326,6 +327,7 @@
 
     <!-- 弹窗与抽屉套件 -->
     <DramaModal ref="dramaModalRef" @success="handleDramaModalSuccess" />
+    <ShotVideoBatchRenderModal ref="batchRenderModalRef" />
     <EpisodeModal ref="episodeModalRef" @success="handleEpisodeSuccess" />
     <SceneModal ref="sceneModalRef" @success="handleSceneSuccess" />
     <ShotPromptPreviewModal ref="promptPreviewModalRef" @success="refreshShotsAndStats" />
@@ -384,6 +386,7 @@ import type {
 // 子组件引入
 import OutlineTree from './components/OutlineTree.vue'
 import StoryboardGrid from './components/StoryboardGrid.vue'
+import ShotVideoBatchRenderModal from './components/ShotVideoBatchRenderModal.vue'
 import DramaModal from './components/DramaModal.vue'
 import EpisodeModal from './components/EpisodeModal.vue'
 import SceneModal from './components/SceneModal.vue'
@@ -428,6 +431,7 @@ const sceneModalRef = ref()
 const shotDrawerRef = ref()
 const promptPreviewModalRef = ref()
 const stepRenderModalRef = ref()
+const batchRenderModalRef = ref()
 const firstEndFrameRenderModalRef = ref()
 const multiModalRefRenderModalRef = ref()
 type DecomposePanelSession = { key: string }
