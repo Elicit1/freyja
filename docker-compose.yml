@@ -172,6 +172,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
       MINIO_BUCKET_NAME: video-assets
+      MINIO_MCP_UPLOAD_BUCKET: ${MINIO_MCP_UPLOAD_BUCKET:-freyja-mcp-uploads}
       FREYJA_MEDIA_TOOLS_FFMPEG_PATH: ffmpeg
       FREYJA_MEDIA_TOOLS_FFPROBE_PATH: ffprobe
       FREYJA_CRYPTO_KEY: ${FREYJA_CRYPTO_KEY:-freyja-local-dev-key-please-change-me-0123456789}

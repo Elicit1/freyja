@@ -25,6 +25,8 @@ import java.net.http.*;
 import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.*;
 
 @SpringBootTest(classes = McpRuntimeProtocolIntegrationTest.App.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"freyja.mcp.enabled=false", "freyja.mcp.token=", "freyja.mcp.write-enabled=false", "spring.sql.init.mode=never",
@@ -81,16 +83,59 @@ class McpRuntimeProtocolIntegrationTest {
         var response = rpc("tools/list", Map.of(), TOKEN); assertEquals(200, response.statusCode(), response.body());
         Set<String> names = new HashSet<>(); json.readTree(response.body()).path("result").path("tools").forEach(tool -> names.add(tool.path("name").asText())); return names;
     }
-    @Test void newSkillAndBatchImageToolsFollowWriteAndIndependentRuntimeSwitches() throws Exception {
+    @Test void skillToolsRemainReadOnlyAndFollowIndependentRuntimeSwitches() throws Exception {
         configure(true, false);
-        assertTrue(toolNames().containsAll(Set.of("list_skills", "read_skill", "read_skill_file"))); assertFalse(toolNames().contains("batch_upload_asset_images"));
+        assertTrue(toolNames().containsAll(Set.of("list_skills", "read_skill", "read_skill_file")));
         var cached = catalog.specification(inventory.all().stream().filter(tool -> tool.name().equals("list_skills")).findFirst().orElseThrow());
         admin("/system/mcp/tools/list_skills", Map.of("revision", revision(), "enabled", false)); assertFalse(toolNames().contains("list_skills"));
         var result = cached.callHandler().apply(McpTransportContext.create(Map.of(McpPrincipal.CONTEXT_KEY, fixture.caller)), new McpSchema.CallToolRequest("list_skills", Map.of()));
         assertTrue(result.isError());
-        configure(true, true); assertTrue(toolNames().contains("batch_upload_asset_images"));
-        admin("/system/mcp/tools/batch_upload_asset_images", Map.of("revision", revision(), "enabled", false)); assertFalse(toolNames().contains("batch_upload_asset_images"));
         org.mockito.Mockito.verifyNoInteractions(fixture.storage, fixture.skillContents, fixture.skillRepository);
+    }
+
+    @Test void directUploadToolsAreDiscoveredAndRespectWritePermissionsAndIndependentSwitches() throws Exception {
+        configure(true, false);
+        assertFalse(toolNames().contains(McpPresignedImageUploads.PREPARE_TOOL));
+        assertFalse(toolNames().contains(McpPresignedImageUploads.COMPLETE_TOOL));
+        configure(true, true);
+        assertTrue(toolNames().containsAll(Set.of(McpPresignedImageUploads.PREPARE_TOOL, McpPresignedImageUploads.COMPLETE_TOOL)));
+        var cached = catalog.specification(inventory.all().stream().filter(t -> t.name().equals(McpPresignedImageUploads.PREPARE_TOOL)).findFirst().orElseThrow());
+        admin("/system/mcp/tools/" + McpPresignedImageUploads.PREPARE_TOOL, Map.of("revision", revision(), "enabled", false));
+        assertFalse(toolNames().contains(McpPresignedImageUploads.PREPARE_TOOL));
+        assertTrue(toolNames().contains(McpPresignedImageUploads.COMPLETE_TOOL));
+        var result = cached.callHandler().apply(McpTransportContext.create(Map.of(McpPrincipal.CONTEXT_KEY, fixture.caller)),
+                new McpSchema.CallToolRequest(McpPresignedImageUploads.PREPARE_TOOL, Map.of()));
+        assertTrue(result.isError());
+        admin("/system/mcp/tools/" + McpPresignedImageUploads.PREPARE_TOOL, Map.of("revision", revision(), "enabled", true));
+        assertTrue(toolNames().contains(McpPresignedImageUploads.PREPARE_TOOL));
+        org.mockito.Mockito.verifyNoInteractions(fixture.storage);
+    }
+
+    @Test void directUploadRoundTripUsesSmallJsonArgumentsAndReturnsFinalAssetUrl() throws Exception {
+        configure(true, true);
+        byte[] bytes = McpImageAssetsTest.image("png", false);
+        String hash = HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        when(fixture.storage.bucketExists(any())).thenReturn(true);
+        when(fixture.storage.getPresignedPostFormData(any())).thenReturn(Map.of("policy", "signed-policy", "x-amz-signature", "signature"));
+        Map<String, Object> metadata = Map.of("requestId", "http-direct-prepare1", "dramaId", McpBusinessDatabaseTest.ROOT,
+                "purpose", "KEYFRAME", "fileName", "frame.png", "contentType", "image/png", "size", bytes.length, "sha256", hash);
+        var prepared = rpc("tools/call", Map.of("name", McpPresignedImageUploads.PREPARE_TOOL, "arguments", metadata), TOKEN);
+        var receipt = json.readTree(prepared.body()).path("result").path("structuredContent");
+        assertTrue(receipt.path("ok").asBoolean(), prepared.body());
+        assertEquals("POST", receipt.path("data").path("method").asText());
+        assertFalse(receipt.path("data").has("url")); assertFalse(prepared.body().contains("dataBase64"));
+
+        var stat = mock(io.minio.StatObjectResponse.class);
+        when(stat.size()).thenReturn((long) bytes.length); when(stat.contentType()).thenReturn("image/png"); when(stat.etag()).thenReturn("etag");
+        when(fixture.storage.statObject(any())).thenReturn(stat);
+        when(fixture.storage.getObject(any())).thenAnswer(call -> new io.minio.GetObjectResponse(okhttp3.Headers.of(), "staging", "us-east-1", "key", new java.io.ByteArrayInputStream(bytes)));
+        var confirmed = rpc("tools/call", Map.of("name", McpPresignedImageUploads.COMPLETE_TOOL, "arguments", Map.of(
+                "requestId", "http-direct-confirm1", "dramaId", McpBusinessDatabaseTest.ROOT, "uploadId", "http-direct-prepare1")), TOKEN);
+        var completed = json.readTree(confirmed.body()).path("result").path("structuredContent");
+        assertTrue(completed.path("ok").asBoolean(), confirmed.body());
+        assertTrue(completed.path("data").path("url").asText().contains("/keyframe/"));
+        assertEquals(hash, completed.path("data").path("sha256").asText());
+        verify(fixture.storage).putObject(any());
     }
 
     @Test void uiConfigEnablesDefaultOffServerWithoutRestartAndNeverReturnsToken() throws Exception {
@@ -126,19 +171,19 @@ class McpRuntimeProtocolIntegrationTest {
         assertEquals(21, toolNames().size()); assertFalse(toolNames().contains("get_shot"));
     }
 
-    @Test void uploadToolHasIndependentSwitchAndCachedHandlerCannotUploadWhenDisabled() throws Exception {
-        configure(true, true); assertTrue(toolNames().contains("upload_asset_image"));
-        var tool = inventory.all().stream().filter(t -> t.name().equals("upload_asset_image")).findFirst().orElseThrow();
-        var cached = catalog.specification(tool);
-        admin("/system/mcp/tools/upload_asset_image", Map.of("revision", revision(), "enabled", false));
-        assertFalse(toolNames().contains("upload_asset_image"));
-        var input = Map.<String, Object>of("requestId", "disabled-upload1", "dramaId", McpBusinessDatabaseTest.ROOT, "purpose", "PROP", "dataBase64", McpImageUploadTest.WEBP);
-        var result = cached.callHandler().apply(McpTransportContext.create(Map.of(McpPrincipal.CONTEXT_KEY, fixture.caller)), new McpSchema.CallToolRequest("upload_asset_image", input));
-        assertTrue(result.isError()); assertTrue(fixture.json.write(result.structuredContent()).contains("MCP_TOOL_DISABLED"));
-        org.mockito.Mockito.verifyNoInteractions(fixture.storage); assertEquals(0, fixture.count("mcp_business_operation"));
-        admin("/system/mcp/tools/upload_asset_image", Map.of("revision", revision(), "enabled", true)); assertTrue(toolNames().contains("upload_asset_image"));
-        configure(true, false); assertFalse(toolNames().contains("upload_asset_image"));
+    @Test void retiredImageUploadToolsAreAbsentAndRejectCalls() throws Exception {
+        configure(true, true);
+        Set<String> names = toolNames();
+        for (String name : List.of("upload_asset_image", "batch_upload_asset_images")) {
+            assertFalse(names.contains(name));
+            var response = rpc("tools/call", Map.of("name", name, "arguments", Map.of()), TOKEN);
+            JsonNode result = json.readTree(response.body());
+            assertTrue(result.has("error") || result.path("result").path("isError").asBoolean(), response.body());
+            assertEquals(400, admin("/system/mcp/tools/" + name, Map.of("revision", revision(), "enabled", true)).path("code").asInt());
+        }
+        verifyNoInteractions(fixture.storage);
     }
+
     @Test void staleOrUnknownToolChangesAreRejectedAndTokenRotationTakesEffect() throws Exception {
         assertEquals(200, configure(true, true).path("code").asInt()); int old = revision();
         admin("/system/mcp/tools/get_shot", Map.of("revision", old, "enabled", false));
@@ -181,6 +226,20 @@ class McpRuntimeProtocolIntegrationTest {
         assertEquals(200, admin("/system/mcp/tools/batch_update_shots", Map.of("revision", revision(), "enabled", true)).path("code").asInt());
         assertTrue(toolNames().contains("batch_update_shots")); assertFalse(toolNames().contains("batch_update_props"));
         assertFalse(configs.find().getConfigValue().contains("batch_update_records"));
+    }
+
+    @Test void retiredUploadSwitchesAreDiscardedAndDoNotBlockSavingSettings() throws Exception {
+        configure(true, true);
+        var settings = control.current();
+        settings.getTools().put("upload_asset_image", false);
+        settings.getTools().put("batch_upload_asset_images", true);
+        settings.getTools().put("get_shot", false);
+        new JdbcTemplate(fixture.dataSource).update("UPDATE sys_config SET config_value=? WHERE id=900000000000000019", fixture.json.write(settings));
+        assertFalse(control.current().getTools().containsKey("upload_asset_image"));
+        assertFalse(control.current().getTools().containsKey("batch_upload_asset_images"));
+        assertFalse(control.current().getTools().get("get_shot"));
+        assertEquals(200, configure(true, true).path("code").asInt());
+        assertFalse(configs.find().getConfigValue().contains("upload_asset_image"));
     }
 
     @Test void savedSettingsAndEncryptedTokenSurviveAControlServiceRestart() throws Exception {

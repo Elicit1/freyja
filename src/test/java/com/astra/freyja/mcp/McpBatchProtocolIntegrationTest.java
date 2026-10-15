@@ -65,7 +65,8 @@ class McpBatchProtocolIntegrationTest {
         JsonNode catalog = rpc("tools/list", Map.of()).path("tools"); assertEquals(72, catalog.size());
         Set<String> names = new HashSet<>(); catalog.forEach(tool -> names.add(tool.path("name").asText()));
         assertTrue(names.containsAll(Set.of("append_storyboard", "batch_create_records", "batch_update_shots", "batch_delete_records", "batch_read_records")));
-        assertTrue(names.containsAll(Set.of("list_skills", "read_skill", "read_skill_file", "batch_upload_asset_images")));
+        assertTrue(names.containsAll(Set.of("list_skills", "read_skill", "read_skill_file")));
+        assertTrue(names.containsAll(Set.of("prepare_asset_image_upload", "complete_asset_image_upload")));
         assertTrue(Collections.disjoint(names, Set.of("get_creation_options", "decompose_script", "generate_image", "generate_video")));
         assertFalse(names.contains("internal_ai_should_remain_private"));
     }
@@ -176,17 +177,29 @@ class McpBatchProtocolIntegrationTest {
         }
     }
 
-    @Test void agentUploadsLargeImageThroughMcpThenCreatesAllReferenceAssets() throws Exception {
-        byte[] bytes = McpImageUploadTest.image("png", true); assertTrue(bytes.length > 2 * 1024 * 1024);
-        org.mockito.Mockito.when(fixture.storage.bucketExists(org.mockito.ArgumentMatchers.any(io.minio.BucketExistsArgs.class))).thenReturn(true);
+    @Test void agentDirectUploadsLargeImageThenCreatesAllReferenceAssets() throws Exception {
+        byte[] bytes = McpImageAssetsTest.image("png", true); assertTrue(bytes.length > 2 * 1024 * 1024);
+        String hash = HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
+        org.mockito.Mockito.when(fixture.storage.bucketExists(org.mockito.ArgumentMatchers.any())).thenReturn(true);
+        org.mockito.Mockito.when(fixture.storage.getPresignedPostFormData(org.mockito.ArgumentMatchers.any())).thenReturn(Map.of("policy", "policy", "x-amz-signature", "signature"));
         org.mockito.Mockito.doAnswer(invocation -> {
             io.minio.PutObjectArgs stored = invocation.getArgument(0); assertArrayEquals(bytes, stored.stream().readAllBytes()); return null;
         }).when(fixture.storage).putObject(org.mockito.ArgumentMatchers.any(io.minio.PutObjectArgs.class));
-        var arguments = Map.of("requestId", "http-image-upload1", "dramaId", McpBusinessDatabaseTest.ROOT, "purpose", "CHARACTER_LOOK", "dataBase64", Base64.getEncoder().encodeToString(bytes));
-        JsonNode uploaded = rpc("tools/call", Map.of("name", "upload_asset_image", "arguments", arguments));
+        JsonNode prepared = rpc("tools/call", Map.of("name", "prepare_asset_image_upload", "arguments", Map.of(
+                "requestId", "http-image-prepare1", "dramaId", McpBusinessDatabaseTest.ROOT, "purpose", "CHARACTER_LOOK",
+                "fileName", "look.png", "contentType", "image/png", "size", bytes.length, "sha256", hash)));
+        assertFalse(prepared.path("isError").asBoolean(), prepared.toString());
+        var stat = org.mockito.Mockito.mock(io.minio.StatObjectResponse.class);
+        org.mockito.Mockito.when(stat.size()).thenReturn((long) bytes.length);
+        org.mockito.Mockito.when(stat.contentType()).thenReturn("image/png"); org.mockito.Mockito.when(stat.etag()).thenReturn("etag");
+        org.mockito.Mockito.when(fixture.storage.statObject(org.mockito.ArgumentMatchers.any())).thenReturn(stat);
+        org.mockito.Mockito.when(fixture.storage.getObject(org.mockito.ArgumentMatchers.any())).thenAnswer(call ->
+                new io.minio.GetObjectResponse(okhttp3.Headers.of(), "staging", "us-east-1", "key", new java.io.ByteArrayInputStream(bytes)));
+        var arguments = Map.of("requestId", "http-image-confirm1", "dramaId", McpBusinessDatabaseTest.ROOT, "uploadId", "http-image-prepare1");
+        JsonNode uploaded = rpc("tools/call", Map.of("name", "complete_asset_image_upload", "arguments", arguments));
         assertFalse(uploaded.path("isError").asBoolean(), uploaded.toString());
         String url = uploaded.path("structuredContent").path("data").path("url").asText(); assertTrue(url.startsWith("http://127.0.0.1:9000/video-assets/mcp/"));
-        assertEquals(uploaded, rpc("tools/call", Map.of("name", "upload_asset_image", "arguments", arguments)));
+        assertEquals(uploaded, rpc("tools/call", Map.of("name", "complete_asset_image_upload", "arguments", arguments)));
         org.mockito.Mockito.verify(fixture.storage, org.mockito.Mockito.times(1)).putObject(org.mockito.ArgumentMatchers.any(io.minio.PutObjectArgs.class));
         var created = rpc("tools/call", Map.of("name", "batch_create_records", "arguments", Map.of("requestId", "http-image-bind01", "dramaId", McpBusinessDatabaseTest.ROOT, "items", List.of(
                 Map.of("clientKey", "character", "type", "CHARACTER", "data", Map.of("name", "Agent角色")),
@@ -199,7 +212,7 @@ class McpBatchProtocolIntegrationTest {
         assertEquals(url, entries.get(1).path("data").path("referenceImageUrl").asText()); assertEquals("SYNCED", entries.get(1).path("data").path("imageStatus").asText());
         assertEquals(url, entries.get(2).path("data").path("referenceImageUrl").asText()); assertEquals(url, entries.get(3).path("data").path("frameUrl").asText());
         assertEquals(url, entries.get(4).path("data").path("coverUrl").asText());
-        assertEquals(2, fixture.count("mcp_business_operation"));
+        assertEquals(3, fixture.count("mcp_business_operation"));
     }
 
     @Test void customProjectGenreIsPersistedAndLegacySuggestedValuesRemainValid() throws Exception {
@@ -286,20 +299,6 @@ class McpBatchProtocolIntegrationTest {
             }
         }
         assertEquals(0, fixture.count("drama_shot"));
-    }
-
-    @Test void batchUploadWorksThroughHttpAndReturnsOnlyUrlsAndMetadata() throws Exception {
-        org.mockito.Mockito.when(fixture.storage.bucketExists(org.mockito.ArgumentMatchers.any(io.minio.BucketExistsArgs.class))).thenReturn(true);
-        String encoded = Base64.getEncoder().encodeToString(McpImageUploadTest.image("png", true));
-        Map<String, Object> args = Map.of("requestId", "http-batch-image1", "dramaId", McpBusinessDatabaseTest.ROOT, "items", List.of(
-                Map.of("clientKey", "hero", "purpose", "CHARACTER_LOOK", "dataBase64", encoded),
-                Map.of("clientKey", "scene", "purpose", "SCENE", "dataBase64", encoded)));
-        var result = rpc("tools/call", Map.of("name", "batch_upload_asset_images", "arguments", args));
-        assertFalse(result.path("isError").asBoolean(), result.toString());
-        assertEquals(2, result.path("structuredContent").path("data").path("count").asInt());
-        assertTrue(result.path("structuredContent").path("data").path("urlMap").has("hero")); assertFalse(result.toString().contains(encoded));
-        assertEquals(result, rpc("tools/call", Map.of("name", "batch_upload_asset_images", "arguments", args)));
-        org.mockito.Mockito.verify(fixture.storage, org.mockito.Mockito.times(2)).putObject(org.mockito.ArgumentMatchers.any(io.minio.PutObjectArgs.class));
     }
 
     @Test void publishedSkillAndReferenceFilesUseEnabledVersionWithoutExecutingInternalTools() throws Exception {

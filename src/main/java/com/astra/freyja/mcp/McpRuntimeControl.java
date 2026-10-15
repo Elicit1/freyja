@@ -42,6 +42,8 @@ public class McpRuntimeControl {
             throw new BizException(409, "MCP 设置记录无效，请恢复管理配置");
         try {
             McpRuntimeSettings state = json.mapper().readerForUpdating(defaults()).readValue(row.getConfigValue());
+            state.getTools().remove("upload_asset_image");
+            state.getTools().remove("batch_upload_asset_images");
             Boolean legacyUpdate = state.getTools().remove("batch_update_records");
             if (legacyUpdate != null) for (var capability : recordTools.capabilities()) {
                 state.getTools().putIfAbsent((String) capability.get("batchUpdate"), legacyUpdate);

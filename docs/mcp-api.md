@@ -106,8 +106,8 @@ tool_timeout_sec = 300
 | `set_default_character_look` | `requestId,dramaId,lookId,expectedFingerprint`，复用默认造型互斥规则 |
 | `reorder_group_shots` | `requestId,dramaId,groupId,shotIds`，需组内完整且无重复的分镜列表 |
 | `select_shot_video_version` | `requestId,dramaId,shotId,takeId,expectedFingerprint`，选择已有视频版本，复用尾帧失效规则 |
-| `upload_asset_image` | `requestId,dramaId,purpose,dataBase64,fileName?`，上传 PNG/JPEG/静态 WebP 参考图，返回可关联的 URL；单张最多 10 MiB |
-| `batch_upload_asset_images` | `requestId,dramaId,items`，每项 `clientKey,purpose,dataBase64,fileName?`；1–20 张，单张 10 MiB、整批 20 MiB；返回有序 `records` 和 `urlMap` |
+| `prepare_asset_image_upload` | `requestId,dramaId,purpose,fileName,contentType,size,sha256`，申请 15 分钟有效的 MinIO 预签名 POST 表单；图片二进制由客户端直传，不进入模型输出 |
+| `complete_asset_image_upload` | `requestId,dramaId,uploadId`，校验已直传文件并归档，返回正式 URL；确认的 requestId 与申请的 requestId 分开 |
 
 业务 ID 全部使用十进制 JSON **字符串**，包括嵌套人物、造型、道具 ID。数字形式、零、空字符串或超出 Long 范围均拒绝；JSON-RPC 请求 ID 保持原始类型。
 
@@ -247,26 +247,63 @@ tool_timeout_sec = 300
 }
 ```
 
-上述示例只保存卡片与媒体关联，不会调用内部提示词生成、导演规划、生图或 TTS。图片可先使用 `upload_asset_image` 上传，再关联返回 URL；音频可关联已有 URL，现有业务 REST `POST /res/asset/upload` 也继续可用。该 REST 接口独立于 MCP Bearer 鉴权。单独保存外部 URL 不会自动下载或归档。
+上述示例只保存卡片与媒体关联，不会调用内部提示词生成、导演规划、生图或 TTS。图片通过 `prepare_asset_image_upload` 申请二进制直传、`complete_asset_image_upload` 确认后，再关联正式 URL；音频可关联已有 URL，现有业务 REST `POST /res/asset/upload` 也继续可用。该 REST 接口独立于 MCP Bearer 鉴权。单独保存外部 URL 不会自动下载或归档。
 
 ## Agent 图片上传
 
-通过标准 `tools/call` 调用 `upload_asset_image`，图片内容直接放入 `dataBase64`。支持 PNG、JPEG 和静态 WebP，单张最多 **10 MiB**，最长边 16384 像素、总像素不超过 4000 万；按图片真实内容确定存储扩展名和 MIME 类型，禁止 SVG、其他文件类型、URL、本地文件路径和 `data:` 前缀。WebP 校验 RIFF 容器、图像头和尺寸，PNG/JPEG 使用 ImageIO 解码校验。`fileName` 可省略，提交时不能带路径。
+图片采用**预签名二进制直传**。客户端与 FREYJA 可以部署在不同机器，MCP 只传元数据和上传凭证；客户端使用已有 HTTP/文件能力发送本地图片，不需要安装独立上传脚本，也不需要转录 Base64。仅能调用 JSON 工具、没有文件发送能力的客户端不能自动完成二进制直传。
 
-```json
-{
-  "name":"upload_asset_image",
-  "arguments":{
-    "requestId":"external-look-upload-001",
-    "dramaId":"2032095628944588801",
-    "purpose":"CHARACTER_LOOK",
-    "fileName":"look.png",
-    "dataBase64":"<图片文件的纯 Base64 内容>"
-  }
-}
-```
+### 预签名二进制直传
 
-返回 `requestId,dramaId,purpose,url,contentType,size,width,height,sha256`。上传不要求资产已创建，也不自动覆盖任何资产；随后使用对应资产的单条创建/修改或批量工具关联返回的 `url`，更新现有资产仍需要 `expectedFingerprint`。
+1. 客户端计算真实文件大小和 SHA-256，通过 MCP 调用 `prepare_asset_image_upload`：
+
+   ```json
+   {
+     "name": "prepare_asset_image_upload",
+     "arguments": {
+       "requestId": "external-look-prepare-001",
+       "dramaId": "2032095628944588801",
+       "purpose": "CHARACTER_LOOK",
+       "fileName": "look.png",
+       "contentType": "image/png",
+       "size": 12345,
+       "sha256": "<客户端计算的64位十六进制SHA-256>"
+     }
+   }
+   ```
+
+   `size` 是 JSON 整数（1–10485760 字节）；业务 ID 仍为字符串。`contentType` 仅支持 `image/png`、`image/jpeg`、`image/webp`。`purpose` 沿用下方用途映射。摘要不得由模型猜测。
+
+2. 读取返回的 `uploadId、uploadUrl、method=POST、fields、fileField=file、expiresAt`。用 **multipart/form-data** 向 `uploadUrl` 发起普通 HTTP POST，将 `fields` 中的所有键和值作为原样表单字段，最后附加 `file` 文件部分，内容是本地文件原始字节。HTTP 库负责生成 multipart boundary，不要手动把整个请求的 Content-Type 设为 `image/png`；表单中的 `Content-Type` 字段使用返回值。不需要向 MinIO 发送 MCP Bearer 令牌，不修改签名字段，不把本地路径或 Base64 放进文件内容。
+
+   表单策略绑定具体暂存对象、声明的 Content-Type 和精确文件大小，MinIO 在接收时强制校验。上传地址来自 `MINIO_EXTERNAL_ENDPOINT`，必须是客户端可访问的 **S3 API** 地址（通常端口 9000，不是控制台 9001）。预签名字段是短期上传凭证，不在日志或最终回复中展开。
+
+3. 二进制上传成功后，通过 MCP 调用确认工具：
+
+   ```json
+   {
+     "name": "complete_asset_image_upload",
+     "arguments": {
+       "requestId": "external-look-confirm-001",
+       "dramaId": "2032095628944588801",
+       "uploadId": "external-look-prepare-001"
+     }
+   }
+   ```
+
+   服务端检查项目归属、有效期、实际大小、SHA-256、真实图片格式和尺寸，再将已验证的字节写入正式媒体桶。返回 `requestId、uploadId、dramaId、purpose、url、contentType、size、width、height、sha256`。正式对象与暂存对象分开，即使签名仍未过期，重新直传也不会修改已经归档的图片。
+
+4. 使用已有业务 CRUD，将**确认工具返回的正式 `url`** 填入对应字段，再读回核对。上传不会自动更新记录；暂存地址不能填写为 `referenceImageUrl` / `frameUrl`。
+
+申请使用稳定的 `requestId`，相同内容重试复用同一个 `uploadId`、对象和到期时间，不会延长有效期；内容改变返回 409。凭证过期返回 410，使用新申请 requestId 重新上传。确认使用另一个稳定的 requestId；缺少文件返回 404，校验失败返回 400，存储失败返回 502，均可在有效期内纠正后重试。确认成功后，即使暂存文件已删除或凭证过期，相同确认 requestId 仍返回已提交结果。
+
+暂存使用 `MINIO_MCP_UPLOAD_BUCKET`（默认 `freyja-mcp-uploads`），必须与正式媒体桶不同。应用首次申请时自动创建该独立桶并配置 `mcp/` 前缀一天过期，不赋予正式桶的匿名读取策略；完成确认并提交后尝试立即删除暂存对象，失败或遗弃上传由生命周期回收。该桶由此功能专用管理，MinIO 凭据需具备所需的桶初始化、生命周期配置及对象操作权限。若用浏览器直接上传，需为暂存桶配置允许实际前端 Origin 的 CORS。
+
+两个新工具沿用 MCP Bearer、项目授权、全局写开关和独立工具开关。已有安装启动时会增量注册到能力发布目录，并移除旧的单张/批量 Base64 上传绑定，保留已有工具的自定义名称、开关、初始化说明和未发布草稿；客户端需刷新工具目录。无新增数据库表。
+
+### 图片校验和用途
+
+支持 PNG、JPEG 和静态 WebP，单张最多 **10 MiB**，最长边 16384 像素、总像素不超过 4000 万；按真实图片内容确定存储扩展名和 MIME 类型。WebP 校验 RIFF 容器、图像头和尺寸，PNG/JPEG 使用 ImageIO 解码校验。文件名不能包含路径。更新既有资产仍需最新的 `expectedFingerprint`。
 
 | 上传用途 `purpose` | 业务记录和关联字段 |
 |---|---|
@@ -277,26 +314,11 @@ tool_timeout_sec = 300
 | KEYFRAME | 关键图 `KEYFRAME.frameUrl` |
 | SHOT_REFERENCE | 分镜 `SHOT.refImages` 中的 `imageUrl`，`sourceType=UPLOAD`；按需明确人物弱绑定及用途 |
 
-文件归档到当前 MinIO 配置的桶，使用外部访问地址生成 URL。上传要求 MCP 写入权限和已授权项目，公共资产写入仍不允许；配置页中的“上传资产参考图”开关可单独关闭。全部通过 MCP 原有 Bearer/Origin 校验，不额外调用 REST 上传接口。
+图片校验通过后归档到正式媒体桶，使用外部访问地址生成 URL。申请与确认均要求 MCP 写入权限和已授权项目，可在配置页分别关闭；图片直传依靠 MinIO 预签名授权。历史已上传图片和业务请求结果继续保留。
 
-同一 `requestId`、项目、用途、文件内容和文件名重试返回已提交结果，不重复上传；文件内容以 SHA-256 参与幂等校验，Base64 表示形式不影响判断。数据库只保存摘要和返回结果，不保存 Base64。MinIO 和 SQL 不构成一个跨服务事务：归档成功而数据库提交失败时，原请求重试会覆盖相同对象路径；上传后未关联的图片保留为已上传文件。文件上传和后续资产关联是两个独立业务操作。
+普通 MCP JSON 请求体统一限制为 **2 MiB**，没有图片专用的大请求体例外。图片原始字节通过客户端到 MinIO 的独立 HTTP 请求传输。MinIO 和 SQL 不构成跨服务事务：归档成功而数据库提交失败时，使用原确认 requestId 重试会复用相同对象路径；确认结果提交前不会删除暂存来源。
 
-普通 MCP 请求体仍限制为 2 MiB；实际 `tools/call` 的 `upload_asset_image` 请求上限 16 MiB，`batch_upload_asset_images` 上限 32 MiB，以容纳 Base64。客户端或反向代理若另有请求体上限，也需要容纳该请求。仅伪造工具名请求头不能扩大上限。Agent 应通过客户端代码/文件工具读取并编码图片，只输出 URL、文件位置、创建结果和核对摘要，避免回显 Base64。
-
-### 批量上传
-
-```json
-{
-  "requestId": "asset-images-batch-001",
-  "dramaId": "2032095628944588801",
-  "items": [
-    {"clientKey": "hero-look", "purpose": "CHARACTER_LOOK", "dataBase64": "<图片纯Base64>", "fileName": "hero.png"},
-    {"clientKey": "room", "purpose": "SCENE", "dataBase64": "<图片纯Base64>", "fileName": "room.png"}
-  ]
-}
-```
-
-所有图片先完成格式、尺寸、文件名、唯一标签和总大小校验，再开始上传；参数错误不会上传其中任一张。返回的 `urlMap["hero-look"]` 可用于创建/更新造型的 `referenceImageUrl`。顺序与 `clientKey` 保持稳定，不回显 Base64。数据库只提交完整批次摘要；MinIO 中途失败可能留下已上传对象，使用原 `requestId` 和原内容重试会覆盖相同路径。它与后续业务资产关联仍是两个独立操作。成功批次改内容或换用途必须使用新 `requestId`。
+多张图片逐张执行申请、直传、确认，分别保存每张文件与正式 URL 的对应关系，再使用业务批量接口关联资产。文件传输不通过批量 JSON 携带图片内容。
 
 ## 外部 Agent 的完整分镜与 H3 流程
 

@@ -67,13 +67,28 @@ class CapabilityCatalogMigrationTest {
     }
 
     private CapabilityCatalogService catalog(boolean old, List<String> modes) {
+        return catalog(old, modes, false);
+    }
+
+    private CapabilityCatalogService catalog(boolean old, List<String> modes, boolean directUploads) {
+        return catalog(old, modes, directUploads, false);
+    }
+
+    private CapabilityCatalogService catalog(boolean old, List<String> modes, boolean directUploads, boolean legacyUploads) {
         var inventory = mock(McpToolInventory.class);
         McpTool<McpInputs.Empty> tool = new McpTool<>("script_tool", "剧本工具", McpInputs.Empty.class,
                 McpTool.Effect.READ, schema(old, modes), (caller, input) -> Map.of());
         McpTool<McpInputs.Empty> healthy = new McpTool<>("status_tool", "状态工具", McpInputs.Empty.class,
                 McpTool.Effect.READ, Map.of("type", "object", "properties", Map.of(), "additionalProperties", false),
                 (caller, input) -> Map.of());
-        when(inventory.registeredHandlers()).thenReturn(List.of(tool, healthy));
+        List<McpTool<?>> tools = new ArrayList<>(List.of(tool, healthy));
+        if (directUploads) for (String name : List.of(McpPresignedImageUploads.PREPARE_TOOL, McpPresignedImageUploads.COMPLETE_TOOL))
+            tools.add(new McpTool<>(name, "图片直传", McpInputs.Empty.class, McpTool.Effect.WRITE,
+                    Map.of("type", "object", "properties", Map.of(), "additionalProperties", false), (c, i) -> Map.of()));
+        if (legacyUploads) for (String name : List.of("upload_asset_image", "batch_upload_asset_images"))
+            tools.add(new McpTool<>(name, "旧图片上传", McpInputs.Empty.class, McpTool.Effect.WRITE,
+                    Map.of("type", "object", "properties", Map.of(), "additionalProperties", false), (c, i) -> Map.of()));
+        when(inventory.registeredHandlers()).thenReturn(tools);
         var handlers = new CapabilityHandlers(provider(inventory), provider(List.<AgentTool<?>>of()), provider(profiles), json, new AgentJson());
         return new CapabilityCatalogService(mapper, source, new TransactionTemplate(new DataSourceTransactionManager(source)),
                 handlers, new CapabilitySchemaPolicy(), json, provider(null), provider(control), provider(profiles));
@@ -81,6 +96,68 @@ class CapabilityCatalogMigrationTest {
 
     private Binding external(Release release) {
         return release.bindings().stream().filter(b -> b.consumer() == Consumer.MCP).findFirst().orElseThrow();
+    }
+
+    @Test void upgradeAddsDirectUploadsOnceAndPreservesPublishedCustomizationsAndPendingDraft() {
+        var original = catalog(false, List.of("A", "B")); original.initialize();
+        Release base = original.current();
+        List<Binding> customized = base.bindings().stream().map(b -> b.consumer() == Consumer.MCP && b.name().equals("script_tool")
+                ? new Binding(b.id(), b.capabilityId(), b.versionId(), b.handlerKey(), b.consumer(), b.consumerCode(), "renamed_script", "用户工具说明",
+                    b.schema(), false, b.required(), b.contextMode(), b.projectRequired(), b.effect(), b.recoveryMode()) : b).toList();
+        original.save(new Edit(mapper.state().getRevision(), customized, "用户初始化说明", "已发布规则"));
+        original.publish(new Publish(mapper.state().getRevision(), "自定义"));
+        Release before = original.current();
+        String beforePayload = mapper.release(Long.valueOf(before.id())).getPayloadJson();
+        original.save(new Edit(mapper.state().getRevision(), before.bindings(), "待发布说明", "待发布规则"));
+
+        var upgraded = catalog(false, List.of("A", "B"), true); upgraded.initialize();
+        Release after = upgraded.current();
+        assertNotEquals(before.id(), after.id());
+        assertEquals(beforePayload, mapper.release(Long.valueOf(before.id())).getPayloadJson());
+        assertEquals("用户初始化说明", after.instructions()); assertEquals("已发布规则", after.rules());
+        Binding preserved = after.bindings().stream().filter(b -> b.name().equals("renamed_script")).findFirst().orElseThrow();
+        assertFalse(preserved.enabled()); assertEquals("用户工具说明", preserved.description());
+        Release draft = (Release) upgraded.view().get("draft");
+        assertEquals("待发布说明", draft.instructions()); assertEquals("待发布规则", draft.rules());
+        for (String name : List.of(McpPresignedImageUploads.PREPARE_TOOL, McpPresignedImageUploads.COMPLETE_TOOL)) {
+            var external = after.bindings().stream().filter(b -> b.consumer() == Consumer.MCP && b.name().equals(name)).findFirst().orElseThrow();
+            var internal = after.bindings().stream().filter(b -> b.consumer() == Consumer.INTERNAL_AGENT && b.name().equals(name)).findFirst().orElseThrow();
+            assertEquals(external.capabilityId(), internal.capabilityId());
+            assertEquals(external.id(), draft.bindings().stream().filter(b -> b.consumer() == Consumer.MCP && b.name().equals(name)).findFirst().orElseThrow().id());
+        }
+        assertEquals(after.id(), catalog(false, List.of("A", "B"), true).current().id());
+        assertEquals(before.bindings().size() + 4, after.bindings().size());
+    }
+
+    @Test void upgradeRetiresInlineUploadsIncludingAliasesAndHistoricalRollback() throws Exception {
+        var original = catalog(false, List.of("A", "B"), false, true); original.initialize();
+        var storageJson = new com.fasterxml.jackson.databind.ObjectMapper();
+        Release base = storageJson.readValue(mapper.release(mapper.state().getActiveReleaseId()).getPayloadJson(), Release.class);
+        List<Binding> renamed = base.bindings().stream().map(b -> b.handlerKey().equals("MCP:upload_asset_image")
+                ? new Binding(b.id(), b.capabilityId(), b.versionId(), b.handlerKey(), b.consumer(), b.consumerCode(), "legacy_upload_alias", b.description(),
+                    b.schema(), b.enabled(), b.required(), b.contextMode(), b.projectRequired(), b.effect(), b.recoveryMode()) : b).toList();
+        original.save(new Edit(mapper.state().getRevision(), renamed, "自定义说明", "已发布规则"));
+        original.publish(new Publish(mapper.state().getRevision(), "旧版本"));
+        Release before = storageJson.readValue(mapper.release(mapper.state().getActiveReleaseId()).getPayloadJson(), Release.class);
+        String historical = mapper.release(Long.valueOf(before.id())).getPayloadJson();
+        original.save(new Edit(mapper.state().getRevision(), before.bindings(), "草稿说明", "待发布规则"));
+
+        var upgraded = catalog(false, List.of("A", "B"), true); upgraded.initialize();
+        Release after = upgraded.current();
+        assertNotEquals(before.id(), after.id()); assertEquals(before.bindings().size(), after.bindings().size());
+        Release draft = (Release) upgraded.view().get("draft");
+        assertEquals("草稿说明", draft.instructions()); assertEquals("待发布规则", draft.rules());
+        for (Release release : List.of(after, draft, upgraded.release(before.id()))) {
+            assertTrue(release.bindings().stream().noneMatch(b -> Set.of("MCP:upload_asset_image", "MCP:batch_upload_asset_images").contains(b.handlerKey())));
+            assertTrue(release.bindings().stream().noneMatch(b -> b.name().equals("legacy_upload_alias")));
+        }
+        assertTrue(upgraded.mcpTools().stream().map(McpTool::name).toList().containsAll(
+                List.of(McpPresignedImageUploads.PREPARE_TOOL, McpPresignedImageUploads.COMPLETE_TOOL)));
+        assertEquals(historical, mapper.release(Long.valueOf(before.id())).getPayloadJson());
+        assertTrue(((List<?>) upgraded.view().get("issues")).isEmpty());
+        upgraded.rollback(new Rollback(mapper.state().getRevision(), before.id()));
+        assertTrue(upgraded.current().bindings().stream().noneMatch(b -> b.handlerKey().equals("MCP:upload_asset_image")
+                || b.handlerKey().equals("MCP:batch_upload_asset_images")));
     }
 
     private void customize(CapabilityCatalogService catalog, boolean narrowEnum) {

@@ -89,6 +89,7 @@ minio:
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
   secret-key: ${MINIO_SECRET_KEY:minioadmin123}
   bucket-name: ${MINIO_BUCKET_NAME:video-assets}
+  mcp-upload-bucket: ${MINIO_MCP_UPLOAD_BUCKET:freyja-mcp-uploads}
 
 logging:
   file:

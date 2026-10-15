@@ -87,7 +87,8 @@ class McpBusinessDatabaseTest {
     @EnableTransactionManagement
     @MapperScan(basePackages = "com.astra.freyja.dao", annotationClass = Mapper.class)
     @Import({McpJson.class, McpScope.class, McpBusinessView.class, McpAssets.class, McpBusinessSchemas.class,
-            McpBusinessRecords.class, McpRecordTools.class, McpOperationStore.class, McpBusinessTools.class, McpReadTools.class, McpImageUploads.class, MediaAssetServiceImpl.class,
+            McpBusinessRecords.class, McpRecordTools.class, McpOperationStore.class, McpBusinessTools.class, McpReadTools.class, McpImageAssets.class, MediaAssetServiceImpl.class,
+            McpPresignedImageUploads.class, McpImageTransferStorage.class,
             DramaServiceImpl.class, DramaEpisodeServiceImpl.class, DramaSceneServiceImpl.class,
             DramaShotGroupServiceImpl.class, DramaShotServiceImpl.class, ResCharacterServiceImpl.class,
             ResCharacterLookServiceImpl.class, ResCharacterOutfitServiceImpl.class, ResSceneServiceImpl.class,
@@ -422,7 +423,7 @@ class McpBusinessDatabaseTest {
     @Test void completeCatalogContainsOnlyBusinessToolsAndWhitelistedSchemas() {
         Set<String> expected = new HashSet<>(Set.of("search_projects", "get_project", "get_project_outline", "list_shots", "get_shot", "search_assets",
                 "get_asset", "list_character_looks", "get_business_options", "batch_read_records", "list_shot_video_versions", "batch_create_records",
-                "append_storyboard", "batch_delete_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version", "upload_asset_image", "batch_upload_asset_images", "list_skills", "read_skill", "read_skill_file"));
+                "append_storyboard", "batch_delete_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version", "prepare_asset_image_upload", "complete_asset_image_upload", "list_skills", "read_skill", "read_skill_file"));
         List<String> singulars = List.of("project", "episode", "scene", "shot_group", "shot", "character", "character_look", "resource_scene", "prop", "keyframe");
         for (String object : singulars) for (String action : List.of("get", "create", "update", "delete")) expected.add(action + "_" + object);
         for (String plural : List.of("projects", "episodes", "scenes", "shot_groups", "shots", "characters", "character_looks", "resource_scenes", "props", "keyframes")) expected.add("batch_update_" + plural);

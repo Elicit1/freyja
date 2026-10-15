@@ -194,10 +194,17 @@ public class CapabilityCatalogService {
     private void migrateLocked(CapabilityRow state) {
         Release active = rawRelease(state.getActiveReleaseId().toString());
         Release draft = read(mapper.draft().getPayloadJson());
+        List<Binding> uploadBindings = handlers.initialBindings().stream().filter(b -> Set.of(
+                "MCP:" + McpPresignedImageUploads.PREPARE_TOOL, "MCP:" + McpPresignedImageUploads.COMPLETE_TOOL)
+                .contains(b.handlerKey())).toList();
         Release nextActive = null;
-        try { nextActive = migrateSnapshot(active, false); verify(nextActive.bindings()); }
+        try {
+            Release migrated = addUploadBindings(migrateSnapshot(active, false), uploadBindings);
+            verify(migrated.bindings());
+            nextActive = migrated;
+        }
         catch (BizException e) { log.warn("已发布能力存在待人工修复的兼容冲突: {}", e.getMessage()); }
-        Release nextDraft = migrateCompatibleBindings(draft, true);
+        Release nextDraft = addUploadBindings(migrateCompatibleBindings(draft, true), uploadBindings);
         if (nextActive != null && !active.bindings().equals(nextActive.bindings())) {
             Release published = publishLocked(state, nextActive, "自动兼容当前处理器契约");
             mapper.alignDraft(json.write(withVersions(nextDraft, published)));
@@ -205,9 +212,19 @@ public class CapabilityCatalogService {
             mapper.saveDraft(json.write(new Release(null, state.getRevision() + 1, nextDraft.bindings(), nextDraft.instructions(), nextDraft.rules())));
         }
     }
+    /** Add the two new handlers on upgrade without changing existing names, switches, rules or draft edits. */
+    private Release addUploadBindings(Release source, List<Binding> defaults) {
+        List<Binding> bindings = new ArrayList<>(source.bindings());
+        for (Binding candidate : defaults) {
+            if (bindings.stream().noneMatch(b -> b.handlerKey().equals(candidate.handlerKey())
+                    && b.consumer() == candidate.consumer() && b.consumerCode().equals(candidate.consumerCode())))
+                bindings.add(candidate);
+        }
+        return new Release(source.id(), source.revision(), List.copyOf(bindings), source.instructions(), source.rules());
+    }
     private Release migrateCompatibleBindings(Release source, boolean draft) {
         List<Binding> bindings = new ArrayList<>();
-        for (Binding binding : source.bindings()) try { bindings.add(migrateBinding(binding, draft)); }
+        for (Binding binding : source.bindings().stream().filter(b -> !retiredUpload(b)).toList()) try { bindings.add(migrateBinding(binding, draft)); }
         catch (BizException e) {
             log.warn("能力绑定待人工修复: {}", e.getMessage());
             bindings.add(binding);
@@ -215,8 +232,11 @@ public class CapabilityCatalogService {
         return new Release(source.id(), source.revision(), List.copyOf(bindings), source.instructions(), source.rules());
     }
     private Release migrateSnapshot(Release source, boolean draft) {
-        List<Binding> bindings = source.bindings().stream().map(b -> migrateBinding(b, draft)).toList();
+        List<Binding> bindings = source.bindings().stream().filter(b -> !retiredUpload(b)).map(b -> migrateBinding(b, draft)).toList();
         return new Release(source.id(), source.revision(), bindings, source.instructions(), source.rules());
+    }
+    private static boolean retiredUpload(Binding binding) {
+        return Set.of("MCP:upload_asset_image", "MCP:batch_upload_asset_images").contains(binding.handlerKey());
     }
     private Binding migrateBinding(Binding binding, boolean draft) {
         var handler = handlers.require(binding.handlerKey());

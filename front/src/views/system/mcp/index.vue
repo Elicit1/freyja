@@ -114,8 +114,8 @@ async function loadSkills() {
   skillsLoading.value = true; skillsError.value = ''
   try { skills.value = await skillApi.list() } catch (error) { skillsError.value = error instanceof Error ? error.message : '读取 Skills 失败' } finally { skillsLoading.value = false }
 }
-const labels: Record<string, string> = { search_projects: '搜索项目', get_project: '项目详情', get_project_outline: '读取大纲', list_shots: '分镜列表', get_shot: '完整分镜配置', search_assets: '搜索资产', get_asset: '资产详情', list_character_looks: '人物造型', get_business_options: '业务字典', batch_read_records: '批量读取', batch_create_records: '批量创建', batch_delete_records: '批量删除', append_storyboard: '追加分镜导入', get_business_operation: '业务请求结果', clone_shot: '复制分镜', set_default_character_look: '设置默认造型', reorder_group_shots: '组内分镜重排', list_shot_video_versions: '视频版本列表', select_shot_video_version: '选择视频版本', upload_asset_image: '上传资产参考图' }
-Object.assign(labels, { batch_upload_asset_images: '批量上传资产图片', list_skills: 'Skill 目录', read_skill: '读取 Skill 正文', read_skill_file: '读取 Skill 参考规范' })
+const labels: Record<string, string> = { search_projects: '搜索项目', get_project: '项目详情', get_project_outline: '读取大纲', list_shots: '分镜列表', get_shot: '完整分镜配置', search_assets: '搜索资产', get_asset: '资产详情', list_character_looks: '人物造型', get_business_options: '业务字典', batch_read_records: '批量读取', batch_create_records: '批量创建', batch_delete_records: '批量删除', append_storyboard: '追加分镜导入', get_business_operation: '业务请求结果', clone_shot: '复制分镜', set_default_character_look: '设置默认造型', reorder_group_shots: '组内分镜重排', list_shot_video_versions: '视频版本列表', select_shot_video_version: '选择视频版本', prepare_asset_image_upload: '申请图片直传', complete_asset_image_upload: '确认图片直传' }
+Object.assign(labels, { list_skills: 'Skill 目录', read_skill: '读取 Skill 正文', read_skill_file: '读取 Skill 参考规范' })
 const crudOperations = [
   { key: 'read', label: '单条读取' }, { key: 'create', label: '单条创建' }, { key: 'update', label: '单条修改' },
   { key: 'delete', label: '单条删除' }, { key: 'batchUpdate', label: '批量修改' }

@@ -26,4 +26,7 @@ public class MinioProperties {
 
     /** 默认存储桶名称 */
     private String bucketName = "video-assets";
+
+    /** MCP 直传的独立私有暂存桶，由应用配置一天自动过期。 */
+    private String mcpUploadBucket = "freyja-mcp-uploads";
 }

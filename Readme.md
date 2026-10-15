@@ -114,7 +114,7 @@ tool_timeout_sec = 300
 > 
 > **AI 会自动执行：**  
 > 1. 生成符合描述的角色立绘图片；  
-> 2. 调用 `upload_asset_image` 工具将图片上传到 Freyja；  
+> 2. 调用 `prepare_asset_image_upload` 申请上传凭证，将图片原始文件直传 MinIO，再调用 `complete_asset_image_upload` 确认归档；
 > 3. 调用角色接口，将图片关联并设置为陈平安的默认形象。你在 Freyja 网页上刷新即可直接看到！
 
 #### 场景 2：让 AI 自动拆解小说并写入分镜

@@ -47,10 +47,17 @@ public class McpOperationStore {
     }
 
     public Object read(McpPrincipal caller, String key) {
+        return read(caller, key, null);
+    }
+
+    /** Resolve a committed operation only after checking its project and original handler. */
+    public Object read(McpPrincipal caller, String key, String expectedTool) {
         key(key);
         McpBusinessOperation result = operations.find(key);
         if (result == null) throw new BizException(404, "业务请求尚未提交或尚未完成；可使用原 requestId 重试");
         scope.authorizeProject(caller, result.getDramaId().toString());
+        if (expectedTool != null && !expectedTool.equals(result.getToolName()))
+            throw new BizException(409, "UPLOAD_ID_INVALID: 该请求不是图片直传凭证");
         try { return Map.of("requestId", key, "status", result.getStatus(), "data", json.mapper().readValue(result.getResultJson(), Object.class)); }
         catch (Exception e) { throw new BizException(500, "业务请求结果记录无效"); }
     }

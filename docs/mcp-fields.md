@@ -56,7 +56,7 @@
 
 媒体 `id` 是槽位标识，可省略，由 MCP 服务补全；显式提交时必须在同一数组内唯一。它不是雪花业务 ID。最多 9 张图片、3 段音频。`refImages[0]` 对应 `<Picture 1>`，`refAudios[0]` 对应 `<Audio 1>`；服务端不排序、不筛除空槽、不解析提示词重绑主体。调整顺序时，外部 Agent 应在同一补丁里更新最终提示词和媒体数组。
 
-图片上传使用 MCP 工具 `upload_asset_image`，必填 `requestId,dramaId,purpose,dataBase64`，文件名 `fileName` 可省略。支持 PNG/JPEG/静态 WebP，单张最多 10 MiB；上传后把返回的 URL 填到人物/造型/场景 `referenceImageUrl`、道具 `coverUrl`、关键图 `frameUrl` 或分镜参考图的 `imageUrl`。上传与资产关联分为两个业务操作；资产可以在上传后创建，无需补填内部 AI 的中间字段，具体示例见 [MCP 使用说明](mcp-api.md#agent-图片上传)。
+图片上传使用 `prepare_asset_image_upload`，必填 `requestId,dramaId,purpose,fileName,contentType,size,sha256`；根据返回的预签名表单向 MinIO 直接发送真实图片二进制，再用 `complete_asset_image_upload(requestId,dramaId,uploadId)` 确认归档。申请与确认使用不同的稳定 requestId。支持 PNG/JPEG/静态 WebP，单张最多10 MiB。确认后将正式 URL 填入人物/造型/场景 `referenceImageUrl`、道具 `coverUrl`、关键图 `frameUrl` 或分镜参考图的 `imageUrl`，更新已有资产需最新指纹。具体示例见 [MCP 使用说明](mcp-api.md#agent-图片上传)。
 
 现有业务 REST `POST /res/asset/upload` 保持可用，它不属于 MCP，也不使用 MCP Bearer 鉴权。MCP 不调用内部生图功能，也不根据外部 URL 下载或归档文件。
 
@@ -72,7 +72,7 @@
 
 先读 `h3-prompt-writing` 及其参考文件：首尾帧视频用 `references/base-en.txt` 的三段式填 `videoPrompt`；参考模式用 `references/ref-en.txt` 的六段式填 `prompt`。完整图片卡片不能代替视频提示词；保存后应读回核对最终卡片及媒体编号。具体段名和流程见 [完整分镜与 H3 流程](mcp-api.md#外部-agent-的完整分镜与-h3-流程)。
 
-批量图片用 `batch_upload_asset_images`，顶层 `requestId,dramaId,items`，每项 `clientKey,purpose,dataBase64,fileName?`。每批 1–20 张，单张最多 10 MiB、整批最多 20 MiB，返回有序结果和 `urlMap`；通过该映射填写资产和参考图字段。不要输出 Base64，素材包通过有工作区权限的普通文件编辑工具保存。
+多张图片逐张完成申请、二进制直传与确认，记录每张文件和正式 URL 的映射，再通过业务批量接口关联。MCP 参数只传元数据，不传图片 Base64；素材包通过有工作区权限的普通文件编辑工具保存。
 
 ## 检查发现与已实施修正
 

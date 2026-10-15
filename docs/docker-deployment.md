@@ -60,6 +60,7 @@ cp .env.example .env
 - 若您的 ComfyUI 运行在**当前 Docker 宿主机电脑（Windows/Linux 本机）**：保持默认 `COMFYUI_HTTP_URL=http://host.docker.internal:8188` 即可；
 - 若您的 ComfyUI 运行在**局域网其他主机或独立 GPU 云服务器**：修改为该机器的 IP 和端口，如 `COMFYUI_HTTP_URL=http://192.168.1.120:8188`。
 - 本机部署的 MinIO 媒体地址使用 `MINIO_EXTERNAL_ENDPOINT=http://minio.localhost:9000`。浏览器将其解析到本机；`comfy-gateway` 和 `backend` 容器通过 Compose 的 `extra_hosts` 解析到 Docker 宿主网关。容器内部直接访问 MinIO 时使用 `http://minio:9000`。远程部署请改为浏览器与网关容器都可访问的域名。
+- MCP 图片二进制直传也使用 `MINIO_EXTERNAL_ENDPOINT` 作为上传地址，远程客户端必须能访问该 S3 API 域名；`MINIO_MCP_UPLOAD_BUCKET` 默认 `freyja-mcp-uploads`，是自动初始化并配置一天过期的独立私有暂存桶。确认图片校验成功后才归档到正式媒体桶。用浏览器跨域直传时另为暂存桶设置实际前端 Origin 的 CORS。完整交互见 [MCP 图片上传](mcp-api.md#agent-图片上传)。
 
 ### 3. 一键构建并启动
 在项目根目录执行：
