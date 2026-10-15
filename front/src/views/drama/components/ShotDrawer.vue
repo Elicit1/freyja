@@ -577,15 +577,7 @@
                 </div>
                 <div class="px-1 pb-1">
                   <el-select v-model="img.usageRole" size="small" placeholder="角色" class="w-full !text-[10px]">
-                    <el-option label="主体 (SUBJECT)" value="SUBJECT" />
-                    <el-option
-                      v-if="['CHARACTER', 'CHARACTER_REFERENCE', 'UPLOAD'].includes(img.sourceType)"
-                      label="非主体参考（第一人称 / 画外人物）"
-                      value="NON_SUBJECT"
-                    />
-                    <el-option label="场景 (SCENE)" value="SCENE" />
-                    <el-option v-for="role in KEY_IMAGE_ROLE_OPTIONS" :key="role.value" :label="role.label" :value="role.value" />
-                    <el-option label="道具 (PROP)" value="PROP" />
+                    <el-option v-for="option in referenceImageUsageOptions(img.sourceType)" :key="option.value" :label="option.label" :value="option.value" />
                   </el-select>
                   <p v-if="img.usageRole === 'NON_SUBJECT'" class="mt-1 text-[10px] text-amber-700">
                     仅作人物设定参考，不据此安排人物出镜。更改用途后请重新生成提示词。
@@ -649,20 +641,13 @@
                   <div class="flex items-center gap-1.5">
                     <span class="text-[11px] text-gray-500 flex-shrink-0">用途:</span>
                     <el-select v-model="aud.usageMode" size="small" class="w-full">
-                      <el-option label="台词复用 (DIALOGUE_REUSE)" value="DIALOGUE_REUSE" />
-                      <el-option label="音色参考 (VOICE_TIMBRE)" value="VOICE_TIMBRE" />
-                      <el-option label="BGM背景乐 (BGM_REUSE)" value="BGM_REUSE" />
-                      <el-option label="环境音 (AMBIENT_REUSE)" value="AMBIENT_REUSE" />
-                      <el-option label="特定音效 (SOUND_EFFECT)" value="SOUND_EFFECT" />
+                      <el-option v-for="option in REFERENCE_AUDIO_USAGE_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
                     </el-select>
                   </div>
                   <div class="flex items-center gap-1.5">
                     <span class="text-[11px] text-gray-500 flex-shrink-0">语种:</span>
                     <el-select v-model="aud.language" size="small" class="w-full">
-                      <el-option label="中文 (zh)" value="zh" />
-                      <el-option label="英文 (en)" value="en" />
-                      <el-option label="日文 (ja)" value="ja" />
-                      <el-option label="其他 (other)" value="other" />
+                      <el-option v-for="option in REFERENCE_AUDIO_LANGUAGE_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
                     </el-select>
                   </div>
                   <div class="flex items-center gap-1.5">
@@ -972,6 +957,7 @@
 </template>
 
 <script setup lang="ts">
+import { referenceImageUsageOptions, REFERENCE_AUDIO_USAGE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { ref, reactive, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
@@ -985,7 +971,7 @@ import { MAX_REF_AUDIOS, MIN_AUDIO_DURATION, MAX_AUDIO_DURATION, MAX_TOTAL_AUDIO
 import { sceneApi } from '@/api/res-scene'
 import { resPropApi, type ResPropItem } from '@/api/res-prop'
 import { keyframeApi } from '@/api/res-keyframe'
-import { KEY_IMAGE_ROLE_OPTIONS, requireKeyImageRole } from '@/constants/keyImageRoles'
+import { requireKeyImageRole } from '@/constants/keyImageRoles'
 import { assetApi } from '@/api/res-asset'
 import DirectorPlanEditor from './DirectorPlanEditor.vue'
 import { useDirectorInputCheck, directorPlanInput } from '@/utils/director-plan-input'

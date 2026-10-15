@@ -18,12 +18,12 @@ import static com.astra.freyja.mcp.McpInputs.*;
 public class McpReadTools {
     public static final Set<String> CREATION_DICTS = Set.of("drama_genre", "drama_style_preset", "shot_type", "camera_movement",
             "res_scene_type", "res_time_of_day", "res_gender", "res_role_type", "res_prop_type", "res_keyframe_type",
-            "drama_aspect_ratio", "drama_status", "episode_status");
+            "drama_aspect_ratio", "drama_status", "episode_status", "shot_generation_mode");
     private final DramaMapper dramas;
     private final DramaEpisodeMapper episodes;
     private final DramaSceneMapper scenes;
     private final DramaShotGroupMapper groups;
-    private final DictService dictService;
+    private final McpBusinessOptions businessOptions;
     private final McpQueryMapper queries;
     private final McpAssets assets;
     private final McpScope scope;
@@ -48,7 +48,7 @@ public class McpReadTools {
                     return assets.search(c, new Assets(AssetType.CHARACTER_LOOK, e.dramaId() == null ? null : e.dramaId().toString(),
                             e.dramaId() == null, i.characterId(), null, i.page(), i.size()));
                 }),
-                McpTool.read("get_business_options", "按 dictType 读取业务字典，如题材、画幅、景别、场景类型。drama_genre 仅为题材建议，项目 genre 允许最长64字符的自定义名称；其余枚举遵循各字段约束。AI 系统字典和模型目录不公开。", Options.class, this::options)
+                new McpTool<>("get_business_options", "按 dictType 读取业务选项。参考图用途查询 reference_image_usage_role；音频用途查询 reference_audio_usage_mode；其他名称见 dictType 枚举。固定选项与写入 Schema 共用定义；drama_genre 为可自定义题材建议。关联 ID 通过 search/get/list 工具读取真实记录，不得编造。", Options.class, McpTool.Effect.READ, businessOptions.querySchema(), this::options)
         );
     }
 
@@ -114,9 +114,7 @@ public class McpReadTools {
     }
 
     public Object options(McpPrincipal caller, Options input) {
-        if (!CREATION_DICTS.contains(input.dictType())) throw new BizException(403, "仅允许读取业务字典");
-        return dictService.listByType(input.dictType()).stream().filter(d -> Integer.valueOf(1).equals(d.getStatus())).map(d ->
-                Map.of("label", d.getDictLabel(), "value", d.getDictValue(), "order", d.getSortOrder() == null ? 0 : d.getSortOrder())).toList();
+        return businessOptions.list(input.dictType());
     }
 
     public static Map<String, Object> page(Page<?> page, List<?> records) {

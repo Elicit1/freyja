@@ -14,6 +14,7 @@ import java.util.*;
 public class McpRecordTools {
     private final McpBusinessRecords records;
     private final McpBusinessSchemas schemas;
+    private final McpBusinessInputValidator inputValidator;
     private final McpOperationStore journal;
     private final McpScope scope;
     private final McpBusinessView views;
@@ -72,7 +73,7 @@ public class McpRecordTools {
     }
     @SuppressWarnings("unchecked")
     private void validate(McpRecordType type, Object data, boolean create) {
-        if (data instanceof Map<?, ?> map) schemas.validate(type, (Map<String, Object>) map, false, create);
+        if (data instanceof Map<?, ?> map) inputValidator.validate(type, (Map<String, Object>) map, false, create);
     }
     private void validateBatch(McpRecordType type, Map<String, Object> arguments) {
         if (arguments.get("items") instanceof List<?> items) for (Object item : items)

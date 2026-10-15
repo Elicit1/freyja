@@ -330,6 +330,10 @@ MCP 创建项目的 `aspectRatio` 必填。用户未指定时，外部 Agent 先
 
 初始化响应的 server instructions、`freyja://guide`、`list_skills` 工具说明和相关字段说明都会引导外部 Agent 在创作开始及任务阶段改变时先读目录，按 `name/description` 选择 Skill，再读正文及所需参考文件。用户明确指定的布局、风格、背景和输出要求优先。目录只含已启用的发布版本；知识读取仍受 MCP 整体和单工具开关控制。
 
+平台创作先读 `freyja-platform-guide`：解释短剧→剧集→场次→镜头组→分镜、剧情场次与场景资产的区别，并按需读取 `references/architecture.md`、`references/visual-references.md`、`references/storyboard-workflow.md`。人物图与场景图可组合；经实际核验已覆盖必要人物、造型与环境的关键图可以单独使用，保留业务人物关联。当镜表情及变化明确写入 `scriptContent`。该技能同时解释两种生成模式的字段、七种关键图用途、邻镜真实视频帧续接及验收流程。
+
+源文件位于 `skills/freyja-platform-guide/`，可导入包为 `skills/freyja-platform-guide.zip`，启动时沿用内置包初始化机制。已有数据库中的能力指南、工具说明和公共规则不会被默认代码覆盖；可在 `/system/ai-capabilities` 保存并发布读取指引，无须重置已有自定义规则。技能未发布或被停用时不能声称已加载。
+
 人物或造型设定图先读 `character-sheet-design`：用户要求三视图、细节、头身分区时，在同一张图内放全身正面/侧面/背面、独立头部特写区及已有设计细节；透明要求通过实际 Alpha 输出实现，白底仅在用户允许时使用。已有图片可直接关联，单张肖像等明确布局不会被强制改成三视图。三视图是同一人物的多个视角，后续视频不能因此把人物复制成多人。
 
 内置来源为 `skills/character-sheet-design/SKILL.md`，可发布 ZIP 为 `skills/character-sheet-design.zip`。部署包含技能包的新版本后，现有启动初始化器会自动导入尚未发布的该 Skill；已有发布版本的同名 Skill 保持原版本及启停状态，不会因源文件变化自动更新。也可在 AI Skills 页面导入 ZIP。只修改本地源文件不会改变运行数据库中的已发布知识。

@@ -87,6 +87,7 @@ class McpBusinessDatabaseTest {
     @EnableTransactionManagement
     @MapperScan(basePackages = "com.astra.freyja.dao", annotationClass = Mapper.class)
     @Import({McpJson.class, McpScope.class, McpBusinessView.class, McpAssets.class, McpBusinessSchemas.class,
+            McpSchemaMetadata.class, McpBusinessOptions.class, McpBusinessInputValidator.class,
             McpBusinessRecords.class, McpRecordTools.class, McpOperationStore.class, McpBusinessTools.class, McpReadTools.class, McpImageAssets.class, MediaAssetServiceImpl.class,
             McpPresignedImageUploads.class, McpImageTransferStorage.class,
             DramaServiceImpl.class, DramaEpisodeServiceImpl.class, DramaSceneServiceImpl.class,
@@ -114,7 +115,7 @@ class McpBusinessDatabaseTest {
         @Bean AiModelFactory models() { return mock(AiModelFactory.class); }
         @Bean AiProviderService providers() { return mock(AiProviderService.class); }
         @Bean SysConfigService configs() { return mock(SysConfigService.class); }
-        @Bean DictService dictionaries() { return mock(DictService.class); }
+        @Bean DictService dictionaries() { return dictionaryFixture(); }
         @Bean AiImageApiService images() { return mock(AiImageApiService.class); }
         @Bean PromptAssembleService prompts() { return mock(PromptAssembleService.class); }
         @Bean RenderTaskService renders() { return mock(RenderTaskService.class); }
@@ -127,14 +128,37 @@ class McpBusinessDatabaseTest {
         @Bean MinioProperties minioProperties() { return new MinioProperties(); }
     }
 
+    static DictService dictionaryFixture() {
+        DictService service = mock(DictService.class);
+        stubDictionaries(service);
+        return service;
+    }
+
+    static void stubDictionaries(DictService service) {
+        Map<String, List<String>> options = new HashMap<>(Map.of(
+                "drama_aspect_ratio", List.of("9:16", "16:9", "1:1", "4:3"),
+                "shot_type", List.of("AUTO", "EXTREME_CLOSE_UP", "CLOSE_UP", "MEDIUM_CLOSE_UP", "MEDIUM_SHOT", "FULL_SHOT", "LONG_SHOT", "OVER_SHOULDER", "TOP_DOWN"),
+                "camera_movement", List.of("AUTO", "STATIC", "PUSH_IN", "PULL_OUT", "PAN_LEFT", "PAN_RIGHT", "TILT_UP", "TILT_DOWN", "TRACKING", "ORBIT", "ZOOM_IN"),
+                "drama_style_preset", List.of("cinematic-realism", "3d-animation", "anime-2d", "cyber-realism", "retro-film"),
+                "res_scene_type", List.of("INDOOR", "OUTDOOR", "STUDIO", "VIRTUAL"),
+                "res_time_of_day", List.of("DAY", "NIGHT", "SUNSET", "DAWN"),
+                "shot_generation_mode", List.of("FIRST_LAST_FRAME", "REFERENCE_MODE")));
+        options.put("res_gender", List.of("MALE", "FEMALE", "OTHER", "UNKNOWN"));
+        options.put("res_role_type", List.of("PROTAGONIST", "ANTAGONIST", "SUPPORTING", "EXTRA"));
+        options.put("res_prop_type", List.of("KEY_PROP", "WEAPON", "COSTUME_ACCESSORY", "DAILY"));
+        options.put("drama_status", List.of("PLANNING", "IN_PROGRESS", "COMPLETED", "ARCHIVED"));
+        options.put("episode_status", List.of("DRAFT", "SCRIPT_PARSED", "SHOTS_READY", "RENDERING", "COMPLETED"));
+        when(service.listByType(anyString())).thenAnswer(call -> options.getOrDefault(call.getArgument(0), List.of()).stream().map(value -> {
+            SysDictData option = new SysDictData(); option.setDictValue(value); option.setDictLabel(value); option.setStatus(1); return option;
+        }).toList());
+    }
+
     @BeforeEach void setup() {
         properties.setWriteEnabled(true);
         reset(models, images, prompts, renders, skillFiles, storage);
         reset(skillCatalog, skillContents, skillRepository);
         reset(dictionaries);
-        when(dictionaries.listByType("drama_aspect_ratio")).thenReturn(List.of("9:16", "16:9", "1:1", "4:3").stream().map(value -> {
-            SysDictData option = new SysDictData(); option.setDictValue(value); option.setDictLabel(value); option.setStatus(1); return option;
-        }).toList());
+        stubDictionaries(dictionaries);
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         for (Class<?> type : List.of(Drama.class, DramaEpisode.class, DramaScene.class, DramaShotGroup.class,
                 DramaShot.class, ResCharacter.class, ResCharacterLook.class, ResScene.class, ResProp.class,
@@ -209,6 +233,18 @@ class McpBusinessDatabaseTest {
                 item("good", McpRecordType.EPISODE, Map.of("title", "Temporary")),
                 item("bad", McpRecordType.SCENE, Map.of("episodeId", ref("missing"), "name", "Invalid")))));
         assertTrue(failure.getMessage().contains("items[1]")); assertEquals(1, count("drama_episode")); assertEquals(0, count("mcp_business_operation"));
+    }
+
+    @Test void invalidUploadedReferenceUsageNeverPersistsInSingleOrBatchWrites() {
+        Map<String, Object> data = Map.of("sceneId", "30", "refImages", List.of(Map.of(
+                "sourceType", "UPLOAD", "imageUrl", "https://media/ref.png", "usageRole", "UNSUPPORTED_ROLE")));
+        long before = count("drama_shot");
+        assertThrows(BizException.class, () -> call("create_shot", caller, new McpRecordInputs.Create("bad-role-single", ROOT, data)));
+        assertThrows(BizException.class, () -> create("bad-role-batch", List.of(
+                item("episode", McpRecordType.EPISODE, Map.of("title", "不能留下的剧集")), item("shot", McpRecordType.SHOT, data))));
+        assertEquals(before, count("drama_shot"));
+        assertEquals(1, count("drama_episode"));
+        assertEquals(0, count("mcp_business_operation"));
     }
 
     @Test void retriesReplayAndChangedContentsConflict() {

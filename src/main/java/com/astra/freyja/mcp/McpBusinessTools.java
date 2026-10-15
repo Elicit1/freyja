@@ -21,6 +21,7 @@ public class McpBusinessTools {
     private final McpProperties properties;
     private final McpBusinessRecords records;
     private final McpBusinessSchemas schemas;
+    private final McpBusinessInputValidator inputValidator;
     private final McpOperationStore journal;
     private final McpScope scope;
     private final McpBusinessView views;
@@ -71,7 +72,7 @@ public class McpBusinessTools {
                 McpRecordType recordType;
                 try { recordType = McpRecordType.valueOf(type); }
                 catch (IllegalArgumentException invalid) { throw new BizException(400, "业务记录类型无效"); }
-                try { schemas.validate(recordType, (Map<String, Object>) data, true, true); }
+                try { inputValidator.validate(recordType, (Map<String, Object>) data, true, true); }
                 catch (BizException invalid) { throw new BizException(invalid.getCode(), "items[" + index + "]: " + invalid.getMessage()); }
             }
         }
@@ -104,7 +105,7 @@ public class McpBusinessTools {
                 try {
                     if (item == null || item.clientKey() == null || !item.clientKey().matches("[A-Za-z0-9_-]{1,80}") || references.containsKey(item.clientKey()))
                         throw new BizException(400, "clientKey 必须有效且在批次内唯一");
-                    schemas.validate(item.type(), item.data(), true, true);
+                    inputValidator.validate(item.type(), item.data(), true, true);
                     if (item.type() == McpRecordType.PROJECT && (index != 0 || project != null)) throw new BizException(400, "新项目只能是无 dramaId 批次的首项");
                     Map<String, Object> data = resolve(item.data(), references);
                     Long id = records.create(effective, item.type(), project, data);

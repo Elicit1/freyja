@@ -43,6 +43,7 @@ public class McpBusinessRecords {
     private final McpScope scope;
     private final McpBusinessView views;
     private final McpBusinessSchemas schemas;
+    private final McpBusinessInputValidator inputValidator;
     private final DirectorPlanStateService directorPlans;
     private final McpDeleteQueryMapper deleteQueries;
     private final McpQueryMapper queries;
@@ -108,7 +109,7 @@ public class McpBusinessRecords {
     }
 
     public Long create(McpPrincipal caller, McpRecordType type, Long project, Map<String, Object> data) {
-        schemas.validate(type, data, false, true);
+        inputValidator.validate(type, data, false, true);
         if (type == McpRecordType.PROJECT) {
             if (!caller.createProjects() || project != null) throw new BizException(403, "仅允许在授权新建项目的批次首项创建一个项目");
         } else if (project == null) throw new BizException(400, "必须指定已授权项目或先创建项目");
@@ -129,7 +130,7 @@ public class McpBusinessRecords {
     }
 
     private <T> T prepareUpdate(McpPrincipal caller, McpRecordType type, BaseEntity current, Long project, Map<String, Object> data, Class<T> dtoClass) {
-        schemas.validate(type, data, false, false);
+        inputValidator.validate(type, data, false, false);
         Object dto = patch(type, current, data);
         references(caller, type, dto, project, current, data);
         return dtoClass.cast(dto);
@@ -203,7 +204,7 @@ public class McpBusinessRecords {
     private void clearContent(McpRecordType type, BaseEntity current, Map<String, Object> data) {
         clearEnvironment(type, current.getId(), data);
         UpdateWrapper<BaseEntity> clear = new UpdateWrapper<BaseEntity>().eq("id", current.getId());
-        McpBusinessSchemas.CONTENT_COLUMNS.forEach((field, column) -> {
+        McpBusinessColumns.CONTENT_COLUMNS.forEach((field, column) -> {
             if (schemas.fields(type).contains(field) && data.containsKey(field) && data.get(field) == null) clear.set(column, null);
         });
         if (clear.getSqlSet() != null) mapper(type).update(null, clear);
@@ -212,7 +213,7 @@ public class McpBusinessRecords {
     private void clearEnvironment(McpRecordType type, Long id, Map<String, Object> data) {
         if (type != McpRecordType.SCENE && type != McpRecordType.RESOURCE_SCENE) return;
         UpdateWrapper<BaseEntity> clear = new UpdateWrapper<BaseEntity>().eq("id", id);
-        McpBusinessSchemas.ENVIRONMENT_COLUMNS.forEach((field, column) -> {
+        McpBusinessColumns.ENVIRONMENT_COLUMNS.forEach((field, column) -> {
             if (data.containsKey(field) && data.get(field) == null) clear.set(column, null);
         });
         if (clear.getSqlSet() != null) mapper(type).update(null, clear);

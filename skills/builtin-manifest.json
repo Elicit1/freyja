@@ -1,6 +1,6 @@
 {
   "formatVersion": 1,
-  "source": "FREYJA current published system Skills",
+  "source": "FREYJA published system Skills and repository-authored Skills",
   "skills": [
     {
       "name": "camera-direction",
@@ -104,6 +104,37 @@
           "path": "refs/spatial-projection.md",
           "sha256": "c62eb8c08411fc9c3166541218df901c006fd3228a80ec9bf5229000c514205a",
           "size": 1405
+        }
+      ]
+    },
+    {
+      "name": "freyja-platform-guide",
+      "displayName": "FREYJA 平台使用指南",
+      "description": "平台业务架构、短剧叙事层级、参考图组合、首尾帧模式、分镜表情与制作流程。",
+      "source": "repository:skills/freyja-platform-guide",
+      "sourceRevision": null,
+      "package": "freyja-platform-guide.zip",
+      "sha256": "081285a79ae7db3f6eb2c6903ca66a5e10f0f8630595c923c213b138d972abe6",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "11df5267e6e3e7cd7a677be03570a9f5cb3f6a97fa92d3f54315c945f0b0167f",
+          "size": 5652
+        },
+        {
+          "path": "references/architecture.md",
+          "sha256": "722afc23ee5a8846a818d90caddb6d3a03ce0dc3c0ac01bdaab4a2efe78e0ee8",
+          "size": 4465
+        },
+        {
+          "path": "references/storyboard-workflow.md",
+          "sha256": "c940a9f9c7fad535cf28594b001ff3759dda44c79176745bd28fe2c9d5a6aa6a",
+          "size": 6320
+        },
+        {
+          "path": "references/visual-references.md",
+          "sha256": "6b9eb28420c0faf6f4d6fccf81def23c2f49a3dc8f0762fabde942ac0c0bd763",
+          "size": 7697
         }
       ]
     },

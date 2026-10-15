@@ -36,7 +36,7 @@ class McpReadToolsTest {
     McpReadTools reads;
 
     @BeforeEach void setup() {
-        reads = new McpReadTools(dramas, episodes, scenes, groups, mock(DictService.class), queries, assets, scope, json, new McpBusinessView(json));
+        reads = new McpReadTools(dramas, episodes, scenes, groups, new McpBusinessOptions(mock(DictService.class), new McpSchemaMetadata(json), json), queries, assets, scope, json, new McpBusinessView(json, new McpSchemaMetadata(json)));
         Drama drama = new Drama(); drama.setId(PROJECT); when(dramas.selectById(PROJECT)).thenReturn(drama);
     }
 

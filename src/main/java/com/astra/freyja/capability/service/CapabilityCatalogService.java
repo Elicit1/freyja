@@ -34,6 +34,7 @@ public class CapabilityCatalogService {
     public static final String EVENTS = "freyja:capability:v1:events";
     public static final String DEFAULT_RULES = """
             公共创作规则：非提示词内容使用简体中文，已确认姓名及用户原文保持原样。所有业务ID使用字符串。
+            平台创作开始先按Skill目录读取freyja-platform-guide及当前阶段需要的references，理解短剧/剧集/场次/镜头组/分镜与资产关系、参考图组合及首尾帧模式。人物图可与场景图共用；经核验已覆盖必要人物/造型/环境的关键图可替代冗余图，保留人物业务关联；当镜表情与变化写入scriptContent。
             项目画幅必须显式选择启用的系统比例；用户未指定先询问，明确委托AI选择时优先启用的16:9，已有项目画幅保留。
             场景类型可空，明确时填写INDOOR/OUTDOOR/STUDIO/VIRTUAL；河畔、街道用OUTDOOR。时段可空，支持DAY/NIGHT/SUNSET/DAWN，不默认日间。
             更新省略字段保留，支持清空的字段显式null清空；不猜测人物状态、场景、造型或媒体来源。

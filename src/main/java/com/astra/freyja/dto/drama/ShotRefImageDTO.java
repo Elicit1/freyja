@@ -40,12 +40,10 @@ public class ShotRefImageDTO {
      * 参考图角色定位 (MiniMax H3 / 视觉映射):
      * SUBJECT: 主体人物参考
      * NON_SUBJECT: 第一人称视角/画外人物设定参考，不据此安排人物出镜
-     * IDENTITY: 人物身份/面容
-     * LOOK: 当前造型服饰/妆发/配饰
-     * COMBINED: 同时约束人物身份和当前造型
-     * SCENE_LAYOUT: 场景空间布局与固定陈设
-     * PROP_APPEARANCE: 道具材质与造型
+     * SCENE: 场景布局
+     * PROP: 道具外观
      * STYLE: 艺术风格基调
+     * 身份/造型细分角色使用 referenceRole。
      * 关键图参考可使用七种 KeyImageRole 值。
      */
     private String usageRole;

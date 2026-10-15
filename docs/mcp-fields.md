@@ -2,6 +2,36 @@
 
 核对依据：MCP 字段白名单与 JSON Schema、各业务 Service 的 `create/update`、工作台 `CharacterDrawer.vue` / `ShotDrawer.vue` / `ReferenceMediaSlots.vue`。这里的“必填”指保存业务记录的要求；保存草稿与准备好可用的提示词卡片是两个不同阶段。
 
+## Schema 定义与系统选项
+
+静态字段白名单、创建必填项、字段说明和媒体子结构维护于 `src/main/resources/mcp/business-schemas.json`。`McpSchemaMetadata` 加载元数据，`McpBusinessSchemas` 组合 DTO 类型及创建/更新/批量结构，`McpBusinessInputValidator` 校验请求和媒体条件，SQL 清空字段映射独立在 `McpBusinessColumns`。
+
+画幅等选项复用系统「数据字典」和 `DictService` 的 Redis 缓存，不另建 `sys_config` 配置，也不在 JSON 中复制选项值：
+
+| 字段 | 系统字典 |
+|---|---|
+| `aspectRatio` | `drama_aspect_ratio` |
+| `shotType` | `shot_type` |
+| `cameraMovement` | `camera_movement` |
+| `stylePreset` | `drama_style_preset` |
+| `sceneType` | `res_scene_type` |
+| `timeOfDay` | `res_time_of_day` |
+| `generationMode` | `shot_generation_mode` |
+| `gender` / `roleType` / `propType` | `res_gender` / `res_role_type` / `res_prop_type` |
+| PROJECT / EPISODE 的 `status` | `drama_status` / `episode_status`（按记录类型区分） |
+
+`McpBusinessOptions` 在 MCP 工具目录输出时附加当前启用选项、标签和枚举限制，不把动态字典值写入能力发布快照。生产环境的动态目录下，保存字典后重新读取 `tools/list` 即可获取新选项；写入时再次按当前字典校验。生成模式仍受后端已实现模式限制，能力目录额外收窄的枚举也继续生效。字典为空或全部停用时不能提交任意值；可选字段仍可省略，环境字段仍支持显式 `null`。更新省略字段不会因历史值已停用而要求重写。
+
+这些约束同样用于单条创建、单条修改和批量操作；`genre` 继续允许自由文本。`get_business_options` 同时开放 `shot_generation_mode`，供外部 Agent 查询生成模式的启用状态。
+
+固定业务选项统一定义在 JSON 的 `optionSets` 中，Schema 与 `get_business_options` 共用该定义。可查询名称包括 `reference_image_usage_role`、`reference_image_source_type`、`reference_image_reference_role`、`reference_audio_usage_mode`、`reference_audio_source_type`、`reference_audio_language`、`character_age_group`、`character_look_type`、`key_image_role`、`keyframe_source_type`、`asset_status` 和 `default_look_flag`；完整名称也通过查询工具的 `dictType` 枚举发布。
+
+参考图的 `usageRole` 是封闭选项：`SUBJECT/NON_SUBJECT/SCENE/PROP/STYLE` 及七种关键图用途。人物身份、服装等细分用途使用 `referenceRole=IDENTITY/LOOK/COMBINED/POSE/STYLE`。`KEYFRAME` 来源仅允许七种关键图用途，`NON_SUBJECT` 仅用于人物或上传图。音频用途使用 `VOICE_TIMBRE/DIALOGUE_REUSE/BGM_REUSE/BGM_STYLE/SFX_REUSE/SFX_REFERENCE/RHYTHM_REFERENCE`，语种使用 `zh/en/ja/other`；前端两处媒体下拉共用同一组常量，禁止继续提交旧的不受支持选项 `AMBIENT_REUSE`、`SOUND_EFFECT`。
+
+人物年龄段、造型类型、关键图用途/来源、资产启停状态和默认造型标记均有封闭选项校验。非法提交返回具体字段路径及合法值，例如 `data.refImages[0].usageRole`；不做近似匹配、不根据图片或文字猜测替换。分镜 CRUD 的服务层同时校验媒体选项，普通上传图不能绕过用途检查。数据库事务保护批量写入，任一非法选项使整批失败。历史数据不自动改写，用户可显式重新选择后保存。
+
+项目、剧集、人物、造型、道具、场景资产、关键图等关联下拉通过既有搜索/详情/列表工具读取真实 ID，写入时继续校验存在性、归属及授权范围。允许 `allow-create` 的题材、天气和导演运镜方向保持自由输入，不将建议列表误当封闭枚举。
+
 ## 创建业务记录
 
 单条创建使用各对象的 `create_*` 工具，需要 `requestId,dramaId,data`；`create_project` 省略 `dramaId`。跨对象批量创建需要 `requestId,items`，每项需要 `clientKey,type,data`。操作已有项目需要顶层 `dramaId`，不要在 `data` 中重复填写。业务 ID 使用字符串，仅跨对象创建批次可以引用此前的 `clientKey`。
@@ -27,7 +57,7 @@
 
 单条修改使用 `update_*`；批量修改按对象拆分，例如 `batch_update_shots / batch_update_characters`。请求需要 `requestId,dramaId`，单条或每个批量项需要 `recordId,expectedFingerprint,data`，不接收 `type`。创建必填字段不要求在补丁中重传；`data` 至少一个字段，省略字段保留原值。引用数组提交时替换整个数组，图和音频按提交顺序保存。
 
-场景环境字段可空，服务端和数据库均不补默认空间类型或日间。`sceneType` 支持 `INDOOR`（室内）、`OUTDOOR`（室外）、`STUDIO`（影棚）、`VIRTUAL`（虚构）；河畔、街道等室外地点按事实显式填 `OUTDOOR`。`timeOfDay` 支持 `DAY/NIGHT/SUNSET/DAWN`，天气为可选自由文本。创建剧情场次时省略环境字段可继承绑定场景资产的明确值，显式 `null` 表示留空；更新省略保留原值，显式 `null` 清空。不要传空字符串或编造未知枚举。
+场景环境字段可空，服务端和数据库均不补默认空间类型或日间。`sceneType` 默认内置 `INDOOR`（室内）、`OUTDOOR`（室外）、`STUDIO`（影棚）、`VIRTUAL`（虚构）；河畔、街道等室外地点按事实显式选择当前启用的室外选项。`timeOfDay` 默认内置 `DAY/NIGHT/SUNSET/DAWN`，当前可选值以对应系统字典为准，天气为可选自由文本。创建剧情场次时省略环境字段可继承绑定场景资产的明确值，显式 `null` 表示留空；更新省略保留原值，显式 `null` 清空。不要传空字符串或编造未知枚举。
 
 完成关键创建/更新后使用 `get_scene/get_resource_scene/get_shot` 或 `batch_read_records` 读回，核对空间类型、时段、时长、生成模式与对应提示词/媒体字段、人物及造型 ID。写入返回已含持久化结果，批量及默认造型流转后仍需读取最新状态；发现偏差用新 `editFingerprint` 修正后再渲染。草稿时长的兼容默认 3 秒不代表创作意图，完成镜头应显式估算 `duration`。普通动作参考 3–5 秒，舒适长镜头参考 7–8 秒；预计超过 8 秒时主动寻找完整动作、对白轮次或叙事转折进行适度拆镜，减少渲染压力，避免把连续动作切碎，保留创作者明确长镜头要求。服务端不自动按 8 秒拆镜/截断。
 

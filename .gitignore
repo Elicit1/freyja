@@ -38,6 +38,7 @@ __pycache__/
 *$py.class
 *.zip
 !skills/character-sheet-design.zip
+!skills/freyja-platform-guide.zip
 !front/public/agent/freyja/freyja.codex-pet.zip
 !front/public/agent/freyja/freyja-smooth.codex-pet.zip
 !front/public/agent/freyja/freyja-local-motion.codex-pet.zip

@@ -87,21 +87,11 @@
               <div class="pt-3">
                 <div class="grid grid-cols-3 gap-2">
                   <el-form-item label="空间类型" prop="sceneType">
-                    <el-select v-model="formData.sceneType" placeholder="选择空间类型 (选填)" clearable class="w-full">
-                      <el-option label="室内 (Indoor)" value="INDOOR" />
-                      <el-option label="室外 (Outdoor)" value="OUTDOOR" />
-                      <el-option label="摄影棚 (Studio)" value="STUDIO" />
-                      <el-option label="虚构/奇幻 (Virtual)" value="VIRTUAL" />
-                    </el-select>
+                    <DictSelect v-model="formData.sceneType" dict-type="res_scene_type" clearable class="w-full" />
                   </el-form-item>
 
                   <el-form-item label="时段" prop="timeOfDay">
-                    <el-select v-model="formData.timeOfDay" placeholder="选择时段 (选填)" clearable class="w-full">
-                      <el-option label="日间 (Day)" value="DAY" />
-                      <el-option label="夜间 (Night)" value="NIGHT" />
-                      <el-option label="黄昏 (Sunset)" value="SUNSET" />
-                      <el-option label="拂晓 (Dawn)" value="DAWN" />
-                    </el-select>
+                    <DictSelect v-model="formData.timeOfDay" dict-type="res_time_of_day" clearable class="w-full" />
                   </el-form-item>
 
                   <el-form-item label="天气与氛围" prop="weatherAtmosphere">
@@ -273,6 +263,7 @@
 </template>
 
 <script setup lang="ts">
+import DictSelect from '@/components/DictSelect.vue'
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
 import { ArrowLeft, Operation } from '@element-plus/icons-vue'

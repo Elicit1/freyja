@@ -52,12 +52,7 @@
 
           <div class="grid grid-cols-2 gap-2">
             <el-form-item label="道具类型" prop="propType">
-              <el-select v-model="formData.propType" placeholder="选择道具类型">
-                <el-option label="核心叙事道具 (Key Prop)" value="KEY_PROP" />
-                <el-option label="武器装备 (Weapon)" value="WEAPON" />
-                <el-option label="服饰配饰 (Accessory)" value="COSTUME_ACCESSORY" />
-                <el-option label="日常杂物 (Daily)" value="DAILY" />
-              </el-select>
+              <DictSelect v-model="formData.propType" dict-type="res_prop_type" clearable class="w-full" />
             </el-form-item>
 
             <el-form-item label="所属库" prop="dramaId">
@@ -271,6 +266,7 @@
 </template>
 
 <script setup lang="ts">
+import DictSelect from '@/components/DictSelect.vue'
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
 import { ArrowLeft, Operation } from '@element-plus/icons-vue'

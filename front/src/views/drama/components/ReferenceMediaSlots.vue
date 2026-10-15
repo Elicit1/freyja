@@ -98,15 +98,7 @@
                 :disabled="disabled"
                 @change="handleImageRoleChange"
               >
-                <el-option label="主体 (SUBJECT)" value="SUBJECT" />
-                <el-option
-                  v-if="['CHARACTER', 'CHARACTER_REFERENCE', 'UPLOAD'].includes(img.sourceType)"
-                  label="非主体参考（第一人称 / 画外人物）"
-                  value="NON_SUBJECT"
-                />
-                <el-option label="场景 (SCENE)" value="SCENE" />
-                <el-option v-for="role in KEY_IMAGE_ROLE_OPTIONS" :key="role.value" :label="role.label" :value="role.value" />
-                <el-option label="道具 (PROP)" value="PROP" />
+                <el-option v-for="option in referenceImageUsageOptions(img.sourceType)" :key="option.value" :label="option.label" :value="option.value" />
               </el-select>
             </div>
 
@@ -293,10 +285,7 @@
                 :disabled="disabled"
                 @change="handleAudioModeChange"
               >
-                <el-option label="音色参考 (VOICE_TIMBRE - 仅参考音色质感，推荐)" value="VOICE_TIMBRE" />
-                <el-option label="台词复用 (DIALOGUE_REUSE - 严格复用该句语音)" value="DIALOGUE_REUSE" />
-                <el-option label="背景音乐 (BGM_REUSE)" value="BGM_REUSE" />
-                <el-option label="环境声效 (AMBIENT_REUSE)" value="AMBIENT_REUSE" />
+                <el-option v-for="option in REFERENCE_AUDIO_USAGE_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
               </el-select>
             </div>
             <div class="flex items-center gap-1.5">
@@ -307,8 +296,7 @@
                 class="w-full"
                 :disabled="disabled"
               >
-                <el-option label="中文 (zh)" value="zh" />
-                <el-option label="英文 (en)" value="en" />
+                <el-option v-for="option in REFERENCE_AUDIO_LANGUAGE_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
               </el-select>
             </div>
           </div>
@@ -467,11 +455,12 @@
 </template>
 
 <script setup lang="ts">
+import { referenceImageUsageOptions, REFERENCE_AUDIO_USAGE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { probeReferenceAudioDuration } from '@/utils/reference-audio'
 import { ElMessage } from 'element-plus'
 import type { ShotRefImage, ShotRefAudio } from '@/types/drama'
-import { KEY_IMAGE_ROLE_OPTIONS, keyImageRoleLabel, normalizeKeyImageRole } from '@/constants/keyImageRoles'
+import { keyImageRoleLabel, normalizeKeyImageRole } from '@/constants/keyImageRoles'
 import type { CandidateImageItem, CandidateAudioItem } from '../composables/useShotReferenceAssets'
 import {
   MAX_REF_IMAGES,

@@ -53,6 +53,6 @@ public class ShotRefAudioDTO {
      */
     private String usageMode;
 
-    /** 发音语言 (如 Chinese, English, Japanese, 默认 Chinese) */
+    /** 发音语言选择: zh/en/ja/other；未声明保持 null。 */
     private String language;
 }

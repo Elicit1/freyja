@@ -79,8 +79,8 @@ class McpReadDatabaseTest {
         }
         McpScope scope = new McpScope(dramas, episodes, scenes, groups, shots);
         McpJson json = new McpJson();
-        assets = new McpAssets(characters, looks, resourceScenes, props, keyframes, scope, json, new McpBusinessView(json), queries);
-        reads = new McpReadTools(dramas, episodes, scenes, groups, mock(DictService.class), queries, assets, scope, json, new McpBusinessView(json));
+        assets = new McpAssets(characters, looks, resourceScenes, props, keyframes, scope, json, new McpBusinessView(json, new McpSchemaMetadata(json)), queries);
+        reads = new McpReadTools(dramas, episodes, scenes, groups, new McpBusinessOptions(mock(DictService.class), new McpSchemaMetadata(json), json), queries, assets, scope, json, new McpBusinessView(json, new McpSchemaMetadata(json)));
         for (long id : List.of(PROJECT, PROJECT + 1)) {
             Drama d = new Drama(); d.setId(id); d.setTitle("Project " + id); d.setSortOrder(0); d.setDeleted(0); dramas.insert(d);
         }

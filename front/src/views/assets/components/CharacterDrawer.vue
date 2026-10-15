@@ -68,12 +68,7 @@
 
             <div class="grid grid-cols-2 gap-2">
               <el-form-item label="性别" prop="gender">
-                <el-select v-model="formData.gender" placeholder="选择性别">
-                  <el-option label="男 (Male)" value="MALE" />
-                  <el-option label="女 (Female)" value="FEMALE" />
-                  <el-option label="其他 (Other)" value="OTHER" />
-                  <el-option label="未知 (Unknown)" value="UNKNOWN" />
-                </el-select>
+                <DictSelect v-model="formData.gender" dict-type="res_gender" clearable class="w-full" />
               </el-form-item>
 
               <el-form-item label="年龄段" prop="ageGroup">
@@ -88,12 +83,7 @@
 
             <div class="grid grid-cols-2 gap-2">
               <el-form-item label="角色定位" prop="roleType">
-                <el-select v-model="formData.roleType" placeholder="角色定位">
-                  <el-option label="主角 (Protagonist)" value="PROTAGONIST" />
-                  <el-option label="反派 (Antagonist)" value="ANTAGONIST" />
-                  <el-option label="配角 (Supporting)" value="SUPPORTING" />
-                  <el-option label="路人/群演 (Extra)" value="EXTRA" />
-                </el-select>
+                <DictSelect v-model="formData.roleType" dict-type="res_role_type" clearable class="w-full" />
               </el-form-item>
 
               <el-form-item label="所属库" prop="dramaId">
@@ -769,6 +759,7 @@
 </template>
 
 <script setup lang="ts">
+import DictSelect from '@/components/DictSelect.vue'
 import { ref, reactive, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
 import { ArrowLeft, Operation, Plus } from '@element-plus/icons-vue'

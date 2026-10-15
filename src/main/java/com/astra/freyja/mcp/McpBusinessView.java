@@ -27,6 +27,7 @@ public class McpBusinessView {
             Map.entry(Kind.VIDEO_TAKE, fields("id,shotId,takeNo,videoUrl,current,size,duration,firstFrameUrl,endFrameUrl,createTime"))
     );
     private final McpJson json;
+    private final McpSchemaMetadata metadata;
 
     @SuppressWarnings("unchecked")
     public Map<String, Object> project(Kind kind, Object entity) {
@@ -41,10 +42,10 @@ public class McpBusinessView {
                 result.put("legacyScriptPending", com.astra.freyja.util.UnifiedShotScript.hasLegacySpeech(shot));
                 result.put("refAudiosConfigured", shot.getRefAudiosJson() != null && !shot.getRefAudiosJson().isBlank());
             }
-            result.put("characterRefs", references(source.get("characterRefsJson"), McpBusinessSchemas.CHARACTER_REFERENCE_FIELDS));
-            result.put("propRefs", references(source.get("propRefsJson"), McpBusinessSchemas.PROP_REFERENCE_FIELDS));
-            result.put("refImages", references(source.get("refImagesJson"), McpBusinessSchemas.IMAGE_REFERENCE_FIELDS));
-            result.put("refAudios", references(source.get("refAudiosJson"), McpBusinessSchemas.AUDIO_REFERENCE_FIELDS));
+            result.put("characterRefs", references(source.get("characterRefsJson"), metadata.referenceFields("CHARACTER")));
+            result.put("propRefs", references(source.get("propRefsJson"), metadata.referenceFields("PROP")));
+            result.put("refImages", references(source.get("refImagesJson"), metadata.referenceFields("IMAGE")));
+            result.put("refAudios", references(source.get("refAudiosJson"), metadata.referenceFields("AUDIO")));
             result.put("directorPlan", directorPlan(source.get("directorPlanJson")));
         }
         result.put("editFingerprint", fingerprint(entity));

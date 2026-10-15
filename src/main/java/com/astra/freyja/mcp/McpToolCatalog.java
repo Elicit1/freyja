@@ -20,7 +20,7 @@ public class McpToolCatalog {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private McpRuntimeControl control;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
-    private McpBusinessSchemas businessSchemas;
+    private McpBusinessOptions businessOptions;
     private final DefaultJsonSchemaValidator validator = new DefaultJsonSchemaValidator();
 
     @SuppressWarnings("unchecked")
@@ -29,6 +29,8 @@ public class McpToolCatalog {
         try { generated = entry.schema() == null ? json.mapper().readValue(JsonSchemaGenerator.generateForType(entry.inputType()), Map.class) : new LinkedHashMap<>(entry.schema()); }
         catch (Exception e) { throw new IllegalStateException("MCP Schema 生成失败: " + entry.name(), e); }
         generated.put("additionalProperties", false);
+        final Map<String, Object> baseSchema = generated;
+        if (businessOptions != null) generated = businessOptions.apply(baseSchema);
         Map<String, Object> properties = (Map<String, Object>) generated.getOrDefault("properties", Map.of());
         List<String> required = (List<String>) generated.getOrDefault("required", List.of());
         McpSchema.JsonSchema schema = new McpSchema.JsonSchema("object", properties, required, false,
@@ -47,7 +49,8 @@ public class McpToolCatalog {
                 if (!properties.keySet().containsAll(arguments.keySet())) throw new BizException(400, "工具参数包含未知字段");
                 for (String name : required) if (arguments.get(name) == null) throw new BizException(400, "缺少必填参数: " + name);
                 if (entry.validator() != null) entry.validator().accept(arguments);
-                if (!validator.validate(generated, arguments).valid()) throw new BizException(400, "参数类型不符合 Schema；业务 ID 必须为字符串");
+                Map<String, Object> currentSchema = businessOptions == null ? baseSchema : businessOptions.apply(baseSchema);
+                if (!validator.validate(currentSchema, arguments).valid()) throw new BizException(400, "参数类型不符合 Schema；业务 ID 必须为字符串，业务选项须为当前启用的字典值");
                 I input;
                 try { input = json.read(arguments, entry.inputType()); }
                 catch (IllegalArgumentException e) { throw new BizException(400, "参数类型不符合 Schema；业务 ID 必须为字符串"); }

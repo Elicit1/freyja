@@ -1,0 +1,777 @@
+{
+  "records": {
+    "PROJECT": {
+      "fields": [
+        "title",
+        "coverUrl",
+        "genre",
+        "targetEpisodes",
+        "aspectRatio",
+        "stylePreset",
+        "styleTone",
+        "synopsis",
+        "status",
+        "sortOrder",
+        "remark"
+      ],
+      "required": [
+        "title",
+        "aspectRatio"
+      ]
+    },
+    "EPISODE": {
+      "fields": [
+        "episodeNo",
+        "title",
+        "summary",
+        "scriptContent",
+        "targetDuration",
+        "status",
+        "sortOrder",
+        "remark"
+      ],
+      "required": []
+    },
+    "SCENE": {
+      "fields": [
+        "episodeId",
+        "sceneNo",
+        "name",
+        "resSceneId",
+        "sceneType",
+        "timeOfDay",
+        "weatherAtmosphere",
+        "locationName",
+        "summary",
+        "scriptContent",
+        "sortOrder",
+        "remark"
+      ],
+      "required": [
+        "episodeId"
+      ]
+    },
+    "SHOT_GROUP": {
+      "fields": [
+        "sceneId",
+        "groupNo",
+        "name",
+        "purpose",
+        "sortOrder",
+        "remark"
+      ],
+      "required": [
+        "sceneId"
+      ]
+    },
+    "SHOT": {
+      "fields": [
+        "sceneId",
+        "shotGroupId",
+        "shotNo",
+        "shotName",
+        "shotType",
+        "cameraMovement",
+        "shotTypeLocked",
+        "cameraMovementLocked",
+        "duration",
+        "scriptContent",
+        "actionDescription",
+        "soundEffect",
+        "resSceneId",
+        "resKeyframeId",
+        "characterRefs",
+        "propRefs",
+        "stylePreset",
+        "sortOrder",
+        "remark",
+        "prompt",
+        "firstFramePrompt",
+        "endFramePrompt",
+        "negativePrompt",
+        "videoPrompt",
+        "customScenePrompt",
+        "directorPlan",
+        "directorPlanMode",
+        "refImages",
+        "refAudios",
+        "generationMode",
+        "seed",
+        "previewImageUrl",
+        "endFrameImageUrl"
+      ],
+      "required": [
+        "sceneId"
+      ]
+    },
+    "CHARACTER": {
+      "fields": [
+        "name",
+        "canonicalName",
+        "displayName",
+        "gender",
+        "ageGroup",
+        "roleType",
+        "personality",
+        "appearanceDesc",
+        "referenceImageUrl",
+        "voiceSampleUrl",
+        "sortOrder",
+        "status",
+        "firstAppearance",
+        "lastAppearance",
+        "remark",
+        "aliases",
+        "appearancePrompt",
+        "negativePrompt"
+      ],
+      "required": []
+    },
+    "CHARACTER_LOOK": {
+      "fields": [
+        "characterId",
+        "lookName",
+        "isDefault",
+        "lookType",
+        "designDesc",
+        "referenceImageUrl",
+        "sortOrder",
+        "status",
+        "remark",
+        "outfitPrompt",
+        "appearancePrompt",
+        "negativePrompt"
+      ],
+      "required": [
+        "characterId",
+        "lookName",
+        "designDesc"
+      ]
+    },
+    "RESOURCE_SCENE": {
+      "fields": [
+        "name",
+        "description",
+        "coverUrl",
+        "referenceImageUrl",
+        "sceneType",
+        "timeOfDay",
+        "weatherAtmosphere",
+        "sortOrder",
+        "status",
+        "remark",
+        "scenePrompt",
+        "negativePrompt"
+      ],
+      "required": [
+        "name"
+      ]
+    },
+    "PROP": {
+      "fields": [
+        "name",
+        "propType",
+        "description",
+        "coverUrl",
+        "sortOrder",
+        "status",
+        "remark",
+        "propPrompt"
+      ],
+      "required": [
+        "name"
+      ]
+    },
+    "KEYFRAME": {
+      "fields": [
+        "shotId",
+        "name",
+        "frameType",
+        "description",
+        "frameUrl",
+        "clearFrameUrl",
+        "sourceType",
+        "aspectRatio",
+        "sortOrder",
+        "status",
+        "remark",
+        "prompt",
+        "negativePrompt"
+      ],
+      "required": [
+        "name"
+      ]
+    }
+  },
+  "referenceFields": {
+    "CHARACTER": [
+      "characterId",
+      "lookId",
+      "designDesc",
+      "actionPrompt",
+      "emotionPrompt",
+      "positionTag"
+    ],
+    "PROP": [
+      "propId",
+      "propName",
+      "propType",
+      "propPrompt"
+    ],
+    "IMAGE": [
+      "id",
+      "sourceType",
+      "sourceId",
+      "characterId",
+      "lookId",
+      "name",
+      "imageUrl",
+      "usageRole",
+      "referenceRole"
+    ],
+    "AUDIO": [
+      "id",
+      "sourceType",
+      "characterId",
+      "characterName",
+      "audioUrl",
+      "duration",
+      "name",
+      "text",
+      "usageMode",
+      "language"
+    ]
+  },
+  "fieldSchemas": {
+    "weatherAtmosphere": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "directorPlanMode": {
+      "type": "string",
+      "enum": [
+        "AUTO",
+        "MANUAL"
+      ]
+    },
+    "generationMode": {
+      "type": "string",
+      "enum": [
+        "FIRST_LAST_FRAME",
+        "REFERENCE_MODE"
+      ]
+    },
+    "seed": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,15}$"
+    },
+    "aliases": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "string",
+        "maxLength": 200
+      }
+    },
+    "genre": {
+      "type": "string",
+      "maxLength": 64
+    },
+    "sceneType": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timeOfDay": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "ageGroup": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-freyja-options": "character_age_group"
+    },
+    "lookType": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-freyja-options": "character_look_type"
+    },
+    "frameType": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-freyja-options": "key_image_role"
+    },
+    "KEYFRAME.sourceType": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-freyja-options": "keyframe_source_type"
+    },
+    "status": {
+      "type": "integer",
+      "x-freyja-options": "asset_status"
+    },
+    "isDefault": {
+      "type": "integer",
+      "x-freyja-options": "default_look_flag"
+    },
+    "PROJECT.status": {
+      "type": "string",
+      "x-freyja-dict": "drama_status"
+    },
+    "EPISODE.status": {
+      "type": "string",
+      "x-freyja-dict": "episode_status"
+    },
+    "gender": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "roleType": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "propType": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "descriptions": {
+    "sceneType": "可选的空间类型，启用选项读取 res_scene_type 字典。按创作事实显式填写；未指定为 null，不自动猜测。创建剧情场次时省略可继承绑定场景资产；显式 null 留空，更新省略保留原值。",
+    "timeOfDay": "可选的时间时段，启用选项读取 res_time_of_day 字典。未指定为 null；创建剧情场次时省略可继承绑定场景资产，显式 null 留空，更新省略保留原值。",
+    "weatherAtmosphere": "可选的天气/氛围自由文本；无明确设定时留空，不由服务端推断。创建剧情场次时省略可继承绑定场景资产，显式 null 留空，更新省略保留原值。",
+    "directorPlan": "可选的手工导演计划。外部 Agent 通常省略，直接保存提示词工作台内容；服务端不会补生成计划。",
+    "directorPlanMode": "可选高级编辑；不使用导演计划时省略，更新时保留已有计划。AUTO 仅重置，不启动 AI。",
+    "PROJECT.genre": "题材为最长64字符的自由文本；drama_genre 字典仅提供建议，可使用已有字典值或自定义题材名称（如都市复仇、悬疑轻喜剧）。未收录的题材直接填写清晰名称，无需编造枚举代码。剧集继承项目题材。",
+    "PROJECT.aspectRatio": "创建必填；先读取 get_business_options(dictType=drama_aspect_ratio)。用户未指定时请用户选择已有比例，再创建；仅在用户明确交给 AI 决定时优先选启用的16:9，不自行默认9:16或编造比例。修改时省略保留原值。",
+    "SHOT.prompt": "REFERENCE_MODE 使用 prompt + refImages：最终 H3 六段式视频卡片含 subject_definitions、summary、retention_analysis、detailed_description、overall_soundscape、non_diegetic_music。保留音乐段落但明确写 none / no background music，不生成背景音乐或配乐，方便后期剪辑；overall_soundscape 仅保留对白、环境声和必要音效，refAudios 不引入 BGM。先读取 h3-prompt-writing Skill 及 references/ref-en.txt；<Picture N>/<Audio N> 对应媒体数组第 N 项。",
+    "SHOT.videoPrompt": "FIRST_LAST_FRAME 使用 videoPrompt：最终 H3 三段式视频卡片含 integrated_multimodal_description、overall_soundscape、non_diegetic_music。保留音乐段落但明确写 none / no background music，不生成背景音乐或配乐，方便后期剪辑；overall_soundscape 仅保留对白、环境声和必要音效。先读取 h3-prompt-writing Skill 及 references/base-en.txt；不能仅填写图片提示词后宣称视频卡片完成。",
+    "SHOT.firstFramePrompt": "首尾帧模式的图片提示词，可省略；已有图片可直接保存对应 URL。",
+    "SHOT.endFramePrompt": "首尾帧模式的图片提示词，可省略；已有图片可直接保存对应 URL。",
+    "SHOT.generationMode": "FIRST_LAST_FRAME 使用 videoPrompt 和首尾帧图片/提示词；REFERENCE_MODE 使用 prompt、refImages，可选 refAudios。制作视频卡片时显式选择；草稿省略兼容默认 FIRST_LAST_FRAME，不根据填写字段猜测模式。写后读回核对模式及对应字段。",
+    "SHOT.duration": "镜头秒数，按自然表演速度的完整动作与对白显式估算；草稿省略兼容默认3秒。普通动作常参考3–5秒，舒适长镜头参考7–8秒；预计超过8秒时优先在完整动作、对白轮次或叙事转折处分镜，减少单次渲染压力；避免按固定秒数切碎同一动作，不补停顿/慢动作。保留创作者明确长镜头要求，写后读回核对。",
+    "SHOT.sceneId": "创建必填的归属场次；剧集和项目由服务端校验确定。",
+    "SHOT.shotType": "基本规格与机位卡片；允许 AUTO（自动），外部 Agent 无明确选择时填写 AUTO，并保持对应 Locked=false；具体枚举读取业务字典。",
+    "SHOT.cameraMovement": "基本规格与机位卡片；允许 AUTO（自动），外部 Agent 无明确选择时填写 AUTO，并保持对应 Locked=false；具体枚举读取业务字典。",
+    "SHOT.characterRefs": "出镜人物业务关联：characterId 为人物 ID，lookId 为明确选定的造型 ID；先读取默认造型。动作/情绪/站位由外部 Agent 按剧本填写，不由 Java 猜测。",
+    "SHOT.propRefs": "关联镜头实际使用的道具资产，propId 为真实道具 ID。",
+    "SHOT.resSceneId": "镜头场景资产；可继承场次设置。与 resKeyframeId 互斥。",
+    "SHOT.resKeyframeId": "主视觉关键图资产 ID；与 resSceneId 互斥，额外场景/关键图可通过 refImages 关联。",
+    "CHARACTER_LOOK.designDesc": "创建必填的造型视觉概念描述，与可选英文 Prompt 不同。",
+    "CHARACTER_LOOK.outfitPrompt": "可选的服装专属 Prompt，已有图片时也不要求填写。",
+    "CHARACTER_LOOK.appearancePrompt": "可选的该造型特有妆发/状态；无明确状态可以省略。",
+    "CHARACTER.referenceImageUrl": "人物/造型设定图 URL；生成图片前先读 character-sheet-design Skill，遵循用户的三视图/头身分区/细节/透明或白底要求，上传后填写返回 URL。已有图片可直接关联。",
+    "CHARACTER_LOOK.referenceImageUrl": "人物/造型设定图 URL；生成图片前先读 character-sheet-design Skill，遵循用户的三视图/头身分区/细节/透明或白底要求，上传后填写返回 URL。已有图片可直接关联。",
+    "CHARACTER.appearancePrompt": "可选的稳定身份外貌 Prompt；设定图版式和导出要求按 character-sheet-design Skill 写入图片生成指令，不混入稳定身份描述。",
+    "IMAGE.imageUrl": "必填的已有参考图 URL；服务端不抓取外部 URL、不调用内部生图。",
+    "IMAGE.sourceId": "除 UPLOAD 外必填；CHARACTER 为人物 ID，CHARACTER_LOOK/CHARACTER_REFERENCE 为造型 ID并补齐 lookId；SCENE/PROP/KEYFRAME 为对应资产 ID。UPLOAD 省略。",
+    "IMAGE.characterId": "显式人物弱绑定；CHARACTER_LOOK/CHARACTER_REFERENCE 必填，UPLOAD 可按需关联，画外人物也可绑定。",
+    "IMAGE.usageRole": "参考图在本镜头中的用途，仅允许列出的用途值；身份/造型细分约束填写 referenceRole，不能自行创造 usageRole。KEYFRAME 来源只允许七种关键图用途。",
+    "IMAGE.sourceType": "人物身份图用 CHARACTER；人物造型图用 CHARACTER_LOOK（兼容 CHARACTER_REFERENCE，保存为 CHARACTER_REFERENCE）；二者 sourceId 含义不同。",
+    "AUDIO.audioUrl": "必填的已有声音 URL；TTS 只表示来源，不执行声音生成。",
+    "AUDIO.duration": "可选的真实秒数；已知音频总长不超过15秒，不会猜测时长。",
+    "AUDIO.usageMode": "按需指定 VOICE_TIMBRE、DIALOGUE_REUSE、BGM_REUSE、BGM_STYLE、SFX_REUSE、SFX_REFERENCE、RHYTHM_REFERENCE。",
+    "SHOT.refImages": "按提交顺序保存；第1项对应 <Picture 1>。与 prompt 一起更新以保持图号一致，不会根据文字猜测主体绑定。",
+    "SHOT.refAudios": "按提交顺序保存；第1项对应 <Audio 1>。只关联已有音频，不生成声音。"
+  },
+  "dictionaries": {
+    "aspectRatio": "drama_aspect_ratio",
+    "shotType": "shot_type",
+    "cameraMovement": "camera_movement",
+    "stylePreset": "drama_style_preset",
+    "sceneType": "res_scene_type",
+    "timeOfDay": "res_time_of_day",
+    "generationMode": "shot_generation_mode",
+    "gender": "res_gender",
+    "roleType": "res_role_type",
+    "propType": "res_prop_type"
+  },
+  "referenceSchemas": {
+    "IMAGE": {
+      "id": {
+        "type": "string",
+        "pattern": ".*\\S.*",
+        "maxLength": 200,
+        "description": "可省略，服务端补全槽位标识；显式值须在数组中唯一，非雪花 ID。"
+      },
+      "sourceType": {
+        "type": "string",
+        "x-freyja-options": "reference_image_source_type"
+      },
+      "imageUrl": {
+        "type": "string",
+        "pattern": ".*\\S.*"
+      },
+      "referenceRole": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-freyja-options": "reference_image_reference_role"
+      },
+      "usageRole": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-freyja-options": "reference_image_usage_role"
+      }
+    },
+    "AUDIO": {
+      "id": {
+        "type": "string",
+        "pattern": ".*\\S.*",
+        "maxLength": 200,
+        "description": "可省略，服务端补全槽位标识；显式值须在数组中唯一，非雪花 ID。"
+      },
+      "sourceType": {
+        "type": "string",
+        "x-freyja-options": "reference_audio_source_type"
+      },
+      "audioUrl": {
+        "type": "string",
+        "pattern": ".*\\S.*"
+      },
+      "duration": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": 2,
+        "maximum": 15
+      },
+      "usageMode": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-freyja-options": "reference_audio_usage_mode"
+      },
+      "language": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "x-freyja-options": "reference_audio_language"
+      }
+    },
+    "CHARACTER": {},
+    "PROP": {}
+  },
+  "contentFields": [
+    "prompt",
+    "firstFramePrompt",
+    "endFramePrompt",
+    "negativePrompt",
+    "videoPrompt",
+    "customScenePrompt",
+    "appearancePrompt",
+    "outfitPrompt",
+    "scenePrompt",
+    "propPrompt"
+  ],
+  "optionSets": {
+    "reference_image_usage_role": [
+      {
+        "value": "SUBJECT",
+        "label": "主体"
+      },
+      {
+        "value": "NON_SUBJECT",
+        "label": "非主体/画外人物"
+      },
+      {
+        "value": "SCENE",
+        "label": "场景"
+      },
+      {
+        "value": "PROP",
+        "label": "道具"
+      },
+      {
+        "value": "STYLE",
+        "label": "风格"
+      },
+      {
+        "value": "FIRST_FRAME",
+        "label": "首帧"
+      },
+      {
+        "value": "KEYFRAME",
+        "label": "过程关键帧"
+      },
+      {
+        "value": "LAST_FRAME",
+        "label": "尾帧"
+      },
+      {
+        "value": "EDITED_KEYFRAME",
+        "label": "编辑后关键帧"
+      },
+      {
+        "value": "COMPOSITION_ANCHOR",
+        "label": "构图锚点"
+      },
+      {
+        "value": "STORYBOARD_REFERENCE",
+        "label": "故事板参考"
+      },
+      {
+        "value": "SHOT_PLANNING_REFERENCE",
+        "label": "镜头规划参考"
+      }
+    ],
+    "reference_image_source_type": [
+      {
+        "value": "SCENE",
+        "label": "SCENE"
+      },
+      {
+        "value": "CHARACTER",
+        "label": "CHARACTER"
+      },
+      {
+        "value": "CHARACTER_LOOK",
+        "label": "CHARACTER_LOOK"
+      },
+      {
+        "value": "CHARACTER_REFERENCE",
+        "label": "CHARACTER_REFERENCE"
+      },
+      {
+        "value": "PROP",
+        "label": "PROP"
+      },
+      {
+        "value": "KEYFRAME",
+        "label": "KEYFRAME"
+      },
+      {
+        "value": "UPLOAD",
+        "label": "UPLOAD"
+      }
+    ],
+    "reference_image_reference_role": [
+      {
+        "value": "IDENTITY",
+        "label": "人物身份"
+      },
+      {
+        "value": "LOOK",
+        "label": "造型"
+      },
+      {
+        "value": "COMBINED",
+        "label": "身份与造型"
+      },
+      {
+        "value": "POSE",
+        "label": "姿态"
+      },
+      {
+        "value": "STYLE",
+        "label": "风格"
+      }
+    ],
+    "reference_audio_usage_mode": [
+      {
+        "value": "VOICE_TIMBRE",
+        "label": "音色参考"
+      },
+      {
+        "value": "DIALOGUE_REUSE",
+        "label": "对白复用"
+      },
+      {
+        "value": "BGM_REUSE",
+        "label": "背景音乐复用"
+      },
+      {
+        "value": "BGM_STYLE",
+        "label": "音乐风格参考"
+      },
+      {
+        "value": "SFX_REUSE",
+        "label": "音效复用"
+      },
+      {
+        "value": "SFX_REFERENCE",
+        "label": "音效质感参考"
+      },
+      {
+        "value": "RHYTHM_REFERENCE",
+        "label": "节拍参考"
+      }
+    ],
+    "reference_audio_source_type": [
+      {
+        "value": "CHARACTER",
+        "label": "人物母音"
+      },
+      {
+        "value": "TTS",
+        "label": "历史语音"
+      },
+      {
+        "value": "UPLOAD",
+        "label": "上传音频"
+      }
+    ],
+    "reference_audio_language": [
+      {
+        "value": "zh",
+        "label": "中文"
+      },
+      {
+        "value": "en",
+        "label": "英文"
+      },
+      {
+        "value": "ja",
+        "label": "日文"
+      },
+      {
+        "value": "other",
+        "label": "其他"
+      }
+    ],
+    "character_age_group": [
+      {
+        "value": "TEENAGER",
+        "label": "少年"
+      },
+      {
+        "value": "YOUTH",
+        "label": "青年"
+      },
+      {
+        "value": "MIDDLE_AGED",
+        "label": "中年"
+      },
+      {
+        "value": "ELDERLY",
+        "label": "老年"
+      }
+    ],
+    "character_look_type": [
+      {
+        "value": "BASE",
+        "label": "基础日常"
+      },
+      {
+        "value": "COSTUME",
+        "label": "特殊服饰"
+      },
+      {
+        "value": "AGE_PHASE",
+        "label": "年龄阶段"
+      },
+      {
+        "value": "DISGUISE",
+        "label": "伪装易容"
+      },
+      {
+        "value": "DAMAGE",
+        "label": "受损战损"
+      },
+      {
+        "value": "CUSTOM",
+        "label": "自定义变体"
+      }
+    ],
+    "key_image_role": [
+      {
+        "value": "FIRST_FRAME",
+        "label": "首帧"
+      },
+      {
+        "value": "KEYFRAME",
+        "label": "过程关键帧"
+      },
+      {
+        "value": "LAST_FRAME",
+        "label": "尾帧"
+      },
+      {
+        "value": "EDITED_KEYFRAME",
+        "label": "编辑后关键帧"
+      },
+      {
+        "value": "COMPOSITION_ANCHOR",
+        "label": "构图锚点"
+      },
+      {
+        "value": "STORYBOARD_REFERENCE",
+        "label": "故事板参考"
+      },
+      {
+        "value": "SHOT_PLANNING_REFERENCE",
+        "label": "镜头规划参考"
+      }
+    ],
+    "keyframe_source_type": [
+      {
+        "value": "MANUAL_UPLOAD",
+        "label": "手工上传"
+      },
+      {
+        "value": "AI_GENERATED",
+        "label": "AI生成"
+      },
+      {
+        "value": "SHOT_EXTRACT",
+        "label": "分镜抽取"
+      },
+      {
+        "value": "VIDEO_FRAME",
+        "label": "视频截帧"
+      },
+      {
+        "value": "TEXT_DRAFT",
+        "label": "文字草稿"
+      },
+      {
+        "value": "PREVIOUS_VIDEO_TAIL",
+        "label": "上一镜视频尾帧"
+      }
+    ],
+    "asset_status": [
+      {
+        "value": 1,
+        "label": "启用"
+      },
+      {
+        "value": 0,
+        "label": "停用"
+      }
+    ],
+    "default_look_flag": [
+      {
+        "value": 1,
+        "label": "默认造型"
+      },
+      {
+        "value": 0,
+        "label": "非默认造型"
+      }
+    ]
+  }
+}

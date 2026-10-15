@@ -185,7 +185,8 @@ public class DramaShotServiceImpl implements DramaShotService {
             throw new BizException(400, "归属场次 ID 不能为空");
         }
         validateSeed(dto.getSeed());
-        com.astra.freyja.util.ShotAudioReferenceValidator.validate(dto.getRefAudios());
+        com.astra.freyja.util.ShotAudioReferenceValidator.validateForSave(dto.getRefAudios());
+        com.astra.freyja.util.ShotImageReferenceValidator.validate(dto.getRefImages());
         KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
         DramaScene scene = sceneMapper.selectById(dto.getSceneId());
         if (scene == null) {
@@ -382,7 +383,8 @@ public class DramaShotServiceImpl implements DramaShotService {
             throw new BizException(400, "分镜 ID 不能为空");
         }
         validateSeed(dto.getSeed());
-        com.astra.freyja.util.ShotAudioReferenceValidator.validate(dto.getRefAudios());
+        com.astra.freyja.util.ShotAudioReferenceValidator.validateForSave(dto.getRefAudios());
+        com.astra.freyja.util.ShotImageReferenceValidator.validate(dto.getRefImages());
         KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
         DramaShot existing = shotMapper.selectById(dto.getId());
         if (existing == null) {

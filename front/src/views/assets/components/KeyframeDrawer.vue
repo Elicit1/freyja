@@ -75,13 +75,7 @@
               </el-form-item>
 
               <el-form-item label="画幅比例" prop="aspectRatio">
-                <el-select v-model="formData.aspectRatio" placeholder="默认 16:9" class="w-full" clearable>
-                  <el-option label="16:9 (横屏微电影/宽幅)" value="16:9" />
-                  <el-option label="9:16 (竖屏短剧主流)" value="9:16" />
-                  <el-option label="1:1 (正方形)" value="1:1" />
-                  <el-option label="4:3 (复古画幅)" value="4:3" />
-                  <el-option label="2.35:1 (宽银幕电影)" value="2.35:1" />
-                </el-select>
+                <DictSelect v-model="formData.aspectRatio" dict-type="drama_aspect_ratio" clearable class="w-full" />
               </el-form-item>
             </div>
 
@@ -247,6 +241,7 @@
 </template>
 
 <script setup lang="ts">
+import DictSelect from '@/components/DictSelect.vue'
 import { reactive, ref } from 'vue'
 import { ArrowLeft, Operation, Upload } from '@element-plus/icons-vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
