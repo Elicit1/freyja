@@ -114,27 +114,27 @@
       "source": "repository:skills/freyja-platform-guide",
       "sourceRevision": null,
       "package": "freyja-platform-guide.zip",
-      "sha256": "081285a79ae7db3f6eb2c6903ca66a5e10f0f8630595c923c213b138d972abe6",
+      "sha256": "033d5998afaaf70546026b90dab3334713f3db40cfcb3d177ce1eb5d8dcf4cd1",
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "11df5267e6e3e7cd7a677be03570a9f5cb3f6a97fa92d3f54315c945f0b0167f",
-          "size": 5652
+          "sha256": "a0722405cb4eaa67b48cf2aedd882f5b26e9c0c1a66ca281c1c2133af51ea9e4",
+          "size": 12278
         },
         {
-          "path": "references/architecture.md",
-          "sha256": "722afc23ee5a8846a818d90caddb6d3a03ce0dc3c0ac01bdaab4a2efe78e0ee8",
-          "size": 4465
+          "path": "references\\architecture.md",
+          "sha256": "9d7e56c0f22988a3a61673335ad75ea7f97851129afd88958c3feae2b5a92aab",
+          "size": 7980
         },
         {
-          "path": "references/storyboard-workflow.md",
-          "sha256": "c940a9f9c7fad535cf28594b001ff3759dda44c79176745bd28fe2c9d5a6aa6a",
-          "size": 6320
+          "path": "references\\storyboard-workflow.md",
+          "sha256": "350591ba0a209f7908becadab5d37d73cdecd7dc7bda282387763b93c1a9ea2c",
+          "size": 12114
         },
         {
-          "path": "references/visual-references.md",
-          "sha256": "6b9eb28420c0faf6f4d6fccf81def23c2f49a3dc8f0762fabde942ac0c0bd763",
-          "size": 7697
+          "path": "references\\visual-references.md",
+          "sha256": "d1e20fa868c656c1de6a136402b08b6e05f587fcbba37b1cf47a81adff436cce",
+          "size": 36723
         }
       ]
     },
