@@ -37,8 +37,7 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.zip
-!skills/character-sheet-design.zip
-!skills/freyja-platform-guide.zip
+!skills/*.zip
 !front/public/agent/freyja/freyja.codex-pet.zip
 !front/public/agent/freyja/freyja-smooth.codex-pet.zip
 !front/public/agent/freyja/freyja-local-motion.codex-pet.zip

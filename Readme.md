@@ -118,6 +118,31 @@ MCP 返回的 `uploadUrl` 必须能从 AI 客户端所在机器访问。Docker �
 
 Java 直接运行时，未设置 MCP 上传地址会兼容使用 `MINIO_EXTERNAL_ENDPOINT`，不会回退到内部 `MINIO_ENDPOINT`。无需改变签名字段：客户端原样提交返回的全部 `fields`，真实文件字段最后提交，成功后以独立 `requestId` 调用 `complete_asset_image_upload`。凭证有效期为 15 分钟，过期后使用新的申请 `requestId`。
 
+### MCP 角色声音设计
+
+重启后端后，新工具会自动补入现有能力目录；在 MCP 管理页启用写入权限和 `design_character_voice` 工具，再让客户端刷新工具列表。
+
+- `list_voice_design_models({"dramaId":"项目ID"})`：查询已启用提供商下的 TTS / AUDIO / VOICE 模型，只返回标识和展示名称。按模型实际能力选择声音设计模型。
+- `design_character_voice`：复用角色声音设计服务，调用模型并将样音归档到 MinIO。默认回填角色声音，传 `autoSave:false` 可仅试听；两种方式都会调用模型并消耗额度，均需写入权限，只允许操作授权项目的角色。
+
+先通过 `get_character` 读取目标角色的 `editFingerprint`，再调用：
+
+```json
+{
+  "dramaId": "2032095628944588801",
+  "characterId": "2032095628944588802",
+  "requestId": "voice-design-unique-0001",
+  "expectedFingerprint": "读取角色时返回的editFingerprint",
+  "providerId": "模型查询返回的providerId",
+  "modelCode": "模型查询返回的modelCode",
+  "voiceDesc": "青年男声，声线温和清朗，语速平稳，吐字清晰。",
+  "sampleText": "你好，很高兴认识你。",
+  "autoSave": true
+}
+```
+
+示例 ID 须替换为真实业务 ID，所有 ID 均保持字符串。`voiceDesc` 必填，最多 512 字符；可选 `sampleText` 最多 255 字符，省略时复用角色试音文本或服务默认文本。返回 `saved`、`audio`（样音 URL、时长等）及角色当前数据（含声音字段与指纹）。调用为同步操作，可按模型耗时配置客户端超时；请求成功提交后，以相同 `requestId` 和完整原参数重试会返回原结果，不重复生成。也可通过 `get_business_operation` 查询已提交结果；服务端失败且未提交的外部模型调用无法保证不计费。
+
 ### 实际使用场景举例
 
 连接成功后，在 **Qoder** 或 **Codex** 的对话框里直接下达自然语言指令即可：

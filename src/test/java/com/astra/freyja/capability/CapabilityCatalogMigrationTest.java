@@ -75,6 +75,10 @@ class CapabilityCatalogMigrationTest {
     }
 
     private CapabilityCatalogService catalog(boolean old, List<String> modes, boolean directUploads, boolean legacyUploads) {
+        return catalog(old, modes, directUploads, legacyUploads, false);
+    }
+
+    private CapabilityCatalogService catalog(boolean old, List<String> modes, boolean directUploads, boolean legacyUploads, boolean voiceTools) {
         var inventory = mock(McpToolInventory.class);
         McpTool<McpInputs.Empty> tool = new McpTool<>("script_tool", "剧本工具", McpInputs.Empty.class,
                 McpTool.Effect.READ, schema(old, modes), (caller, input) -> Map.of());
@@ -88,6 +92,7 @@ class CapabilityCatalogMigrationTest {
         if (legacyUploads) for (String name : List.of("upload_asset_image", "batch_upload_asset_images"))
             tools.add(new McpTool<>(name, "旧图片上传", McpInputs.Empty.class, McpTool.Effect.WRITE,
                     Map.of("type", "object", "properties", Map.of(), "additionalProperties", false), (c, i) -> Map.of()));
+        if (voiceTools) tools.addAll(new McpVoiceTools(null, null, null, null, null, null, null, null).tools());
         when(inventory.registeredHandlers()).thenReturn(tools);
         var handlers = new CapabilityHandlers(provider(inventory), provider(List.<AgentTool<?>>of()), provider(profiles), json, new AgentJson());
         return new CapabilityCatalogService(mapper, source, new TransactionTemplate(new DataSourceTransactionManager(source)),
@@ -96,6 +101,28 @@ class CapabilityCatalogMigrationTest {
 
     private Binding external(Release release) {
         return release.bindings().stream().filter(b -> b.consumer() == Consumer.MCP).findFirst().orElseThrow();
+    }
+
+    @Test void upgradeAddsVoiceToolsOnceAndPreservesExistingBindingsAndDraftRules() {
+        var original = catalog(false, List.of("A", "B")); original.initialize();
+        Release before = original.current();
+        original.save(new Edit(mapper.state().getRevision(), before.bindings(), "待发布说明", "待发布规则"));
+        var upgraded = catalog(false, List.of("A", "B"), false, false, true);
+        upgraded.initialize();
+        Release after = upgraded.current();
+        assertEquals(before.bindings().size() + 4, after.bindings().size());
+        assertTrue(after.bindings().containsAll(before.bindings()));
+        assertTrue(upgraded.mcpTools().stream().map(McpTool::name).toList().containsAll(
+                List.of(McpVoiceTools.MODELS_TOOL, McpVoiceTools.DESIGN_TOOL)));
+        Release draft = (Release) upgraded.view().get("draft");
+        assertEquals("待发布说明", draft.instructions()); assertEquals("待发布规则", draft.rules());
+        for (String name : List.of(McpVoiceTools.MODELS_TOOL, McpVoiceTools.DESIGN_TOOL)) {
+            var external = after.bindings().stream().filter(b -> b.consumer() == Consumer.MCP && b.name().equals(name)).findFirst().orElseThrow();
+            var internal = after.bindings().stream().filter(b -> b.consumer() == Consumer.INTERNAL_AGENT && b.name().equals(name)).findFirst().orElseThrow();
+            assertEquals(external.capabilityId(), internal.capabilityId());
+        }
+        assertTrue(((List<?>) upgraded.view().get("issues")).isEmpty());
+        assertEquals(after.id(), catalog(false, List.of("A", "B"), false, false, true).current().id());
     }
 
     @Test void upgradeAddsDirectUploadsOnceAndPreservesPublishedCustomizationsAndPendingDraft() {

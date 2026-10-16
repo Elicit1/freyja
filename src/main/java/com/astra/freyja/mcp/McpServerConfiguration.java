@@ -57,6 +57,7 @@ public class McpServerConfiguration {
             28. After creating or updating key records, read them back with get_scene/get_resource_scene/get_shot or batch_read_records. Compare persisted sceneType/timeOfDay, duration, generationMode and its prompt/media fields, characterRefs.characterId/lookId and reference image source/character/look IDs against creative intent. Write responses already include persisted data; additionally read current state after batches or related/default-look changes. Correct discrepancies with a fresh editFingerprint before continuing to rendering; never assume defaults reflect intent.
             29. By default generate video prompts without background music or score to allow clean editing; when the creator explicitly requests music, include it as requested. In both REFERENCE_MODE prompt and FIRST_LAST_FRAME videoPrompt, keep the required non_diegetic_music section and when music is disabled explicitly write N/A or none / no background music according to the model contract. When music is disabled overall_soundscape retains dialogue, natural ambience and necessary sound effects only; do not introduce music there or via BGM reference audios. This application audio requirement takes precedence over Skill examples suggesting music.
             30. Character voice configuration and timbre reference policy:
+            - Voice design: list_voice_design_models discovers enabled voice models. design_character_voice explicitly invokes the selected model and incurs usage, archives a sample and optionally saves it on the authorized project character. Read the character fingerprint first, reuse requestId after a timeout, and use autoSave=false for audition only. Public characters cannot be modified or used for this operation. Business CRUD and Skill reads never implicitly generate audio.
             - Single Configuration Source: Character voices (timbre/reference audio) can ONLY be configured on the character asset interface (voiceSampleUrl). Storyboard shots do not maintain independent voice assets or separate dialogue input boxes.
             - Unified Scriptwriting: In storyboard shots, all dialogues, actions and voiceovers MUST be written naturally within scriptContent (e.g. 角色名：“台词内容” 旁白：“独白内容”).
             - Voice References: Process each Audio N according to its explicit characterId and usageMode. VOICE_TIMBRE supplies timbre only, never old sample dialogue. DIALOGUE_REUSE requires an explicitly selected and authorized current-shot recording. Use scriptContent for new dialogue and preserve its original language. Never infer speakers from characterRefs order; off-screen speakers, narrators and inner voices are independent of on-screen characters.
@@ -105,17 +106,21 @@ public class McpServerConfiguration {
     }
 
     @Bean
-    List<McpStatelessServerFeatures.SyncToolSpecification> freyjaMcpTools(McpReadTools reads, McpToolCatalog catalog, ObjectProvider<McpBusinessTools> business, ObjectProvider<McpRuntimeControl> controls, ObjectProvider<McpSkillTools> skills) {
+    List<McpStatelessServerFeatures.SyncToolSpecification> freyjaMcpTools(McpReadTools reads, McpToolCatalog catalog, ObjectProvider<McpBusinessTools> business, ObjectProvider<McpRuntimeControl> controls, ObjectProvider<McpSkillTools> skills,
+            ObjectProvider<McpVoiceTools> voices, McpProperties properties) {
         McpRuntimeControl control = controls.getIfAvailable();
         if (control != null) {
             var state = control.current();
             java.util.List<McpTool<?>> all = new java.util.ArrayList<>(reads.tools()); business.ifAvailable(adapter -> all.addAll(adapter.allTools()));
             skills.ifAvailable(adapter -> all.addAll(adapter.tools()));
+            voices.ifAvailable(adapter -> all.addAll(adapter.tools()));
             return all.stream().filter(tool -> control.toolEnabled(state, tool)).map(catalog::specification).toList();
         }
         java.util.List<McpTool<?>> tools = new java.util.ArrayList<>(reads.tools());
         business.ifAvailable(adapter -> tools.addAll(adapter.tools()));
         skills.ifAvailable(adapter -> tools.addAll(adapter.tools()));
+        voices.ifAvailable(adapter -> tools.addAll(adapter.tools().stream()
+                .filter(tool -> tool.effect() == McpTool.Effect.READ || properties.isWriteEnabled()).toList()));
         return tools.stream().map(catalog::specification).toList();
     }
 

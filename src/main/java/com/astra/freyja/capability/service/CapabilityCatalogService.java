@@ -195,17 +195,18 @@ public class CapabilityCatalogService {
     private void migrateLocked(CapabilityRow state) {
         Release active = rawRelease(state.getActiveReleaseId().toString());
         Release draft = read(mapper.draft().getPayloadJson());
-        List<Binding> uploadBindings = handlers.initialBindings().stream().filter(b -> Set.of(
-                "MCP:" + McpPresignedImageUploads.PREPARE_TOOL, "MCP:" + McpPresignedImageUploads.COMPLETE_TOOL)
+        List<Binding> newBindings = handlers.initialBindings().stream().filter(b -> Set.of(
+                "MCP:" + McpPresignedImageUploads.PREPARE_TOOL, "MCP:" + McpPresignedImageUploads.COMPLETE_TOOL,
+                "MCP:" + McpVoiceTools.MODELS_TOOL, "MCP:" + McpVoiceTools.DESIGN_TOOL)
                 .contains(b.handlerKey())).toList();
         Release nextActive = null;
         try {
-            Release migrated = addUploadBindings(migrateSnapshot(active, false), uploadBindings);
+            Release migrated = addNewBindings(migrateSnapshot(active, false), newBindings);
             verify(migrated.bindings());
             nextActive = migrated;
         }
         catch (BizException e) { log.warn("已发布能力存在待人工修复的兼容冲突: {}", e.getMessage()); }
-        Release nextDraft = addUploadBindings(migrateCompatibleBindings(draft, true), uploadBindings);
+        Release nextDraft = addNewBindings(migrateCompatibleBindings(draft, true), newBindings);
         if (nextActive != null && !active.bindings().equals(nextActive.bindings())) {
             Release published = publishLocked(state, nextActive, "自动兼容当前处理器契约");
             mapper.alignDraft(json.write(withVersions(nextDraft, published)));
@@ -213,8 +214,8 @@ public class CapabilityCatalogService {
             mapper.saveDraft(json.write(new Release(null, state.getRevision() + 1, nextDraft.bindings(), nextDraft.instructions(), nextDraft.rules())));
         }
     }
-    /** Add the two new handlers on upgrade without changing existing names, switches, rules or draft edits. */
-    private Release addUploadBindings(Release source, List<Binding> defaults) {
+    /** Add new handlers on upgrade without changing existing names, switches, rules or draft edits. */
+    private Release addNewBindings(Release source, List<Binding> defaults) {
         List<Binding> bindings = new ArrayList<>(source.bindings());
         for (Binding candidate : defaults) {
             if (bindings.stream().noneMatch(b -> b.handlerKey().equals(candidate.handlerKey())
