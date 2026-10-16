@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -68,6 +69,46 @@ class VideoRenderBatchTest {
     private VideoRenderBatchRequest request(){var req=new VideoRenderBatchRequest();req.setDramaId(1L);req.setClientRequestId(UUID.randomUUID().toString());req.setShotIds(new ArrayList<>(shotData.keySet()));req.setAspectRatio("16:9");req.setExistingVideoPolicy("CREATE_NEW_TAKE");
         var r=new VideoRenderBatchRequest.ModeConfig();r.setProviderId(100L);r.setModelId(101L);var f=new VideoRenderBatchRequest.ModeConfig();f.setProviderId(100L);f.setModelId(102L);f.setAutoUseNextVideoHeadAsLastFrame(true);req.setModeConfigs(Map.of(VideoBatchPreparation.REF,r,VideoBatchPreparation.FL,f));return req;}
     private Batch create(VideoRenderBatchRequest req){req.setExpectedPreviewHash(service.preview(req).getPreviewHash());return service.create(req);}
+
+    @Test void explicitlySelectedSizeIsSharedByBothPhasesAndFrozenAtSubmission() {
+        shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);
+        var req=request();req.setSize("1344x768");
+        Preview preview=service.preview(req);
+        assertEquals(List.of("1344x768","1344x768"),preview.getItems().stream().map(Candidate::getSize).toList());
+        Batch batch=create(req);assertEquals("1344x768",batch.getOptions().getSize());
+        req.setSize("1024x576");
+        assertThrows(com.astra.freyja.common.BizException.class,()->service.create(req));
+        service.runNext();service.runNext();
+        var calls=mockingDetails(api).getInvocations().stream().filter(i->i.getMethod().getName().equals("generateAndArchiveVideo")).toList();
+        assertEquals(2,calls.size());
+        for(var call:calls){DramaShotRenderRequestDTO dto=call.getArgument(3);assertEquals("1344x768",dto.getSize());}
+        assertEquals("SUCCESS",service.detail(batch.getId()).getStatus());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings={"1280x720","0x544","bad","999999999999x768",""})
+    void invalidSharedSizeIsRejectedBeforeCreatingAnyTasks(String size) {
+        shot(41,VideoBatchPreparation.REF,1);var req=request();req.setSize(size);
+        var error=assertThrows(com.astra.freyja.common.BizException.class,()->service.preview(req));
+        assertEquals(400,error.getCode());assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM video_render_batch",Integer.class));
+        verifyNoInteractions(api,rendersService);
+    }
+
+    @Test void sizeChangeAfterPreviewRequiresAnewPreviewWithoutPartialWrites() {
+        shot(41,VideoBatchPreparation.REF,1);var req=request();req.setSize("1024x576");
+        req.setExpectedPreviewHash(service.preview(req).getPreviewHash());req.setSize("1344x768");
+        var error=assertThrows(com.astra.freyja.common.BizException.class,()->service.create(req));assertEquals(409,error.getCode());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM video_render_batch",Integer.class));assertFalse(store.occupied(41L));
+    }
+
+    @Test void originalSnapshotRetryCannotChangeTheSelectedSize() {
+        shot(41,VideoBatchPreparation.REF,1);var original=request();original.setSize("1344x768");Batch batch=create(original);
+        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenAnswer(i->{VideoExecutionState.phase("REJECTED");throw new com.astra.freyja.common.BizException("Request rejected");});
+        service.runNext();assertEquals("FAILED",service.detail(batch.getId()).getStatus());
+        var retry=request();retry.setRetryOfBatchId(batch.getId());retry.setInputSource("ORIGINAL_SNAPSHOT");retry.setSize("1024x576");
+        Preview blocked=service.preview(retry);assertEquals(0,blocked.getAccepted());assertTrue(blocked.getItems().getFirst().getReason().contains("尺寸"));
+        retry.setSize("1344x768");Preview allowed=service.preview(retry);assertEquals(1,allowed.getAccepted());assertEquals("1344x768",allowed.getItems().getFirst().getSize());
+    }
 
     @Test void singleVideoWaitsBehindEveryShotInTheEarlierBatch() {
         shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.REF,2);shot(43,VideoBatchPreparation.REF,3);

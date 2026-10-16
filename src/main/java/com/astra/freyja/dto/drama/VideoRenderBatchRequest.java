@@ -14,6 +14,8 @@ public class VideoRenderBatchRequest {
     private String expectedPreviewHash;
     private String existingVideoPolicy = "SKIP";
     private String aspectRatio;
+    /** Shared output size for every shot in both render phases; null preserves legacy ratio defaults. */
+    private String size;
     private Map<String, ModeConfig> modeConfigs;
     private Long retryOfBatchId;
     private String inputSource;

@@ -9,10 +9,14 @@
         </el-scrollbar>
       </aside>
       <section class="flex-1 min-w-0 space-y-4">
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
           <el-input v-model="name" placeholder="批次名称" maxlength="100" />
           <el-select v-model="ratio" aria-label="统一画面比例"><el-option v-for="r in ratios" :key="r" :value="r" :label="`整个批次画面比例 ${r}`" /></el-select>
+          <el-select v-model="size" aria-label="统一渲染尺寸" placeholder="统一渲染尺寸（宽x高）" filterable allow-create default-first-option>
+            <el-option v-for="preset in sizePresets" :key="preset" :value="preset" :label="`统一渲染尺寸 ${preset}`" />
+          </el-select>
         </div>
+        <div class="text-xs text-[var(--text-secondary)]">统一尺寸应用于整个批次的 REF2VA 和 FL2VA。比例用于推荐尺寸；支持自定义宽高，均须为 32 像素的整数倍。</div>
         <el-radio-group v-model="policy"><el-radio value="SKIP">仅缺少当前视频</el-radio><el-radio value="CREATE_NEW_TAKE">全部再生成一个版本</el-radio></el-radio-group>
         <div v-for="mode in modes" :key="mode.key" class="rounded-lg border border-[var(--border-default)] p-3">
           <div class="font-semibold mb-2">{{ mode.label }}</div>
@@ -44,17 +48,28 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, reactive, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage, ElTree } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { aiProviderApi } from '@/api/ai-provider'
 import type { AiModel, AiProviderVO } from '@/types/ai-provider'
+import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
 import { videoBatchApi, type BatchModeConfig, type BatchPreview, type BatchSelectionNode, type VideoBatchRequest, type VideoMode } from '@/api/video-render-batch'
 const router = useRouter()
 const visible = ref(false), loading = ref(false), checking = ref(false), submitting = ref(false)
-const dramaId = ref(''), name = ref('批量视频渲染'), ratio = ref('16:9'), filter = ref('')
+const dramaId = ref(''), name = ref('批量视频渲染'), ratio = ref('16:9'), size = ref('960x544'), filter = ref('')
 const policy = ref<'SKIP' | 'CREATE_NEW_TAKE'>('SKIP')
 const ratios = ['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3']
+const sizesByRatio: Record<string, string[]> = {
+  '16:9': ['960x544', '1024x576', '1280x736', '1344x768'],
+  '9:16': ['544x960', '576x1024', '736x1280', '768x1344'],
+  '1:1': ['768x768', '1024x1024'],
+  '4:3': ['1024x768', '1152x864'],
+  '3:4': ['768x1024', '864x1152'],
+  '3:2': ['1152x768', '1536x1024'],
+  '2:3': ['768x1152', '1024x1536']
+}
+const sizePresets = computed(() => sizesByRatio[ratio.value] || [resolveGenerationSize(ratio.value, 'video')])
 const modes: { key: VideoMode; label: string; type: string }[] = [{ key: 'REFERENCE_MODE', label: '阶段一 · REF2VA 参考图模式', type: 'TXT2VIDEO_REF' }, { key: 'FIRST_LAST_FRAME', label: '阶段二 · FL2VA 首尾帧模式', type: 'TXT2VIDEO_FIRST_LAST' }]
 const configs = reactive<Record<VideoMode, BatchModeConfig>>({ REFERENCE_MODE: {}, FIRST_LAST_FRAME: { autoUsePreviousVideoTailAsFirstFrame: true, autoUseNextVideoHeadAsLastFrame: false } })
 const modelLists = reactive<Record<VideoMode, AiModel[]>>({ REFERENCE_MODE: [], FIRST_LAST_FRAME: [] })
@@ -64,7 +79,8 @@ let pendingRequest: VideoBatchRequest | null = null
 let requestId = ''
 let revision = 0
 function invalidate() { revision++; preview.value = null; pendingRequest = null; requestId = crypto.randomUUID() }
-watch([ratio, policy, configs, name], invalidate, { deep: true, flush: 'sync' })
+watch([ratio, size, policy, configs, name], invalidate, { deep: true, flush: 'sync' })
+watch(ratio, value => { size.value = resolveGenerationSize(value, 'video') }, { flush: 'sync' })
 watch(filter, value => tree.value?.filter(value))
 function filterNode(value: string, data: Record<string, any>) { return !value || String(data.label).includes(value) }
 function selectionChanged() { selectedIds.value = (tree.value?.getCheckedNodes(false, false) || []).filter(n => n.type === 'SHOT').map(n => String(n.id)); invalidate() }
@@ -79,13 +95,17 @@ async function loadModels(mode: VideoMode) {
 async function open(id: string | number, aspectRatio?: string) {
   visible.value = true; loading.value = true; dramaId.value = String(id); selectedIds.value = []; preview.value = null; nodes.value = []; filter.value = ''
   name.value = '批量视频渲染'; policy.value = 'SKIP'; ratio.value = ratios.includes(aspectRatio || '') ? aspectRatio! : '16:9'; invalidate()
+  size.value = resolveGenerationSize(ratio.value, 'video')
   try { const [data, enabled] = await Promise.all([videoBatchApi.tree(dramaId.value), aiProviderApi.getListEnabled()]); nodes.value = data; providers.value = enabled; await nextTick(); clearSelection() }
   catch (e: any) { ElMessage.error(e.message || '加载分镜失败') } finally { loading.value = false }
 }
 async function check() {
   if (selectedIds.value.length > 200) { ElMessage.warning('每批最多 200 镜，请缩小选择范围'); return }
+  const sizeValidation = validateGenerationSize(size.value, 'video')
+  if (!sizeValidation.valid || !sizeValidation.normalized) { ElMessage.warning(sizeValidation.message || '请选择有效的统一渲染尺寸'); return }
+  size.value = sizeValidation.normalized
   const current = revision; checking.value = true
-  const request: VideoBatchRequest = { dramaId: dramaId.value, name: name.value, shotIds: [...selectedIds.value], aspectRatio: ratio.value, existingVideoPolicy: policy.value, modeConfigs: JSON.parse(JSON.stringify(configs)) }
+  const request: VideoBatchRequest = { dramaId: dramaId.value, name: name.value, shotIds: [...selectedIds.value], aspectRatio: ratio.value, size: sizeValidation.normalized, existingVideoPolicy: policy.value, modeConfigs: JSON.parse(JSON.stringify(configs)) }
   try { const result = await videoBatchApi.preview(request); if (current !== revision) return; preview.value = result; pendingRequest = { ...request, shotIds: result.shotIds, expectedPreviewHash: result.previewHash, clientRequestId: requestId } }
   catch (e: any) { ElMessage.error(e.message || '检查失败') } finally { checking.value = false }
 }

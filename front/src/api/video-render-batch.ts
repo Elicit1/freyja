@@ -5,6 +5,7 @@ export interface BatchModeConfig { providerId?: string; modelId?: string; autoUs
 export interface VideoBatchRequest {
   clientRequestId?: string; name?: string; dramaId: string; shotIds: string[]; expectedPreviewHash?: string
   existingVideoPolicy: 'SKIP' | 'CREATE_NEW_TAKE'; aspectRatio: string
+  size?: string
   modeConfigs: Partial<Record<VideoMode, BatchModeConfig>>
   retryOfBatchId?: string; inputSource?: 'ORIGINAL_SNAPSHOT' | 'CURRENT_SHOT'
 }

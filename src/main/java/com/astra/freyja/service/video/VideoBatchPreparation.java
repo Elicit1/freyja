@@ -70,6 +70,7 @@ public class VideoBatchPreparation {
 
     public Preview preview(VideoRenderBatchRequest req, boolean lock) {
         if(req==null || !SIZES.containsKey(StringUtils.defaultString(req.getAspectRatio()))) throw new BizException(400,"请选择有效的统一画面比例");
+        String batchSize=req.getSize()==null?SIZES.get(req.getAspectRatio()):normalizeSize(req.getSize());
         if(!Set.of("SKIP","CREATE_NEW_TAKE").contains(req.getExistingVideoPolicy())) throw new BizException(400,"生成对象选项无效");
         List<DramaShot> all=orderedShots(req.getDramaId()); Set<Long> selected=new HashSet<>();
         if(req.getShotIds()!=null) selected.addAll(req.getShotIds());
@@ -103,7 +104,7 @@ public class VideoBatchPreparation {
                 } else if("SKIP".equals(req.getExistingVideoPolicy())&&StringUtils.isNotBlank(s.getVideoUrl())) {
                     c.setStatus("SKIPPED");c.setReason("已有当前视频");
                 } else {
-                    Snapshot snap=prepare(s,req.getModeConfigs()==null?null:req.getModeConfigs().get(s.getGenerationMode()),SIZES.get(req.getAspectRatio()),req.getAspectRatio(),null);
+                    Snapshot snap=prepare(s,req.getModeConfigs()==null?null:req.getModeConfigs().get(s.getGenerationMode()),batchSize,req.getAspectRatio(),null);
                     c.setSnapshot(snap);c.setSize(snap.getRequest().getSize());
                 }
             } catch(BizException e) {c.setStatus("BLOCKED");c.setReason(e.getMessage());}
@@ -129,8 +130,16 @@ public class VideoBatchPreparation {
         Preview p=new Preview();p.setShotIds(all.stream().map(DramaShot::getId).filter(selected::contains).toList());p.setItems(candidates);
         p.setAccepted(accepted.size());p.setSkipped((int)candidates.stream().filter(c->"SKIPPED".equals(c.getStatus())).count());p.setBlocked(candidates.size()-p.getAccepted()-p.getSkipped());p.setDuration(duration);
         // Hash full internal snapshots too; @JsonIgnore keeps them out of the public preview.
-        p.setPreviewHash(hash(write(List.of(req.getAspectRatio(),req.getExistingVideoPolicy(),req.getModeConfigs()==null?Map.of():new TreeMap<>(req.getModeConfigs()),candidates,candidates.stream().map(c->c.getSnapshot()==null?c.getReason():write(c.getSnapshot())).toList()))));
+        p.setPreviewHash(hash(write(List.of(req.getAspectRatio(),batchSize,req.getExistingVideoPolicy(),req.getModeConfigs()==null?Map.of():new TreeMap<>(req.getModeConfigs()),candidates,candidates.stream().map(c->c.getSnapshot()==null?c.getReason():write(c.getSnapshot())).toList()))));
         return p;
+    }
+
+    public static String normalizeSize(String value) {
+        String normalized=StringUtils.trimToEmpty(value).toLowerCase(Locale.ROOT).replace('*','x').replace('×','x');
+        if(!normalized.matches("[0-9]{1,9}x[0-9]{1,9}"))throw new BizException(400,"视频尺寸格式应为宽x高，例如 1344x768");
+        String[] wh=normalized.split("x");int width=Integer.parseInt(wh[0]),height=Integer.parseInt(wh[1]);
+        if(width<32||height<32||width%32!=0||height%32!=0)throw new BizException(400,"视频宽高必须至少为 32，且为 32 像素的整数倍");
+        return width+"x"+height;
     }
 
     public Snapshot prepare(DramaShot shot,VideoRenderBatchRequest.ModeConfig cfg,String size,String ratio,DramaShotRenderRequestDTO supplied) {

@@ -57,12 +57,14 @@ public class VideoRenderBatchService {
         VideoRenderBatchRequest options;
         try{options=json.readValue(source.getOptionsJson(),VideoRenderBatchRequest.class);}catch(Exception e){throw new IllegalStateException(e);}
         if(!Objects.equals(options.getAspectRatio(),req.getAspectRatio())||!preparation.write(options.getModeConfigs()).equals(preparation.write(req.getModeConfigs())))throw new BizException(400,"原始快照重试必须保留比例和模型配置");
+        String requestedSize=req.getSize()==null?null:VideoBatchPreparation.normalizeSize(req.getSize());
         List<Candidate> candidates=new ArrayList<>();int order=0;
         for(Item i:original){Candidate c=new Candidate();c.setShotId(i.getShotId());c.setName(i.getName());c.setExecutionOrder(++order);c.setGenerationMode("REF2VA".equals(i.getPhase())?VideoBatchPreparation.REF:VideoBatchPreparation.FL);c.setStatus("READY");
             try{
                 if((lock?shots.lockById(i.getShotId()):shots.selectById(i.getShotId()))==null)throw new BizException(404,"分镜已删除");
                 if(store.occupied(i.getShotId()))throw new BizException(409,"分镜已有活动或待核实任务");
                 Snapshot snap=json.readValue(StringUtils.defaultIfBlank(i.getResolvedJson(),i.getSnapshotJson()),Snapshot.class);preparation.validateRoute(snap);
+                if(requestedSize!=null&&!requestedSize.equals(snap.getRequest().getSize()))throw new BizException(400,"原始快照重试必须保留输出尺寸");
                 // Resolved first/last images are inputs in their own right on original-snapshot retry.
                 if(StringUtils.isNotBlank(i.getResolvedJson())){snap.setFirstFramePlan(null);snap.setLastFramePlan(null);}
                 c.setSnapshot(snap);c.setSize(snap.getRequest().getSize());c.setFirstFrameSource("原始执行快照");c.setLastFrameSource("原始执行快照");
@@ -99,7 +101,7 @@ public class VideoRenderBatchService {
         publish(id);queueChanged();return detail(id);
     }
     private String requestHash(VideoRenderBatchRequest r) {
-        return VideoBatchPreparation.hash(preparation.write(Arrays.asList(r.getDramaId(),r.getName(),r.getShotIds()==null?null:r.getShotIds().stream().sorted().toList(),r.getSelection(),r.getAspectRatio(),r.getExistingVideoPolicy(),r.getModeConfigs()==null?Map.of():new TreeMap<>(r.getModeConfigs()),r.getRetryOfBatchId(),r.getInputSource())));
+        return VideoBatchPreparation.hash(preparation.write(Arrays.asList(r.getDramaId(),r.getName(),r.getShotIds()==null?null:r.getShotIds().stream().sorted().toList(),r.getSelection(),r.getAspectRatio(),r.getSize(),r.getExistingVideoPolicy(),r.getModeConfigs()==null?Map.of():new TreeMap<>(r.getModeConfigs()),r.getRetryOfBatchId(),r.getInputSource())));
     }
     public ComfyRenderTaskVO enqueueSingle(Long id,DramaShotRenderRequestDTO request) {
         String task=tx.execute(s->{
@@ -122,7 +124,7 @@ public class VideoRenderBatchService {
             }
             Batch b=new Batch();b.setId(IdWorker.getId());b.setDramaId(shot.getDramaId());b.setName("单镜视频 · S"+shot.getShotNo());b.setRequestId("single_"+b.getId());b.setRequestHash(VideoBatchPreparation.hash(preparation.write(snap)));b.setCreatedAt(LocalDateTime.now());
             var options=new VideoRenderBatchRequest();options.setDramaId(shot.getDramaId());options.setShotIds(List.of(id));options.setExistingVideoPolicy("CREATE_NEW_TAKE");options.setModeConfigs(Map.of(shot.getGenerationMode(),cfg));
-            options.setAspectRatio(VideoBatchPreparation.SIZES.entrySet().stream().filter(e->e.getValue().equals(snap.getRequest().getSize())).map(Map.Entry::getKey).findFirst().orElse(null));b.setOptionsJson(preparation.write(options));store.insert(b);
+            options.setSize(snap.getRequest().getSize());options.setAspectRatio(VideoBatchPreparation.SIZES.entrySet().stream().filter(e->e.getValue().equals(snap.getRequest().getSize())).map(Map.Entry::getKey).findFirst().orElse(null));b.setOptionsJson(preparation.write(options));store.insert(b);
             Item i=new Item();i.setId(IdWorker.getId());i.setBatchId(b.getId());i.setQueueOrder(b.getId());i.setShotId(id);i.setTaskId("RENDER_"+IdWorker.getId());i.setName("S"+shot.getShotNo()+" · "+StringUtils.defaultString(shot.getShotName(),"分镜"));
             i.setPhase(VideoBatchPreparation.REF.equals(shot.getGenerationMode())?"REF2VA":"FL2VA");i.setStatus("QUEUED");i.setCreatedAt(LocalDateTime.now());snap.getRequest().setTaskId(i.getTaskId());i.setSnapshotJson(preparation.write(snap));register(i,snap);store.insert(i);return i.getTaskId();
         });
