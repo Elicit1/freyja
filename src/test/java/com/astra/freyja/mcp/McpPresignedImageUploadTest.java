@@ -39,6 +39,7 @@ class McpPresignedImageUploadTest {
     @BeforeEach void setup() throws Exception {
         fixture = new McpBusinessDatabaseTest(); factory.autowireBean(fixture); fixture.setup();
         properties.setExternalEndpoint("https://assets.example.test");
+        properties.setMcpUploadEndpoint(null);
         properties.setMcpUploadBucket("freyja-mcp-uploads");
         ReflectionTestUtils.setField(transferStorage, "initializedBucket", null);
         when(fixture.storage.bucketExists(any())).thenReturn(true);
@@ -46,6 +47,7 @@ class McpPresignedImageUploadTest {
                 ((PostPolicy) call.getArgument(0)).formData(new Credentials("test-access-key", "test-secret-key", null, null), "us-east-1"));
     }
     @AfterEach void cleanup() {
+        properties.setMcpUploadEndpoint(null);
         properties.setExternalEndpoint("http://127.0.0.1:9000"); properties.setMcpUploadBucket("freyja-mcp-uploads");
         fixture.noInternalAiCalls();
     }
@@ -102,6 +104,42 @@ class McpPresignedImageUploadTest {
         verify(fixture.storage, never()).putObject(any()); verify(fixture.storage, never()).getObject(any());
         assertEquals(409, assertThrows(BizException.class, () -> prepare(new McpPresignedImageUploads.Prepare(input.requestId(), input.dramaId(),
                 input.purpose(), "different.png", input.contentType(), input.size(), input.sha256()))).getCode());
+    }
+
+    @Test void clientUploadEndpointIsIndependentFromInternalStorageAndFinalAssetUrls() throws Exception {
+        String originalEndpoint = properties.getEndpoint();
+        try {
+            properties.setEndpoint("http://minio:9000");
+            properties.setMcpUploadEndpoint(" http://127.0.0.1:19000/ ");
+            byte[] bytes = McpImageAssetsTest.image("png", false);
+            var input = input("client-endpoint-01", bytes);
+            var result = prepare(input);
+            assertEquals("http://127.0.0.1:19000/freyja-mcp-uploads", result.get("uploadUrl"));
+            staged(bytes, bytes.length, "image/png");
+            var archived = complete(input.requestId());
+            assertTrue(archived.get("url").toString().startsWith("https://assets.example.test/video-assets/"));
+            // A remote deployment may publish S3 through a reverse proxy with a path prefix.
+            properties.setMcpUploadEndpoint("https://uploads.example.test/s3///");
+            assertEquals("https://uploads.example.test/s3/freyja-mcp-uploads",
+                    prepare(input("client-endpoint-02", bytes)).get("uploadUrl"));
+        } finally {
+            properties.setEndpoint(originalEndpoint);
+        }
+    }
+
+    @Test void invalidClientEndpointNeverIssuesCredentialsOrFallsBackToInternalStorage() throws Exception {
+        var input = input("invalid-endpoint-01", McpImageAssetsTest.image("png", false));
+        for (String endpoint : List.of("minio:9000", "ftp://uploads.example.test", "http://user:pass@uploads.example.test",
+                "https://uploads.example.test?token=value", "https://uploads.example.test/#fragment")) {
+            properties.setMcpUploadEndpoint(endpoint);
+            BizException error = assertThrows(BizException.class, () -> prepare(input));
+            assertEquals(500, error.getCode());
+            assertTrue(error.getMessage().contains("MINIO_MCP_UPLOAD_ENDPOINT"));
+        }
+        properties.setMcpUploadEndpoint(" ");
+        properties.setExternalEndpoint("");
+        assertEquals(500, assertThrows(BizException.class, () -> prepare(input)).getCode());
+        verifyNoInteractions(fixture.storage);
     }
 
     @Test void completionArchivesValidatedSnapshotAndReplaysAfterStagingDeletionAndExpiry() throws Exception {

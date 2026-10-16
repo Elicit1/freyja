@@ -18,6 +18,9 @@ public class MinioProperties {
     /** 外部/前端可访问的端点 (例如外网域名或反代地址) */
     private String externalEndpoint = "http://127.0.0.1:9000";
 
+    /** MCP 客户端直传端点；为空时兼容使用 externalEndpoint，绝不回退到容器内 endpoint。 */
+    private String mcpUploadEndpoint;
+
     /** Access Key */
     private String accessKey = "minioadmin";
 

@@ -26,3 +26,4 @@
 # minio:
 #   endpoint: http://172.23.125.51:9000
 #   external-endpoint: http://172.23.125.51:9000
+#   mcp-upload-endpoint: http://127.0.0.1:9000 # 从 MCP 客户端所在机器访问；远程客户端填服务器 IP/域名

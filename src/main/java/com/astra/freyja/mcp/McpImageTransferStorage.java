@@ -31,14 +31,17 @@ public class McpImageTransferStorage {
     }
 
     Map<String, Object> authorize(McpPresignedImageUploads.Pending upload) {
-        String endpoint = properties.getExternalEndpoint();
+        // Sign and access storage over the internal endpoint, but send clients their own reachable address.
+        String endpoint = properties.getMcpUploadEndpoint();
+        if (endpoint == null || endpoint.isBlank()) endpoint = properties.getExternalEndpoint();
+        endpoint = endpoint == null ? "" : endpoint.trim();
         try {
-            URI uri = URI.create(endpoint == null ? "" : endpoint);
+            URI uri = URI.create(endpoint);
             if (!("http".equals(uri.getScheme()) || "https".equals(uri.getScheme())) || uri.getHost() == null
                     || uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null)
                 throw new IllegalArgumentException();
         } catch (IllegalArgumentException e) {
-            throw new BizException(500, "MCP_UPLOAD_CONFIG_INVALID: 请配置客户端可访问的 MINIO_EXTERNAL_ENDPOINT");
+            throw new BizException(500, "MCP_UPLOAD_CONFIG_INVALID: 请配置客户端可访问的 MINIO_MCP_UPLOAD_ENDPOINT（未配置时使用 MINIO_EXTERNAL_ENDPOINT）");
         }
         try {
             ensureBucket(upload.bucket());
