@@ -63,12 +63,12 @@
 
 ---
 
-## 🔌 强烈推荐：接入 Qoder、Codex 等生图平台
+## 🔌 强烈推荐：接入 Codex或国内可以生图Agent平台
 
 Freyja 支持标准的 **MCP（Model Context Protocol）协议**。如果你平时使用支持该协议且**具备生图能力的 AI 客户端**（如 **Qoder**、**Codex**、**Cursor**、**Claude Desktop** 等），可以把 Freyja 连接进去，让外部 AI 变成你的全能短剧制作助手。
 
 > 💡 **核心优势：外部 AI 自动生成图片并直接存入 Freyja**  
-> 像 **Qoder、Codex** 这类工具不仅擅长写文戏、拆剧本，还自带 AI 绘图能力。连接后，它们可以一边构思角色，一边调用生图模型画出角色立绘或场景图，并通过 Freyja 的上传工具直接存入系统并绑定到对应角色或分镜中，创作者无需手动下载再上传！
+> 像 **Codex** 这类工具可以写文戏、拆剧本，还自带 AI 绘图能力。连接后，它们可以一边构思角色，一边调用生图模型画出角色立绘或场景图，并通过 Freyja 的上传工具直接存入系统并绑定到对应角色或分镜中，创作者无需手动下载再上传！
 
 ### 快速连接步骤
 
@@ -77,9 +77,9 @@ Freyja 支持标准的 **MCP（Model Context Protocol）协议**。如果你平�
 2. 点击生成一个随机访问密钥（Bearer Token）；
 3. 勾选允许访问的项目与工具权限，点击**开启 MCP 服务**。
 
-#### 第二步：在 Qoder / Codex / Cursor 中添加配置
+#### 第二步：在 Codex 中添加配置
 
-**TOML 格式客户端（如 Claude Desktop）：**
+**TOML 格式客户端：**
 ```toml
 [mcp_servers.freyja]
 url = "http://localhost/api/mcp"
