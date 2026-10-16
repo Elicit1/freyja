@@ -19,6 +19,19 @@ import static org.mockito.Mockito.*;
 class TaskCenterCancellationTest {
 
     @Test
+    void fileExportUsesItsOwnTaskCenterSourceAndCancellation() {
+        var center=new TaskCenterServiceImpl(mock(AiTaskService.class),mock(RenderTaskService.class),mock(DramaMapper.class),mock(DramaEpisodeMapper.class),mock(DramaSceneMapper.class),mock(DramaShotMapper.class));
+        var exports=mock(com.astra.freyja.service.mediaexport.ShotVideoExportService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(center,"videoExports",exports);
+        var summary=com.astra.freyja.dto.task.TaskCenterItemVO.builder().sourceType("SHOT_VIDEO_EXPORT").taskId("2032095628944588801").category("FILE_EXPORT").status("RUNNING").build();
+        when(exports.summary(2032095628944588801L)).thenReturn(summary);
+        var cancelled=TaskCancelResultVO.builder().cancelled(true).status("CANCELLED").upstreamStatus("CONFIRMED").build();
+        when(exports.cancel(2032095628944588801L)).thenReturn(cancelled);
+        assertSame(summary,center.getTask("SHOT_VIDEO_EXPORT","2032095628944588801"));
+        assertSame(cancelled,center.cancelTask("SHOT_VIDEO_EXPORT","2032095628944588801"));
+    }
+
+    @Test
     void cancellingChapterCancelsWorkerAndRemoteRenderBeforeReturning() {
         AiTaskService aiTasks = mock(AiTaskService.class);
         RenderTaskService renders = mock(RenderTaskService.class);

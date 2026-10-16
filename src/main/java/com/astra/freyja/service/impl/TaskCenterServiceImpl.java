@@ -60,10 +60,13 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     private com.astra.freyja.agent.runtime.AgentExecutionScheduler agentScheduler;
     @Autowired(required = false) @org.springframework.context.annotation.Lazy
     private com.astra.freyja.service.video.VideoRenderBatchService videoBatches;
+    @Autowired(required=false) @org.springframework.context.annotation.Lazy
+    private com.astra.freyja.service.mediaexport.ShotVideoExportService videoExports;
 
     @Override
     public List<TaskCenterItemVO> getActiveTasks() {
         List<TaskCenterItemVO> result = new ArrayList<>();
+        if(videoExports!=null)result.addAll(videoExports.list(true,200).stream().map(t->videoExports.summary(t.getId())).toList());
         if (agentStore != null) result.addAll(agentStore.activeRuns().stream().map(this::fromAgent).toList());
         result.addAll(renderTaskService.getActiveTasks().stream().filter(t->videoBatches==null||videoBatches.batchForTask(t.getTaskId())==null).map(this::fromRender).toList());
         if(videoBatches!=null)result.addAll(videoBatches.list(true,200).stream().map(b->videoBatches.summary(b.getId())).toList());
@@ -85,6 +88,7 @@ public class TaskCenterServiceImpl implements TaskCenterService {
         Page<RenderTaskVO> renderPage = renderTaskService.getHistoryTasks(query);
 
         List<TaskCenterItemVO> result = new ArrayList<>();
+        if(videoExports!=null)result.addAll(videoExports.list(false,safeLimit).stream().map(t->videoExports.summary(t.getId())).toList());
         if (agentStore != null) result.addAll(agentStore.historyRuns(safeLimit).stream().map(this::fromAgent).toList());
         if (renderPage != null && renderPage.getRecords() != null) {
             result.addAll(renderPage.getRecords().stream().filter(t->videoBatches==null||videoBatches.batchForTask(t.getTaskId())==null).map(this::fromRender).toList());
@@ -107,6 +111,7 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     @Override
     public TaskCenterItemVO getTask(String sourceType, String taskId) {
         if (StringUtils.isBlank(sourceType) || StringUtils.isBlank(taskId)) return null;
+        if("SHOT_VIDEO_EXPORT".equals(sourceType)&&videoExports!=null)return videoExports.summary(Long.valueOf(taskId));
         if("VIDEO_RENDER_BATCH".equals(sourceType)&&videoBatches!=null)return videoBatches.summary(Long.valueOf(taskId));
         if ("AGENT_RUN".equalsIgnoreCase(sourceType) && agentStore != null) {
             Long id = parseLong(taskId);
@@ -133,6 +138,7 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     @Override
     public synchronized TaskCancelResultVO cancelTask(String sourceType, String taskId) {
         if (StringUtils.isBlank(sourceType) || StringUtils.isBlank(taskId)) return failedCancel("任务标识不能为空");
+        if("SHOT_VIDEO_EXPORT".equals(sourceType)&&videoExports!=null)return videoExports.cancel(Long.valueOf(taskId));
         if("VIDEO_RENDER_BATCH".equals(sourceType)&&videoBatches!=null)return videoBatches.cancel(Long.valueOf(taskId));
         if ("AGENT_RUN".equalsIgnoreCase(sourceType) && agentStore != null) {
             Long id = parseLong(taskId);

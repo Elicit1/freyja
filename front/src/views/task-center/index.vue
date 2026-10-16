@@ -85,6 +85,7 @@
 
     <!-- AI 任务详情抽屉 -->
     <VideoRenderBatchDrawer ref="videoBatchDrawer" />
+    <ShotVideoExportDrawer ref="videoExportDrawer" />
     <el-drawer
       v-model="inspectorVisible"
       :title="inspectorTask?.title || 'AI 任务'"
@@ -111,6 +112,7 @@ import { ElMessage } from 'element-plus'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
 import StatusPill from '@/components/status/StatusPill.vue'
 import VideoRenderBatchDrawer from '@/views/drama/components/VideoRenderBatchDrawer.vue'
+import ShotVideoExportDrawer from '@/views/drama/components/ShotVideoExportDrawer.vue'
 import { taskCenterApi } from '@/api/task-center'
 import { useTaskCenterStore } from '@/store/taskCenter'
 import type { TaskCenterItem } from '@/api/task-center'
@@ -127,6 +129,7 @@ const inspectorTask = ref<TaskCenterItem | null>(null)
 const eventLog = ref('')
 const resultText = ref('')
 const videoBatchDrawer = ref<InstanceType<typeof VideoRenderBatchDrawer>>()
+const videoExportDrawer = ref<InstanceType<typeof ShotVideoExportDrawer>>()
 let unsubscribeAi: (() => void) | null = null
 let lastOpenedTaskId: string | null = null
 
@@ -184,6 +187,10 @@ async function inspectAiTask(task: TaskCenterItem) {
 }
 
 async function openRequestedAiTask() {
+  if (route.query.taskSource === 'SHOT_VIDEO_EXPORT' && typeof route.query.taskId === 'string') {
+    await videoExportDrawer.value?.open(route.query.taskId)
+    return
+  }
   const taskId = route.query.taskId
   if (route.query.taskSource === 'VIDEO_RENDER_BATCH' && typeof taskId === 'string') {
     if (lastOpenedTaskId !== taskId) { lastOpenedTaskId = taskId; await videoBatchDrawer.value?.open(taskId) }
@@ -230,6 +237,7 @@ async function refresh() {
 async function openTask(task: TaskCenterItem) {
   store.markRead(task.taskId, task.sourceType)
   if (task.sourceType === 'VIDEO_RENDER_BATCH') { await videoBatchDrawer.value?.open(task.taskId); return }
+  if (task.sourceType === 'SHOT_VIDEO_EXPORT') { await videoExportDrawer.value?.open(task.taskId); return }
   if (task.resumeAction === 'AGENT_CHAT' && task.targetId) {
     window.dispatchEvent(new CustomEvent('agent-open-chat', { detail: { sessionId: task.targetId, runId: task.taskId } }))
     return
@@ -253,7 +261,7 @@ function cleanQuery(values: Record<string, string | undefined>) {
 }
 
 function canCancel(task: TaskCenterItem) {
-  return ['RENDER_TASK', 'AI_TASK', 'AGENT_RUN', 'VIDEO_RENDER_BATCH'].includes(task.sourceType) && isActive(task.status)
+  return ['RENDER_TASK', 'AI_TASK', 'AGENT_RUN', 'VIDEO_RENDER_BATCH', 'SHOT_VIDEO_EXPORT'].includes(task.sourceType) && isActive(task.status)
 }
 
 async function cancelTask(task: TaskCenterItem) {
@@ -269,7 +277,7 @@ async function cancelTask(task: TaskCenterItem) {
 }
 
 function isActive(status: string) { return ['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'WAITING_TASK', 'WAITING_USER', 'BLOCKED', 'CANCELLING', 'NEEDS_REVIEW'].includes(status) }
-function getCategoryLabel(category?: string) { return category === 'AGENT' ? 'Agent' : category === 'AI_ANALYSIS' ? 'AI 分析' : category === 'MEDIA_PROCESS' ? '视频处理' : '渲染' }
+function getCategoryLabel(category?: string) { return category === 'FILE_EXPORT' ? '视频打包' : category === 'AGENT' ? 'Agent' : category === 'AI_ANALYSIS' ? 'AI 分析' : category === 'MEDIA_PROCESS' ? '视频处理' : '渲染' }
 function statusLabel(status: string) { return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', WAITING_TASK: '子任务执行中', BLOCKED: '需要调整摘要配置', WAITING_USER: '等待回答', CANCELLING: '正在取消', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', PARTIAL_FAILED: '部分失败', NEEDS_REVIEW: '上游待核实', FAILED: '失败', CANCELLED: '已取消', CANCEL_UNCONFIRMED: '请求已中断（上游未确认）' } as Record<string, string>)[status] || status }
 function statusTone(status: string): string { return status === 'SUCCESS' ? 'success' : status === 'FAILED' ? 'danger' : status === 'CANCEL_UNCONFIRMED' ? 'warning' : isActive(status) ? 'processing' : 'disabled' }
 function getContextLabel(task: TaskCenterItem) { return [task.dramaTitle, task.episodeName, task.sceneName, task.shotName || (task.shotNo ? `镜头 ${task.shotNo}` : undefined)].filter(Boolean).join(' / ') || `任务 ID ${task.taskId}` }

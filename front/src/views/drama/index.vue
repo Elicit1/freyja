@@ -16,6 +16,7 @@
           </span>
         </template>
         <template #actions>
+          <el-button plain @click="videoExportModalRef?.open()">视频打包下载</el-button>
           <el-button
             type="warning"
             plain
@@ -264,6 +265,7 @@
         </template>
 
         <template #actions>
+          <el-button plain size="small" @click="videoExportModalRef?.open(currentDramaId)">视频打包下载</el-button>
           <el-button link size="small" class="!text-[var(--text-secondary)]" @click="handleEditCurrentDrama">
             <el-icon class="mr-1"><Edit /></el-icon> 编辑项目
           </el-button>
@@ -328,6 +330,7 @@
     <!-- 弹窗与抽屉套件 -->
     <DramaModal ref="dramaModalRef" @success="handleDramaModalSuccess" />
     <ShotVideoBatchRenderModal ref="batchRenderModalRef" />
+    <ShotVideoExportModal ref="videoExportModalRef" />
     <EpisodeModal ref="episodeModalRef" @success="handleEpisodeSuccess" />
     <SceneModal ref="sceneModalRef" @success="handleSceneSuccess" />
     <ShotPromptPreviewModal ref="promptPreviewModalRef" @success="refreshShotsAndStats" />
@@ -387,6 +390,7 @@ import type {
 import OutlineTree from './components/OutlineTree.vue'
 import StoryboardGrid from './components/StoryboardGrid.vue'
 import ShotVideoBatchRenderModal from './components/ShotVideoBatchRenderModal.vue'
+import ShotVideoExportModal from './components/ShotVideoExportModal.vue'
 import DramaModal from './components/DramaModal.vue'
 import EpisodeModal from './components/EpisodeModal.vue'
 import SceneModal from './components/SceneModal.vue'
@@ -432,6 +436,7 @@ const shotDrawerRef = ref()
 const promptPreviewModalRef = ref()
 const stepRenderModalRef = ref()
 const batchRenderModalRef = ref()
+const videoExportModalRef = ref<InstanceType<typeof ShotVideoExportModal>>()
 const firstEndFrameRenderModalRef = ref()
 const multiModalRefRenderModalRef = ref()
 type DecomposePanelSession = { key: string }

@@ -136,7 +136,7 @@ function refresh() {
 }
 
 function canCancel(task: TaskCenterItem) {
-  return ['RENDER_TASK', 'AI_TASK', 'AGENT_RUN', 'VIDEO_RENDER_BATCH'].includes(task.sourceType) && isActive(task.status)
+  return ['RENDER_TASK', 'AI_TASK', 'AGENT_RUN', 'VIDEO_RENDER_BATCH', 'SHOT_VIDEO_EXPORT'].includes(task.sourceType) && isActive(task.status)
 }
 
 async function cancelTask(task: TaskCenterItem) {
@@ -155,7 +155,7 @@ async function openTask(task: TaskCenterItem) {
   store.markRead(task.taskId, task.sourceType)
   drawerVisible.value = false
 
-  if (task.sourceType === 'VIDEO_RENDER_BATCH') {
+  if (task.sourceType === 'VIDEO_RENDER_BATCH' || task.sourceType === 'SHOT_VIDEO_EXPORT') {
     await router.push({ path: '/render/tasks', query: { taskSource: task.sourceType, taskId: task.taskId } })
     return
   }
@@ -229,6 +229,7 @@ function statusTone(status: string): 'success' | 'warning' | 'danger' | 'process
 }
 
 function getCategoryLabel(category?: string) {
+  if (category === 'FILE_EXPORT') return '视频打包'
   if (category === 'AI_ANALYSIS') return 'AI 分析'
   if (category === 'MEDIA_PROCESS') return '视频处理'
   return '渲染'
