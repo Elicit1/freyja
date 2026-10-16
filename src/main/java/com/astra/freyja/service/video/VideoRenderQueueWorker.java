@@ -1,31 +1,51 @@
 package com.astra.freyja.service.video;
 
-import lombok.RequiredArgsConstructor;
+import com.astra.freyja.event.RenderQueueChangedEvent;
+import com.astra.freyja.service.RenderDispatchCoordinator;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import javax.sql.DataSource;
+import org.springframework.transaction.event.TransactionalEventListener;
+import java.util.concurrent.Executor;
 
-/** One synchronous consumer. A session lock prevents another application instance running it. */
+/** Submissions wake the consumer; each completed item immediately dispatches the next. */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 @org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(name="freyja.video-queue.enabled",havingValue="true",matchIfMissing=true)
 public class VideoRenderQueueWorker {
-    private final DataSource dataSource;
     private final VideoRenderBatchService service;
-    private boolean warned;
+    private final RenderDispatchCoordinator coordinator;
+    private final Executor executor;
+    private final org.springframework.context.ApplicationEventPublisher events;
 
-    @Scheduled(scheduler="videoRenderScheduler", fixedDelayString="${freyja.video-queue.scan-delay-ms:1000}", initialDelayString="${freyja.video-queue.initial-delay-ms:3000}")
-    public void scan() {
-        try(var connection=dataSource.getConnection()) {
-            String lock="freyja-video-"+VideoBatchPreparation.hash(String.valueOf(connection.getCatalog())).substring(0,20);
-            try(var statement=connection.prepareStatement("SELECT GET_LOCK(?,0)")) {
-                statement.setString(1,lock);
-                try(var result=statement.executeQuery()){if(!result.next()||result.getInt(1)!=1)return;}
+    public VideoRenderQueueWorker(VideoRenderBatchService service, RenderDispatchCoordinator coordinator,
+                                  @Qualifier("videoRenderExecutor") Executor executor,
+                                  org.springframework.context.ApplicationEventPublisher events) {
+        this.service = service;
+        this.coordinator = coordinator;
+        this.executor = executor;
+        this.events = events;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void recover() { wake(); }
+
+    @TransactionalEventListener(fallbackExecution = true)
+    public void onQueueChanged(RenderQueueChangedEvent event) { wake(); }
+
+    private void wake() {
+        executor.execute(() -> {
+            try {
+                coordinator.executeVideoQueue(() -> {
+                    while (service.runNext()) { /* generation and archive finish before advancing */ }
+                });
+            } catch (Exception e) {
+                log.warn("视频串行队列执行失败，请检查数据库与队列状态: {}", e.getMessage());
+            } finally {
+                events.publishEvent(new com.astra.freyja.event.RenderDispatchReleasedEvent());
             }
-            try { service.runNext();warned=false; }
-            finally { try(var statement=connection.prepareStatement("SELECT RELEASE_LOCK(?)")){statement.setString(1,lock);statement.execute();} }
-        }catch(Exception e){if(!warned)log.warn("视频串行队列未就绪，请确认 video-render-batch.sql 已执行: {}",e.getMessage());warned=true;}
+        });
     }
 }

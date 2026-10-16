@@ -39,6 +39,15 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AiImageApiServiceImplTest {
 
+    @Mock private RenderDispatchCoordinator renderDispatchCoordinator;
+    @Mock private RenderTaskService renderTaskService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void admitRender() {
+        org.mockito.Mockito.lenient().when(renderDispatchCoordinator.executeSingle(any()))
+                .thenAnswer(invocation -> ((java.util.function.Supplier<?>) invocation.getArgument(0)).get());
+    }
+
     @Mock
     private AiProviderMapper providerMapper;
 

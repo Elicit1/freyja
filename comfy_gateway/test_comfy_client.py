@@ -1,4 +1,4 @@
-"""Regression tests for ComfyUI completion when its WebSocket event is lost."""
+"""Completion waits on WebSocket events; snapshots never become a polling loop."""
 
 import asyncio
 import json
@@ -16,7 +16,7 @@ class _SilentWebSocket:
         return False
 
     async def recv(self):
-        raise asyncio.TimeoutError
+        await asyncio.Event().wait()
 
 
 class _SuccessWebSocket(_SilentWebSocket):
@@ -25,16 +25,12 @@ class _SuccessWebSocket(_SilentWebSocket):
 
 
 class TestComfyHistoryRecovery(unittest.IsolatedAsyncioTestCase):
-    async def test_completed_history_recovers_missing_websocket_event(self):
+    async def test_disconnect_snapshot_recovers_completed_result_without_polling(self):
         client = ComfyAsyncClient("http://comfy:8188", "ws://comfy:8188/ws")
         asset = {"filename": "result.mp4", "type": "output"}
         client._get_completed_history_assets = AsyncMock(side_effect=[[], [asset]])
-        clock = Mock()
-        clock.time.side_effect = [0.0, 11.0]
-
-        with patch("comfy_client.websockets.connect", return_value=_SilentWebSocket()), \
-             patch("comfy_client.asyncio.get_event_loop", return_value=clock):
-            result = await client.wait_for_completion("prompt-1", "client-1")
+        with patch("comfy_client.websockets.connect", return_value=_SilentWebSocket()):
+            result = await client.wait_for_completion("prompt-1", "client-1", timeout_override=0.01)
 
         self.assertEqual(result, [asset])
         self.assertEqual(client._get_completed_history_assets.await_count, 2)
@@ -48,19 +44,26 @@ class TestComfyHistoryRecovery(unittest.IsolatedAsyncioTestCase):
             result = await client.wait_for_completion("prompt-1", "client-1")
 
         self.assertEqual(result, [asset])
-        connect.assert_not_called()
+        connect.assert_called_once()
 
     async def test_execution_success_event_completes_without_executing_event(self):
         client = ComfyAsyncClient("http://comfy:8188", "ws://comfy:8188/ws")
         asset = {"filename": "result.mp4", "type": "output"}
-        client._poll_history_fallback = AsyncMock(return_value=[asset])
-        client._get_completed_history_assets = AsyncMock(return_value=[])
+        client._get_completed_history_assets = AsyncMock(side_effect=[[], [asset]])
 
         with patch("comfy_client.websockets.connect", return_value=_SuccessWebSocket()):
             result = await client.wait_for_completion("prompt-1", "client-1")
 
         self.assertEqual(result, [asset])
-        client._poll_history_fallback.assert_awaited_once_with("prompt-1")
+        self.assertEqual(client._get_completed_history_assets.await_count, 2)
+
+    async def test_silent_websocket_times_out_without_periodic_history_requests(self):
+        client = ComfyAsyncClient("http://comfy:8188", "ws://comfy:8188/ws")
+        client._get_completed_history_assets = AsyncMock(return_value=[])
+        with patch("comfy_client.websockets.connect", return_value=_SilentWebSocket()):
+            with self.assertRaises(TimeoutError):
+                await client.wait_for_completion("prompt-1", "client-1", timeout_override=0.01)
+        self.assertEqual(client._get_completed_history_assets.await_count, 2)
 
     async def test_unfinished_history_does_not_return_assets(self):
         client = ComfyAsyncClient("http://comfy:8188", "ws://comfy:8188/ws")

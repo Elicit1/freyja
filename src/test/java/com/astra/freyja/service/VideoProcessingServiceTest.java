@@ -120,7 +120,13 @@ public class VideoProcessingServiceTest {
                 shotVideoTakeService,
                 dramaMapper,
                 episodeMapper,
-                sceneMapper
+                sceneMapper,
+                org.mockito.Mockito.mock(RenderDispatchCoordinator.class, invocation -> {
+                    if ("executeSingle".equals(invocation.getMethod().getName())) {
+                        return ((java.util.function.Supplier<?>) invocation.getArgument(0)).get();
+                    }
+                    return org.mockito.Mockito.RETURNS_DEFAULTS.answer(invocation);
+                })
         );
     }
 

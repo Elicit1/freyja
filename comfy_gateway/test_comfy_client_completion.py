@@ -24,13 +24,12 @@ class CompletionEventTests(unittest.IsolatedAsyncioTestCase):
         client = ComfyAsyncClient("http://comfyui:8188", "ws://comfyui:8188/ws")
 
         with patch("comfy_client.websockets.connect", return_value=connection), \
-             patch.object(client, "_get_completed_history_assets", new_callable=AsyncMock, return_value=[]), \
-             patch.object(client, "_poll_history_fallback", new_callable=AsyncMock, return_value=[asset]) as fallback:
+             patch.object(client, "_get_completed_history_assets", new_callable=AsyncMock, side_effect=[[], [asset]]) as snapshot:
             result = await client.wait_for_completion(prompt_id, "client-123")
 
         self.assertEqual(result, [asset])
         self.assertEqual(ws.recv.await_count, 2)
-        fallback.assert_awaited_once_with(prompt_id)
+        self.assertEqual(snapshot.await_count, 2)
 
 
 if __name__ == "__main__":

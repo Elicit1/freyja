@@ -60,6 +60,7 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
     private final CryptoUtil cryptoUtil;
     private final ObjectMapper objectMapper;
     private final Executor renderAsyncExecutor;
+    private final RenderDispatchCoordinator renderDispatchCoordinator;
     private final VideoProcessSourceResolver sourceResolver;
     private final VideoProcessingModelResolver modelResolver;
     private final DramaShotMapper shotMapper;
@@ -93,7 +94,8 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             ShotVideoTakeService shotVideoTakeService,
             DramaMapper dramaMapper,
             DramaEpisodeMapper episodeMapper,
-            DramaSceneMapper sceneMapper) {
+            DramaSceneMapper sceneMapper,
+            RenderDispatchCoordinator renderDispatchCoordinator) {
         this.taskMapper = taskMapper;
         this.renderTaskService = renderTaskService;
         this.aiImageApiService = aiImageApiService;
@@ -105,6 +107,7 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
         this.cryptoUtil = cryptoUtil;
         this.objectMapper = objectMapper;
         this.renderAsyncExecutor = renderAsyncExecutor;
+        this.renderDispatchCoordinator = renderDispatchCoordinator;
         this.sourceResolver = sourceResolver;
         this.modelResolver = modelResolver;
         this.shotMapper = shotMapper;
@@ -280,9 +283,24 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             Map<String, Object> extraBody) {
 
         long startMs = System.currentTimeMillis();
-        boolean isUpscale = "VIDEO_UPSCALE".equals(operation);
         log.info("[VideoProcessing] 开始异步执行视频处理任务: taskId={}, op={}, model={}", taskId, operation, modelCode);
         RenderTaskThreadRegistry.register(taskId, Thread.currentThread());
+        try {
+            renderDispatchCoordinator.executeSingle(() -> {
+                ensureTaskNotCancelled(entityId);
+                executeVideoProcess(entityId, taskId, operation, sourceVideoUrl, provider, modelCode, extraBody, startMs);
+                return null;
+            });
+        } catch (Exception e) {
+            handleVideoProcessFailure(entityId, taskId, startMs, e);
+        } finally {
+            RenderTaskThreadRegistry.unregister(taskId);
+        }
+    }
+
+    private void executeVideoProcess(Long entityId, String taskId, String operation, String sourceVideoUrl,
+                                     AiProvider provider, String modelCode, Map<String, Object> extraBody, long startMs) {
+        boolean isUpscale = "VIDEO_UPSCALE".equals(operation);
         try {
             updateTaskProgress(entityId, taskId, "PROCESSING", 10, "正在连接网关并提交工作流...", null, null);
             // 1. 构造发往 FastAPI /v1/videos/generations 的 Payload
@@ -411,36 +429,38 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             log.info("[VideoProcessing] 视频处理任务成功完成: taskId={}, costMs={}ms, outputUrl={}", taskId, costMs, outputVideoUrl);
 
         } catch (Exception e) {
-            MediaProcessTask current = taskMapper.selectById(entityId);
-            if (current != null && "CANCELLED".equals(current.getStatus())) {
-                log.info("[VideoProcessing] 任务已取消，停止后续归档: taskId={}", taskId);
-                return;
-            }
-            long costMs = System.currentTimeMillis() - startMs;
-            log.error("[VideoProcessing] 视频后处理任务执行失败: taskId={}, err={}", taskId, e.getMessage(), e);
-
-            StringWriter sw = new StringWriter();
-            e.printStackTrace(new PrintWriter(sw));
-            String errorDetail = sw.toString();
-
-            MediaProcessTask task = current;
-            if (task != null) {
-                task.setStatus("FAILED");
-                task.setProgress(0);
-                task.setCurrentNode("执行异常失败");
-                task.setErrorMessage(e.getMessage());
-                task.setErrorDetail(errorDetail);
-                task.setCostMs(costMs);
-                task.setFinishTime(LocalDateTime.now());
-                taskMapper.update(task, new LambdaUpdateWrapper<MediaProcessTask>()
-                        .eq(MediaProcessTask::getId, entityId)
-                        .in(MediaProcessTask::getStatus, "QUEUED", "PENDING", "PROCESSING", "RUNNING"));
-            }
-
-            renderTaskService.failTask(taskId, e.getMessage(), errorDetail);
-        } finally {
-            RenderTaskThreadRegistry.unregister(taskId);
+            handleVideoProcessFailure(entityId, taskId, startMs, e);
         }
+    }
+
+    private void handleVideoProcessFailure(Long entityId, String taskId, long startMs, Exception e) {
+        MediaProcessTask current = taskMapper.selectById(entityId);
+        if (current != null && "CANCELLED".equals(current.getStatus())) {
+            log.info("[VideoProcessing] 任务已取消，停止后续归档: taskId={}", taskId);
+            return;
+        }
+        long costMs = System.currentTimeMillis() - startMs;
+        log.error("[VideoProcessing] 视频后处理任务执行失败: taskId={}, err={}", taskId, e.getMessage(), e);
+
+        StringWriter sw = new StringWriter();
+        e.printStackTrace(new PrintWriter(sw));
+        String errorDetail = sw.toString();
+
+        MediaProcessTask task = current;
+        if (task != null) {
+            task.setStatus("FAILED");
+            task.setProgress(0);
+            task.setCurrentNode("执行异常失败");
+            task.setErrorMessage(e.getMessage());
+            task.setErrorDetail(errorDetail);
+            task.setCostMs(costMs);
+            task.setFinishTime(LocalDateTime.now());
+            taskMapper.update(task, new LambdaUpdateWrapper<MediaProcessTask>()
+                    .eq(MediaProcessTask::getId, entityId)
+                    .in(MediaProcessTask::getStatus, "QUEUED", "PENDING", "PROCESSING", "RUNNING"));
+        }
+
+        renderTaskService.failTask(taskId, e.getMessage(), errorDetail);
     }
 
     private void ensureTaskNotCancelled(Long entityId) {

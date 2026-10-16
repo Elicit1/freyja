@@ -96,7 +96,7 @@ public class VideoRenderBatchService {
             }
             return b.getId();
         });
-        publish(id);return detail(id);
+        publish(id);queueChanged();return detail(id);
     }
     private String requestHash(VideoRenderBatchRequest r) {
         return VideoBatchPreparation.hash(preparation.write(Arrays.asList(r.getDramaId(),r.getName(),r.getShotIds()==null?null:r.getShotIds().stream().sorted().toList(),r.getSelection(),r.getAspectRatio(),r.getExistingVideoPolicy(),r.getModeConfigs()==null?Map.of():new TreeMap<>(r.getModeConfigs()),r.getRetryOfBatchId(),r.getInputSource())));
@@ -126,7 +126,7 @@ public class VideoRenderBatchService {
             Item i=new Item();i.setId(IdWorker.getId());i.setBatchId(b.getId());i.setQueueOrder(b.getId());i.setShotId(id);i.setTaskId("RENDER_"+IdWorker.getId());i.setName("S"+shot.getShotNo()+" · "+StringUtils.defaultString(shot.getShotName(),"分镜"));
             i.setPhase(VideoBatchPreparation.REF.equals(shot.getGenerationMode())?"REF2VA":"FL2VA");i.setStatus("QUEUED");i.setCreatedAt(LocalDateTime.now());snap.getRequest().setTaskId(i.getTaskId());i.setSnapshotJson(preparation.write(snap));register(i,snap);store.insert(i);return i.getTaskId();
         });
-        Item queued=store.task(task);publish(queued.getBatchId());var vo=new ComfyRenderTaskVO();vo.setTaskId(task);vo.setShotId(id);vo.setProjectId(detail(queued.getBatchId()).getDramaId());vo.setStatus(ComfyTaskStatus.RUNNING);vo.setProgress(0);return vo;
+        Item queued=store.task(task);publish(queued.getBatchId());queueChanged();var vo=new ComfyRenderTaskVO();vo.setTaskId(task);vo.setShotId(id);vo.setProjectId(detail(queued.getBatchId()).getDramaId());vo.setStatus(ComfyTaskStatus.PENDING);vo.setProgress(0);return vo;
     }
     private void register(Item i,Snapshot snap) {
         store.holdShot(i.getShotId(),i.getTaskId());
@@ -156,25 +156,25 @@ public class VideoRenderBatchService {
             .dramaId(String.valueOf(b.getDramaId())).resumeAction("VIDEO_RENDER_BATCH").createdAt(b.getCreatedAt()).finishedAt(b.getFinishedAt()).errorMessage(b.getUpstreamStatus()==null?null:"上游停止待核实").build();}
 
     /** Called only by the dedicated single consumer; database slot covers all application instances. */
-    public void runNext() {
+    public boolean runNext() {
         java.util.concurrent.atomic.AtomicReference<Long> recoveredBatch=new java.util.concurrent.atomic.AtomicReference<>();
         Item item=tx.execute(s->{store.lockQueue();String current=store.currentTask();
             if(current!=null){if(!current.equals(localTask)){Item orphan=store.task(current);if(orphan!=null&&!VideoBatchStore.terminal(orphan.getStatus())&&!"NEEDS_REVIEW".equals(orphan.getStatus())){store.status(current,"NEEDS_REVIEW","工作实例中断，上游结果待核实",null,"UNCONFIRMED");renderTasks.failTask(current,"工作实例中断，上游结果待核实",null);recompute(orphan.getBatchId());recoveredBatch.set(orphan.getBatchId());}}return null;}
             Item next=store.next();if(next==null)return null;store.claim(next.getTaskId());store.status(next.getTaskId(),"DISPATCHING",null,null,null);localTask=next.getTaskId();return next;});
-        if(item==null){publish(recoveredBatch.get());return;}boolean submitted=false;
+        if(item==null){publish(recoveredBatch.get());return false;}boolean submitted=false;
         RenderTaskThreadRegistry.register(item.getTaskId(),Thread.currentThread());
         VideoExecutionState.begin(item.getTaskId());
         try {
-            if(cancelled(item))return;
+            if(cancelled(item))return true;
             Snapshot snap=json.readValue(StringUtils.defaultIfBlank(item.getResolvedJson(),item.getSnapshotJson()),Snapshot.class);preparation.validateRoute(snap);
             if(StringUtils.isBlank(item.getResolvedJson())){
                 applyFrame(snap,item,true);applyFrame(snap,item,false);
                 tx.executeWithoutResult(s->{store.lockQueue();if(!cancelled(item))store.resolved(item.getTaskId(),preparation.write(snap));});
             }
             Boolean maySubmit=tx.execute(s->{store.lockQueue();if(cancelled(item))return false;store.status(item.getTaskId(),"RENDERING",null,null,null);if(item.getBatchId()!=null)store.batchStatus(item.getBatchId(),"RUNNING",false);return true;});
-            if(!Boolean.TRUE.equals(maySubmit))return;
+            if(!Boolean.TRUE.equals(maySubmit))return true;
             renderTasks.updateProgress(item.getTaskId(),0,"串行渲染中，等待视频生成与归档");shots.markRenderingIfLatest(item.getShotId(),item.getTaskId());publish(item.getBatchId());
-            if(cancelled(item)||Thread.currentThread().isInterrupted())return;
+            if(cancelled(item)||Thread.currentThread().isInterrupted())return true;
             submitted=true;
             VideoGenerationResultVO result;
             if(item.getRecoveryUrl()!=null){
@@ -184,7 +184,7 @@ public class VideoRenderBatchService {
             VideoExecutionState.completed(result.getVideoUrl());VideoExecutionState.phase("RESULT_COMMIT");
             tx.executeWithoutResult(s->{store.lockQueue();if(cancelled(item))return;
                 RenderTask render=renders.selectOne(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getTaskId,item.getTaskId()));
-                takes.recordGeneratedTake(snap.getShot(),render,snap.getRequest(),result);renderTasks.finishTask(item.getTaskId(),result.getVideoUrl(),null);
+                takes.recordGeneratedTake(snap.getShot(),render,snap.getRequest(),result);renderTasks.finishTask(item.getTaskId(),result.getVideoUrl(),result.getLastFrameUrl());
                 store.status(item.getTaskId(),"SUCCESS",null,result.getVideoUrl(),"CONFIRMED");store.releaseShot(item.getTaskId());store.release(item.getTaskId());recompute(item.getBatchId());});
         }catch(Exception e){
             boolean uncertain=submitted&&VideoExecutionState.current().uncertain();
@@ -200,6 +200,7 @@ public class VideoRenderBatchService {
         }finally{
             RenderTaskThreadRegistry.unregister(item.getTaskId());VideoExecutionState.clear(item.getTaskId());localTask=null;Thread.interrupted();publish(item.getBatchId());
         }
+        return true;
     }
     private boolean cancelled(Item item){Item fresh=store.task(item.getTaskId());return fresh==null||"CANCELLED".equals(fresh.getStatus())||(item.getBatchId()!=null&&store.batch(item.getBatchId()).isCancelRequested());}
     private void applyFrame(Snapshot snap,Item item,boolean first){
@@ -242,10 +243,11 @@ public class VideoRenderBatchService {
             }
             RenderTaskThreadRegistry.interrupt(i.getTaskId());renderTasks.refreshTaskFromDatabase(i.getTaskId());
         }
-        tx.executeWithoutResult(s->{store.lockQueue();recompute(batchId);});publish(batchId);
+        tx.executeWithoutResult(s->{store.lockQueue();recompute(batchId);});publish(batchId);queueChanged();
         return TaskCancelResultVO.builder().cancelled(true).status("CANCELLED").upstreamStatus(upstream).message("CONFIRMED".equals(upstream)?"已取消；成功视频保留，未执行项不再渲染":"本地已中断；上游停止待核实，后续视频派发已暂停").build();
     }
     private void publish(Long id){if(id!=null)events.publishEvent(new TaskStatusChangedEvent("VIDEO_RENDER_BATCH",String.valueOf(id),"UPDATED"));}
+    private void queueChanged(){events.publishEvent(new com.astra.freyja.event.RenderQueueChangedEvent());}
 
     /** Explicit manual recovery; evidence is retained, never inferred from an expired local timeout. */
     public void reconcile(Long batchId,String taskId,String evidence) {
@@ -255,7 +257,7 @@ public class VideoRenderBatchService {
             if(taskId.equals(localTask))throw new BizException(409,"本地任务尚未退出，请稍后核实");
             store.status(taskId,"FAILED","已确认上游停止："+evidence,null,"CONFIRMED");store.cancelEvidence(taskId,"CONFIRMED");
             store.recordEvidence(taskId,evidence);store.release(taskId);store.releaseShot(taskId);renderTasks.failTask(taskId,"人工核实上游已停止："+evidence,null);recompute(batchId);
-        });publish(batchId);
+        });publish(batchId);queueChanged();
     }
 
     public void retryArchive(Long batchId,String taskId){
@@ -264,6 +266,6 @@ public class VideoRenderBatchService {
             if(store.occupied(i.getShotId()))throw new BizException(409,"分镜已有其他活动任务");
             store.holdShot(i.getShotId(),taskId);store.retryArchive(taskId);store.batchStatus(batchId,"QUEUED",false);
             renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",taskId).eq("status","FAILED").set("status","QUEUED").set("finish_time",null));
-        });renderTasks.refreshTaskFromDatabase(taskId);publish(batchId);
+        });renderTasks.refreshTaskFromDatabase(taskId);publish(batchId);queueChanged();
     }
 }

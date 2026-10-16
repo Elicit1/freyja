@@ -22,14 +22,38 @@ import { computed, onUnmounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { videoBatchApi, type VideoBatch, type VideoBatchRequest } from '@/api/video-render-batch'
+import { useTaskCenterStore } from '@/store/taskCenter'
+const taskCenter = useTaskCenterStore()
 const router = useRouter(), visible = ref(false), batch = ref<VideoBatch | null>(null), videoUrl = ref('')
 const cancelling = ref(false), retrying = ref(false), retrySource = ref<'ORIGINAL_SNAPSHOT' | 'CURRENT_SHOT'>('ORIGINAL_SNAPSHOT')
-let timer: ReturnType<typeof setInterval> | undefined, batchId = '', fetching = false
+let batchId = '', fetching = false, refreshRequested = false
 const labels: Record<string, string> = { QUEUED: '排队中', DISPATCHING: '准备输入', RUNNING: '执行中', RENDERING: '渲染中', SUCCESS: '成功', FAILED: '失败', CANCELLED: '已取消', CANCELLING: '正在取消', SKIPPED: '已跳过', NEEDS_REVIEW: '待核实', PARTIAL_FAILED: '部分失败' }
 const canCancel = computed(() => batch.value && !batch.value.cancelRequested && ['QUEUED', 'RUNNING', 'NEEDS_REVIEW'].includes(batch.value.status))
-async function refresh() { if (fetching) return; fetching = true; const id = batchId; try { const result = await videoBatchApi.detail(id); if (id === batchId) batch.value = result } catch (e: any) { ElMessage.error(e.message || '读取批次失败'); stop() } finally { fetching = false } }
-async function open(id: string) { stop(); batchId = String(id); batch.value = null; visible.value = true; await refresh(); timer = setInterval(refresh, 3000) }
-function stop() { if (timer) clearInterval(timer); timer = undefined; videoUrl.value = '' }
+async function refresh() {
+  if (fetching) { refreshRequested = true; return }
+  fetching = true
+  const id = batchId
+  try { const result = await videoBatchApi.detail(id); if (id === batchId) batch.value = result }
+  catch (e: any) { ElMessage.error(e.message || '读取批次失败') }
+  finally { fetching = false; if (refreshRequested && visible.value) { refreshRequested = false; void refresh() } }
+}
+function onBatchUpdated(event: Event) {
+  const task = (event as CustomEvent).detail
+  if (visible.value && task?.sourceType === 'VIDEO_RENDER_BATCH' && String(task.taskId) === batchId) void refresh()
+}
+function onConnected() { if (visible.value) void refresh() }
+async function open(id: string) {
+  stop(); batchId = String(id); batch.value = null; visible.value = true
+  window.addEventListener('task-center-task-updated', onBatchUpdated)
+  window.addEventListener('task-center-connected', onConnected)
+  taskCenter.start()
+  await refresh()
+}
+function stop() {
+  window.removeEventListener('task-center-task-updated', onBatchUpdated)
+  window.removeEventListener('task-center-connected', onConnected)
+  refreshRequested = false; videoUrl.value = ''
+}
 async function cancel() { cancelling.value = true; try { const result = await videoBatchApi.cancel(batchId); ElMessage.success(result.message); await refresh() } catch (e: any) { ElMessage.error(e.message || '取消失败') } finally { cancelling.value = false } }
 async function openShot(shotId: string) { visible.value = false; await router.push({ path: '/drama', query: { dramaId: String(batch.value!.dramaId), resumeShotId: String(shotId), resumeAction: 'SHOT_DETAIL' } }) }
 async function retry() {

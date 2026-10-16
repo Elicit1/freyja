@@ -69,6 +69,22 @@ class VideoRenderBatchTest {
         var r=new VideoRenderBatchRequest.ModeConfig();r.setProviderId(100L);r.setModelId(101L);var f=new VideoRenderBatchRequest.ModeConfig();f.setProviderId(100L);f.setModelId(102L);f.setAutoUseNextVideoHeadAsLastFrame(true);req.setModeConfigs(Map.of(VideoBatchPreparation.REF,r,VideoBatchPreparation.FL,f));return req;}
     private Batch create(VideoRenderBatchRequest req){req.setExpectedPreviewHash(service.preview(req).getPreviewHash());return service.create(req);}
 
+    @Test void singleVideoWaitsBehindEveryShotInTheEarlierBatch() {
+        shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.REF,2);shot(43,VideoBatchPreparation.REF,3);
+        var batchRequest=request();batchRequest.setShotIds(List.of(41L,42L));create(batchRequest);
+        AiProvider provider=new AiProvider();provider.setId(100L);
+        when(api.resolveProvider(100L)).thenReturn(provider);
+        when(api.resolveVideoModelCode(any(),eq(100L),eq(VideoBatchPreparation.REF))).thenReturn("ref");
+        var singleRequest=new DramaShotRenderRequestDTO();singleRequest.setProviderId(100L);singleRequest.setWorkflowTemplateId("ref");singleRequest.setSize("960x544");
+        var queued=service.enqueueSingle(43L,singleRequest);
+        assertEquals(com.astra.freyja.entity.enums.ComfyTaskStatus.PENDING,queued.getStatus());
+        verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+        for(int n=0;n<3;n++)assertTrue(service.runNext());
+        assertFalse(service.runNext());
+        var order=mockingDetails(api).getInvocations().stream().filter(i->i.getMethod().getName().equals("generateAndArchiveVideo")).map(i->(Long)i.getArgument(0)).toList();
+        assertEquals(List.of(41L,42L,43L),order);
+    }
+
     @Test void phasesAreSerialAndNeighborFramesKeepNarrativeRoles() {
         shot(41,VideoBatchPreparation.FL,1);shot(42,VideoBatchPreparation.REF,2);shot(43,VideoBatchPreparation.FL,3);shot(44,VideoBatchPreparation.FL,4);
         var b=create(request());assertEquals(List.of(42L,41L,43L,44L),b.getItems().stream().map(Item::getShotId).toList());

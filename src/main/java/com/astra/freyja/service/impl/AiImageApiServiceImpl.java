@@ -57,6 +57,10 @@ public class AiImageApiServiceImpl implements AiImageApiService {
     private final MinioProperties minioProperties;
     private final ObjectMapper objectMapper;
     private final com.astra.freyja.service.VideoFrameExtractService videoFrameExtractService;
+    private final com.astra.freyja.service.RenderDispatchCoordinator renderDispatchCoordinator;
+    @org.springframework.beans.factory.annotation.Autowired
+    @org.springframework.context.annotation.Lazy
+    private com.astra.freyja.service.RenderTaskService renderTaskService;
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -66,6 +70,19 @@ public class AiImageApiServiceImpl implements AiImageApiService {
 
     @Override
     public String generateAndArchiveImage(Long shotId, Long dramaId, String prompt, DramaShotFirstFrameDTO dto) {
+        return renderDispatchCoordinator.executeSingle(() -> {
+            if (dto != null && StringUtils.isNotBlank(dto.getTaskId())) {
+                var task = renderTaskService.getTaskById(dto.getTaskId());
+                if (Thread.currentThread().isInterrupted() || (task != null && "CANCELLED".equals(task.getStatus()))) {
+                    throw new java.util.concurrent.CancellationException("生图任务已取消");
+                }
+                renderTaskService.updateProgress(dto.getTaskId(), 0, "正在生成图片并归档至 MinIO");
+            }
+            return doGenerateAndArchiveImage(shotId, dramaId, prompt, dto);
+        });
+    }
+
+    private String doGenerateAndArchiveImage(Long shotId, Long dramaId, String prompt, DramaShotFirstFrameDTO dto) {
         if (StringUtils.isBlank(prompt)) {
             throw new BizException(400, "生图提示词不能为空");
         }

@@ -197,38 +197,18 @@ class ComfyAsyncClient:
         ws_url = f"{self.ws_base}?clientId={client_id}"
         output_assets: List[Dict[str, Any]] = []
         timeout = timeout_override if timeout_override and timeout_override > 0 else self.timeout
-        last_history_check = 0.0
-
-        # A cached workflow may finish between /prompt and WebSocket subscription.
-        output_assets = await self._get_completed_history_assets(prompt_id)
-        if output_assets:
-            logger.info(f"[{self.http_base}] Already completed prompt {prompt_id} recovered from HTTP history")
-            return output_assets
-
         try:
             logger.info(f"[{self.http_base}] Connecting to WebSocket: {ws_url} (timeout: {timeout}s)")
             async with websockets.connect(ws_url, open_timeout=10.0, max_size=100 * 1024 * 1024) as ws:
-                start_time = asyncio.get_event_loop().time()
-
+                # One snapshot after subscribing closes the cached-completion race.
+                # All subsequent waiting is driven by WebSocket messages.
+                output_assets = await self._get_completed_history_assets(prompt_id)
+                if output_assets:
+                    return output_assets
+                deadline = asyncio.get_running_loop().time() + timeout
                 while True:
-                    elapsed = asyncio.get_event_loop().time() - start_time
-                    if elapsed > timeout:
-                        raise TimeoutError(f"ComfyUI generation on {self.http_base} timed out after {timeout}s.")
-
-                    # Check ComfyUI's durable result even if the final WebSocket event
-                    # was missed or the socket keeps receiving unrelated messages.
-                    if elapsed - last_history_check >= 10.0:
-                        last_history_check = elapsed
-                        history_assets = await self._get_completed_history_assets(prompt_id)
-                        if history_assets:
-                            logger.info(f"[{self.http_base}] Completed prompt {prompt_id} recovered from HTTP history")
-                            output_assets = history_assets
-                            break
-
-                    try:
-                        message = await asyncio.wait_for(ws.recv(), timeout=5.0)
-                    except asyncio.TimeoutError:
-                        continue
+                    remaining = deadline - asyncio.get_running_loop().time()
+                    message = await asyncio.wait_for(ws.recv(), timeout=max(0, remaining))
 
                     if isinstance(message, bytes):
                         continue
@@ -246,8 +226,8 @@ class ComfyAsyncClient:
                     elif msg_type == "executing":
                         node_id = msg_data.get("node")
                         curr_prompt_id = msg_data.get("prompt_id")
-                        # 当工作流完成时，ComfyUI 发送 node 为 None（此时 prompt_id 可能是 null 或对应 prompt_id）
-                        if node_id is None and (curr_prompt_id is None or curr_prompt_id == prompt_id):
+                        # 只接受当前任务的完成事件，忽略其他任务或无归属事件。
+                        if node_id is None and curr_prompt_id == prompt_id:
                             logger.info(f"✅ [{self.http_base}] ComfyUI execution finished for prompt {prompt_id}")
                             break
                         elif curr_prompt_id == prompt_id:
@@ -285,12 +265,15 @@ class ComfyAsyncClient:
                         if msg_data.get("prompt_id") == prompt_id:
                             raise RuntimeError(f"ComfyUI execution on {self.http_base} was interrupted.")
 
-        except (websockets.exceptions.WebSocketException, OSError, TimeoutError) as e:
-            logger.warning(f"WebSocket error on {self.http_base} ({e}). Falling back to HTTP history polling...")
-            output_assets = await self._poll_history_fallback(prompt_id)
+        except (websockets.exceptions.WebSocketException, OSError, TimeoutError, asyncio.TimeoutError) as e:
+            # A single snapshot may recover a result committed before disconnection.
+            # Never infer completion from partial 'executed' assets or poll history.
+            output_assets = await self._get_completed_history_assets(prompt_id)
+            if not output_assets:
+                raise TimeoutError(f"ComfyUI completion unconfirmed for prompt {prompt_id}: {e}") from e
 
         if not output_assets:
-            output_assets = await self._poll_history_fallback(prompt_id)
+            output_assets = await self._get_completed_history_assets(prompt_id)
 
         if not output_assets:
             raise RuntimeError(f"Workflow completed on {self.http_base} but no output assets were found for prompt {prompt_id}")
@@ -316,30 +299,6 @@ class ComfyAsyncClient:
         except Exception as e:
             logger.debug(f"History status check failed on {self.http_base}: {e}")
             return []
-
-    async def _poll_history_fallback(self, prompt_id: str, max_retries: int = 15) -> List[Dict[str, Any]]:
-        client = await self.get_http_client()
-        logger.info(f"[{self.http_base}] Polling history for prompt {prompt_id}...")
-
-        for _ in range(max_retries):
-            try:
-                resp = await client.get(f"{self.http_base}/history/{prompt_id}", timeout=5.0)
-                if resp.status_code == 200:
-                    history = resp.json()
-                    if prompt_id in history:
-                        outputs = history[prompt_id].get("outputs", {})
-                        assets = []
-                        for node_out in outputs.values():
-                            for asset_key in ("videos", "gifs", "images"):
-                                if asset_key in node_out and isinstance(node_out[asset_key], list):
-                                    assets.extend(node_out[asset_key])
-                        if assets:
-                            return assets
-            except Exception as e:
-                logger.debug(f"History poll error on {self.http_base}: {e}")
-            await asyncio.sleep(1.0)
-
-        return []
 
     async def cancel_job(self, prompt_id: str) -> Tuple[bool, str]:
         """

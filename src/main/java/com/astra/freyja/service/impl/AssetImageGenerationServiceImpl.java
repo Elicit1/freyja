@@ -77,9 +77,9 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
                 .providerId(actualProvider != null ? actualProvider.getId() : requestedProviderId)
                 .providerName(actualProvider != null ? actualProvider.getProviderName() : null)
                 .modelCode(actualModelCode != null ? actualModelCode : request.getModelCode())
-                .status("RENDERING")
-                .progress(25)
-                .currentNode("AI生图模型运算中...")
+                .status("QUEUED")
+                .progress(0)
+                .currentNode("等待前序渲染任务完成")
                 .build();
         renderTaskService.createTask(rTask);
 
@@ -95,7 +95,6 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
         com.astra.freyja.service.RenderTaskThreadRegistry.register(taskId, Thread.currentThread());
         String output;
         try {
-            renderTaskService.updateProgress(taskId, 50, "正在生成资产图并持久化归档至 MinIO...");
             output = aiImageApiService.generateAndArchiveAssetImage(request.getTargetType(), request.getTargetId(),
                     request.getSlot(), request.getPrompt(), api);
             renderTaskService.finishTask(taskId, output, null);

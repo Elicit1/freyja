@@ -393,6 +393,8 @@ import ShotVideoHistoryDrawer from './ShotVideoHistoryDrawer.vue'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import type { DramaShot } from '@/types/drama'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
+import { useRenderTaskCompletion } from '@/composables/useRenderTaskCompletion'
+const { waitForTask } = useRenderTaskCompletion()
 
 const emit = defineEmits<{
   (e: 'success', shotId: string | number): void
@@ -584,11 +586,10 @@ async function handleGenerateFirstFrame() {
       ElMessage.success('首帧生图完成！')
       emit('success', currentShotId.value)
     } else if (res && res.taskId) {
-      // 轮询等待任务完成
-      await pollTask(res.taskId, 'image', (status, output) => {
-        generatingStatusText.value = `渲染中: ${status}`
-        if (output) {
-          currentPreviewUrl.value = output
+      await waitForTask(res.taskId, task => {
+        generatingStatusText.value = task.status === 'QUEUED' ? '等待前序渲染任务完成...' : (task.currentNode || '正在生成首帧...')
+        if (task.outputUrl) {
+          currentPreviewUrl.value = task.outputUrl
         }
       })
       ElMessage.success('首帧图已生成！')
@@ -665,10 +666,10 @@ async function handleRenderVideo() {
     })
 
     if (res && res.taskId) {
-      await pollTask(res.taskId, 'video', (status, output, lastFrame) => {
-        videoStatusText.value = `视频渲染中 (${status})...`
-        if (output) currentVideoUrl.value = output
-        if (lastFrame) currentLastFrameUrl.value = lastFrame
+      await waitForTask(res.taskId, task => {
+        videoStatusText.value = task.status === 'QUEUED' ? '等待前序渲染任务完成...' : (task.currentNode || '视频渲染中...')
+        if (task.outputUrl) currentVideoUrl.value = task.outputUrl
+        if (task.lastFrameUrl) currentLastFrameUrl.value = task.lastFrameUrl
       })
       ElMessage.success('视频渲染完成！')
       emit('success', currentShotId.value)
@@ -679,30 +680,6 @@ async function handleRenderVideo() {
     step2Rendering.value = false
   }
 }
-
-// 简易轮询工具
-async function pollTask(_taskId: string, outputType: 'image' | 'video', onProgress: (status: string, outputUrl?: string, lastFrameUrl?: string) => void) {
-  const maxAttempts = 300
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    if (!currentShotId.value) break
-    const fresh = await shotApi.getById(currentShotId.value)
-    if (fresh) {
-      const outputUrl = outputType === 'image' ? fresh.previewImageUrl : fresh.videoUrl
-      onProgress(fresh.renderStatus || 'RUNNING', outputUrl, fresh.lastFrameUrl)
-      if (fresh.renderStatus === 'SUCCESS') {
-        if (fresh.videoUrl) currentVideoUrl.value = fresh.videoUrl
-        if (fresh.previewImageUrl) currentPreviewUrl.value = fresh.previewImageUrl
-        if (fresh.lastFrameUrl) currentLastFrameUrl.value = fresh.lastFrameUrl
-        return
-      }
-      if (fresh.renderStatus === 'FAILED') {
-        throw new Error('渲染任务执行失败')
-      }
-    }
-  }
-}
-
 
 defineExpose({
   open

@@ -751,7 +751,7 @@ public class DramaShotServiceImpl implements DramaShotService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public ComfyRenderTaskVO generateFirstFrame(Long id, DramaShotFirstFrameDTO dto) {
         DramaShot shot = shotMapper.selectById(id);
         if (shot == null) {
@@ -819,9 +819,9 @@ public class DramaShotServiceImpl implements DramaShotService {
                 .providerId(actualProvider != null ? actualProvider.getId() : (dto != null ? dto.getProviderId() : null))
                 .providerName(actualProvider != null ? actualProvider.getProviderName() : null)
                 .modelCode(actualModelCode != null ? actualModelCode : (dto != null ? dto.getModelCode() : null))
-                .status("RENDERING")
+                .status("QUEUED")
                 .progress(0)
-                .currentNode("正在生成关键帧并归档至 MinIO...")
+                .currentNode("等待前序渲染任务完成")
                 .build();
         renderTaskService.createTask(rTask);
 

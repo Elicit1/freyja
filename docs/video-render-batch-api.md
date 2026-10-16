@@ -7,9 +7,13 @@
 已有数据库先执行 `src/main/resources/sql/video-render-batch.sql`，再启动新版本。该脚本只创建四张新表，重复执行不会重写业务数据。新部署已包含于 `docker/mysql/init/01_init.sql` 与 `src/main/resources/sql/init.sql`。
 Docker 部署的 db-upgrade 已加入 `20261016-video-render-batch-v1` 增量迁移，更新部署脚本与 SQL 后由编排在后端启动前执行；直接运行 JAR / IDE 时需要先手动执行该 SQL。
 
-一个后台消费者同步执行视频生成、归档及落库；单镜提交也创建单项批次，进入同一持久队列。MySQL 会话锁加持久化全局槽位确保多个应用实例合计最多一个在途视频任务，连接池需至少容纳消费者锁连接和业务事务连接。不能先把全部生成请求推到网关再排队。
+一个后台消费者同步执行视频生成、归档及落库；单镜提交也创建单项批次，进入同一持久队列，提交响应为 PENDING。首尾帧生图、资产生图及视频后处理也通过统一调度入口，与视频消费者共用 MySQL 会话锁，前序批次执行结束后才下发。连接池需至少容纳调度锁连接和业务事务连接。不能先把全部生成请求推到网关再排队。
 
-`freyja.video-queue.enabled=false` 可以关闭消费者供测试或维护使用；默认开启。`freyja.video-queue.scan-delay-ms` 默认 1000，`initial-delay-ms` 默认 3000，仅影响空闲扫描，不改变并发数。
+`freyja.video-queue.enabled=false` 可以关闭消费者供测试或维护使用；默认开启。队列由提交、取消、归档重试和人工核实的事务提交事件唤醒，启动时执行一次恢复；完成当前任务后直接执行下一项，空闲或待核实时停止。已移除定时扫描，原 scan-delay-ms / initial-delay-ms 参数不再生效。等待中的单次任务通过条件通知唤醒，不定时查库。
+
+多实例通过 Redis Pub/Sub 转发提交和调度释放通知，避免其他实例上的等待任务丢失唤醒；通知不存放生成请求，持久任务与上游占用仍以 MySQL 为准。首尾帧生成不会在排队期间持有业务数据库事务，避免大量等待请求耗尽连接池。
+
+Java 到网关是单次同步生成请求。网关通过 ComfyUI WebSocket 等待任务完成，不再周期查询 history 或断线后循环重试。只在订阅后、完成事件缺少产物或断线时读取一次已完成历史快照；结果仍不能确认则返回异常，由持久视频队列保留待核实占用。
 
 ## 选择、预检与创建
 
@@ -72,7 +76,7 @@ FL2VA 的两个开关互相独立：已配置帧优先；开启相应开关且�
 
 ## 任务中心
 
-sourceType 为 VIDEO_RENDER_BATCH，使用现有 `/ws/task-center` 的 TASK_UPDATED 推送父摘要。子渲染状态更新折叠为同一父摘要，原 RENDER_EVENT 仍供单镜界面刷新，避免父子重复计数。详情抽屉打开时定时拉取作为断线恢复保障。
+sourceType 为 VIDEO_RENDER_BATCH，使用现有 `/ws/task-center` 的 TASK_UPDATED 推送父摘要。子渲染状态更新折叠为同一父摘要，原 RENDER_EVENT 仍供单镜界面刷新，避免父子重复计数。详情抽屉在打开、事件通知及 WebSocket 重连时读取详情；单镜窗口按 taskId 消费渲染事件，并在开始等待与重连时读取一次快照，不再定时轮询或按分镜旧视频判断完成。
 
 状态：QUEUED、RUNNING、CANCELLING、SUCCESS、PARTIAL_FAILED、FAILED、CANCELLED、NEEDS_REVIEW。项目另有 DISPATCHING、RENDERING、SKIPPED。
 
