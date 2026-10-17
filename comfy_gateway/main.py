@@ -4,12 +4,14 @@ import uuid
 import base64
 import asyncio
 import logging
+import hashlib
+from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Tuple, Any
 
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -28,7 +30,7 @@ from schemas import (
     TaskCancelResponse
 )
 from workflow_engine import WorkflowEngine
-from comfy_client import ComfyAsyncClient, ComfyClientPool
+from comfy_client import ComfyAsyncClient, ComfyClientPool, ComfyExecutionError
 from task_tracker import task_tracker
 
 # Configure structured logging
@@ -144,7 +146,10 @@ async def runtime_error_handler(request: Request, exc: RuntimeError):
                 "message": str(exc),
                 "type": "comfyui_backend_error",
                 "param": None,
-                "code": "backend_failure"
+                "code": "backend_failure",
+                "upstream_status": "FAILED" if isinstance(exc, ComfyExecutionError) else "UNKNOWN",
+                "prompt_id": getattr(exc, "prompt_id", None),
+                "node_id": getattr(exc, "node_id", None)
             }
         }
     )
@@ -159,7 +164,10 @@ async def timeout_error_handler(request: Request, exc: TimeoutError):
                 "message": str(exc),
                 "type": "timeout_error",
                 "param": None,
-                "code": "task_timeout"
+                "code": "task_timeout",
+                "upstream_status": "UNKNOWN",
+                "prompt_id": getattr(exc, "prompt_id", None),
+                "node_id": getattr(exc, "node_id", None)
             }
         }
     )
@@ -370,6 +378,7 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     for tk in tracker_keys:
         active_executions[tk] = (client, prompt_id, target_node_id)
 
+    completion_state = "UNKNOWN"
     try:
         # 7. Wait for WebSocket execution completion on target machine
         output_asset_meta = await client.wait_for_completion(
@@ -408,19 +417,25 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
                 public_url = f"{base_url}/outputs/{saved_filename}"
                 response_data.append(ImageData(url=public_url, b64_json=None, revised_prompt=revised_prompt))
 
+        completion_state = "SUCCESS"
         logger.info(f"Returning {len(response_data)} asset(s) to client for model '{request.model}'.")
         return ImageGenerationResponse(
             created=int(time.time()),
             data=response_data
         )
+    except Exception as exc:
+        if isinstance(exc, ComfyExecutionError):
+            completion_state = "FAILED"
+        exc.prompt_id = prompt_id
+        exc.node_id = target_node_id
+        logger.warning("Generation response interrupted: task=%s prompt=%s node=%s error_type=%s error=%r",
+                       request.task_id, prompt_id, target_node_id, type(exc).__name__, exc)
+        raise
     finally:
         for tk in tracker_keys:
             active_executions.pop(tk, None)
-        await task_tracker.unregister(
-            prompt_id=prompt_id,
-            task_id=getattr(request, "task_id", None),
-            shot_id=getattr(request, "shot_id", None)
-        )
+        # Retain the exact task binding across disconnection/restarts for result recovery.
+        await task_tracker.set_status(prompt_id, request.task_id, completion_state)
 
 
 @app.post("/v1/videos/generations", response_model=ImageGenerationResponse)
@@ -513,6 +528,57 @@ async def _execute_cancel(
 async def cancel_task_by_id(task_id: str):
     """Cancel and interrupt render task by task_id"""
     return await _execute_cancel(task_id=task_id)
+
+
+async def tracked_task_state(task_id: str):
+    binding = await task_tracker.find(task_id=task_id)
+    if not binding:
+        return None, {"task_id": task_id, "status": "UNKNOWN"}
+    prompt_id, node_id = binding
+    node = config.get_node(node_id)
+    if not node:
+        return None, {"task_id": task_id, "prompt_id": prompt_id, "node_id": node_id, "status": "UNKNOWN"}
+    client = await get_client_pool().get_client_for_node(node)
+    state = await client.task_state(prompt_id)
+    state.update(task_id=task_id, prompt_id=prompt_id, node_id=node_id)
+    return client, state
+
+
+@app.get("/v1/tasks/{task_id}")
+async def get_task_state(task_id: str, request: Request):
+    _, state = await tracked_task_state(task_id)
+    assets = state.pop("assets", [])
+    videos = [a for a in assets if Path(a.get("filename", "")).suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}]
+    if state["status"] == "SUCCESS":
+        if videos:
+            state["video_url"] = str(request.url_for("get_task_video", task_id=task_id))
+        else:
+            state["status"] = "UNKNOWN"
+    return state
+
+
+@app.get("/v1/tasks/{task_id}/output")
+async def get_task_video(task_id: str):
+    client, state = await tracked_task_state(task_id)
+    if state["status"] != "SUCCESS":
+        raise HTTPException(status_code=409, detail="Task completion is not confirmed")
+    videos = [a for a in state.get("assets", []) if Path(a.get("filename", "")).suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}]
+    if not videos:
+        raise HTTPException(status_code=409, detail="No completed video output")
+    asset = videos[0]
+    # Stable cache name and atomic replacement make repeated recovery safe.
+    digest = hashlib.sha256(f"{state['node_id']}:{state['prompt_id']}:{asset}".encode()).hexdigest()
+    path = Path(config.server.output_dir) / (digest + Path(asset["filename"]).suffix.lower())
+    if not path.is_file():
+        data = await client.fetch_asset_bytes(asset["filename"], asset.get("subfolder", ""), asset.get("type", "output"))
+        temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+        try:
+            async with aiofiles.open(temporary, "wb") as output:
+                await output.write(data)
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
+    return FileResponse(path, media_type="video/mp4")
 
 
 @app.post("/v1/tasks/cancel", response_model=TaskCancelResponse)

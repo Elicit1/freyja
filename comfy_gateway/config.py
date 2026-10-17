@@ -53,6 +53,10 @@ class NodeConfig(BaseModel):
     http_url: str = Field(..., description="ComfyUI HTTP base URL, e.g. http://192.168.1.120:8188")
     ws_url: Optional[str] = Field(default=None, description="ComfyUI WebSocket URL")
     timeout_seconds: Optional[float] = Field(default=300.0, description="Node default timeout")
+    ws_ping_interval: float = Field(default=30.0, gt=0)
+    ws_ping_timeout: float = Field(default=120.0, gt=0)
+    recovery_check_interval: float = Field(default=15.0, gt=0)
+    transfer_timeout_seconds: float = Field(default=900.0, gt=0)
     models: List[ModelConfig] = Field(default_factory=list, description="Models hosted on this node")
 
     def get_ws_url(self) -> str:

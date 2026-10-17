@@ -52,7 +52,7 @@ class TaskTracker:
         node_id: str,
         task_id: Optional[str] = None,
         shot_id: Optional[str] = None,
-        ttl: int = 7200
+        ttl: int = 604800
     ) -> None:
         """Register active task metadata with TTL"""
         now_ts = str(time.time())
@@ -62,17 +62,17 @@ class TaskTracker:
             "task_id": str(task_id or ""),
             "shot_id": str(shot_id or ""),
             "status": "RUNNING",
-            "created_at": now_ts
+            "created_at": now_ts,
+            "expires_at": str(time.time() + ttl)
         }
 
         # 1. 尝试写入 Redis
         if self._redis_client:
             try:
                 pipe = self._redis_client.pipeline()
-                if task_id:
-                    t_key = f"comfy:task:{task_id}"
-                    pipe.hset(t_key, mapping=data)
-                    pipe.expire(t_key, ttl)
+                t_key = f"comfy:task:{task_id or prompt_id}"
+                pipe.hset(t_key, mapping=data)
+                pipe.expire(t_key, ttl)
                 if shot_id:
                     s_key = f"comfy:shot:{shot_id}"
                     pipe.set(s_key, task_id or prompt_id, ex=ttl)
@@ -134,9 +134,26 @@ class TaskTracker:
 
         if primary_id and primary_id in self._memory_tasks:
             entry = self._memory_tasks[primary_id]
+            if float(entry.get("expires_at", "0")) <= time.time():
+                self._memory_tasks.pop(primary_id, None)
+                return None
             return entry.get("prompt_id"), entry.get("node_id")
 
         return None
+
+    async def set_status(self, prompt_id: str, task_id: Optional[str], state: str) -> None:
+        primary_id = task_id or prompt_id
+        if primary_id in self._memory_tasks:
+            self._memory_tasks[primary_id]["status"] = state
+        if self._redis_client:
+            try:
+                key = f"comfy:task:{primary_id}"
+                # Do not recreate an expired record without its identity and TTL.
+                await self._redis_client.eval(
+                    "if redis.call('EXISTS',KEYS[1]) == 1 then return redis.call('HSET',KEYS[1],'status',ARGV[1]) end return 0",
+                    1, key, state)
+            except Exception as exc:
+                logger.warning("Task status persistence failed: task=%s error=%r", primary_id, exc)
 
     async def unregister(
         self,

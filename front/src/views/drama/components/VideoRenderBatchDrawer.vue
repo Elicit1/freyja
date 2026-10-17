@@ -11,7 +11,7 @@
         <el-table-column prop="phase" label="阶段" width="90" /><el-table-column prop="name" label="分镜" min-width="150" />
         <el-table-column label="状态" width="100"><template #default="{ row }">{{ labels[row.status] || row.status }}</template></el-table-column>
         <el-table-column prop="errorMessage" label="说明" min-width="200" show-overflow-tooltip />
-        <el-table-column label="操作" width="210"><template #default="{ row }"><el-button v-if="row.outputUrl" link type="primary" @click="videoUrl = row.outputUrl">预览</el-button><el-button link @click="openShot(row.shotId)">分镜</el-button><el-button v-if="row.status === 'FAILED' && row.archiveRecoverable && !batch.cancelRequested" link type="primary" @click="retryArchive(row.taskId)">重试归档</el-button><el-button v-if="row.status === 'NEEDS_REVIEW' || (row.status === 'CANCELLED' && row.upstreamStatus === 'UNCONFIRMED')" link type="warning" @click="reconcile(row.taskId)">核实</el-button></template></el-table-column>
+        <el-table-column label="操作" width="300"><template #default="{ row }"><el-button v-if="row.outputUrl" link type="primary" @click="videoUrl = row.outputUrl">预览</el-button><el-button link @click="openShot(row.shotId)">分镜</el-button><el-button v-if="row.status === 'FAILED' && row.archiveRecoverable && !batch.cancelRequested" link type="primary" @click="retryArchive(row.taskId)">重试归档</el-button><el-button v-if="row.status === 'NEEDS_REVIEW' && !batch.cancelRequested" link type="primary" :loading="recoveringTask === row.taskId" :disabled="!!recoveringTask" @click="recoverResult(row.taskId)">查询并取回结果</el-button><el-button v-if="row.status === 'NEEDS_REVIEW' || (row.status === 'CANCELLED' && row.upstreamStatus === 'UNCONFIRMED')" link type="warning" @click="reconcile(row.taskId)">核实</el-button></template></el-table-column>
       </el-table>
     </div>
     <el-dialog :model-value="!!videoUrl" title="视频结果" width="min(900px,90vw)" append-to-body @close="videoUrl = ''"><video v-if="videoUrl" :src="videoUrl" controls class="w-full max-h-[70vh]" /></el-dialog>
@@ -25,6 +25,7 @@ import { videoBatchApi, type VideoBatch, type VideoBatchRequest } from '@/api/vi
 import { useTaskCenterStore } from '@/store/taskCenter'
 const taskCenter = useTaskCenterStore()
 const router = useRouter(), visible = ref(false), batch = ref<VideoBatch | null>(null), videoUrl = ref('')
+const recoveringTask = ref('')
 const cancelling = ref(false), retrying = ref(false), retrySource = ref<'ORIGINAL_SNAPSHOT' | 'CURRENT_SHOT'>('ORIGINAL_SNAPSHOT')
 let batchId = '', fetching = false, refreshRequested = false
 const labels: Record<string, string> = { QUEUED: '排队中', DISPATCHING: '准备输入', RUNNING: '执行中', RENDERING: '渲染中', SUCCESS: '成功', FAILED: '失败', CANCELLED: '已取消', CANCELLING: '正在取消', SKIPPED: '已跳过', NEEDS_REVIEW: '待核实', PARTIAL_FAILED: '部分失败' }
@@ -67,6 +68,16 @@ async function retry() {
     await ElMessageBox.confirm(`可提交 ${preview.accepted} 镜，跳过或不可用 ${preview.skipped + preview.blocked} 镜。将创建新的渲染批次。`, '重试检查')
     const created = await videoBatchApi.create({ ...req, expectedPreviewHash: preview.previewHash }); await open(String(created.id))
   } catch (e: any) { if (e !== 'cancel' && e !== 'close') ElMessage.error(e.message || '重试失败') } finally { retrying.value = false }
+}
+async function recoverResult(taskId: string) {
+  recoveringTask.value = taskId
+  try {
+    const result = await videoBatchApi.recoverResult(batchId, taskId)
+    if (result.status === 'QUEUED' || result.status === 'SUCCESS') ElMessage.success(result.message)
+    else ElMessage.warning(result.message)
+    await refresh()
+  } catch (e: any) { ElMessage.error(e.message || '查询结果失败') }
+  finally { recoveringTask.value = '' }
 }
 async function reconcile(taskId: string) {
   try { const { value } = await ElMessageBox.prompt('仅在已确认远端任务停止后填写核实依据（如网关任务记录）。此操作释放全局视频队列，不会重新生成视频。', '核实上游已停止', { inputValidator: value => !!value?.trim() || '请填写核实依据' }); await videoBatchApi.reconcile(batchId, taskId, value); await refresh() }

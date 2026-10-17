@@ -26,5 +26,6 @@ export const videoBatchApi = {
   detail: (id: string) => request<VideoBatch>({ url: `${base}/${id}`, method: 'get' }),
   cancel: (id: string) => request<{ message: string; upstreamStatus: string }>({ url: `${base}/${id}/cancel`, method: 'post' }),
   reconcile: (id: string, taskId: string, evidence: string) => request<void>({ url: `${base}/${id}/reconcile`, method: 'post', data: { taskId, evidence } }),
-  retryArchive: (id: string, taskId: string) => request<void>({ url: `${base}/${id}/retry-archive`, method: 'post', data: { taskId } })
+  retryArchive: (id: string, taskId: string) => request<void>({ url: `${base}/${id}/retry-archive`, method: 'post', data: { taskId } }),
+  recoverResult: (id: string, taskId: string) => request<{ status: string; message: string }>({ url: `${base}/${id}/recover-result`, method: 'post', data: { taskId } })
 }

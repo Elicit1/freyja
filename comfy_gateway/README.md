@@ -215,6 +215,30 @@ curl -X POST http://127.0.0.1:8000/v1/images/generations \
 
 ## 🧪 验证与测试
 
+### 长任务断线恢复
+
+节点 YAML 支持 `ws_ping_interval: 30`、`ws_ping_timeout: 120`、
+`recovery_check_interval: 15` 和 `transfer_timeout_seconds: 900`（单位均为秒）。
+执行预算仍由模型或服务的 `timeout_seconds` 决定；重连沿用原 promptId 和剩余预算，
+不会重新提交工作流。WebSocket 连接失败时退避重连，并查询完成历史兜底。
+仅结构化终态能确认成功或失败；不可达、记录缺失和总时限耗尽均视为结果待核实。
+
+任务与算力节点的绑定在 Redis 保留七天，网关进程内映射同样按期限失效。
+`GET /v1/tasks/{taskId}` 查询真实状态，成功时提供 `/v1/tasks/{taskId}/output` 下载入口；
+下载使用完成历史中的视频产物并做原子缓存，不调用生成接口。
+Redis 不可用时降级为内存映射，该情况下进程重启不能恢复映射。
+
+批次抽屉的“查询并取回结果”调用后端
+`POST /drama/video-render-batches/{batchId}/recover-result`，请求体为 `{"taskId":"RENDER_…"}`。
+确认完成后只排队归档，使用原 taskId 幂等保存 Take，成功后继续剩余分镜。
+取消的批次不能恢复；未知状态继续保留全局队列占用。
+旧版本已经删除映射的任务，需要运维依据已验证的 taskId/promptId/nodeId 恢复绑定，
+不能通过猜测分镜或解析报错文本关联上游产物。
+
+后端视频 HTTP 等待默认至少 3600 秒，可由 `freyja.video-http-timeout-seconds` 调整；
+视频传输默认 900 秒，可由 `freyja.video-transfer-timeout-seconds` 调整。
+部署时应让 HTTP 等待预算覆盖上游执行时间、输入上传与结果传输时间。
+
 - **运行全量离线逻辑测试**:
   ```bash
   python test_offline.py

@@ -16,6 +16,10 @@ from config import GatewayConfig, NodeConfig
 logger = logging.getLogger("comfy_client")
 
 
+class ComfyExecutionError(RuntimeError):
+    """A structured terminal event from the exact upstream prompt."""
+
+
 class ComfyAsyncClient:
     """
     Production-grade asynchronous client for a specific ComfyUI backend instance.
@@ -28,6 +32,10 @@ class ComfyAsyncClient:
         self.ws_base = ws_url.rstrip("/")
         self.timeout = timeout
         self._http_client: Optional[httpx.AsyncClient] = None
+        self.ws_ping_interval = 30.0
+        self.ws_ping_timeout = 120.0
+        self.recovery_check_interval = 15.0
+        self.transfer_timeout_seconds = 900.0
 
     async def get_http_client(self) -> httpx.AsyncClient:
         if self._http_client is None or self._http_client.is_closed:
@@ -184,7 +192,39 @@ class ComfyAsyncClient:
             pass
         return f"ComfyUI 任务校验失败 ({resp_text})"
 
-    async def wait_for_completion(
+    async def wait_for_completion(self, prompt_id: str, client_id: str,
+                                  timeout_override: Optional[float] = None) -> List[Dict[str, Any]]:
+        """Reconnect the same prompt within one absolute execution budget."""
+        budget = timeout_override if timeout_override and timeout_override > 0 else self.timeout
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + budget
+        attempt = 0
+        while True:
+            try:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    raise asyncio.TimeoutError()
+                return await asyncio.wait_for(
+                    self._wait_completion_connection(prompt_id, client_id, remaining), remaining)
+            except (websockets.exceptions.WebSocketException, OSError, TimeoutError, asyncio.TimeoutError) as exc:
+                logger.warning("Completion connection lost: prompt=%s attempt=%s error_type=%s error=%r",
+                               prompt_id, attempt, type(exc).__name__, exc)
+                # One bounded final snapshot also covers completion at the deadline.
+                try:
+                    assets = await asyncio.wait_for(self._get_completed_history_assets(prompt_id),
+                                                    min(5.0, max(0.01, deadline - loop.time())))
+                except asyncio.TimeoutError:
+                    assets = []
+                if assets:
+                    return assets
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    raise TimeoutError(f"ComfyUI completion unconfirmed for prompt {prompt_id}: execution deadline exceeded") from exc
+                delay = min((1, 2, 5, 10, 30)[min(attempt, 4)], self.recovery_check_interval, remaining)
+                attempt += 1
+                await asyncio.sleep(delay)
+
+    async def _wait_completion_connection(
         self,
         prompt_id: str,
         client_id: str,
@@ -199,7 +239,10 @@ class ComfyAsyncClient:
         timeout = timeout_override if timeout_override and timeout_override > 0 else self.timeout
         try:
             logger.info(f"[{self.http_base}] Connecting to WebSocket: {ws_url} (timeout: {timeout}s)")
-            async with websockets.connect(ws_url, open_timeout=10.0, max_size=100 * 1024 * 1024) as ws:
+            async with websockets.connect(
+                ws_url, open_timeout=min(10.0, timeout), max_size=100 * 1024 * 1024,
+                ping_interval=self.ws_ping_interval, ping_timeout=self.ws_ping_timeout
+            ) as ws:
                 # One snapshot after subscribing closes the cached-completion race.
                 # All subsequent waiting is driven by WebSocket messages.
                 output_assets = await self._get_completed_history_assets(prompt_id)
@@ -259,18 +302,14 @@ class ComfyAsyncClient:
                             node_id = msg_data.get("node_id")
                             node_type = msg_data.get("node_type")
                             err = msg_data.get("exception_message")
-                            raise RuntimeError(f"ComfyUI error on {self.http_base} in node {node_id} ({node_type}): {err}")
+                            raise ComfyExecutionError(f"ComfyUI error on {self.http_base} in node {node_id} ({node_type}): {err}")
 
                     elif msg_type == "execution_interrupted":
                         if msg_data.get("prompt_id") == prompt_id:
-                            raise RuntimeError(f"ComfyUI execution on {self.http_base} was interrupted.")
+                            raise ComfyExecutionError(f"ComfyUI execution on {self.http_base} was interrupted.")
 
-        except (websockets.exceptions.WebSocketException, OSError, TimeoutError, asyncio.TimeoutError) as e:
-            # A single snapshot may recover a result committed before disconnection.
-            # Never infer completion from partial 'executed' assets or poll history.
-            output_assets = await self._get_completed_history_assets(prompt_id)
-            if not output_assets:
-                raise TimeoutError(f"ComfyUI completion unconfirmed for prompt {prompt_id}: {e}") from e
+        except (websockets.exceptions.WebSocketException, OSError, TimeoutError, asyncio.TimeoutError):
+            raise
 
         if not output_assets:
             output_assets = await self._get_completed_history_assets(prompt_id)
@@ -287,6 +326,8 @@ class ComfyAsyncClient:
             if resp.status_code != 200:
                 return []
             item = resp.json().get(prompt_id)
+            if item and item.get("status", {}).get("status_str") == "error":
+                raise ComfyExecutionError(f"ComfyUI execution failed for prompt {prompt_id}")
             if not item or not item.get("status", {}).get("completed"):
                 return []
             assets = []
@@ -296,9 +337,44 @@ class ComfyAsyncClient:
                     if isinstance(found, list):
                         assets.extend(found)
             return assets
+        except ComfyExecutionError:
+            raise
         except Exception as e:
             logger.debug(f"History status check failed on {self.http_base}: {e}")
             return []
+
+    async def task_state(self, prompt_id: str) -> Dict[str, Any]:
+        """Only explicit history/queue evidence can establish an upstream state."""
+        client = await self.get_http_client()
+        try:
+            response = await client.get(f"{self.http_base}/history/{prompt_id}", timeout=5.0)
+            response.raise_for_status()
+            item = response.json().get(prompt_id)
+            if item:
+                status = item.get("status", {})
+                events = [event[0] for event in status.get("messages", [])]
+                if "execution_interrupted" in events:
+                    return {"status": "CANCELLED", "assets": []}
+                if status.get("status_str") == "error" or "execution_error" in events:
+                    return {"status": "FAILED", "assets": []}
+                if status.get("completed"):
+                    assets = []
+                    for output in item.get("outputs", {}).values():
+                        for key in ("videos", "gifs", "images", "video"):
+                            if isinstance(output.get(key), list):
+                                assets.extend(output[key])
+                    if assets:
+                        return {"status": "SUCCESS", "assets": assets}
+            response = await client.get(f"{self.http_base}/queue", timeout=5.0)
+            response.raise_for_status()
+            queue = response.json()
+            for key, state in (("queue_running", "RUNNING"), ("queue_pending", "QUEUED")):
+                if any(len(row) > 1 and row[1] == prompt_id for row in queue.get(key, [])):
+                    return {"status": state, "assets": []}
+        except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
+            logger.warning("Task status unavailable: prompt=%s error_type=%s error=%r",
+                           prompt_id, type(exc).__name__, exc)
+        return {"status": "UNKNOWN", "assets": []}
 
     async def cancel_job(self, prompt_id: str) -> Tuple[bool, str]:
         """
@@ -408,7 +484,7 @@ class ComfyAsyncClient:
             "subfolder": subfolder,
             "type": type_name
         }
-        resp = await client.get(f"{self.http_base}/view", params=params)
+        resp = await client.get(f"{self.http_base}/view", params=params, timeout=self.transfer_timeout_seconds)
         resp.raise_for_status()
         return resp.content
 
@@ -440,11 +516,16 @@ class ComfyClientPool:
 
     async def get_client_for_node(self, node: NodeConfig) -> ComfyAsyncClient:
         """Get or create client for a given NodeConfig"""
-        return await self.get_client_by_url(
+        client = await self.get_client_by_url(
             http_url=node.http_url,
             ws_url=node.get_ws_url(),
             timeout=node.timeout_seconds or self.config.server.timeout_seconds
         )
+        client.ws_ping_interval = node.ws_ping_interval
+        client.ws_ping_timeout = node.ws_ping_timeout
+        client.recovery_check_interval = node.recovery_check_interval
+        client.transfer_timeout_seconds = node.transfer_timeout_seconds
+        return client
 
     async def get_client_by_url(self, http_url: str, ws_url: Optional[str] = None, timeout: float = 300.0) -> ComfyAsyncClient:
         """Get or create client given http_url and optional ws_url"""

@@ -168,8 +168,9 @@ public class VideoRenderBatchService {
         VideoExecutionState.begin(item.getTaskId());
         try {
             if(cancelled(item))return true;
-            Snapshot snap=json.readValue(StringUtils.defaultIfBlank(item.getResolvedJson(),item.getSnapshotJson()),Snapshot.class);preparation.validateRoute(snap);
-            if(StringUtils.isBlank(item.getResolvedJson())){
+            Snapshot snap=json.readValue(StringUtils.defaultIfBlank(item.getResolvedJson(),item.getSnapshotJson()),Snapshot.class);
+            if(item.getRecoveryUrl()==null)preparation.validateRoute(snap);
+            if(item.getRecoveryUrl()==null&&StringUtils.isBlank(item.getResolvedJson())){
                 applyFrame(snap,item,true);applyFrame(snap,item,false);
                 tx.executeWithoutResult(s->{store.lockQueue();if(!cancelled(item))store.resolved(item.getTaskId(),preparation.write(snap));});
             }
@@ -269,5 +270,53 @@ public class VideoRenderBatchService {
             store.holdShot(i.getShotId(),taskId);store.retryArchive(taskId);store.batchStatus(batchId,"QUEUED",false);
             renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",taskId).eq("status","FAILED").set("status","QUEUED").set("finish_time",null));
         });renderTasks.refreshTaskFromDatabase(taskId);publish(batchId);queueChanged();
+    }
+
+    public record RecoveryResult(String status, String message) {}
+
+    /** Query outside the DB lock; atomically recheck cancellation/ownership before enqueuing archive. */
+    public RecoveryResult recoverResult(Long batchId, String taskId) {
+        Item original = store.task(taskId);
+        checkRecoveryTarget(batchId, original);
+        if ("SUCCESS".equals(original.getStatus())) return new RecoveryResult("SUCCESS", "视频已取回，无需重复操作");
+        if (Set.of("QUEUED","DISPATCHING","RENDERING").contains(original.getStatus()) && original.getRecoveryUrl()!=null)
+            return new RecoveryResult("QUEUED", "已加入结果归档队列");
+        if (!"NEEDS_REVIEW".equals(original.getStatus())) throw new BizException(409,"该任务不处于待核实状态");
+        Snapshot snapshot;
+        try { snapshot=json.readValue(StringUtils.defaultIfBlank(original.getResolvedJson(),original.getSnapshotJson()),Snapshot.class); }
+        catch(Exception e){throw new BizException(500,"无法读取原任务快照");}
+        var remote=api.queryVideoTask(snapshot.getRequest().getProviderId(),taskId);
+        if(remote==null)throw new BizException(502,"未获取到上游任务状态");
+        if(!Set.of("SUCCESS","FAILED","CANCELLED").contains(remote.status()))
+            return new RecoveryResult(remote.status(),Set.of("RUNNING","QUEUED").contains(remote.status())
+                    ?"原任务仍在上游执行或排队，请稍后再次查询":"上游状态仍不明确，队列继续暂停");
+        if("SUCCESS".equals(remote.status())&&StringUtils.isBlank(remote.videoUrl()))
+            throw new BizException(502,"上游未返回已完成的视频地址");
+        RecoveryResult result=tx.execute(s->{
+            store.lockQueue();Item current=store.task(taskId);checkRecoveryTarget(batchId,current);
+            if("SUCCESS".equals(current.getStatus()))return new RecoveryResult("SUCCESS","视频已取回");
+            if(Set.of("QUEUED","DISPATCHING","RENDERING").contains(current.getStatus())&&current.getRecoveryUrl()!=null)return new RecoveryResult("QUEUED","已加入结果归档队列");
+            if(!"NEEDS_REVIEW".equals(current.getStatus())||!taskId.equals(store.currentTask())||taskId.equals(localTask))
+                throw new BizException(409,"任务执行状态已变化，请刷新后重试");
+            if("SUCCESS".equals(remote.status())){
+                store.recoverCompleted(taskId,remote.videoUrl());
+                renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",taskId).eq("status","FAILED")
+                        .set("status","QUEUED").set("error_message",null).set("error_detail",null).set("finish_time",null));
+                store.release(taskId);store.batchStatus(batchId,"QUEUED",false);
+                return new RecoveryResult("QUEUED","已找到完成的视频，正在取回归档；完成后继续批次");
+            }
+            store.status(taskId,"FAILED","上游已明确结束："+remote.status(),null,"CONFIRMED");
+            renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",taskId).eq("status","FAILED")
+                    .set("error_message","上游已明确结束："+remote.status()));
+            store.release(taskId);store.releaseShot(taskId);recompute(batchId);
+            return new RecoveryResult("FAILED","已确认原任务失败或中断，后续分镜继续执行");
+        });
+        renderTasks.refreshTaskFromDatabase(taskId);publish(batchId);queueChanged();return result;
+    }
+
+    private void checkRecoveryTarget(Long batchId, Item item) {
+        if(item==null||!Objects.equals(item.getBatchId(),batchId))throw new BizException(404,"批次任务不存在");
+        if(detail(batchId).isCancelRequested()||"CANCELLED".equals(item.getStatus()))
+            throw new BizException(409,"已取消的批次不能恢复执行");
     }
 }

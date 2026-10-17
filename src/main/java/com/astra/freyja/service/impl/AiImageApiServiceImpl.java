@@ -68,6 +68,11 @@ public class AiImageApiServiceImpl implements AiImageApiService {
 
     private final ThreadLocal<String> archivePrefix = new ThreadLocal<>();
 
+    @org.springframework.beans.factory.annotation.Value("${freyja.video-http-timeout-seconds:3600}")
+    private long videoHttpTimeoutSeconds = 3600;
+    @org.springframework.beans.factory.annotation.Value("${freyja.video-transfer-timeout-seconds:900}")
+    private long videoTransferTimeoutSeconds = 900;
+
     @Override
     public String generateAndArchiveImage(Long shotId, Long dramaId, String prompt, DramaShotFirstFrameDTO dto) {
         return renderDispatchCoordinator.executeSingle(() -> {
@@ -349,10 +354,14 @@ public class AiImageApiServiceImpl implements AiImageApiService {
     }
 
     private byte[] downloadRemoteBytes(String remoteUrl) {
+        return downloadRemoteBytes(remoteUrl, 300);
+    }
+
+    private byte[] downloadRemoteBytes(String remoteUrl, long timeoutSeconds) {
         try {
             HttpRequest req = HttpRequest.newBuilder()
                     .uri(URI.create(remoteUrl))
-                    .timeout(Duration.ofSeconds(300))
+                    .timeout(Duration.ofSeconds(timeoutSeconds))
                     .GET()
                     .build();
             HttpResponse<byte[]> res = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofByteArray());
@@ -687,13 +696,21 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                     .uri(URI.create(requestUrl))
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + (apiKey != null ? apiKey : ""))
-                    .timeout(Duration.ofSeconds(provider.getTimeout() != null && provider.getTimeout() > 0 ? provider.getTimeout() : 1800))
+                    .timeout(Duration.ofSeconds(Math.max(videoHttpTimeoutSeconds,
+                            provider.getTimeout() != null && provider.getTimeout() > 0 ? provider.getTimeout() : 1800)))
                     .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                     .build();
 
             com.astra.freyja.service.video.VideoExecutionState.phase("SENT");
             HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() >= 300) {
+                try {
+                    JsonNode error = objectMapper.readTree(response.body()).path("error");
+                    if (java.util.Set.of("FAILED", "CANCELLED").contains(error.path("upstream_status").asText()))
+                        com.astra.freyja.service.video.VideoExecutionState.phase("REJECTED");
+                } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+                    // An HTML proxy error provides no evidence that the upstream task stopped.
+                }
                 if(java.util.Set.of(400,401,403,404,405,413,415,422,429).contains(response.statusCode()))
                     com.astra.freyja.service.video.VideoExecutionState.phase("REJECTED");
                 log.error("[AiImageApi] 视频生成 API 请求失败: status={}, body={}", response.statusCode(), response.body());
@@ -716,7 +733,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 String targetUrl = resolveRemoteImageUrl(remoteVideoUrl, baseUrl);
                 com.astra.freyja.service.video.VideoExecutionState.completed(targetUrl);
                 log.info("[AiImageApi] 成功获取远程视频 URL，正在下载转存至 MinIO: targetUrl={}", targetUrl);
-                videoBytes = downloadRemoteBytes(targetUrl);
+                videoBytes = downloadRemoteBytes(targetUrl, videoTransferTimeoutSeconds);
             } else if (firstItem.hasNonNull("b64_json")) {
                 com.astra.freyja.service.video.VideoExecutionState.completed(null);
                 String b64 = firstItem.get("b64_json").asText();
@@ -776,7 +793,35 @@ public class AiImageApiServiceImpl implements AiImageApiService {
     @Override
     public com.astra.freyja.dto.drama.VideoGenerationResultVO archiveExistingVideo(Long shotId,Long dramaId,String sourceUrl) {
         com.astra.freyja.service.video.VideoExecutionState.completed(sourceUrl);
-        return com.astra.freyja.dto.drama.VideoGenerationResultVO.builder().videoUrl(uploadVideoToMinio(shotId,dramaId,downloadRemoteBytes(sourceUrl))).build();
+        return com.astra.freyja.dto.drama.VideoGenerationResultVO.builder().videoUrl(uploadVideoToMinio(shotId,dramaId,downloadRemoteBytes(sourceUrl,videoTransferTimeoutSeconds))).build();
+    }
+
+    @Override
+    public com.astra.freyja.dto.render.RemoteVideoTaskVO queryVideoTask(Long providerId, String taskId) {
+        AiProvider provider = resolveProvider(providerId);
+        String base = StringUtils.stripEnd(provider.getBaseUrl(), "/");
+        if (StringUtils.isBlank(base)) throw new BizException(400, "提供商未配置网关地址");
+        if (base.endsWith("/v1")) base = base.substring(0, base.length() - 3);
+        String taskUrl = base + "/v1/tasks/" + java.net.URLEncoder.encode(taskId, java.nio.charset.StandardCharsets.UTF_8);
+        try {
+            var builder = HttpRequest.newBuilder(URI.create(taskUrl)).timeout(Duration.ofSeconds(15)).GET();
+            if (StringUtils.isNotBlank(provider.getApiKey()))
+                builder.header("Authorization", "Bearer " + cryptoUtil.decrypt(provider.getApiKey()));
+            var response = HTTP_CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) throw new BizException(502, "上游任务查询失败 HTTP " + response.statusCode());
+            JsonNode result = objectMapper.readTree(response.body());
+            if (!taskId.equals(result.path("task_id").asText())) throw new BizException(502, "上游返回的任务标识不匹配");
+            String state = result.path("status").asText("UNKNOWN");
+            // Download only from the configured gateway, never an arbitrary returned URL.
+            String url = "SUCCESS".equals(state) && StringUtils.isNotBlank(result.path("video_url").asText()) ? taskUrl + "/output" : null;
+            if ("SUCCESS".equals(state) && url == null) state = "UNKNOWN";
+            return new com.astra.freyja.dto.render.RemoteVideoTaskVO(state,url,
+                    result.path("prompt_id").asText(null),result.path("node_id").asText(null));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BizException(502, "上游任务查询已中断");
+        } catch (BizException e) { throw e;
+        } catch (Exception e) { throw new BizException(502, "上游任务查询失败：" + e.getMessage()); }
     }
 
     private String uploadFrameToMinio(Long shotId, Long dramaId, byte[] frameBytes) {

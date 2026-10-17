@@ -54,6 +54,10 @@ public interface AiImageApiService {
         throw new UnsupportedOperationException("此提供商未实现归档恢复");
     }
 
+    default com.astra.freyja.dto.render.RemoteVideoTaskVO queryVideoTask(Long providerId, String taskId) {
+        throw new UnsupportedOperationException("此提供商未实现视频任务查询");
+    }
+
     /**
      * 向远程 AI 提供商 / ComfyUI 网关发送精准任务取消与中断指令。
      *

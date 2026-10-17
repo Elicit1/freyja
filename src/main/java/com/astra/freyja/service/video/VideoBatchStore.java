@@ -56,6 +56,9 @@ public class VideoBatchStore {
     public void recordEvidence(String task, String evidence) { jdbc.update("UPDATE video_render_batch_item SET error_message=? WHERE task_id=?", "上游停止核实："+evidence, task); }
     public void recovery(String task,String phase,String url){jdbc.update("UPDATE video_render_batch_item SET failure_phase=?,recovery_url=? WHERE task_id=?",phase,url,task);}
     public void retryArchive(String task){jdbc.update("UPDATE video_render_batch_item SET status='QUEUED',finished_at=NULL WHERE task_id=? AND status='FAILED'",task);}
+    public void recoverCompleted(String task, String url) {
+        jdbc.update("UPDATE video_render_batch_item SET status='QUEUED',failure_phase='ARCHIVE',recovery_url=?,upstream_status='CONFIRMED',error_message=NULL,finished_at=NULL WHERE task_id=? AND status='NEEDS_REVIEW'", url, task);
+    }
     public static boolean terminal(String s) { return List.of("SUCCESS","FAILED","CANCELLED","SKIPPED").contains(s); }
     private static <T> T first(List<T> list) { return list.isEmpty() ? null : list.getFirst(); }
     private static LocalDateTime time(ResultSet rs, String col) throws SQLException { var v=rs.getTimestamp(col); return v==null?null:v.toLocalDateTime(); }
