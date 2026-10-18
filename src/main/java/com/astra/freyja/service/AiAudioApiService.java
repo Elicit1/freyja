@@ -17,6 +17,8 @@ public interface AiAudioApiService {
      */
     AudioArchiveResult designVoice(Long providerId, String modelCode, String voiceDesc, String sampleText, String archivePath);
 
+    AudioArchiveResult cloneVoice(Long providerId, String modelCode, byte[] referenceWav, String emotion, String text, String archivePath);
+
     /**
      * 音频归档结果
      */

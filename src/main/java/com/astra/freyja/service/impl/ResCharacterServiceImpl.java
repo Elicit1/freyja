@@ -68,6 +68,9 @@ public class ResCharacterServiceImpl implements ResCharacterService {
     private final DramaMapper dramaMapper;
 
     @Autowired(required = false)
+    private com.astra.freyja.service.DubbingService dubbingService;
+
+    @Autowired(required = false)
     private SkillPromptContextService skillPromptContextService;
 
     @Autowired(required = false)
@@ -173,7 +176,7 @@ public class ResCharacterServiceImpl implements ResCharacterService {
         String primaryName = StringUtils.firstNonBlank(dto.getCanonicalName(), dto.getName(), dto.getDisplayName());
 
         ResCharacter character = new ResCharacter();
-        BeanUtils.copyProperties(dto, character);
+        BeanUtils.copyProperties(dto, character, "voiceId", "voiceDesc", "voiceSampleText", "voiceSampleUrl");
         character.setName(primaryName);
         character.setCanonicalName(dto.getCanonicalName());
         character.setDisplayName(StringUtils.defaultIfBlank(dto.getDisplayName(), primaryName));
@@ -252,7 +255,7 @@ public class ResCharacterServiceImpl implements ResCharacterService {
         }
 
         ResCharacter character = new ResCharacter();
-        BeanUtils.copyProperties(dto, character);
+        BeanUtils.copyProperties(dto, character, "voiceId", "voiceDesc", "voiceSampleText", "voiceSampleUrl");
         if (StringUtils.isNotBlank(dto.getCanonicalName()) && StringUtils.isBlank(dto.getIdentityStatus())) {
             character.setIdentityStatus(IdentityStatus.CONFIRMED.name());
         }
@@ -279,6 +282,8 @@ public class ResCharacterServiceImpl implements ResCharacterService {
         if (exist == null) {
             return;
         }
+
+        if (dubbingService != null) dubbingService.deleteForCharacter(id);
 
         // 删除角色本身
         characterMapper.deleteById(id);

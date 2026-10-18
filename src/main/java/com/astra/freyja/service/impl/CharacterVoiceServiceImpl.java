@@ -23,6 +23,7 @@ public class CharacterVoiceServiceImpl implements CharacterVoiceService {
 
     private final ResCharacterMapper characterMapper;
     private final AiAudioApiService aiAudioApiService;
+    private final com.astra.freyja.service.DubbingService dubbingService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -49,7 +50,10 @@ public class CharacterVoiceServiceImpl implements CharacterVoiceService {
                 StringUtils.defaultIfBlank(character.getVoiceSampleText(), "我是" + character.getName() + "，这就是我的真实声音。")
         );
 
-        String archivePath = String.format("characters/%d/voice_sample_%d.wav", characterId, System.currentTimeMillis());
+        if ((dto.getAutoSave() == null || dto.getAutoSave()) && dubbingService.base(characterId) != null) {
+            throw new BizException(409, "角色已有基础声音，请前往配音中心管理或明确替换");
+        }
+        String archivePath = String.format("dubbing/%d/legacy_%s.wav", characterId, java.util.UUID.randomUUID());
 
         AiAudioApiService.AudioArchiveResult archiveResult = aiAudioApiService.designVoice(
                 dto.getProviderId(),
@@ -59,14 +63,9 @@ public class CharacterVoiceServiceImpl implements CharacterVoiceService {
                 archivePath
         );
 
-        // 持久化至角色实体
+        // Compatibility endpoint adopts a base through the same uniqueness/validation rules.
         if (dto.getAutoSave() == null || dto.getAutoSave()) {
-            character.setVoiceDesc(voiceDesc);
-            character.setVoiceSampleText(sampleText);
-            character.setVoiceSampleUrl(archiveResult.audioUrl());
-            characterMapper.updateById(character);
-            log.info("[CharacterVoice] 角色专属母音已持久化: charId={}, name={}, url={}",
-                    characterId, character.getName(), archiveResult.audioUrl());
+            archiveResult = dubbingService.adoptDesignedBase(characterId, sampleText, voiceDesc, archiveResult);
         }
 
         CharacterVoiceResultVO vo = new CharacterVoiceResultVO();

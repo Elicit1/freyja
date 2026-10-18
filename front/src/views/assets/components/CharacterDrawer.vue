@@ -115,12 +115,9 @@
                 <template #title>
                   <div class="flex items-center gap-2 text-xs font-semibold text-slate-700 w-full pr-2">
                     <el-icon class="text-indigo-500"><Operation /></el-icon>
-                    <span>更多设置 (别名、专属音色、身份证据链与状态)</span>
+                    <span>更多设置 (别名、配音中心、身份证据链与状态)</span>
                     <el-tag v-if="characterAliases.length > 0" size="small" type="info" class="!text-[10px] !h-4 !px-1.5">
                       {{ characterAliases.length }} 个别名
-                    </el-tag>
-                    <el-tag v-if="formData.voiceSampleUrl" size="small" type="success" effect="light" class="!text-[10px] !h-4 !px-1.5">
-                      音色已配置
                     </el-tag>
                   </div>
                 </template>
@@ -220,57 +217,12 @@
                     </button>
                   </el-form-item>
 
-                  <!-- 🎙️ 角色专属音色 -->
-                  <el-form-item label="角色专属音色">
-                    <div
-                      v-if="formData.voiceSampleUrl"
-                      class="w-full flex items-center justify-between p-3 rounded-lg border border-indigo-200 bg-indigo-50/40"
-                    >
-                      <div class="flex items-center gap-3">
-                        <el-button
-                          circle
-                          size="small"
-                          :type="isPlayingVoice ? 'danger' : 'primary'"
-                          @click="togglePlayVoiceSample"
-                        >
-                          {{ isPlayingVoice ? '⏸' : '▶' }}
-                        </el-button>
-                        <div class="overflow-hidden">
-                          <div class="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
-                            <span>专属母音已就绪</span>
-                            <el-tag size="small" type="success" effect="light" class="!text-[10px] !h-5 !px-1.5">已配置</el-tag>
-                            <span v-if="voiceDuration" class="text-[10px] text-indigo-600 font-mono">({{ voiceDuration }}s)</span>
-                          </div>
-                          <div class="text-[11px] text-gray-500 truncate max-w-[260px]" :title="formData.voiceDesc || formData.voiceSampleUrl">
-                            {{ formData.voiceDesc || formData.voiceSampleUrl }}
-                          </div>
-                        </div>
-                      </div>
-                      <div class="flex items-center gap-1 shrink-0">
-                        <el-button size="small" type="primary" plain @click="handleOpenVoiceDesignModal">
-                          调整音色
-                        </el-button>
-                        <el-button size="small" text type="danger" @click="handleClearVoiceSample">
-                          清除
-                        </el-button>
-                      </div>
+                  <el-form-item label="角色配音">
+                    <div class="w-full flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+                      <span class="text-xs text-gray-500">在配音中心统一管理基础声音、克隆配音和声音特效。</span>
+                      <el-button type="primary" plain :disabled="!formData.id" @click="goToDubbing">前往配音中心</el-button>
                     </div>
-
-                    <div
-                      v-else
-                      class="w-full flex items-center justify-between p-3 rounded-lg border border-dashed border-gray-200 bg-gray-50/50 hover:border-indigo-200 transition-colors"
-                    >
-                      <div class="flex items-center gap-2">
-                        <span class="text-base">🎙️</span>
-                        <div>
-                          <div class="text-xs font-medium text-gray-700">暂未配置专属声音母音</div>
-                          <div class="text-[11px] text-gray-400">使用自然语言设计音色或上传音频，用于分镜台词克隆</div>
-                        </div>
-                      </div>
-                      <el-button size="small" type="primary" plain @click="handleOpenVoiceDesignModal">
-                        ✨ AI 声音设计
-                      </el-button>
-                    </div>
+                    <span v-if="!formData.id" class="text-xs text-gray-400">保存角色后可前往配音中心。</span>
                   </el-form-item>
 
                   <div class="grid grid-cols-2 gap-2">
@@ -711,12 +663,6 @@
     @panel-close="closePromptPanel(panel.key)"
   />
 
-  <!-- 🎙️ AI 角色专属音色设计工坊弹窗 -->
-  <VoiceDesignModal
-    ref="voiceDesignModalRef"
-    @apply="handleApplyVoiceDesign"
-  />
-
   <!-- 🏷️ 角色别名管理工坊弹窗 -->
   <AliasModal
     ref="aliasModalRef"
@@ -760,7 +706,7 @@
 
 <script setup lang="ts">
 import DictSelect from '@/components/DictSelect.vue'
-import { ref, reactive, computed, watch, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { ElMessage, type FormInstance, type FormRules, type UploadRequestOptions } from 'element-plus'
 import { ArrowLeft, Operation, Plus } from '@element-plus/icons-vue'
 import { characterApi } from '@/api/res-character'
@@ -771,7 +717,7 @@ import type { DramaOption } from '@/types/drama'
 import AssetImageGenerator from './AssetImageGenerator.vue'
 import PromptDeriveModal from './PromptDeriveModal.vue'
 import LookPromptDeriveModal from './LookPromptDeriveModal.vue'
-import VoiceDesignModal from './VoiceDesignModal.vue'
+import { useRouter } from 'vue-router'
 import AliasModal from './AliasModal.vue'
 
 type PromptPanelSession = { key: string; targetId: string; targetName: string; formVersion: number; running: boolean }
@@ -786,7 +732,7 @@ const promptPanelRefs = ref<Record<string, InstanceType<typeof PromptDeriveModal
 const lookPromptPanelRefs = ref<Record<string, InstanceType<typeof LookPromptDeriveModal>>>({})
 let promptPanelSequence = 0
 let formVersion = 0
-const voiceDesignModalRef = ref<InstanceType<typeof VoiceDesignModal>>()
+const router = useRouter()
 const aliasModalRef = ref<InstanceType<typeof AliasModal>>()
 
 // 角色别名状态
@@ -845,21 +791,12 @@ const formData = reactive<Partial<ResCharacter>>({
   negativePrompt: '',
   loraName: '',
   loraWeight: 1.0,
-  voiceId: '',
-  voiceDesc: '',
-  voiceSampleText: '',
-  voiceSampleUrl: '',
   sortOrder: 0,
   status: 1,
   remark: ''
 })
 
 const isEdit = computed(() => !!formData.id)
-
-// 专属母音试听状态
-const isPlayingVoice = ref(false)
-let currentAudio: HTMLAudioElement | null = null
-const voiceDuration = ref<number | null>(null)
 
 const formRules: FormRules = {
   name: [{ required: true, message: '请输入人物名称', trigger: 'blur' }],
@@ -1196,21 +1133,11 @@ function open(character?: ResCharacter, presetDramaId?: string | number) {
       negativePrompt: '',
       loraName: '',
       loraWeight: 1.0,
-      voiceId: '',
-      voiceDesc: '',
-      voiceSampleText: '',
-      voiceSampleUrl: '',
       sortOrder: 0,
       status: 1,
       remark: ''
     })
   }
-  if (currentAudio) {
-    currentAudio.pause()
-    currentAudio = null
-  }
-  isPlayingVoice.value = false
-  voiceDuration.value = null
   quickAliasText.value = ''
   if (character?.id) {
     loadAliases()
@@ -1362,55 +1289,10 @@ function getImageStatusTagType(status?: string): 'info' | 'success' | 'warning' 
   return status ? map[status] || 'info' : 'success'
 }
 
-function handleOpenVoiceDesignModal() {
-  voiceDesignModalRef.value?.open(formData)
-}
-
-function handleApplyVoiceDesign(data: {
-  voiceDesc: string
-  voiceSampleText: string
-  voiceSampleUrl: string
-  voiceId: string
-  duration?: number | null
-}) {
-  formData.voiceDesc = data.voiceDesc
-  formData.voiceSampleText = data.voiceSampleText
-  formData.voiceSampleUrl = data.voiceSampleUrl
-  formData.voiceId = data.voiceId
-  if (data.duration !== undefined) {
-    voiceDuration.value = data.duration
-  }
-}
-
-function togglePlayVoiceSample() {
-  if (!formData.voiceSampleUrl) return
-  if (isPlayingVoice.value && currentAudio) {
-    currentAudio.pause()
-    isPlayingVoice.value = false
-    return
-  }
-  if (!currentAudio || currentAudio.src !== formData.voiceSampleUrl) {
-    currentAudio = new Audio(formData.voiceSampleUrl)
-    currentAudio.onended = () => {
-      isPlayingVoice.value = false
-    }
-    currentAudio.onerror = () => {
-      isPlayingVoice.value = false
-      ElMessage.error('音频加载或播放失败')
-    }
-  }
-  currentAudio.play()
-  isPlayingVoice.value = true
-}
-
-function handleClearVoiceSample() {
-  if (currentAudio) {
-    currentAudio.pause()
-    currentAudio = null
-  }
-  isPlayingVoice.value = false
-  formData.voiceSampleUrl = ''
-  voiceDuration.value = null
+function goToDubbing() {
+  if (!formData.id) return
+  visible.value = false
+  void router.push({ path: '/dubbing/characters', query: { characterId: String(formData.id) } })
 }
 
 async function handleSubmit() {
@@ -1420,6 +1302,7 @@ async function handleSubmit() {
     try {
       saving.value = true
       const payload: any = { ...formData }
+      for (const field of ['voiceId', 'voiceDesc', 'voiceSampleText', 'voiceSampleUrl']) delete payload[field]
       const trimmedName = (payload.name || '').trim()
 
       payload.name = trimmedName
@@ -1467,21 +1350,9 @@ async function handleSubmit() {
 
 function handleClose(done?: () => void) {
   emit('cancel')
-  if (currentAudio) {
-    currentAudio.pause()
-    currentAudio = null
-  }
-  isPlayingVoice.value = false
   visible.value = false
   done?.()
 }
-
-onBeforeUnmount(() => {
-  if (currentAudio) {
-    currentAudio.pause()
-    currentAudio = null
-  }
-})
 
 defineExpose({ open })
 </script>

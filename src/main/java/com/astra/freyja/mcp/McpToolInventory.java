@@ -13,6 +13,8 @@ public class McpToolInventory {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private McpVoiceTools voices;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private McpDubbingTools dubbing;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.astra.freyja.capability.service.CapabilityCatalogService capabilities;
     public List<McpTool<?>> all() {
         return capabilities == null ? registeredHandlers() : capabilities.mcpTools();
@@ -21,6 +23,7 @@ public class McpToolInventory {
         List<McpTool<?>> result = new ArrayList<>(reads.tools()); result.addAll(business.allTools());
         skills.ifAvailable(adapter -> result.addAll(adapter.tools()));
         if (voices != null) result.addAll(voices.tools());
+        if (dubbing != null) result.addAll(dubbing.tools());
         return result;
     }
 }

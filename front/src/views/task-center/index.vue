@@ -238,6 +238,10 @@ async function openTask(task: TaskCenterItem) {
   store.markRead(task.taskId, task.sourceType)
   if (task.sourceType === 'VIDEO_RENDER_BATCH') { await videoBatchDrawer.value?.open(task.taskId); return }
   if (task.sourceType === 'SHOT_VIDEO_EXPORT') { await videoExportDrawer.value?.open(task.taskId); return }
+  if (task.resumeAction === 'DUBBING_CHARACTER' && task.targetId) {
+    await router.push({ path: '/dubbing/characters', query: { characterId: task.targetId } })
+    return
+  }
   if (task.resumeAction === 'AGENT_CHAT' && task.targetId) {
     window.dispatchEvent(new CustomEvent('agent-open-chat', { detail: { sessionId: task.targetId, runId: task.taskId } }))
     return

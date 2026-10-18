@@ -20,6 +20,8 @@ public enum AiTaskType {
     PROP_PROMPT_DERIVE("道具提示词衍生"),
     SHOT_VISUAL_PLAN("分镜视觉导演规划"),
     CHARACTER_VOICE_DESIGN("角色母音设计"),
+    CHARACTER_VOICE_CLONE("角色声音克隆"),
+    VOICE_EFFECT_PROCESS("配音特效处理"),
     VOICE_PREVIEW("音色试听"),
     @Deprecated // Read historical task records only; generation endpoint removed.
     SHOT_VOICE_GENERATE("分镜配音"),

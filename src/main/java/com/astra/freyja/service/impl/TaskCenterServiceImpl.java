@@ -386,6 +386,8 @@ public class TaskCenterServiceImpl implements TaskCenterService {
             case "SHOT_VISUAL_PLAN" -> "分镜视觉导演规划";
             case "CHARACTER_VOICE_DESIGN" -> "角色母音设计";
             case "VOICE_PREVIEW" -> "音色试听";
+            case "CHARACTER_VOICE_CLONE" -> "角色声音克隆";
+            case "VOICE_EFFECT_PROCESS" -> "配音特效处理";
             case "SHOT_VOICE_GENERATE" -> "分镜台词配音";
             case "EPISODE_VOICE_GENERATE" -> "整集配音";
             case "SHOT_FRAME_GENERATE" -> "分镜关键帧生图";
@@ -399,6 +401,7 @@ public class TaskCenterServiceImpl implements TaskCenterService {
 
     private String aiResumeAction(String taskType, Long shotId) {
         if ("SHOT_PROMPT_DERIVE".equals(taskType) && shotId != null) return "SHOT_PROMPT_DERIVE";
+        if (java.util.Set.of("CHARACTER_VOICE_DESIGN", "CHARACTER_VOICE_CLONE", "VOICE_EFFECT_PROCESS").contains(taskType)) return "DUBBING_CHARACTER";
         if ("CHAPTER_DECOMPOSE".equals(taskType)) return "SCRIPT_DECOMPOSE";
         if ("SHOT_DECOMPOSE".equals(taskType) || "SHOT_ENRICHMENT".equals(taskType)
                 || "CONTINUITY_CHECK".equals(taskType)) return shotId != null ? "SHOT_DETAIL" : "TASK_DETAIL";
@@ -418,6 +421,9 @@ public class TaskCenterServiceImpl implements TaskCenterService {
         return switch (taskType) {
             case "SHOT_PROMPT_DERIVE" -> "正在分析镜头提示词";
             case "CHAPTER_DECOMPOSE" -> "正在拆解剧情与分镜";
+            case "CHARACTER_VOICE_DESIGN" -> "正在设计基础声音";
+            case "CHARACTER_VOICE_CLONE" -> "正在克隆角色配音";
+            case "VOICE_EFFECT_PROCESS" -> "正在处理声音特效";
             default -> "AI 分析处理中";
         };
     }

@@ -50,6 +50,11 @@
           <el-icon><PictureFilled /></el-icon>
           <template #title>资产中心</template>
         </el-menu-item>
+        <el-sub-menu index="/dubbing">
+          <template #title><el-icon><VideoPlay /></el-icon><span>配音中心</span></template>
+          <el-menu-item index="/dubbing/characters">角色配音</el-menu-item>
+          <el-menu-item index="/dubbing/effects">特效配置</el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/production/video-upscale">
           <el-icon><ZoomIn /></el-icon>
           <template #title>视频超分</template>
@@ -175,6 +180,21 @@ const activeMenu = computed(() => {
 
 :deep(.el-menu) {
   border-right: none;
+}
+:deep(.el-sub-menu__title) {
+  height: 40px;
+  margin: 2px 8px;
+  border-radius: var(--radius-sm);
+  color: var(--sidebar-text);
+  font-weight: 500;
+}
+:deep(.el-sub-menu__title:hover) {
+  background-color: var(--sidebar-hover-bg) !important;
+  color: var(--sidebar-active-text);
+}
+:deep(.el-sub-menu__title .el-icon) {
+  color: inherit;
+  font-size: 17px;
 }
 :deep(.el-menu-item) {
   height: 40px;

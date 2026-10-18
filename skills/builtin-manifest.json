@@ -110,31 +110,36 @@
     {
       "name": "freyja-platform-guide",
       "displayName": "FREYJA 平台使用指南",
-      "description": "平台业务架构、短剧叙事层级、参考图组合、首尾帧模式、分镜表情与制作流程。",
+      "description": "平台业务架构、叙事层级、视觉参考、配音中心、声音克隆与FFmpeg特效。",
       "source": "repository:skills/freyja-platform-guide",
       "sourceRevision": null,
       "package": "freyja-platform-guide.zip",
-      "sha256": "6e6c2d388471b98b0db4a50634d091384cdfd8b83a66975766618c0138425785",
+      "sha256": "5fc512521e2f58be5fce7c59502d36ce03c776cd4322a1e02c34060d4682473f",
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "b505f891f88061d1b9d22195e01bb4aa79ac0b9f7856435ef22650fdf46e7df5",
-          "size": 76446
+          "sha256": "c545ed029e7119e7a6f8e8d1d96db2f9d82185c39a3268819a6309a442d55701",
+          "size": 77449
         },
         {
           "path": "references/architecture.md",
-          "sha256": "a0e70d9f0436f44562bcf586b01da8c7a645d36176f3ec7cee886c3ef769b53c",
-          "size": 9721
+          "sha256": "207f77107c83e42e8a0dfbac0d68ab0df8580655bab24ec7c7aa227239e0d207",
+          "size": 10216
+        },
+        {
+          "path": "references/dubbing-center.md",
+          "sha256": "13c76951db64e2822288982ded6338ed072808cc2256868265d4731a9923c0ff",
+          "size": 4066
         },
         {
           "path": "references/storyboard-workflow.md",
-          "sha256": "f6f47333db4b4353cd740f26b9fad2afb03b65aa60e90ed4fced3478d4c8b301",
-          "size": 23640
+          "sha256": "bc008a19a89fd8a60f3e0a88fa50db406d655a333f4ee678b8ada1ef8d406e01",
+          "size": 23802
         },
         {
           "path": "references/visual-references.md",
-          "sha256": "a908566694d4f06ba1616c63ec2b774b6578d02a70a5418b5d61b079b96306df",
-          "size": 79263
+          "sha256": "1e3958a7a8b135381073c7fa9f935b5eb8c90b7cf6022f5dcdac276d11c80768",
+          "size": 79824
         }
       ]
     },

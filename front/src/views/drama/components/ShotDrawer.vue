@@ -605,13 +605,13 @@
                   :disabled="refAudios.length >= 3"
                   @click="handleOpenCharacterVoicePicker"
                 >
-                  👥 引入人物库角色配音
+                  引入配音中心音频
                 </el-button>
               </div>
             </div>
 
             <div v-if="refAudios.length === 0" class="text-center py-4 text-xs text-gray-400 bg-gray-50 rounded border border-dashed border-gray-200">
-              暂未绑定参考音频，点击上方按钮引入人物库角色配音 (上限 3 段，单段 2~15s，总长 ≤ 15s)
+              暂未绑定参考音频，点击上方按钮引入配音中心音频 (上限 3 段，单段 2~15s，总长 ≤ 15s)
             </div>
             <div v-else class="space-y-2">
               <div
@@ -897,63 +897,8 @@
     </div>
   </el-dialog>
 
-  <!-- 角色专属配音选取子弹窗 (直接从人物库引入已设计的母音配音) -->
-  <el-dialog
-    v-model="characterVoicePickerVisible"
-    title="从人物库引入角色音色参考 (仅供声线参考)"
-    width="560px"
-    append-to-body
-    destroy-on-close
-  >
-    <div class="max-h-96 overflow-y-auto space-y-2 p-1">
-      <div v-if="charactersWithVoice.length === 0" class="text-center py-8 text-xs text-gray-400 space-y-2">
-        <div class="text-2xl">🎙️</div>
-        <div class="font-medium text-gray-600">当前人物库暂无可用的角色专属母音</div>
-        <div class="text-[11px] text-gray-400 max-w-sm mx-auto">
-          请前往「资产管理 -> 角色管理」点击“AI 声音设计”生成专属母音或上传本地音频，即可在此直接引入使用。
-        </div>
-      </div>
-      <div v-else class="space-y-2">
-        <div
-          v-for="char in charactersWithVoice"
-          :key="char.id"
-          class="border border-slate-200 hover:border-sky-500 rounded-xl p-3 transition-all bg-white hover:shadow-xs flex items-center justify-between gap-3 group"
-        >
-          <div class="flex items-center gap-3 min-w-0 flex-1">
-            <el-avatar :size="40" :src="char.avatarUrl" class="bg-sky-50 border border-sky-200 shrink-0">
-              {{ char.name?.substring(0, 1) || '角' }}
-            </el-avatar>
-            <div class="min-w-0 flex-1">
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-bold text-gray-800 truncate">{{ char.name }}</span>
-                <el-tag size="small" type="info" class="!text-[10px] !px-1.5">{{ char.roleType || '角色' }}</el-tag>
-              </div>
-              <div class="text-[11px] text-gray-500 truncate mt-0.5" :title="char.voiceSampleText || char.voiceDesc || '专属声音母音'">
-                {{ char.voiceSampleText || char.voiceDesc || '专属声音母音' }}
-              </div>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <el-button
-              size="small"
-              circle
-              :type="previewingVoiceUrl === char.voiceSampleUrl ? 'danger' : 'default'"
-              @click="togglePreviewCharacterVoice(char.voiceSampleUrl!)"
-            >
-              {{ previewingVoiceUrl === char.voiceSampleUrl ? '⏸' : '▶' }}
-            </el-button>
-            <el-button
-              size="small"
-              type="primary"
-              @click="handleConfirmSelectCharacterVoice(char)"
-            >
-              引入音色参考
-            </el-button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </el-dialog>
+  <VoiceAudioPicker v-model="characterVoicePickerVisible" :characters="characterOptions" @select="selectDubbingAudio" />
+
 </template>
 
 <script setup lang="ts">
@@ -966,7 +911,7 @@ import StatusPill from '@/components/status/StatusPill.vue'
 import DictSelect from '@/components/DictSelect.vue'
 import { shotApi, shotGroupApi, episodeApi, dramaApi } from '@/api/drama'
 import { characterApi } from '@/api/res-character'
-import { characterVoiceReferences, probeReferenceAudioDuration } from '@/utils/reference-audio'
+import VoiceAudioPicker from '@/views/dubbing/components/VoiceAudioPicker.vue'
 import { MAX_REF_AUDIOS, MIN_AUDIO_DURATION, MAX_AUDIO_DURATION, MAX_TOTAL_AUDIO_DURATION } from '../composables/useShotReferenceAssets'
 import { sceneApi } from '@/api/res-scene'
 import { resPropApi, type ResPropItem } from '@/api/res-prop'
@@ -1490,13 +1435,6 @@ function handleConfirmSelectDrawerAsset(item: any) {
 
 
 const characterVoicePickerVisible = ref(false)
-const previewingVoiceUrl = ref<string | null>(null)
-let previewAudio: HTMLAudioElement | null = null
-
-const charactersWithVoice = computed(() => {
-  return (characterOptions.value || []).filter(c => !!c.voiceSampleUrl)
-})
-
 function handleOpenCharacterVoicePicker() {
   if (refAudios.value.length >= 3) {
     ElMessage.warning('参考音频最多支持 3 段')
@@ -1505,46 +1443,16 @@ function handleOpenCharacterVoicePicker() {
   characterVoicePickerVisible.value = true
 }
 
-function togglePreviewCharacterVoice(url: string) {
-  if (previewingVoiceUrl.value === url && previewAudio) {
-    previewAudio.pause()
-    previewingVoiceUrl.value = null
-    return
-  }
-  if (previewAudio) {
-    previewAudio.pause()
-  }
-  previewAudio = new Audio(url)
-  previewingVoiceUrl.value = url
-  previewAudio.onended = () => {
-    previewingVoiceUrl.value = null
-  }
-  previewAudio.onerror = () => {
-    previewingVoiceUrl.value = null
-    ElMessage.error('音频加载失败')
-  }
-  previewAudio.play()
-}
-
-async function handleConfirmSelectCharacterVoice(char: ResCharacterOption) {
-  if (!char.voiceSampleUrl) return
+function selectDubbingAudio(reference: ShotRefAudio) {
   if (refAudios.value.length >= MAX_REF_AUDIOS) return void ElMessage.warning(`最多选择 ${MAX_REF_AUDIOS} 段音频`)
-  if (refAudios.value.some(audio => audio.audioUrl === char.voiceSampleUrl)) return void ElMessage.info('该母音已在参考列表中')
-  const reference = characterVoiceReferences([char.id], [char])[0]
-  const duration = await probeReferenceAudioDuration(char.voiceSampleUrl)
-  if (!visible.value || refAudios.value.length >= MAX_REF_AUDIOS) return
-  reference.duration = duration
-  if (duration !== undefined && (duration < MIN_AUDIO_DURATION || duration > MAX_AUDIO_DURATION || totalAudioDuration.value + duration > MAX_TOTAL_AUDIO_DURATION)) {
-    ElMessage.warning('母音时长不符合参考音频限制，请在人物资产中调整样音')
-    return
+  if (refAudios.value.some(audio => audio.audioUrl === reference.audioUrl)) return void ElMessage.info('该音频已在参考列表中')
+  if (reference.duration == null || reference.duration < MIN_AUDIO_DURATION || reference.duration > MAX_AUDIO_DURATION || totalAudioDuration.value + reference.duration > MAX_TOTAL_AUDIO_DURATION) {
+    return void ElMessage.warning('音频单段需为2至15秒，参考音频总长不得超过15秒')
   }
   refAudios.value.push(reference)
   form.refAudiosConfigured = true
   characterVoicePickerVisible.value = false
-  if (duration === undefined) ElMessage.warning('已引入音色参考，时长待检测，渲染前将检查实际媒体')
-  else ElMessage.success(`已引入 ${char.name} 的音色参考`)
 }
-
 
 function getOutfitsForCharacter(characterId?: string | number) {
   if (!characterId) return []

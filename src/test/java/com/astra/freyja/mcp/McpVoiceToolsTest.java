@@ -100,7 +100,7 @@ class McpVoiceToolsTest {
         assertEquals(403, assertThrows(BizException.class, () -> tool(McpVoiceTools.DESIGN_TOOL).handler().apply(reader, input(false))).getCode());
         when(scope.project(caller, PROJECT)).thenThrow(new BizException(403, "PROJECT_ACCESS_DENIED"));
         assertEquals(403, assertThrows(BizException.class, () -> call(input(null))).getCode());
-        when(scope.project(caller, PROJECT)).thenReturn(Long.valueOf(PROJECT));
+        doReturn(Long.valueOf(PROJECT)).when(scope).project(caller, PROJECT);
         when(records.require(caller, McpRecordType.CHARACTER, CHARACTER, PROJECT, true)).thenThrow(new BizException(403, "公共库通过 MCP 只读"));
         assertEquals(403, assertThrows(BizException.class, () -> call(input(false))).getCode());
         verifyNoInteractions(voices, operations);

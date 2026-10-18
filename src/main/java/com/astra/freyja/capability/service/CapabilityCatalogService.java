@@ -198,7 +198,7 @@ public class CapabilityCatalogService {
         List<Binding> newBindings = handlers.initialBindings().stream().filter(b -> Set.of(
                 "MCP:" + McpPresignedImageUploads.PREPARE_TOOL, "MCP:" + McpPresignedImageUploads.COMPLETE_TOOL,
                 "MCP:" + McpVoiceTools.MODELS_TOOL, "MCP:" + McpVoiceTools.DESIGN_TOOL)
-                .contains(b.handlerKey())).toList();
+                .contains(b.handlerKey()) || b.handlerKey().startsWith("MCP:dubbing_")).toList();
         Release nextActive = null;
         try {
             Release migrated = addNewBindings(migrateSnapshot(active, false), newBindings);

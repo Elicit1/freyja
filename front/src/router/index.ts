@@ -8,6 +8,14 @@ const routes: RouteRecordRaw[] = [
     redirect: '/dashboard',
     children: [
       {
+        path: 'dubbing/characters', name: 'DubbingCharacters',
+        component: () => import('@/views/dubbing/Characters.vue'), meta: { title: '角色配音' }
+      },
+      {
+        path: 'dubbing/effects', name: 'DubbingEffects',
+        component: () => import('@/views/dubbing/Effects.vue'), meta: { title: '声音特效配置' }
+      },
+      {
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/index.vue'),

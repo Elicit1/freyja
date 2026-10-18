@@ -34,6 +34,8 @@ class CharacterVoiceServiceTest {
     @Mock
     private AiAudioApiService aiAudioApiService;
 
+    @Mock private DubbingService dubbingService;
+
     @InjectMocks
     private CharacterVoiceServiceImpl characterVoiceService;
 
@@ -54,6 +56,8 @@ class CharacterVoiceServiceTest {
         dto.setSampleText("商界战场，胜者为王。");
         dto.setAutoSave(true);
 
+        when(dubbingService.adoptDesignedBase(eq(charId), anyString(), anyString(), any()))
+                .thenReturn(new AiAudioApiService.AudioArchiveResult("http://minio/sample.wav", 4.2, 102400L));
         CharacterVoiceResultVO result = characterVoiceService.designCharacterVoice(charId, dto);
 
         assertNotNull(result);
@@ -61,10 +65,8 @@ class CharacterVoiceServiceTest {
         assertEquals("http://minio/sample.wav", result.getVoiceSampleUrl());
         assertEquals(4.2, result.getDuration());
 
-        verify(characterMapper, times(1)).updateById((ResCharacter) argThat(c ->
-                "http://minio/sample.wav".equals(((ResCharacter) c).getVoiceSampleUrl()) &&
-                        "30岁低沉磁性男声".equals(((ResCharacter) c).getVoiceDesc())
-        ));
+        verify(dubbingService).adoptDesignedBase(eq(charId), eq("商界战场，胜者为王。"), eq("30岁低沉磁性男声"), any());
+        verify(characterMapper, never()).updateById(any(ResCharacter.class));
     }
 
     @Test

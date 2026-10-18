@@ -160,6 +160,10 @@ async function openTask(task: TaskCenterItem) {
     return
   }
 
+  if (task.resumeAction === 'DUBBING_CHARACTER' && task.targetId) {
+    await router.push({ path: '/dubbing/characters', query: { characterId: task.targetId } })
+    return
+  }
   if (task.resumeAction === 'AGENT_CHAT' && task.targetId) {
     window.dispatchEvent(new CustomEvent('agent-open-chat', { detail: { sessionId: task.targetId, runId: task.taskId } }))
     return
