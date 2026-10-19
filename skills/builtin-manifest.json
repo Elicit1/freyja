@@ -114,32 +114,37 @@
       "source": "repository:skills/freyja-platform-guide",
       "sourceRevision": null,
       "package": "freyja-platform-guide.zip",
-      "sha256": "4b57f589396a455a3b715dce042d4b07bd12b33c03d1231b70bd5eaf34c30497",
+      "sha256": "41d5d955a047ea5b1e2452658e37f04de576ad8bcc75e6c728ecf9bdf9c01d3a",
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "3c00a3f367c2493a78f4c3572ccdf52d8bd66ee95df37f0f790ba4ce1e77e5a1",
-          "size": 77677
+          "sha256": "37f2dce843163e60a57a7e93ab93bb164189df8b39b289fb364ffa0813983b7b",
+          "size": 62718
         },
         {
           "path": "references/architecture.md",
-          "sha256": "207f77107c83e42e8a0dfbac0d68ab0df8580655bab24ec7c7aa227239e0d207",
-          "size": 10216
+          "sha256": "f4d6a80adf7c3f0ad92e8f0287835cb6c7c6cd976e02bfde6cf0ed7d5ffc616c",
+          "size": 10079
         },
         {
           "path": "references/dubbing-center.md",
-          "sha256": "a66c2cc41687fbb2fa3e40f50fc25275d7ce6b28b4d11c7c29b5eade4dd981d6",
-          "size": 6570
+          "sha256": "9ea85fe5dab66f7b464cd1fbc596138e80456eae3632c5a2a19d89b93441ce68",
+          "size": 11290
+        },
+        {
+          "path": "references/h3-integration.md",
+          "sha256": "0076359f46a380fcc2d3bcb025d458c4db8afd01beb60d7f1c48023fd5aa8a4c",
+          "size": 8605
         },
         {
           "path": "references/storyboard-workflow.md",
-          "sha256": "bc008a19a89fd8a60f3e0a88fa50db406d655a333f4ee678b8ada1ef8d406e01",
-          "size": 23802
+          "sha256": "6fc321253092fb476d9f44879bfe3451af97621e422a54dda5f6c5b9434c093d",
+          "size": 24001
         },
         {
           "path": "references/visual-references.md",
-          "sha256": "9d478e2bebba722bebbbc49cf2d1360de910c9926f3f6da658b8a9451e460bb0",
-          "size": 79951
+          "sha256": "8921cb6c6a6286f57ee1a2a479466dae12da826ec0b12affa676cf0fbd37935e",
+          "size": 56888
         }
       ]
     },
@@ -180,17 +185,17 @@
       "source": "repository:skills/mimo-speech-synthesis",
       "sourceRevision": null,
       "package": "mimo-speech-synthesis.zip",
-      "sha256": "8296ef01dab6e178fc807413ff5c0b631a5de46c87d3fe58fb458a1f402f0fd9",
+      "sha256": "9511fe1e14c84f054fc6f27162e767e6cdef290cf68d98dc4096643219b76457",
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "e6ca1fc95905e3001d809e704d4188ca7c3c51d492870ef55856286388ef3c1e",
-          "size": 2227
+          "sha256": "52b9467c8b3eca6856b97ec1a9d96a37d0c6ea85bfd7c999ed32f47c2e5502a5",
+          "size": 2631
         },
         {
           "path": "references/freyja.md",
-          "sha256": "20227d842979b5c1c61c79f5c79bde97a07bdbdee71cf859514495531d8ab158",
-          "size": 2445
+          "sha256": "86158fe63bc154e8947dc24f4188a233cb9580e22aea3d2a0fb5379c91fcd82f",
+          "size": 3258
         }
       ]
     }

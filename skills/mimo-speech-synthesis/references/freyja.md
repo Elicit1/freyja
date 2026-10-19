@@ -2,6 +2,8 @@
 
 使用 `list_skills` / `read_skill` 读取本技能；需要本文时用 `read_skill_file`。使用 `dubbing_list_audios` 检查角色基础声音与已有音频；通过模型查询选取已启用的提供商和模型，所有业务 ID 保持字符串。
 
+默认准备音色参考：在正确角色的已有音频中按情绪和声音特效需求选择 READY 样本，符合则以 `reference` 复用，旧台词无需与当前镜头一致；缺少时才创建可供后续同类场景复用的样本。不能因新镜头或台词变化逐镜生成配音。只有用户明确要求 H3 `fully_copy` / `partially_copy` 时，才按当前镜头台词与节奏重新生成复制音轨；生成 READY 后读取实际成品时长，核对复制范围能否完整放入目标视频时间窗，视频完成后再检查实际视频。普通音色参考无需和各镜头视频等长，所有参考素材仍须满足平台单段2–15秒、最多3段、总长不超过15秒的限制。
+
 `dubbing_create_audio` 的业务参数为 `dramaId,characterId,requestId,name,providerId,modelCode,method,modelRequest,effects,replaceBaseId?`。`modelRequest` 是 JSON 对象，不是被再次转义的 JSON 字符串。页面 JSON 输入框填写的正是这个对象。
 
 平台原样传递消息和其他模型参数，不解析标签、不拼接情绪、不查询情绪字典。所选 `modelCode` 决定模型；系统绑定 WAV、非流式归档及克隆基础音频。不要提交 `audio.voice`、`stream=true` 或非 WAV 格式；如填写 `model`，必须与所选模型一致。
@@ -34,6 +36,6 @@
 }
 ```
 
-按剧情更换开头风格、局部标签和台词，不必复用示例。情绪要求保存在 `modelRequest`；不要提交旧的顶层 `emotion`、`voiceDesc` 或 `text` 字段。音频返回的 `text` 是最后一条 assistant 消息的原文投影，包含标签，不能假装是清洗后的转录。
+仅在确认需要创建时，按目标样本的表演要求更换开头风格、局部标签和代表性台词；H3 显式 `*_copy` 使用当前镜头确认的台词。情绪要求保存在 `modelRequest`；不要提交旧的顶层 `emotion`、`voiceDesc` 或 `text` 字段。音频返回的 `text` 是最后一条 assistant 消息的原文投影，包含标签，不能假装是清洗后的转录。
 
 `effects` 为独立 FFmpeg 后处理选择。编辑特效复用已归档原声；修改请求 JSON 生成新记录。使用 `dubbing_get_audio` 查询任务至 READY，核对声音后再用于分镜。请求 JSON 会保存用于重试和新版本编辑；旧记录无 JSON 时，由创作者或 AI 显式重新填写，系统不猜测迁移情绪。

@@ -7,6 +7,8 @@ description: 编写 Xiaomi MiMo V2.5 语音合成、音色设计与声音克隆�
 
 依据 [MiMo 官方使用文档](https://mimo.mi.com/docs/en-US/quick-start/usage-guide/audio/speech-synthesis-v2.5)。在 FREYJA 操作时同时读取 [平台输入约定与示例](references/freyja.md)。
 
+在平台准备视频音色参考时，先查询正确角色的已有配音，按情绪与声音特效需求优先复用；样本旧台词不同不要求重新生成。只有缺少合适样本，或用户明确要求 H3 `fully_copy` / `partially_copy` 而需要当前镜头的新音轨时，才编写以下生成请求。复制音轨须检查生成后的真实音频时长能否放入视频时间窗。
+
 ## 消息与标签
 
 - 要说出的台词放在 `messages` 中 `role: assistant` 的 `content`。`user.content` 承载音色描述、场景与表演指导，不作为播报台词。
