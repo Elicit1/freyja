@@ -463,8 +463,7 @@ public class McpBusinessRecords {
         if (shot.getRefAudios() != null) for (ShotRefAudioDTO audio : shot.getRefAudios()) {
             audio.setId(slotId(audio.getId(), audioIds, "参考音频"));
             if (audio.getDuration() != null) totalDuration = totalDuration.add(audio.getDuration());
-            if ("TTS".equals(audio.getSourceType())) requiredAsset(caller, McpInputs.AssetType.CHARACTER, audio.getCharacterId(), project);
-            else if (audio.getCharacterId() != null) asset(caller, McpInputs.AssetType.CHARACTER, audio.getCharacterId(), project);
+            if (audio.getCharacterId() != null) asset(caller, McpInputs.AssetType.CHARACTER, audio.getCharacterId(), project);
         }
         if (totalDuration.compareTo(java.math.BigDecimal.valueOf(15)) > 0) throw new BizException(400, "已知参考音频总长不得超过 15 秒");
     }

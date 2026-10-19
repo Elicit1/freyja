@@ -19,6 +19,15 @@ class SkillPackageValidatorTest {
     private final SkillPackageValidator validator = new SkillPackageValidator();
 
     @Test
+    void acceptsRepositoryMimoSkillPackage() throws Exception {
+        var path=java.nio.file.Path.of("skills/mimo-speech-synthesis.zip");
+        byte[] bytes=java.nio.file.Files.readAllBytes(path);
+        var result=validator.validate(new MockMultipartFile("file",path.getFileName().toString(),"application/zip",bytes));
+        assertThat(result.getMetadata().getName()).isEqualTo("mimo-speech-synthesis");
+        assertThat(result.getFiles()).containsKeys("SKILL.md","references/freyja.md");
+    }
+
+    @Test
     void acceptsStandardZipAndPreservesOptionalDirectories() {
         byte[] zip = zip(List.of(
                 entry("SKILL.md", skillMarkdown()),

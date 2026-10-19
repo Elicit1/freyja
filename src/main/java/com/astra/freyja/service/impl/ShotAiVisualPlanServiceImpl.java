@@ -450,7 +450,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "不得为了实现特写、视觉焦点转移或镜头运动而编造参考图中不存在的建筑布局、人物外观细节或资产能力。",
             "不得将参考图中的瞬时人物姿态、表情或视线直接覆盖当前分镜已确定的动作与表情状态。",
             "8.【声音与参考音频】",
-            "必须依据参考音频的 usageMode 处理声音：DIALOGUE_REUSE 只能复用当前任务授权的原始音频并保持时序同步；VOICE_TIMBRE 只能借鉴音色、语速和表达方式，不得复制参考音频中的旧台词。英文译文只表达原台词语义，不得冒充参考音频的逐字转录或改变其原声语言。",
+            "每条参考音频只使用 referenceType=fully_copy/partially_copy/reference/weak_reference 四种关系，严格遵循 referenceDescription。fully_copy 要求完整音轨复用；partially_copy 只复用明确指定的时间段或声音层；reference 不复制音频信号；weak_reference 仅保留类别或氛围。参考关系不是音频来源分类；不得因源音频含有台词就擅自复用。英文译文不得冒充逐字转录或改变原声语言。",
             "当前分镜台词必须保留原语言、原意、信息、顺序和说话人，并放在 <d> 中；不得翻译、增删、润色或编造台词。",
             "overallSoundscape 与 nonDiegeticMusic 必须作为独立 JSON 字段返回，并与最终提示词中的对应声音内容一致；没有明确事实时按照 OUTPUT_FORMAT 约定使用空值或 N/A，不得凭空补设定。",
             "不得擅自增加当前分镜没有要求的角色对白、旁白、音乐或声音事件。",
@@ -471,7 +471,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             "确认当前镜头能够在规定时长内连续完成，且没有未经授权的硬切、跳切、转场或额外镜头。",
             "确认局部特写、视觉焦点转移及画面裁切没有导致必要剧情丢失、道具数量变化或人物状态不连续。",
             "确认所有 Picture、Audio、Subject 引用均来自 REFERENCE_MANIFEST，角色、场景、关键图及道具的参考媒体对应关系正确；若存在关键图参考（KEYFRAME），确认其未被误识别或描述为场景 (Scene)。",
-            "确认 DIALOGUE_REUSE 与 VOICE_TIMBRE 的使用符合当前任务提供的 usageMode，且没有复用未授权的旧台词。",
+            "确认每条 Audio N 使用与输入相同的四种 referenceType 标记，并遵循 referenceDescription，没有复用未授权的旧台词。",
             "确认声音、台词、参考媒体及所有资产引用均来自当前任务提供的事实。",
             "确认 prompt 格式完整规范，firstFramePrompt 与 endFramePrompt 均为 null。",
             "确认最终 JSON 的字段名称、字段类型、语言、空值约定及内容与 OUTPUT_FORMAT 完全一致。"
@@ -1304,7 +1304,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         return "\n【结构化声音输出契约】最终 JSON 必须包含 speechLines 数组，不能省略；无对白/画外音/旁白/独白时返回 []。"
                 + "每项明确 kind、characterId（不明时 null）、speakerName、原文 text、language、dialogueTag、audioIndex（不用母音时 null）。"
                 + "dialogueTag 使用 <d>[原声语言] 说话人: \"逐字原文\"</d>，并原样放入最终视频提示词。"
-                + "角色母音按 VOICE_TIMBRE 与角色 ID 绑定，不复用样音旧台词；仅显式授权的 DIALOGUE_REUSE 可复用本镜录音。"
+                + "音频按角色 ID 和四种 referenceType 关系绑定，具体用途由 referenceDescription 明确；reference/weak_reference 不复制原始信号，也不因样音存在旧台词就自动沿用。"
                 + "声音人物与画面出场人物独立，不能把被提及的人物当成出场人物；以最新 scriptContent 重提取，禁止旧声音列表覆盖新剧本。\n";
     }
 
@@ -1335,14 +1335,12 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                     errors.add("speechLines 引用了未选择的音色参考 Audio " + index);
                 } else {
                     var audio = audios.get(index - 1);
-                    if ("VOICE_TIMBRE".equals(audio.getUsageMode())) {
-                        boolean sameId = audio.getCharacterId() != null && java.util.Objects.equals(audio.getCharacterId(), line.getCharacterId());
-                        boolean sameExplicitName = audio.getCharacterId() == null && StringUtils.isNotBlank(audio.getCharacterName())
-                                && audio.getCharacterName().equals(line.getSpeakerName());
-                        if (!sameId && !sameExplicitName) errors.add("speechLines 的音色参考必须明确绑定当前说话人");
-                    } else if ("DIALOGUE_REUSE".equals(audio.getUsageMode())) {
-                        if (audio.getCharacterId() != null && !java.util.Objects.equals(audio.getCharacterId(), line.getCharacterId())) errors.add("本镜授权录音的说话人绑定不一致");
-                    } else errors.add("音效、背景音乐或节奏参考不能充当对白音色/录音");
+                    if (!com.astra.freyja.util.ShotAudioReferenceValidator.REFERENCE_TYPES.contains(audio.getReferenceType())) {
+                        errors.add("speechLines 引用音频缺少有效的 H3 参考关系");
+                    }
+                    if (audio.getCharacterId() != null && !java.util.Objects.equals(audio.getCharacterId(), line.getCharacterId())) {
+                        errors.add("参考音频必须明确绑定当前说话人");
+                    }
                     if (!prompt.contains("<Audio " + index + ">")) errors.add("视频提示词未引用 speechLines 中选择的音色参考");
                 }
             }
@@ -1847,7 +1845,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             sb.append("- 画面动作简述 (核心动作): ").append(dto.getActionDescription()).append("\n");
         }
         sb.append("- 【统一剧本与声音契约】: scriptContent 是动作、台词、画外音、旁白和独白的唯一事实源。AI 必须提取 speechLines，逐字保留原文声音内容及原语言并明确声音类型；无口语声音时返回 []。说话人不必出现在画面中，不能按出场列表顺序猜测身份。\n");
-        sb.append("- 【参考音频用途】: 每条 Audio N 按 ReferenceManifest 的角色绑定和 usageMode 独立使用。角色母音 VOICE_TIMBRE 仅提供声线，禁止复用旧试音台词；DIALOGUE_REUSE 仅复用创作者明确授权的本镜录音；音效参考不充当角色母音。未选择参考音频只表示不用音色参考，不表示静音。创作者静音要求由 AI 理解并在 speechLines/声场中明确执行，Java 不解析自然语言。\n");
+        sb.append("- 【参考音频用途】: 每条 Audio N 按 ReferenceManifest 的角色绑定、referenceDescription 及 fully_copy/partially_copy/reference/weak_reference 独立使用。retention_analysis 使用输入中的同名关系标记；禁止根据文件来源、情绪或特效标签重新分类，禁止擅自复用旧试音台词。未选择参考音频只表示不用音色参考，不表示静音。创作者静音要求由 AI 理解并在 speechLines/声场中明确执行，Java 不解析自然语言。\n");
         if (StringUtils.isNotBlank(dto.getSoundEffect())) {
             sb.append("- 音效与环境声: ").append(dto.getSoundEffect()).append("\n");
         }
@@ -2216,10 +2214,11 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 audios.add(ReferenceManifest.AudioManifestItem.builder()
                         .audioIndex(aIdx++)
                         .referenceId(aud.getId())
-                        .sourceType(StringUtils.defaultIfBlank(aud.getSourceType(), "UPLOAD"))
+                        .audioId(aud.getAudioId())
                         .characterId(aud.getCharacterId())
                         .characterName(StringUtils.trimToNull(aud.getCharacterName()))
-                        .usageMode(StringUtils.defaultIfBlank(aud.getUsageMode(), "VOICE_TIMBRE"))
+                        .referenceType(aud.getReferenceType())
+                        .referenceDescription(aud.getReferenceDescription())
                         .language(StringUtils.trimToNull(aud.getLanguage()))
                         .text(aud.getText())
                         .audioUrl(aud.getAudioUrl())

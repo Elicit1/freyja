@@ -230,14 +230,15 @@
     ],
     "AUDIO": [
       "id",
-      "sourceType",
+      "audioId",
       "characterId",
       "characterName",
       "audioUrl",
       "duration",
       "name",
       "text",
-      "usageMode",
+      "referenceType",
+      "referenceDescription",
       "language"
     ]
   },
@@ -385,11 +386,13 @@
     "IMAGE.characterId": "显式人物弱绑定；CHARACTER_LOOK/CHARACTER_REFERENCE 必填，UPLOAD 可按需关联，画外人物也可绑定。",
     "IMAGE.usageRole": "参考图在本镜头中的用途，仅允许列出的用途值；身份/造型细分约束填写 referenceRole，不能自行创造 usageRole。KEYFRAME 来源只允许七种关键图用途。",
     "IMAGE.sourceType": "人物身份图用 CHARACTER；人物造型图用 CHARACTER_LOOK（兼容 CHARACTER_REFERENCE，保存为 CHARACTER_REFERENCE）；二者 sourceId 含义不同。",
-    "AUDIO.audioUrl": "必填的已有声音 URL；TTS 只表示来源，不执行声音生成。",
+    "AUDIO.audioUrl": "必填的实际参考音频 URL，选择配音中心音频时同时提交 audioId 与 characterId。",
     "AUDIO.duration": "可选的真实秒数；已知音频总长不超过15秒，不会猜测时长。",
-    "AUDIO.usageMode": "按需指定 VOICE_TIMBRE、DIALOGUE_REUSE、BGM_REUSE、BGM_STYLE、SFX_REUSE、SFX_REFERENCE、RHYTHM_REFERENCE。",
     "SHOT.refImages": "按提交顺序保存；第1项对应 <Picture 1>。与 prompt 一起更新以保持图号一致，不会根据文字猜测主体绑定。",
-    "SHOT.refAudios": "按提交顺序保存；第1项对应 <Audio 1>。只关联已有音频，不生成声音。"
+    "SHOT.refAudios": "按提交顺序保存；第1项对应 <Audio 1>。只关联已有音频，不生成声音。",
+    "AUDIO.audioId": "配音中心音频ID，必须属于当前短剧可用角色。",
+    "AUDIO.referenceType": "必填，只支持 fully_copy、partially_copy、reference、weak_reference。",
+    "AUDIO.referenceDescription": "明确说明复用或参考的内容，不根据来源分类或台词自动推断。"
   },
   "dictionaries": {
     "aspectRatio": "drama_aspect_ratio",
@@ -441,10 +444,6 @@
         "maxLength": 200,
         "description": "可省略，服务端补全槽位标识；显式值须在数组中唯一，非雪花 ID。"
       },
-      "sourceType": {
-        "type": "string",
-        "x-freyja-options": "reference_audio_source_type"
-      },
       "audioUrl": {
         "type": "string",
         "pattern": ".*\\S.*"
@@ -457,19 +456,23 @@
         "minimum": 2,
         "maximum": 15
       },
-      "usageMode": {
-        "type": [
-          "string",
-          "null"
-        ],
-        "x-freyja-options": "reference_audio_usage_mode"
-      },
       "language": {
         "type": [
           "string",
           "null"
         ],
         "x-freyja-options": "reference_audio_language"
+      },
+      "referenceType": {
+        "type": "string",
+        "x-freyja-options": "reference_audio_type"
+      },
+      "referenceDescription": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 1000
       }
     },
     "CHARACTER": {},
@@ -588,50 +591,6 @@
       {
         "value": "STYLE",
         "label": "风格"
-      }
-    ],
-    "reference_audio_usage_mode": [
-      {
-        "value": "VOICE_TIMBRE",
-        "label": "音色参考"
-      },
-      {
-        "value": "DIALOGUE_REUSE",
-        "label": "对白复用"
-      },
-      {
-        "value": "BGM_REUSE",
-        "label": "背景音乐复用"
-      },
-      {
-        "value": "BGM_STYLE",
-        "label": "音乐风格参考"
-      },
-      {
-        "value": "SFX_REUSE",
-        "label": "音效复用"
-      },
-      {
-        "value": "SFX_REFERENCE",
-        "label": "音效质感参考"
-      },
-      {
-        "value": "RHYTHM_REFERENCE",
-        "label": "节拍参考"
-      }
-    ],
-    "reference_audio_source_type": [
-      {
-        "value": "CHARACTER",
-        "label": "人物母音"
-      },
-      {
-        "value": "TTS",
-        "label": "历史语音"
-      },
-      {
-        "value": "UPLOAD",
-        "label": "上传音频"
       }
     ],
     "reference_audio_language": [
@@ -770,6 +729,24 @@
       {
         "value": 0,
         "label": "非默认造型"
+      }
+    ],
+    "reference_audio_type": [
+      {
+        "value": "fully_copy",
+        "label": "完整复用"
+      },
+      {
+        "value": "partially_copy",
+        "label": "部分复用"
+      },
+      {
+        "value": "reference",
+        "label": "参考"
+      },
+      {
+        "value": "weak_reference",
+        "label": "弱参考"
       }
     ]
   }

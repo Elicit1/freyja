@@ -155,10 +155,10 @@ class ShotPromptDeriveH3Test {
                 .refAudios(List.of(
                         ShotRefAudioDTO.builder()
                                 .id("ref_aud_1")
-                                .sourceType("TTS")
+                                .referenceType("reference")
                                 .characterId(201L)
                                 .characterName("林默")
-                                .usageMode("VOICE_TIMBRE")
+                                .referenceType("reference")
                                 .language("Chinese")
                                 .text("这是最后的警告。")
                                 .audioUrl("http://minio/audio1.wav")
@@ -187,7 +187,7 @@ class ShotPromptDeriveH3Test {
 
         ReferenceManifest.AudioManifestItem aud1 = manifest.getAudios().get(0);
         assertEquals(1, aud1.getAudioIndex());
-        assertEquals("VOICE_TIMBRE", aud1.getUsageMode());
+        assertEquals("reference", aud1.getReferenceType());
         assertEquals("Chinese", aud1.getLanguage());
 
         String context = manifest.toPromptContext();
@@ -220,7 +220,7 @@ class ShotPromptDeriveH3Test {
                 .characterRefs(List.of(CharacterShotRefInfoVO.builder().characterId(201L).build()))
                 .refImages(List.of(povImage, visibleImage))
                 .refAudios(List.of(ShotRefAudioDTO.builder().id("voice").characterId(201L)
-                        .characterName("林默").usageMode("VOICE_TIMBRE").audioUrl("http://minio/voice.wav").build()))
+                        .characterName("林默").referenceType("reference").audioUrl("http://minio/voice.wav").build()))
                 .build();
 
         ShotPromptPackageVO pkg = service.buildPromptPackage(dto);
@@ -1102,7 +1102,7 @@ class ShotPromptDeriveH3Test {
                 .refAudios(List.of(
                         ShotRefAudioDTO.builder()
                                 .id("ref_aud")
-                                .sourceType("TTS")
+                                .referenceType("reference")
                                 .characterId(201L)
                                 .characterName("林默")
                                 .audioUrl("http://minio/freyja/audios/sample.wav")

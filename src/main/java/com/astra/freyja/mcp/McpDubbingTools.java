@@ -23,9 +23,10 @@ public class McpDubbingTools {
         @ToolParam(required=false) Integer page,@ToolParam(required=false) Integer size,
         @ToolParam(required=false) List<String> emotions,@ToolParam(required=false) List<String> effectIds) {}
     public record Presets(String dramaId,@ToolParam(required=false) String name,@ToolParam(required=false) Integer page,@ToolParam(required=false) Integer size) {}
+    public record Filters(String dramaId) {}
     public record Selection(String effectId,@ToolParam(required=false) List<Step> steps) {}
-    public record Generate(String dramaId,String characterId,String requestId,String name,String text,String providerId,String modelCode,String method,
-        @ToolParam(required=false) String voiceDesc,@ToolParam(required=false) String emotion,
+    public record Generate(String dramaId,String characterId,String requestId,String name,String providerId,String modelCode,String method,
+        @ToolParam(description="模型请求 JSON 对象；使用前读取 mimo-speech-synthesis Skill。") Map<String,Object> modelRequest,
         @ToolParam(required=false) List<Selection> effects,@ToolParam(required=false) String replaceBaseId) {}
     public record Modify(String dramaId,String characterId,String audioId,String requestId,Integer revision,List<Selection> effects) {}
     public record Upload(String dramaId,String characterId,String requestId,String name,String text,
@@ -35,6 +36,9 @@ public class McpDubbingTools {
     public record Remove(String dramaId,String characterId,String audioId,String requestId,Integer revision) {}
 
     public List<McpTool<?>> tools() { return List.of(
+        McpTool.read("dubbing_list_filters","读取配音特效的20种处理与类型化参数目录、取值范围、默认值、枚举及服务器可用性。仅开放语音滤镜，不接受原始FFmpeg命令。自定义steps前先读取此目录。",Filters.class,(caller,input)-> {
+            scope.project(caller,input.dramaId());return effects.filterCapabilities();
+        }),
         McpTool.read("dubbing_list_audios","按角色与情绪/特效标签分页查询配音，同时返回独立基础参考声音。playbackUrl为当前可用播放地址，READY且特效非空时为特效成品，否则为原始声音；失败/处理中不得声称特效已完成。",Query.class,(caller,input)-> {
             authorize(caller,input.dramaId(),input.characterId(),false);
             Map<String,Object> result=new LinkedHashMap<>();result.put("base",dubbing.baseView(McpScope.id(input.characterId())));
@@ -43,8 +47,8 @@ public class McpDubbingTools {
         McpTool.read("dubbing_list_effects","查询启用的声音特效模板，返回参数快照；仅FFmpeg处理，不调用TTS。",Presets.class,(caller,input)-> {
             scope.project(caller,input.dramaId());return effects.page(McpScope.page(input.page()),McpScope.size(input.size()),input.name(),true);
         }),
-        new McpTool<>("dubbing_create_audio","创建配音并返回异步任务。method=DESIGN创建唯一无特效基础声音，必须使用mimo-v2.5-tts-voicedesign，不传情绪或特效；method=CLONE使用基础声音克隆，必须使用mimo-v2.5-tts-voiceclone。克隆先保存TTS干声，再执行可选FFmpeg特效。替换基础需replaceBaseId，会删除关联克隆，须创作者明确要求。",Generate.class,McpTool.Effect.WRITE,null,(caller,input)->
-            write(caller,input.dramaId(),input.characterId(),input.requestId(),"dubbing_create_audio",input,()->dubbing.create(McpScope.id(input.characterId()),new Create(input.name(),input.text(),McpScope.id(input.providerId()),input.modelCode(),input.voiceDesc(),input.emotion(),selections(input.effects()),input.method(),McpScope.optionalId(input.replaceBaseId()))))),
+        new McpTool<>("dubbing_create_audio","创建配音并返回异步任务。先读取 mimo-speech-synthesis Skill，提交 modelRequest JSON。method=DESIGN创建唯一无特效基础声音，使用mimo-v2.5-tts-voicedesign；method=CLONE使用角色基础声音，使用mimo-v2.5-tts-voiceclone。克隆先保存TTS原声再执行可选FFmpeg特效。替换基础需replaceBaseId，会删除关联克隆，须创作者明确要求。",Generate.class,McpTool.Effect.WRITE,null,(caller,input)->
+            write(caller,input.dramaId(),input.characterId(),input.requestId(),"dubbing_create_audio",input,()->dubbing.create(McpScope.id(input.characterId()),new Create(input.name(),McpScope.id(input.providerId()),input.modelCode(),input.modelRequest(),selections(input.effects()),input.method(),McpScope.optionalId(input.replaceBaseId()))))),
         new McpTool<>("dubbing_update_effects","修改或清空克隆配音特效，始终复用原始克隆音频，不调用TTS。effects=[]立即切回干声；非空从原始音频执行FFmpeg。需要当前revision。",Modify.class,McpTool.Effect.WRITE,null,(caller,input)->
             write(caller,input.dramaId(),input.characterId(),input.requestId(),"dubbing_update_effects",input,()-> {
                 requireAudio(input.audioId(),input.characterId()); if(input.effects()==null) throw new BizException(400,"effects必须是数组，清空传[]");

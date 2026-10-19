@@ -22,6 +22,19 @@ public class DubbingController {
     private final AiProviderMapper providers;
     private final AiModelMapper models;
 
+    @GetMapping("/picker/characters") public R<?> pickerCharacters(@RequestParam Long dramaId,@RequestParam List<Long> characterIds,
+            @RequestParam(defaultValue="1") int current,@RequestParam(defaultValue="8") int size,@RequestParam(required=false) String name,@RequestParam(required=false) Long preferredCharacterId) {
+        return R.ok(dubbing.pickerCharacters(dramaId,characterIds,current,size,name,preferredCharacterId));
+    }
+    @GetMapping("/picker/characters/{id}/base") public R<?> pickerBase(@PathVariable Long id,@RequestParam Long dramaId,@RequestParam List<Long> characterIds) {
+        dubbing.requirePickerCharacter(dramaId,characterIds,id);return R.ok(dubbing.baseView(id));
+    }
+    @GetMapping("/picker/characters/{id}/audios") public R<?> pickerAudios(@PathVariable Long id,@RequestParam Long dramaId,@RequestParam List<Long> characterIds,
+            @RequestParam(defaultValue="1") int current,@RequestParam(defaultValue="6") int size,
+            @RequestParam(required=false) List<String> emotions,@RequestParam(required=false) List<String> effectIds) {
+        dubbing.requirePickerCharacter(dramaId,characterIds,id);return R.ok(dubbing.page(id,current,size,emotions,effectIds,false));
+    }
+
     @GetMapping("/characters") public R<?> characters(@RequestParam(defaultValue="1") int current,@RequestParam(defaultValue="10") int size,
             @RequestParam(required=false) String name,@RequestParam(required=false) String dramaName,@RequestParam(required=false) Long locateId) {
         return R.ok(dubbing.characters(current,size,name,dramaName,locateId));

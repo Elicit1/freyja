@@ -643,7 +643,9 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                             binding.put("referenceType", "REFERENCE_AUDIO");
                             binding.put("entityId", refAudio.getCharacterId() != null ? String.valueOf(refAudio.getCharacterId()) : null);
                             binding.put("entityName", StringUtils.firstNonBlank(refAudio.getCharacterName(), refAudio.getName()));
-                            binding.put("usageMode", StringUtils.defaultIfBlank(refAudio.getUsageMode(), "VOICE_TIMBRE"));
+                            binding.put("audioReferenceType", refAudio.getReferenceType());
+                            binding.put("referenceDescription", refAudio.getReferenceDescription());
+                            binding.put("audioId", refAudio.getAudioId() == null ? null : refAudio.getAudioId().toString());
                             binding.put("language", StringUtils.trimToNull(refAudio.getLanguage()));
                             binding.put("referenceAudio", b64Audio);
                             references.add(binding);

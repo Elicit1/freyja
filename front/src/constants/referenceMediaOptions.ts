@@ -50,36 +50,33 @@ export const REFERENCE_IMAGE_USAGE_OPTIONS = [
   }
 ] as const
 
-export const REFERENCE_AUDIO_USAGE_OPTIONS = [
+export const REFERENCE_AUDIO_TYPE_OPTIONS = [
   {
-    "value": "VOICE_TIMBRE",
-    "label": "音色参考"
+    "value": "fully_copy",
+    "label": "完整复用",
+    "description": "将源音频完整作为目标视频最终音轨"
   },
   {
-    "value": "DIALOGUE_REUSE",
-    "label": "对白复用"
+    "value": "partially_copy",
+    "label": "部分复用",
+    "description": "复用明确指定的时间段或声音层"
   },
   {
-    "value": "BGM_REUSE",
-    "label": "背景音乐复用"
+    "value": "reference",
+    "label": "参考",
+    "description": "不复制原始信号，参考明确指定的声音特征"
   },
   {
-    "value": "BGM_STYLE",
-    "label": "音乐风格参考"
-  },
-  {
-    "value": "SFX_REUSE",
-    "label": "音效复用"
-  },
-  {
-    "value": "SFX_REFERENCE",
-    "label": "音效质感参考"
-  },
-  {
-    "value": "RHYTHM_REFERENCE",
-    "label": "节拍参考"
+    "value": "weak_reference",
+    "label": "弱参考",
+    "description": "仅保留类别或氛围上的宽泛相似性"
   }
 ] as const
+
+export type AudioReferenceType = typeof REFERENCE_AUDIO_TYPE_OPTIONS[number]['value']
+export function audioReferenceTypeLabel(type?: string) {
+  return REFERENCE_AUDIO_TYPE_OPTIONS.find(option => option.value === type)?.label || '请选择参考关系'
+}
 
 export const REFERENCE_AUDIO_LANGUAGE_OPTIONS = [
   {

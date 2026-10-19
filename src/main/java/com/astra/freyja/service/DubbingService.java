@@ -6,6 +6,7 @@ import com.astra.freyja.dto.voice.DubbingInputs.*;
 import com.astra.freyja.entity.*;
 import com.astra.freyja.entity.enums.AiTaskType;
 import com.astra.freyja.util.AfterCommitTask;
+import com.astra.freyja.util.VoiceModelRequest;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
@@ -54,6 +55,42 @@ public class DubbingService {
         CharacterVoiceAudio audio=audios.selectById(id);
         if(audio==null) throw new BizException(404,"配音不存在");
         return audio;
+    }
+    public Page<Map<String,Object>> pickerCharacters(Long dramaId,List<Long> characterIds,int current,int size,String name,Long preferredId) {
+        validatePickerScope(dramaId,characterIds);
+        Page<Map<String,Object>> page=audios.pickerCharacters(new Page<>(Math.max(1,current),Math.clamp(size,1,50)),dramaId,characterIds,name,preferredId);
+        for(var row:page.getRecords()) {
+            for(String key:List.of("id","drama_id")) if(row.get(key)!=null) row.put(key,row.get(key).toString());
+            if(row.get("has_base") instanceof Number count) row.put("has_base",count.intValue());
+        }
+        return page;
+    }
+    private void validatePickerScope(Long dramaId,List<Long> characterIds) {
+        if(dramaId==null || dramaId<=0 || characterIds==null || characterIds.isEmpty() || characterIds.size()>500
+            || characterIds.stream().anyMatch(id -> id==null || id<=0)) throw new BizException(400,"请提供当前短剧和有效的角色集合");
+        Long count=jdbc.queryForObject("SELECT COUNT(*) FROM drama WHERE id=? AND deleted=0",Long.class,dramaId);
+        if(count==null || count==0) throw new BizException(404,"短剧不存在");
+    }
+    public void requirePickerCharacter(Long dramaId,List<Long> characterIds,Long characterId) {
+        validatePickerScope(dramaId,characterIds);
+        ResCharacter character=characters.selectById(characterId);
+        if(!characterIds.contains(characterId) || character==null
+            || !Objects.equals(character.getDramaId(),dramaId) && !Long.valueOf(0).equals(character.getDramaId()))
+            throw new BizException(403,"角色不属于当前短剧的可选范围");
+    }
+    public void validateReferences(Long dramaId,List<com.astra.freyja.dto.drama.ShotRefAudioDTO> references) {
+        if(references==null) return;
+        references.stream().filter(a -> a.getAudioId()!=null).map(com.astra.freyja.dto.drama.ShotRefAudioDTO::getCharacterId).distinct().sorted().forEach(this::lockCharacter);
+        for(var reference:references) {
+            if(reference.getAudioId()==null) continue;
+            var audio=require(reference.getAudioId());
+            var character=characters.selectById(audio.getCharacterId());
+            if(!Objects.equals(reference.getCharacterId(),audio.getCharacterId()) || character==null
+                || !Objects.equals(character.getDramaId(),dramaId) && !Long.valueOf(0).equals(character.getDramaId()))
+                throw new BizException(403,"参考音频不属于当前短剧角色");
+            if(!"READY".equals(audio.getStatus()) || !Objects.equals(view(audio).playbackUrl(),reference.getAudioUrl()))
+                throw new BizException(409,"参考音频已变化或尚未就绪，请重新选择");
+        }
     }
     public CharacterVoiceAudio base(Long characterId) {
         return audios.selectOne(new LambdaQueryWrapper<CharacterVoiceAudio>().eq(CharacterVoiceAudio::getCharacterId,characterId).eq(CharacterVoiceAudio::getKind,"BASE"));
@@ -123,22 +160,20 @@ public class DubbingService {
         return current;
     }
     private void validateCreate(Create input) {
-        if(input==null || input.name()==null || input.name().isBlank() || input.name().length()>128 || input.text()==null || input.text().isBlank() || input.text().length()>4000)
-            throw new BizException(400,"配音名称或台词无效");
+        if(input==null || input.name()==null || input.name().isBlank() || input.name().length()>128)
+            throw new BizException(400,"配音名称无效");
         if(input.providerId()==null || input.modelCode()==null) throw new BizException(400,"请选择提供商和模型");
         boolean design="DESIGN".equals(input.method());
         if(!design && !"CLONE".equals(input.method())) throw new BizException(400,"创建方式必须为声音设计或声音克隆");
         if(!(design?"mimo-v2.5-tts-voicedesign":"mimo-v2.5-tts-voiceclone").equals(input.modelCode())) throw new BizException(400,"模型与创建方式不匹配");
-        if(design && (input.voiceDesc()==null || input.voiceDesc().isBlank() || input.voiceDesc().length()>512)) throw new BizException(400,"请填写不超过512字的音色描述");
         if(design && input.effects()!=null && !input.effects().isEmpty()) throw new BizException(400,"基础参考声音禁止携带特效");
-        if(design && input.emotion()!=null && !input.emotion().isBlank()) throw new BizException(400,"基础参考声音不设置表演情绪标签");
-        if(input.emotion()!=null && !input.emotion().isBlank()) {
-            Long count=jdbc.queryForObject("SELECT COUNT(*) FROM sys_dict_data WHERE dict_type='voice_emotion' AND dict_value=? AND status=1 AND deleted=0",Long.class,input.emotion());
-            if(count==null || count==0) throw new BizException(400,"请选择启用的情绪标签");
-        }
+        VoiceModelRequest.snapshot(input.modelRequest());
+        if(input.modelRequest().containsKey("model") && !input.modelCode().equals(input.modelRequest().get("model")))
+            throw new BizException(400,"JSON 中的 model 与所选模型不一致");
     }
     public AudioView create(Long characterId,Create input) {
         validateCreate(input); var snapshots=effects.snapshots(input.effects());
+        String requestJson=VoiceModelRequest.snapshot(input.modelRequest());
         return transactions.execute(tx -> {
             ResCharacter character=lockCharacter(characterId); CharacterVoiceAudio base=base(characterId);
             boolean design="DESIGN".equals(input.method());
@@ -151,8 +186,9 @@ public class DubbingService {
             if(!design && (base==null || !"READY".equals(base.getStatus()))) throw new BizException(400,"请先创建可用的无特效基础参考声音");
             CharacterVoiceAudio audio=new CharacterVoiceAudio(); audio.setCharacterId(characterId);
             audio.setKind(design?(base==null?"BASE":"BASE_CANDIDATE"):"CLONE");
-            audio.setBaseAudioId(base==null?null:base.getId()); audio.setName(input.name().trim()); audio.setText(input.text());
-            audio.setVoiceDesc(input.voiceDesc()); audio.setEmotion(input.emotion()); audio.setEffectsJson(effects.write(snapshots));
+            audio.setBaseAudioId(base==null?null:base.getId()); audio.setName(input.name().trim());
+            audio.setText(VoiceModelRequest.text(input.modelRequest())); audio.setModelRequestJson(requestJson);
+            audio.setEffectsJson(effects.write(snapshots));
             audio.setRevision(1); audio.setStatus("GENERATING"); audio.setProviderId(input.providerId()); audio.setModelCode(input.modelCode());
             audios.insert(audio);
             start(audio,character,design?AiTaskType.CHARACTER_VOICE_DESIGN:AiTaskType.CHARACTER_VOICE_CLONE,true);
@@ -200,6 +236,7 @@ public class DubbingService {
         return transactions.execute(tx -> {
             CharacterVoiceAudio audio=locked(id,revision);
             if(!Set.of("FAILED","CANCELLED").contains(audio.getStatus())) throw new BizException(409,"当前任务不可重试");
+            VoiceModelRequest.snapshot(VoiceModelRequest.read(audio.getModelRequestJson()));
             audio.setRevision(audio.getRevision()+1); audio.setStatus("GENERATING"); audio.setErrorMessage(null); audios.updateById(audio);
             audios.update(null,new LambdaUpdateWrapper<CharacterVoiceAudio>().eq(CharacterVoiceAudio::getId,id).set(CharacterVoiceAudio::getErrorMessage,null));
             start(audio,characters.selectById(audio.getCharacterId()),"CLONE".equals(audio.getKind())?AiTaskType.CHARACTER_VOICE_CLONE:AiTaskType.CHARACTER_VOICE_DESIGN,true);
@@ -294,8 +331,8 @@ public class DubbingService {
                 if("CLONE".equals(audio.getKind())) {
                     CharacterVoiceAudio base=require(audio.getBaseAudioId());
                     var reference=engine.process(storage.read(base.getRawAudioUrl()),List.of());
-                    result=tts.cloneVoice(audio.getProviderId(),audio.getModelCode(),reference.bytes(),audio.getEmotion(),audio.getText(),path);
-                } else result=tts.designVoice(audio.getProviderId(),audio.getModelCode(),audio.getVoiceDesc(),audio.getText(),path);
+                    result=tts.generateVoice(audio.getProviderId(),audio.getModelCode(),reference.bytes(),VoiceModelRequest.read(audio.getModelRequestJson()),path);
+                } else result=tts.generateVoice(audio.getProviderId(),audio.getModelCode(),null,VoiceModelRequest.read(audio.getModelRequestJson()),path);
                 generated=result.audioUrl();
                 Double duration=result.durationSeconds();
                 if(duration==null || !Double.isFinite(duration) || duration<=0 || duration>120 || result.fileSizeBytes()>DubbingAudioStorage.MAX_BYTES)

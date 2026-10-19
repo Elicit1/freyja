@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -150,7 +151,7 @@ class AiImageApiServiceImplTest {
         when(providerMapper.selectById(5L)).thenReturn(provider);
         DramaShot shot = new DramaShot(); shot.setGenerationMode("REFERENCE_MODE"); shot.setPrompt("video");
         shot.setRefAudiosJson("audio-json");
-        var audio = com.astra.freyja.dto.drama.ShotRefAudioDTO.builder().sourceType("UPLOAD")
+        var audio = com.astra.freyja.dto.drama.ShotRefAudioDTO.builder().referenceType("reference")
                 .audioUrl("data:audio/wav;base64,YXVkaW8=").duration(java.math.BigDecimal.valueOf(3)).build();
         when(objectMapper.readValue(eq("audio-json"), org.mockito.ArgumentMatchers.<TypeReference<List<com.astra.freyja.dto.drama.ShotRefAudioDTO>>>any()))
                 .thenReturn(List.of(audio));
@@ -164,8 +165,8 @@ class AiImageApiServiceImplTest {
     }
 
     @Test
-    @DisplayName("非主体人物参考图和造型关系仍传给视频网关")
-    void nonSubjectCharacterImageIsNotDroppedFromVideoPayload() throws Exception {
+    @DisplayName("参考载荷保留图片绑定与精确音频参考关系")
+    void referencePayloadKeepsVisualBindingsAndExactAudioRelationship() throws Exception {
         AiProvider provider = new AiProvider(); provider.setId(5L); provider.setStatus(1);
         provider.setBaseUrl("https://gateway.example.test/v1");
         when(providerMapper.selectById(5L)).thenReturn(provider);
@@ -178,6 +179,15 @@ class AiImageApiServiceImplTest {
         shot.setRefImagesJson("stored-reference-json");
         when(objectMapper.readValue(eq(shot.getRefImagesJson()),
                 org.mockito.ArgumentMatchers.<TypeReference<List<ShotRefImageDTO>>>any())).thenReturn(List.of(reference));
+        shot.setRefAudiosJson("stored-audio-json");
+        var audio=com.astra.freyja.dto.drama.ShotRefAudioDTO.builder().audioId(900L).characterId(201L)
+                .referenceType("partially_copy").referenceDescription("复用指定声音层")
+                .audioUrl("data:audio/wav;base64,YXVkaW8=").build();
+        when(objectMapper.readValue(eq(shot.getRefAudiosJson()),
+                org.mockito.ArgumentMatchers.<TypeReference<List<com.astra.freyja.dto.drama.ShotRefAudioDTO>>>any())).thenReturn(List.of(audio));
+        var metadata=new com.astra.freyja.dto.video.VideoProbeInfoVO();metadata.setHasAudio(true);
+        metadata.setDuration(java.math.BigDecimal.valueOf(4));
+        when(videoFrameExtractService.probeVideoInfo(any(byte[].class),eq("audio"))).thenReturn(metadata);
         DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO(); request.setProviderId(5L);
         doReturn("minimax-h3-ref2va").when(aiImageApiService)
                 .resolveVideoModelCode(eq(request), eq(5L), eq("REFERENCE_MODE"));
@@ -193,6 +203,13 @@ class AiImageApiServiceImplTest {
         assertEquals("201", binding.get("characterId"));
         assertEquals("301", binding.get("lookId"));
         assertEquals(List.of(dataUri), binding.get("referenceImages"));
+        var audioBinding=(Map<?,?>)references.get(1);
+        assertEquals("REFERENCE_AUDIO",audioBinding.get("referenceType"));
+        assertEquals("partially_copy",audioBinding.get("audioReferenceType"));
+        assertEquals("复用指定声音层",audioBinding.get("referenceDescription"));
+        assertEquals("900",audioBinding.get("audioId"));
+        assertFalse(audioBinding.containsKey("usageMode"));
+        assertFalse(audioBinding.containsKey("sourceType"));
     }
 
     @Test

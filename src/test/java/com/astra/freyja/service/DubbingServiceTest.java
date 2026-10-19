@@ -34,6 +34,7 @@ class DubbingServiceTest {
         audios=mock(CharacterVoiceAudioMapper.class);characters=mock(ResCharacterMapper.class);presets=mock(VoiceEffectMapper.class);
         engine=mock(VoiceEffectEngine.class);storage=mock(DubbingAudioStorage.class);tts=mock(AiAudioApiService.class);tasks=mock(AiTaskService.class);jdbc=mock(JdbcTemplate.class);
         effects=new VoiceEffectService(presets,engine,new ObjectMapper());
+        when(engine.normalize(any())).thenAnswer(inv -> inv.getArgument(0));
         TransactionTemplate transactions=mock(TransactionTemplate.class);
         when(transactions.execute(any())).thenAnswer(inv -> ((TransactionCallback<?>)inv.getArgument(0)).doInTransaction(mock(TransactionStatus.class)));
         doAnswer(inv -> {((java.util.function.Consumer<TransactionStatus>)inv.getArgument(0)).accept(mock(TransactionStatus.class));return null;}).when(transactions).executeWithoutResult(any());
@@ -57,10 +58,32 @@ class DubbingServiceTest {
         var audio=new CharacterVoiceAudio();audio.setId(id);audio.setCharacterId(10L);audio.setName("配音");audio.setKind(kind);audio.setRevision(1);audio.setStatus("READY");audio.setEffectsJson(config);return audio;
     }
     void runJob() throws Exception {Runnable job=jobs.poll(3,TimeUnit.SECONDS);assertNotNull(job,"异步任务没有提交");job.run();}
-    Create create(String method,List<EffectSelection> effects) {return new Create("配音","你好",1L,"CLONE".equals(method)?"mimo-v2.5-tts-voiceclone":"mimo-v2.5-tts-voicedesign","年轻男声",null,effects,method,null);}
+    Create create(String method,List<EffectSelection> effects) {return new Create("配音",1L,"CLONE".equals(method)?"mimo-v2.5-tts-voiceclone":"mimo-v2.5-tts-voicedesign",request(),effects,method,null);}
+    Map<String,Object> request() {return Map.of("messages",List.of(Map.of("role","user","content","保持清晰"),Map.of("role","assistant","content","(愤怒)你好[轻笑]")));}
     void preset() {
         VoiceEffect preset=new VoiceEffect();preset.setId(1L);preset.setEnabled(1);preset.setName("无线电");preset.setVersion(1);preset.setStepsJson("[{\"type\":\"highpass\",\"params\":{\"frequency\":300}}]");
         when(presets.selectById(1L)).thenReturn(preset);
+    }
+    @Test void pickerOnlyAllowsDeclaredCharactersFromCurrentDramaOrPublicLibrary() {
+        when(jdbc.queryForObject(contains("FROM drama"), eq(Long.class), eq(20L))).thenReturn(1L);
+        assertDoesNotThrow(() -> service.requirePickerCharacter(20L,List.of(10L),10L));
+        assertThrows(BizException.class, () -> service.requirePickerCharacter(20L,List.of(11L),10L));
+        var character=characters.selectById(10L);character.setDramaId(99L);
+        assertThrows(BizException.class, () -> service.requirePickerCharacter(20L,List.of(10L),10L));
+        character.setDramaId(0L);
+        assertDoesNotThrow(() -> service.requirePickerCharacter(20L,List.of(10L),10L));
+        assertThrows(BizException.class, () -> service.pickerCharacters(20L,List.of(),1,8,null,null));
+    }
+    @Test void centerReferenceMustMatchCharacterAndCurrentReadyPlayback() {
+        var ref=com.astra.freyja.dto.drama.ShotRefAudioDTO.builder().audioId(100L).characterId(10L)
+                .audioUrl("base.wav").referenceType("reference").build();
+        assertDoesNotThrow(() -> service.validateReferences(20L,List.of(ref)));
+        ref.setAudioUrl("stale.wav");
+        assertThrows(BizException.class, () -> service.validateReferences(20L,List.of(ref)));
+        ref.setAudioUrl("base.wav");base.setStatus("PROCESSING");
+        assertThrows(BizException.class, () -> service.validateReferences(20L,List.of(ref)));
+        base.setStatus("READY");base.setCharacterId(11L);
+        assertThrows(BizException.class, () -> service.validateReferences(20L,List.of(ref)));
     }
     @Test void baseCannotCarryEffectsAndExistingBaseCannotBeSilentlyReplaced() {
         assertThrows(BizException.class,()->service.create(10L,create("DESIGN",List.of(new EffectSelection(1L,null)))));
@@ -68,12 +91,12 @@ class DubbingServiceTest {
         verifyNoInteractions(tts);verify(audios,never()).insert(any(CharacterVoiceAudio.class));
     }
     @Test void cloneSavesDryAudioBeforeFfmpegAndAlwaysUsesTheBaseVoice() throws Exception {
-        preset();when(tts.cloneVoice(any(),any(),any(),any(),any(),any())).thenReturn(new AiAudioApiService.AudioArchiveResult("tts.wav",5d,2));
+        preset();when(tts.generateVoice(any(),any(),any(),any(),any())).thenReturn(new AiAudioApiService.AudioArchiveResult("tts.wav",5d,2));
         service.create(10L,create("CLONE",List.of(new EffectSelection(1L,null))));runJob();
-        var clone=state.get(200L);assertEquals(100L,clone.getBaseAudioId());assertNotNull(clone.getRawAudioUrl());assertNotNull(clone.getProcessedAudioUrl());
+        var clone=state.get(200L);assertEquals(100L,clone.getBaseAudioId());assertEquals(request(),com.astra.freyja.util.VoiceModelRequest.read(clone.getModelRequestJson()));assertNotNull(clone.getRawAudioUrl());assertNotNull(clone.getProcessedAudioUrl());
         assertNotEquals(clone.getRawAudioUrl(),clone.getProcessedAudioUrl());assertEquals("READY",clone.getStatus());
         var order=inOrder(storage,tts,engine,audios);
-        order.verify(storage).read("base.wav");order.verify(engine).process(any(),eq(List.of()));order.verify(tts).cloneVoice(eq(1L),eq("mimo-v2.5-tts-voiceclone"),any(),isNull(),eq("你好"),any());
+        order.verify(storage).read("base.wav");order.verify(engine).process(any(),eq(List.of()));order.verify(tts).generateVoice(eq(1L),eq("mimo-v2.5-tts-voiceclone"),any(),eq(request()),any());
         order.verify(audios).updateById(argThat((CharacterVoiceAudio a) -> "tts.wav".equals(a.getRawAudioUrl())));
         order.verify(storage).read("tts.wav");order.verify(engine).process(any(),argThat(steps -> !steps.isEmpty()));
         assertEquals("tts.wav",clone.getRawAudioUrl());verify(storage,never()).put(contains("raw.wav"),any());
@@ -113,7 +136,7 @@ class DubbingServiceTest {
         verify(storage,timeout(2000)).deleteOwned("dry.wav");verify(storage,timeout(2000)).deleteOwned("wet.wav");
     }
     @Test void failedEffectRetryKeepsTheDryCloneAndDoesNotRepeatTts() throws Exception {
-        preset();when(tts.cloneVoice(any(),any(),any(),any(),any(),any())).thenReturn(new AiAudioApiService.AudioArchiveResult("tts.wav",5d,2));
+        preset();when(tts.generateVoice(any(),any(),any(),any(),any())).thenReturn(new AiAudioApiService.AudioArchiveResult("tts.wav",5d,2));
         when(engine.process(any(),any())).thenAnswer(inv -> {
             List<Step> steps=inv.getArgument(1);
             if(!steps.isEmpty()) throw new BizException(502,"FFmpeg unavailable");
@@ -122,11 +145,24 @@ class DubbingServiceTest {
         service.create(10L,create("CLONE",List.of(new EffectSelection(1L,null))));runJob();
         var clone=state.get(200L);String dry=clone.getRawAudioUrl();assertNotNull(dry);assertNull(clone.getProcessedAudioUrl());
         service.retry(200L,clone.getRevision());runJob();
-        assertEquals(dry,clone.getRawAudioUrl());verify(tts,times(1)).cloneVoice(any(),any(),any(),any(),any(),any());verify(tasks,times(2)).markFailed(300L,"FFmpeg unavailable");
+        assertEquals(dry,clone.getRawAudioUrl());verify(tts,times(1)).generateVoice(any(),any(),any(),any(),any());verify(tasks,times(2)).markFailed(300L,"FFmpeg unavailable");
+    }
+    @Test void generationRetryReusesSavedJsonWithoutEmotionDictionary() throws Exception {
+        when(tts.generateVoice(any(),any(),any(),any(),any()))
+            .thenThrow(new BizException(502,"provider unavailable"))
+            .thenReturn(new AiAudioApiService.AudioArchiveResult("tts.wav",5d,2));
+        service.create(10L,create("CLONE",List.of()));runJob();
+        var clone=state.get(200L);verify(tasks).markFailed(300L,"provider unavailable");
+        // Failure is persisted by an SQL update wrapper; simulate reloading it from the mocked mapper.
+        clone.setStatus("FAILED");
+        service.retry(200L,clone.getRevision());runJob();
+        verify(tts,times(2)).generateVoice(eq(1L),eq("mimo-v2.5-tts-voiceclone"),any(),eq(request()),any());
+        assertEquals("READY",clone.getStatus());
+        verify(jdbc,never()).queryForObject(contains("voice_emotion"),eq(Long.class),any());
     }
     @Test void failedBaseReplacementPreservesTheExistingBaseAndItsClones() throws Exception {
-        when(tts.designVoice(any(),any(),any(),any(),any())).thenThrow(new BizException(502,"provider unavailable"));
-        var input=new Create("新声线","你好",1L,"mimo-v2.5-tts-voicedesign","年轻男声",null,List.of(),"DESIGN",100L);
+        when(tts.generateVoice(any(),any(),any(),any(),any())).thenThrow(new BizException(502,"provider unavailable"));
+        var input=new Create("新声线",1L,"mimo-v2.5-tts-voicedesign",request(),List.of(),"DESIGN",100L);
         when(audios.selectList(any(Wrapper.class))).thenReturn(List.of(base));
         service.create(10L,input);runJob();
         assertEquals("BASE",base.getKind());assertEquals("base.wav",base.getRawAudioUrl());assertEquals("READY",base.getStatus());

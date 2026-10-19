@@ -170,10 +170,10 @@
           size="small"
           type="primary"
           plain
-          :disabled="disabled || candidateAudios.filter(a => !a.isOccupied).length === 0"
+          :disabled="disabled"
           @click="openAudioPicker()"
         >
-          + 引入人物母音
+          + 选择参考音频
         </el-button>
       </div>
 
@@ -184,12 +184,7 @@
       >
         <div>暂未绑定参考音频（非必填）</div>
         <div class="text-[11px] text-slate-400">
-          <span v-if="candidateAudios.length > 0">
-            上方已选角色拥有 <strong>{{ candidateAudios.length }}</strong> 段母音样本，可点击上方「+ 引入人物母音」绑定
-          </span>
-          <span v-else>
-            若需配置参考音频，可在上方选择已在角色库中完成母音设计的角色
-          </span>
+          点击“选择参考音频”，从当前短剧角色的配音中心选择基础声音或克隆成品。
         </div>
       </div>
 
@@ -274,18 +269,18 @@
             </div>
           </div>
 
-          <!-- 用途与语种配置行 (默认 VOICE_TIMBRE) -->
+          <!-- H3 参考关系与明确语种 -->
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-slate-200/60 items-center">
             <div class="flex items-center gap-1.5 sm:col-span-2">
-              <span class="text-[11px] text-slate-500 shrink-0">用途模式:</span>
+              <span class="text-[11px] text-slate-500 shrink-0">参考关系:</span>
               <el-select
-                v-model="aud.usageMode"
+                v-model="aud.referenceType"
                 size="small"
                 class="w-full"
                 :disabled="disabled"
                 @change="handleAudioModeChange"
               >
-                <el-option v-for="option in REFERENCE_AUDIO_USAGE_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
+                <el-option v-for="option in REFERENCE_AUDIO_TYPE_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
               </el-select>
             </div>
             <div class="flex items-center gap-1.5">
@@ -300,6 +295,7 @@
               </el-select>
             </div>
           </div>
+          <el-input v-model="aud.referenceDescription" size="small" placeholder="说明复用或参考哪些内容" maxlength="1000" :disabled="disabled" @change="handleAudioModeChange" />
         </div>
       </div>
     </div>
@@ -379,94 +375,23 @@
       </div>
     </el-dialog>
 
-    <!-- 候选音频挑选弹窗 -->
-    <el-dialog
-      v-model="audioPickerDialogVisible"
-      :title="pickerTargetAudioSlotIndex !== null ? `替换 <Audio ${pickerTargetAudioSlotIndex + 1}> 参考音频` : `添加 <Audio ${refAudios.length + 1}> 参考音频`"
-      width="540px"
-      append-to-body
-      destroy-on-close
-    >
-      <div class="space-y-3 p-1">
-        <div class="text-xs text-slate-500 flex items-center justify-between gap-2">
-          <span>仅可选择当前已选人物的专属母音样本：</span>
-          <el-button
-            v-if="pickerTargetAudioSlotIndex === null"
-            size="small"
-            type="primary"
-            plain
-            :disabled="disabled || refAudios.length >= maxAudios || !candidateAudios.some(a => !a.isOccupied)"
-            @click="handleAddAllAudios"
-          >
-            一键全选添加
-          </el-button>
-        </div>
+    <VoiceAudioPicker v-model="audioPickerDialogVisible" :drama-id="dramaId" :characters="characters" :preferred-character-id="preferredCharacterId" :selected-audios="refAudios" :replace-index="pickerTargetAudioSlotIndex" @select="handleSelectAudios" />
 
-        <div v-if="candidateAudios.length === 0" class="text-center py-8 text-xs text-slate-400">
-          当前已选人物暂无可用的母音样本。请在资产管理中为角色设计并保存专属声音母音。
-        </div>
-        <div v-else class="space-y-2 max-h-80 overflow-y-auto pr-1">
-          <div
-            v-for="cand in candidateAudios"
-            :key="cand.id"
-            class="border rounded-xl p-2.5 flex items-center justify-between gap-3 transition-all cursor-pointer"
-            :class="cand.isOccupied ? 'border-slate-200 bg-slate-50 opacity-60 cursor-not-allowed' : 'border-slate-200 hover:border-indigo-400 bg-white hover:shadow-xs'"
-            @click="handleSelectCandidateAudio(cand)"
-          >
-            <div class="min-w-0 flex-1 space-y-0.5">
-              <div class="flex items-center gap-2">
-                <span class="text-xs font-bold text-slate-800 truncate">{{ cand.characterName }}</span>
-                <el-tag size="small" type="primary" class="!text-[9px] !px-1">{{ cand.tag }}</el-tag>
-                <span
-                  v-if="cand.isOccupied"
-                  class="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded"
-                >
-                  已在 Audio {{ (cand.occupiedSlotIndex || 0) + 1 }}
-                </span>
-              </div>
-              <div class="text-[11px] text-slate-500 truncate" :title="cand.text || cand.name">
-                {{ cand.text || cand.name }}
-              </div>
-            </div>
-
-            <div class="flex items-center gap-2 shrink-0">
-              <el-button
-                size="small"
-                :type="playingAudioUrl === cand.audioUrl ? 'warning' : 'primary'"
-                link
-                @click.stop="togglePlayAudio(cand.audioUrl)"
-              >
-                {{ playingAudioUrl === cand.audioUrl ? '⏸ 暂停' : '▶ 试听' }}
-              </el-button>
-              <el-button
-                size="small"
-                type="primary"
-                plain
-                :disabled="cand.isOccupied"
-              >
-                选择
-              </el-button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { referenceImageUsageOptions, REFERENCE_AUDIO_USAGE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
+import { referenceImageUsageOptions, REFERENCE_AUDIO_TYPE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { probeReferenceAudioDuration } from '@/utils/reference-audio'
 import { ElMessage } from 'element-plus'
 import type { ShotRefImage, ShotRefAudio } from '@/types/drama'
 import { keyImageRoleLabel, normalizeKeyImageRole } from '@/constants/keyImageRoles'
-import type { CandidateImageItem, CandidateAudioItem } from '../composables/useShotReferenceAssets'
+import VoiceAudioPicker from '@/views/dubbing/components/VoiceAudioPicker.vue'
+import type { CandidateImageItem } from '../composables/useShotReferenceAssets'
 import {
   MAX_REF_IMAGES,
   MAX_REF_AUDIOS,
-  MIN_AUDIO_DURATION,
-  MAX_AUDIO_DURATION,
   MAX_TOTAL_AUDIO_DURATION
 } from '../composables/useShotReferenceAssets'
 
@@ -474,7 +399,9 @@ const props = defineProps<{
   refImages: ShotRefImage[]
   refAudios: ShotRefAudio[]
   candidateImages: CandidateImageItem[]
-  candidateAudios: CandidateAudioItem[]
+  dramaId?: string | number
+  characters: { id: string | number; name: string; dramaId?: string | number }[]
+  preferredCharacterId?: string | number
   disabled?: boolean
 }>()
 
@@ -619,21 +546,6 @@ function openAudioPicker(slotIndex: number | null = null) {
   audioPickerDialogVisible.value = true
 }
 
-function createRefAudio(cand: CandidateAudioItem): ShotRefAudio {
-  return {
-    id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    name: cand.name,
-    audioUrl: cand.audioUrl,
-    sourceType: cand.sourceType,
-    characterId: cand.characterId,
-    characterName: cand.characterName,
-    text: cand.text,
-    duration: cand.duration,
-    usageMode: cand.usageMode || 'VOICE_TIMBRE',
-    language: cand.language || 'zh'
-  }
-}
-
 const probingAudioIds = new Set<string>()
 async function probeAudioDuration(audio: ShotRefAudio) {
   const key = `${audio.id}|${audio.audioUrl}`
@@ -655,51 +567,14 @@ watch(() => props.refAudios.map(audio => `${audio.id}|${audio.audioUrl}`).join('
   props.refAudios.forEach(audio => { void probeAudioDuration(audio) })
 }, { immediate: true })
 
-function handleSelectCandidateAudio(cand: CandidateAudioItem) {
-  if (props.disabled) return
-  if (cand.isOccupied) {
-    ElMessage.warning('该音频已在其他槽位中使用')
-    return
-  }
-
+function handleSelectAudios(selected: ShotRefAudio[]) {
+  if (props.disabled || !selected.length) return
   const next = [...props.refAudios]
-  const newAud = createRefAudio(cand)
-
-  if (pickerTargetAudioSlotIndex.value !== null && pickerTargetAudioSlotIndex.value < next.length) {
-    next[pickerTargetAudioSlotIndex.value] = newAud
-  } else {
-    next.push(newAud)
-  }
-
+  const index = pickerTargetAudioSlotIndex.value
+  if (index != null && index < next.length) next[index] = { ...selected[0]!, id: next[index]?.id || selected[0]!.id }
+  else next.push(...selected)
   emit('update:refAudios', next)
   emit('change')
-  probeAudioDuration(newAud)
-  audioPickerDialogVisible.value = false
-}
-
-function handleAddAllAudios() {
-  if (props.disabled || pickerTargetAudioSlotIndex.value !== null) return
-  const available = props.candidateAudios.filter(cand => !cand.isOccupied)
-  const selected: ShotRefAudio[] = []
-  let duration = totalAudioDuration.value
-  for (const cand of available) {
-    if (props.refAudios.length + selected.length >= maxAudios) break
-    const candidateDuration = cand.duration
-    if (candidateDuration !== undefined && (candidateDuration < MIN_AUDIO_DURATION || candidateDuration > MAX_AUDIO_DURATION
-      || duration + candidateDuration > maxTotalAudioDuration)) continue
-    selected.push(createRefAudio(cand))
-    duration += candidateDuration ?? 0
-  }
-  if (selected.length === 0) {
-    ElMessage.warning('剩余音频槽位或时长不足，无法批量添加')
-    return
-  }
-
-  emit('update:refAudios', [...props.refAudios, ...selected])
-  emit('change')
-  selected.forEach(probeAudioDuration)
-  audioPickerDialogVisible.value = false
-  ElMessage.success(`已添加 ${selected.length} 段参考音频${selected.length < available.length ? '，其余候选受槽位或时长限制未添加' : ''}`)
 }
 
 function handleRemoveAudio(index: number) {

@@ -21,6 +21,8 @@ public class VoiceEffectService {
     private final VoiceEffectEngine engine;
     private final ObjectMapper json;
 
+    public List<Map<String,Object>> filterCapabilities() { return engine.capabilities(); }
+
     public Page<VoiceEffect> page(int current,int size,String name,Boolean enabled) {
         return effects.selectPage(new Page<>(Math.max(1,current),Math.clamp(size,1,100)),new LambdaQueryWrapper<VoiceEffect>()
             .like(name!=null && !name.isBlank(),VoiceEffect::getName,name).eq(enabled!=null,VoiceEffect::getEnabled,Boolean.TRUE.equals(enabled)?1:0)
@@ -28,10 +30,10 @@ public class VoiceEffectService {
     }
     public VoiceEffect save(EffectEdit input) {
         if(input.name()==null || input.name().isBlank() || input.name().length()>128 || input.enabled()==null || input.description()!=null && input.description().length()>1000) throw new BizException(400,"特效名称、描述或状态无效");
-        engine.validate(input.steps());
+        var steps=engine.normalize(input.steps());
         if(input.steps().isEmpty() || input.steps().size()>12) throw new BizException(400,"特效模板需要1至12个处理步骤");
         VoiceEffect effect = new VoiceEffect(); effect.setName(input.name().trim()); effect.setDescription(input.description());
-        effect.setStepsJson(write(input.steps())); effect.setEnabled(input.enabled()?1:0);
+        effect.setStepsJson(write(steps)); effect.setEnabled(input.enabled()?1:0);
         if(input.id()==null) { effect.setVersion(1); effects.insert(effect); }
         else {
             VoiceEffect existing=effects.selectById(input.id());
@@ -52,13 +54,15 @@ public class VoiceEffectService {
         Set<Long> selected=new HashSet<>(); List<Snapshot> result=new ArrayList<>();
         for(EffectSelection selection:selections) {
             if(selection==null || selection.effectId()==null || !selected.add(selection.effectId())) throw new BizException(400,"特效不能为空或重复");
-            Snapshot retained=previous.stream().filter(s -> s.effectId().equals(selection.effectId().toString()) && Objects.equals(s.steps(),selection.steps())).findFirst().orElse(null);
+            Snapshot retained=previous.stream().filter(s -> s.effectId().equals(selection.effectId().toString()) && selection.steps()!=null
+                && Objects.equals(engine.normalize(s.steps()),engine.normalize(selection.steps()))).findFirst().orElse(null);
             if(retained!=null) { result.add(retained); continue; }
             VoiceEffect preset=effects.selectById(selection.effectId());
             if(preset==null || !Integer.valueOf(1).equals(preset.getEnabled())) throw new BizException(400,"特效不存在或已停用");
             List<Step> steps=selection.steps()==null?readSteps(preset.getStepsJson()):selection.steps();
             if(steps.isEmpty()) throw new BizException(400,"特效不能没有处理步骤");
-            engine.validate(steps);
+            if(steps.size()>12) throw new BizException(400,"每个特效最多12个处理步骤");
+            steps=engine.normalize(steps);
             result.add(new Snapshot(preset.getId().toString(),preset.getName(),preset.getVersion(),steps));
         }
         engine.validate(flatten(result));

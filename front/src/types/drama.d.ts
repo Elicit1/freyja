@@ -267,14 +267,15 @@ export interface ShotRefImage {
 
 export interface ShotRefAudio {
   id?: string
-  sourceType: 'TTS' | 'UPLOAD' | 'CHARACTER'
+  audioId?: string
   characterId?: string | number
   characterName?: string
   audioUrl: string
-  duration?: number // 2-15s
+  duration?: number
   name?: string
   text?: string
-  usageMode?: 'DIALOGUE_REUSE' | 'VOICE_TIMBRE' | 'BGM_REUSE' | 'AMBIENT_REUSE' | 'SOUND_EFFECT' | string
+  referenceType: 'fully_copy' | 'partially_copy' | 'reference' | 'weak_reference'
+  referenceDescription?: string
   language?: string
 }
 
@@ -540,10 +541,11 @@ export interface ShotPromptPackageVO {
     audios?: Array<{
       audioIndex: number
       referenceId?: string
-      sourceType?: string
+      audioId?: string
       characterId?: string | number
       characterName?: string
-      usageMode?: string
+      referenceType: ShotRefAudio['referenceType']
+      referenceDescription?: string
       language?: string
       text?: string
       audioUrl?: string

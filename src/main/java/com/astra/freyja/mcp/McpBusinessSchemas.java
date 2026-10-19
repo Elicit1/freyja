@@ -42,7 +42,7 @@ public class McpBusinessSchemas {
                 if (field.equals("characterRefs")) schema = array(30, nested(CharacterShotRefDTO.class, references, List.of("characterId")));
                 if (field.equals("propRefs")) schema = array(30, nested(PropShotRefDTO.class, references, List.of("propId")));
                 if (field.equals("refImages")) schema = array(9, nested(ShotRefImageDTO.class, references, List.of("sourceType", "imageUrl")));
-                if (field.equals("refAudios")) schema = array(3, nested(ShotRefAudioDTO.class, references, List.of("sourceType", "audioUrl")));
+                if (field.equals("refAudios")) schema = array(3, nested(ShotRefAudioDTO.class, references, List.of("audioUrl", "referenceType")));
                 if (field.equals("directorPlan")) schema = directorPlan();
                 if (field.equals("seed")) schema = described(schema, "1 到 " + ShotSeedUtil.MAX_SEED + " 的整数字符串");
                 String description = description(type, field);
@@ -79,7 +79,7 @@ public class McpBusinessSchemas {
         if (!properties.keySet().containsAll(allowed)) throw new IllegalStateException("DTO 缺少媒体引用业务字段: " + kind);
         properties.keySet().retainAll(allowed);
         for (String name : properties.keySet()) {
-            if (IDS.contains(name) || name.equals("sourceId")) properties.put(name, identifier(refs, !required.contains(name)));
+            if (IDS.contains(name) || name.equals("sourceId") || name.equals("audioId")) properties.put(name, identifier(refs, !required.contains(name)));
             else if (type != ShotRefAudioDTO.class || !name.equals("duration")) properties.put(name, Map.of("type", List.of("string", "null")));
         }
         properties.putAll(metadata.referenceSchemas(kind));

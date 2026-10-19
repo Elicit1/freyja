@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 
 /**
  * 分镜参考音频对象 (上限 3 段, 单段 2-15s, 总长 ≤ 15s)。
- * 来源: 人物 TTS 配音或自行上传。
+ * 参考关系严格使用 H3 四种标记，不接受平台来源分类或旧用途字段。
  */
 @Data
 @Builder
@@ -20,10 +20,10 @@ public class ShotRefAudioDTO {
     /** 唯一标识 (前端生成或自增) */
     private String id;
 
-    /** 来源类型: CHARACTER(人物母音)/TTS(历史来源标记)/UPLOAD(自行上传) */
-    private String sourceType;
+    /** 配音中心音频 ID；直接引用外部音频时可以不填写。 */
+    private Long audioId;
 
-    /** 明确关联的说话人角色 ID；CHARACTER/TTS 来源必填 */
+    /** 创作者明确关联的角色；配音中心音频必须与其所属角色一致。 */
     private Long characterId;
 
     /** 说话人名称 */
@@ -41,18 +41,17 @@ public class ShotRefAudioDTO {
     /** 台词或文本内容 */
     private String text;
 
-    /**
-     * 音频用途模式 (MiniMax H3):
-     * DIALOGUE_REUSE: 直接复用该段对白声音
-     * VOICE_TIMBRE: 只参考音色、语速和演绎方式
-     * BGM_REUSE: 直接复用背景音乐
-     * BGM_STYLE: 只参考音乐风格、节奏或配器
-     * SFX_REUSE: 直接复用音效
-     * SFX_REFERENCE: 只参考音效质感
-     * RHYTHM_REFERENCE: 只参考节拍和时间节奏
-     */
-    private String usageMode;
+    /** fully_copy / partially_copy / reference / weak_reference，必填。 */
+    private String referenceType;
+
+    /** 明确说明参考或复用哪些内容，不从文件来源或标签推断。 */
+    private String referenceDescription;
 
     /** 发音语言选择: zh/en/ja/other；未声明保持 null。 */
     private String language;
+
+    @com.fasterxml.jackson.annotation.JsonAnySetter
+    public void rejectUnknownField(String name, Object value) {
+        throw new IllegalArgumentException("不支持的参考音频字段: " + name + "；请重新选择音频并指定四种 referenceType 之一");
+    }
 }

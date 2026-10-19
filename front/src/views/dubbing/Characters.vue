@@ -44,7 +44,6 @@
             <el-button size="small" type="danger" text @click="remove(candidate)">取消 / 删除此任务</el-button>
           </div>
           <div class="audio-filters"><strong>克隆配音 <small>{{ audioTotal }}</small></strong>
-            <el-select v-model="emotionFilter" multiple clearable placeholder="按情绪标签筛选" @change="filterAudios"><el-option v-for="emotion in emotions" :key="emotion.dictValue" :label="emotion.dictLabel" :value="emotion.dictValue" /></el-select>
             <el-select v-model="effectFilter" multiple clearable filterable placeholder="按特效标签筛选" @change="filterAudios"><el-option v-for="effect in allEffects" :key="String(effect.id)" :label="effect.name + (effect.enabled ? '' : '（已停用）')" :value="String(effect.id)" /></el-select>
             <el-button text @click="loadAudios()">刷新</el-button>
           </div>
@@ -60,7 +59,7 @@
               <p v-if="item.audio.errorMessage" class="error-text">{{ item.audio.errorMessage }}</p>
               <div class="audio-meta">{{ duration(item.duration) }} · {{ date(item.audio.createTime) }}<span v-if="item.references"> · {{ item.references }} 个分镜引用</span></div>
               <div class="card-actions"><el-button size="small" :disabled="!item.audio.rawAudioUrl" @click="openEffects(item)">编辑特效</el-button><el-button v-if="item.effects.length" size="small" text @click="clearEffects(item)">清空特效</el-button><el-button v-if="failed(item.audio.status)" size="small" type="primary" text @click="retry(item)">重试</el-button>
-                <el-dropdown trigger="click" @command="(command: string) => cardAction(command, item)"><el-button size="small" text>更多</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="rename">修改名称</el-dropdown-item><el-dropdown-item command="regenerate">修改台词 / 情绪并生成新配音</el-dropdown-item><el-dropdown-item command="delete" divided>删除</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
+                <el-dropdown trigger="click" @command="(command: string) => cardAction(command, item)"><el-button size="small" text>更多</el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="rename">修改名称</el-dropdown-item><el-dropdown-item command="regenerate">修改台词 / 表演并生成新配音</el-dropdown-item><el-dropdown-item command="delete" divided>删除</el-dropdown-item></el-dropdown-menu></template></el-dropdown>
               </div>
             </article>
           </div>
@@ -74,19 +73,40 @@
       <el-form label-position="top" @submit.prevent>
         <el-form-item label="配音名称" required><el-input v-model="form.name" maxlength="128" show-word-limit /></el-form-item>
         <el-form-item v-if="!uploadMode" label="提供商 / 模型" required><el-select v-model="modelKey" class="!w-full" placeholder="选择已启用的 MiMo 模型"><el-option v-for="model in availableModels" :key="model.providerId + '|' + model.modelCode" :value="model.providerId + '|' + model.modelCode" :label="model.providerName + ' / ' + model.modelName" /></el-select><p v-if="!availableModels.length" class="muted">请先在 AI 提供商中配置并启用对应的 MiMo TTS 模型。</p></el-form-item>
-        <el-form-item v-if="!uploadMode && form.method === 'DESIGN'" label="音色描述" required><el-input v-model="form.voiceDesc" type="textarea" :rows="3" maxlength="512" show-word-limit placeholder="描述年龄、声线和说话特点，请勿要求混响、无线电等特效" /></el-form-item>
-        <el-form-item :label="uploadMode ? '音频实际台词' : '配音台词'" required><el-input v-model="form.text" type="textarea" :rows="4" maxlength="4000" show-word-limit :placeholder="form.method === 'DESIGN' ? '基础参考建议5至10秒，最长30秒' : '输入本次表演的台词'" /></el-form-item>
+        <template v-if="!uploadMode">
+          <div class="voice-editor-toolbar">
+            <el-radio-group :model-value="requestMode" :disabled="saving" @change="changeRequestMode">
+              <el-radio-button value="form">普通表单</el-radio-button><el-radio-button value="json">JSON 编辑</el-radio-button>
+            </el-radio-group>
+            <div class="editor-actions"><el-button size="small" :disabled="saving" @click="fillTemplate">一键填充模板</el-button><el-button v-if="requestMode === 'json'" size="small" :disabled="saving" @click="formatJson">格式化 JSON</el-button></div>
+          </div>
+          <template v-if="requestMode === 'form'">
+            <el-form-item :label="form.method === 'DESIGN' ? '音色描述' : '表演说明（可选）'" :required="form.method === 'DESIGN'">
+              <el-input v-model="voiceFields.instruction" type="textarea" :rows="3" maxlength="12000" show-word-limit :placeholder="form.method === 'DESIGN' ? '描述年龄、声线、口音和说话特点，例如：青年女性，声线清亮，吐字清晰，使用自然的普通话。' : '例如：前半句语速稍慢，在“回来”后停顿，最后一句轻声说出。'" />
+            </el-form-item>
+            <el-form-item :label="form.method === 'DESIGN' ? '试音台词' : '配音台词'" required>
+              <el-input v-model="voiceFields.text" type="textarea" :rows="5" maxlength="4000" show-word-limit :placeholder="form.method === 'DESIGN' ? '输入试音台词，基础参考建议5至10秒，最长30秒。' : '(悲伤)你终于回来了。[哽咽]我一直在等你。'" />
+              <p v-if="form.method === 'CLONE'" class="muted">整体风格写在台词开头，如 (悲伤)；局部表演标签写在对应位置，如 [哽咽]。</p>
+            </el-form-item>
+          </template>
+          <el-form-item v-else label="模型请求 JSON" required>
+            <div class="request-editor"><el-input v-model="modelRequestJson" type="textarea" :rows="13" maxlength="65536" show-word-limit :placeholder="requestTemplate" spellcheck="false" /></div>
+          </el-form-item>
+        </template>
+        <el-form-item v-if="uploadMode" label="音频实际台词" required><el-input v-model="uploadText" type="textarea" :rows="4" maxlength="4000" show-word-limit /></el-form-item>
         <el-form-item v-if="uploadMode" label="选择音频文件" required><input type="file" accept="audio/*" @change="chooseUpload" /><p class="muted">最大7 MiB，最长30秒；请上传清晰且不带特效的原始人声。</p></el-form-item>
-        <template v-if="!uploadMode && form.method === 'CLONE'"><el-form-item label="情绪"><el-select v-model="form.emotion" clearable placeholder="选择表演情绪"><el-option v-for="emotion in emotions" :key="emotion.dictValue" :value="emotion.dictValue" :label="emotion.dictLabel" /></el-select></el-form-item>
-          <el-form-item label="声音特效（可选）"><EffectSelection v-model="form.effects" :effects="enabledEffects" :filters="filters" class="!w-full" /></el-form-item>
-          <el-alert title="先生成并保留 TTS 克隆原声，再添加特效。后续编辑或清空特效不会调用 TTS。" type="info" :closable="false" />
+        <template v-if="!uploadMode && form.method === 'CLONE'">
+          <el-collapse v-model="expandedEffects" class="voice-effects-collapse"><el-collapse-item name="effects" :title="`声音特效（可选）${form.effects.length ? ' · 已选 ' + form.effects.length + ' 项' : ''}`">
+            <EffectSelection v-model="form.effects" :effects="enabledEffects" />
+            <p class="muted effect-hint">先生成并保留克隆原声，再按选择顺序添加特效。模板参数可在“管理声音特效”中调整。</p>
+          </el-collapse-item></el-collapse>
         </template>
       </el-form>
       <template #footer><el-button @click="createVisible = false" :disabled="saving">取消</el-button><el-button type="primary" :loading="saving" @click="submitCreate">{{ uploadMode ? '上传基础声音' : '开始生成' }}</el-button></template>
     </el-dialog>
     <el-dialog v-model="effectsVisible" title="编辑声音特效" width="min(800px, 94vw)" destroy-on-close :close-on-click-modal="false">
       <el-alert title="始终从保留的克隆原声重新处理，不调用 TTS。清空全部特效后直接播放克隆原声。" type="info" :closable="false" class="dialog-alert" />
-      <EffectSelection v-model="editingEffects" :effects="enabledEffects" :filters="filters" :names="editingNames" />
+      <EffectSelection v-model="editingEffects" :effects="enabledEffects" :names="editingNames" />
       <div class="preview-grid"><div><p>克隆原声</p><audio v-if="editing?.audio.rawAudioUrl" :src="editing.audio.rawAudioUrl" controls preload="none" @play="onlyPlay" /></div><div><p>当前参数预览</p><audio v-if="effectPreview" :src="effectPreview" controls @play="onlyPlay" /><el-button v-else :loading="previewing" :disabled="!editingEffects.length" @click="previewEffects">试听特效</el-button></div></div>
       <template #footer><el-button @click="effectsVisible = false">取消</el-button><el-button type="primary" :loading="saving" @click="saveEffects">{{ editingEffects.length ? '保存并处理' : '清空特效，使用原声' }}</el-button></template>
     </el-dialog>
@@ -97,18 +117,22 @@
 import { ref, reactive, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { dubbingApi, type Character, type AudioView, type Effect, type Filter, type Model, type CreateAudio, type Selection } from '@/api/dubbing'
-import { dictCommonApi } from '@/api/dict'
-import type { SysDictData } from '@/types/dict'
+import { dubbingApi, type Character, type AudioView, type Effect, type Model, type CreateAudio, type Selection } from '@/api/dubbing'
+import { VOICE_REQUEST_TEMPLATES } from '@/constants/voiceRequestTemplates'
+import { parseVoiceRequest, readVoiceForm, writeVoiceForm, emptyVoiceRequest, formatVoiceRequest } from '@/utils/voice-request-editor'
 import EffectSelection from './components/EffectSelection.vue'
 const route = useRoute(), router = useRouter(), root = ref<HTMLElement>()
 const name = ref(''), dramaName = ref(''), characters = ref<Character[]>([]), selected = ref<Character>(), characterPage = ref(1), characterTotal = ref(0), charactersLoading = ref(false)
 const replacements = ref<AudioView[]>([])
-const base = ref<AudioView | null>(null), audios = ref<AudioView[]>([]), audioPage = ref(1), audioTotal = ref(0), audioLoading = ref(false), emotionFilter = ref<string[]>([]), effectFilter = ref<string[]>([])
-const emotions = ref<SysDictData[]>([]), allEffects = ref<Effect[]>([]), filters = ref<Filter[]>([]), models = ref<Model[]>([])
+const base = ref<AudioView | null>(null), audios = ref<AudioView[]>([]), audioPage = ref(1), audioTotal = ref(0), audioLoading = ref(false), effectFilter = ref<string[]>([])
+const allEffects = ref<Effect[]>([]), models = ref<Model[]>([])
 const enabledEffects = computed(() => allEffects.value.filter(e => e.enabled === 1))
 const saving = ref(false), createVisible = ref(false), uploadMode = ref(false), uploadFile = ref<File>(), modelKey = ref('')
-const form = reactive<CreateAudio>({ name: '', text: '', providerId: '', modelCode: '', method: 'DESIGN', voiceDesc: '', effects: [] })
+const form = reactive<CreateAudio>({ name: '', providerId: '', modelCode: '', method: 'DESIGN', modelRequest: {}, effects: [] })
+const modelRequestJson = ref(''), uploadText = ref('')
+const requestMode = ref<'form' | 'json'>('form'), expandedEffects = ref<string[]>([])
+const voiceFields = reactive({ instruction: '', text: '' })
+const requestTemplate = computed(() => VOICE_REQUEST_TEMPLATES[form.method])
 const availableModels = computed(() => models.value.filter(m => m.modelCode === (form.method === 'DESIGN' ? 'mimo-v2.5-tts-voicedesign' : 'mimo-v2.5-tts-voiceclone')))
 const effectsVisible = ref(false), editing = ref<AudioView>(), editingEffects = ref<Selection[]>([]), editingNames = ref<Record<string, string>>({}), effectPreview = ref(''), previewing = ref(false)
 let characterRequest = 0, audioRequest = 0, poll: ReturnType<typeof setTimeout> | undefined, previewVersion = 0, disposed = false
@@ -136,7 +160,7 @@ async function loadCharacters(locateId?: string) {
 }
 async function selectCharacter(character: Character) {
   if (selected.value?.id === character.id) return
-  stopAudio(); selected.value = character; base.value = null; replacements.value = []; audios.value = []; audioPage.value = 1; emotionFilter.value = []; effectFilter.value = []
+  stopAudio(); selected.value = character; base.value = null; replacements.value = []; audios.value = []; audioPage.value = 1; effectFilter.value = []
   createVisible.value = false; effectsVisible.value = false
   await router.replace({ query: { characterId: character.id } }); await loadAudios()
 }
@@ -144,7 +168,7 @@ async function loadAudios(quiet = false) {
   const characterId = selected.value?.id; if (!characterId) return
   const sequence = ++audioRequest; if (!quiet) audioLoading.value = true
   try {
-    const [reference, page, candidates] = await Promise.all([dubbingApi.base(characterId), dubbingApi.audios(characterId, { current: audioPage.value, size: 9, emotions: emotionFilter.value, effectIds: effectFilter.value }), dubbingApi.replacements(characterId)])
+    const [reference, page, candidates] = await Promise.all([dubbingApi.base(characterId), dubbingApi.audios(characterId, { current: audioPage.value, size: 9, effectIds: effectFilter.value }), dubbingApi.replacements(characterId)])
     if (sequence !== audioRequest || characterId !== selected.value?.id || disposed) return
     base.value = reference; replacements.value = candidates; audios.value = page.records; audioTotal.value = Number(page.total)
     const character = characters.value.find(c => c.id === characterId); if (character) character.has_base = reference ? 1 : 0
@@ -161,26 +185,75 @@ async function confirmReplacement() {
 }
 function openCreate(method: 'DESIGN' | 'CLONE', source?: AudioView) {
   uploadMode.value = false
-  Object.assign(form, { method, name: method === 'DESIGN' ? '基础参考声音' : source ? `${source.audio.name}（新版本）` : '角色配音', text: source?.audio.text || '', voiceDesc: method === 'DESIGN' ? base.value?.audio.voiceDesc || '' : undefined, emotion: source?.audio.emotion || undefined, effects: source?.effects.map(e => ({ effectId: e.effectId, steps: e.steps })) || [], replaceBaseId: undefined })
-  modelKey.value = availableModels.value[0] ? availableModels.value[0].providerId + '|' + availableModels.value[0].modelCode : ''
+  Object.assign(form, { method, name: method === 'DESIGN' ? '基础参考声音' : source ? `${source.audio.name}（新版本）` : '角色配音', modelRequest: {}, effects: source?.effects.map(e => ({ effectId: e.effectId, steps: e.steps })) || [], replaceBaseId: undefined })
+  modelRequestJson.value = source?.audio.modelRequestJson || (method === 'DESIGN' ? base.value?.audio.modelRequestJson || '' : '')
+  expandedEffects.value = []; requestMode.value = 'form'
+  Object.assign(voiceFields, { instruction: '', text: '' })
+  if (modelRequestJson.value) {
+    try { Object.assign(voiceFields, readVoiceForm(parseVoiceRequest(modelRequestJson.value))) }
+    catch { requestMode.value = 'json' }
+  } else {
+    voiceFields.instruction = method === 'DESIGN' ? base.value?.audio.voiceDesc || '' : ''
+    voiceFields.text = source?.audio.text || (method === 'DESIGN' ? base.value?.audio.text || '' : '')
+  }
+  uploadText.value = ''
+  const previous = source?.audio || (method === 'DESIGN' ? base.value?.audio : undefined)
+  const model = availableModels.value.find(m => m.providerId === previous?.providerId && m.modelCode === previous?.modelCode) || availableModels.value[0]
+  modelKey.value = model ? model.providerId + '|' + model.modelCode : ''
   createVisible.value = true
 }
 function openUpload() { openCreate('DESIGN'); uploadMode.value = true; uploadFile.value = undefined }
 function chooseUpload(event: Event) { uploadFile.value = (event.target as HTMLInputElement).files?.[0] }
+function currentRequest() {
+  if (requestMode.value === 'json') return parseVoiceRequest(modelRequestJson.value)
+  const request = modelRequestJson.value ? parseVoiceRequest(modelRequestJson.value) : emptyVoiceRequest()
+  return writeVoiceForm(request, voiceFields)
+}
+function editorError(error: unknown) { ElMessage.warning(error instanceof Error ? error.message : '请检查配音内容') }
+function changeRequestMode(value: unknown) {
+  if (value === requestMode.value || (value !== 'form' && value !== 'json')) return
+  try {
+    if (value === 'json') modelRequestJson.value = JSON.stringify(currentRequest(), null, 2)
+    else Object.assign(voiceFields, readVoiceForm(parseVoiceRequest(modelRequestJson.value)))
+    requestMode.value = value
+  } catch (error) { editorError(error) }
+}
+function formatJson() {
+  try { modelRequestJson.value = formatVoiceRequest(modelRequestJson.value); ElMessage.success('JSON 已格式化') }
+  catch (error) { editorError(error) }
+}
+async function fillTemplate() {
+  if (modelRequestJson.value.trim() || voiceFields.instruction || voiceFields.text) {
+    try { await ElMessageBox.confirm('填充模板会覆盖当前配音内容和高级参数，是否继续？', '填充模板', { type: 'warning' }) } catch { return }
+  }
+  modelRequestJson.value = requestTemplate.value
+  Object.assign(voiceFields, readVoiceForm(parseVoiceRequest(requestTemplate.value)))
+}
 async function submitCreate() {
-  if (!selected.value || !form.name.trim() || !form.text.trim()) { ElMessage.warning('请填写配音名称和台词'); return }
+  if (!selected.value || !form.name.trim()) { ElMessage.warning('请填写配音名称'); return }
+  if (uploadMode.value && !uploadText.value.trim()) { ElMessage.warning('请填写音频实际台词'); return }
   if (uploadMode.value && !uploadFile.value) { ElMessage.warning('请选择音频文件'); return }
-  if (!uploadMode.value && (!modelKey.value || form.method === 'DESIGN' && !form.voiceDesc?.trim())) { ElMessage.warning('请选择模型并填写音色描述'); return }
+  let modelRequest: Record<string, unknown> = {}
+  if (!uploadMode.value) {
+    if (!modelKey.value) { ElMessage.warning('请选择模型'); return }
+    if (requestMode.value === 'form') {
+      if (!voiceFields.text.trim()) { ElMessage.warning('请填写台词'); return }
+      if (form.method === 'DESIGN' && !voiceFields.instruction.trim()) { ElMessage.warning('请填写音色描述'); return }
+    }
+    try {
+      modelRequest = currentRequest()
+    } catch (error) { editorError(error); return }
+  }
   if (uploadFile.value && uploadMode.value && uploadFile.value.size > 7 * 1024 * 1024) { ElMessage.warning('音频最大7 MiB'); return }
   if (form.method === 'DESIGN' && base.value) { try { await confirmReplacement() } catch { return } }
   saving.value = true
   try {
     if (uploadMode.value && uploadFile.value) {
-      const data = new FormData(); data.append('file', uploadFile.value); data.append('name', form.name); data.append('text', form.text); if (base.value) data.append('replaceBaseId', base.value.audio.id)
+      const data = new FormData(); data.append('file', uploadFile.value); data.append('name', form.name); data.append('text', uploadText.value); if (base.value) data.append('replaceBaseId', base.value.audio.id)
       await dubbingApi.upload(selected.value.id, data)
     } else {
       const [providerId, modelCode] = modelKey.value.split('|'); if (!providerId || !modelCode) return
-      await dubbingApi.create(selected.value.id, { ...form, providerId, modelCode, emotion: form.method === 'CLONE' ? form.emotion || undefined : undefined, effects: form.method === 'CLONE' ? form.effects : [], replaceBaseId: form.method === 'DESIGN' ? base.value?.audio.id : undefined })
+      await dubbingApi.create(selected.value.id, { ...form, providerId, modelCode, modelRequest, effects: form.method === 'CLONE' ? form.effects : [], replaceBaseId: form.method === 'DESIGN' ? base.value?.audio.id : undefined })
     }
     createVisible.value = false; audioPage.value = 1; await loadAudios(); ElMessage.success(uploadMode.value ? '基础声音已上传' : '生成任务已提交，可在任务中心查看')
   } finally { saving.value = false }
@@ -218,17 +291,17 @@ async function cardAction(command: string, item: AudioView) {
 async function tick() { if (disposed) return; try { if (selected.value && !saving.value && !audioLoading.value) await loadAudios(true) } catch { /* Request interceptor reports errors; polling continues after recovery. */ } finally { if (!disposed) poll = setTimeout(tick, 5000) } }
 watch(() => route.query.characterId, id => { if (typeof id === 'string' && id !== selected.value?.id) void loadCharacters(id) })
 onMounted(async () => {
-  const results = await Promise.allSettled([dictCommonApi.getDataByType('voice_emotion'), dubbingApi.effectOptions(), dubbingApi.filters(), dubbingApi.models()])
-  if (results[0].status === 'fulfilled') emotions.value = results[0].value
-  if (results[1].status === 'fulfilled') allEffects.value = results[1].value
-  if (results[2].status === 'fulfilled') filters.value = results[2].value
-  if (results[3].status === 'fulfilled') models.value = results[3].value
+  const results = await Promise.allSettled([dubbingApi.effectOptions(), dubbingApi.models()])
+  if (results[0].status === 'fulfilled') allEffects.value = results[0].value
+  if (results[1].status === 'fulfilled') models.value = results[1].value
   try { await loadCharacters(typeof route.query.characterId === 'string' ? route.query.characterId : undefined) } finally { if (!disposed) poll = setTimeout(tick, 5000) }
 })
 onBeforeUnmount(() => { disposed = true; ++characterRequest; ++audioRequest; ++previewVersion; clearTimeout(poll); stopAudio() })
 </script>
 
 <style scoped>
+.request-editor{width:100%;display:flex;flex-direction:column;gap:10px;align-items:flex-start}.request-editor :deep(textarea){font-family:monospace;line-height:1.6}
+.voice-editor-toolbar,.editor-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.voice-editor-toolbar{justify-content:space-between;margin:6px 0 20px}.editor-actions .el-button+.el-button{margin-left:0}.voice-effects-collapse{margin-bottom:18px}.effect-hint{margin-top:10px}
 .dubbing-center{max-width:1700px;margin:auto}.page-header{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:24px}.eyebrow{font-size:11px;letter-spacing:.18em;font-weight:700;color:var(--el-color-primary);margin-bottom:6px}h1{font-size:28px;font-weight:700}h2{font-size:22px;font-weight:650}h3{font-size:15px;font-weight:600}.subtitle{font-size:13px;color:var(--el-text-color-secondary);margin-top:8px}.search-bar{padding:18px 20px 0;border:1px solid var(--el-border-color-light);border-radius:14px;background:var(--el-bg-color);margin-bottom:18px}.studio-columns{display:grid;grid-template-columns:300px minmax(0,1fr);gap:20px;align-items:start}.character-panel,.audio-panel{background:var(--el-bg-color);border:1px solid var(--el-border-color-light);border-radius:16px;padding:18px;min-width:0}.panel-heading{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:18px}.panel-heading span{font-size:11px;color:var(--el-text-color-secondary)}.character-panel>.panel-heading{align-items:start;flex-direction:column;gap:4px}.character-row{display:flex;gap:12px;width:100%;padding:14px 10px;text-align:left;border:1px solid transparent;border-radius:12px;margin:5px 0;cursor:pointer}.character-row:hover{background:var(--el-fill-color-light)}.character-row.selected{border-color:var(--el-color-primary-light-5);background:var(--el-color-primary-light-9)}.avatar{display:flex;align-items:center;justify-content:center;width:40px;height:40px;flex-shrink:0;border-radius:12px;background:var(--el-fill-color-dark);font-size:17px;color:var(--el-color-primary)}.character-info{display:flex;flex-direction:column;gap:4px;min-width:0}.character-info strong{font-size:14px}.character-info small{font-size:11px;color:var(--el-text-color-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.character-info .ready-label{color:var(--el-color-success)}.character-panel>.el-pagination{margin-top:18px;justify-content:center}.header-actions{display:flex;flex-wrap:wrap;justify-content:end;gap:8px}.header-actions .el-button+.el-button{margin-left:0}.base-card{padding:20px;border:1px solid var(--el-color-primary-light-7);border-radius:14px;background:var(--el-color-primary-light-9);margin-bottom:24px}.card-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.card-title>span:not(.el-tag){font-size:12px;color:var(--el-text-color-secondary)}.base-card h3{margin-top:12px}.script-text{font-size:13px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--el-text-color-regular);margin:12px 0;max-height:150px;overflow:auto}.card-footer{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;font-size:12px;color:var(--el-text-color-secondary)}audio{width:100%;height:38px}.replacement-status{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 0;margin-bottom:12px}.audio-filters{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}.audio-filters>strong{margin-right:auto;white-space:nowrap}.audio-filters small{font-weight:400;color:var(--el-text-color-secondary);margin-left:4px}.audio-filters>.el-select{width:190px}.audio-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(285px,1fr));gap:16px}.audio-card{display:flex;flex-direction:column;padding:18px;border:1px solid var(--el-border-color-light);border-radius:14px}.audio-card .card-title{justify-content:space-between}.tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}.muted,.empty-base{font-size:12px;color:var(--el-text-color-secondary);line-height:1.7}.empty-base{margin-top:14px}.error-text{font-size:12px;color:var(--el-color-danger);margin-top:10px}.audio-meta{font-size:11px;color:var(--el-text-color-secondary);margin-top:auto;padding-top:16px}.card-actions{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--el-border-color-extra-light)}.card-actions .el-button+.el-button{margin-left:0}.audio-pagination{margin-top:24px;justify-content:end}.dialog-alert{margin-bottom:20px}.preview-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px}.preview-grid p{font-size:12px;margin-bottom:10px}details{font-size:11px;color:var(--el-text-color-secondary);margin-top:8px}summary{cursor:pointer;margin-bottom:8px}
 @media(max-width:1100px){.studio-columns{grid-template-columns:240px minmax(0,1fr)}.character-heading{align-items:start;flex-direction:column}.header-actions{justify-content:start}}@media(max-width:760px){.studio-columns{grid-template-columns:1fr}.page-header{align-items:start;flex-direction:column}.character-panel{max-height:340px;overflow:auto}.preview-grid{grid-template-columns:1fr}.search-bar :deep(.el-form-item){margin-right:0;width:100%}.audio-filters>.el-select{width:100%}.audio-pagination{justify-content:center}}
 </style>

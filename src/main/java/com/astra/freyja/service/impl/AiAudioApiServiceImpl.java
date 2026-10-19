@@ -8,6 +8,7 @@ import com.astra.freyja.entity.AiModel;
 import com.astra.freyja.entity.AiProvider;
 import com.astra.freyja.service.AiAudioApiService;
 import com.astra.freyja.util.CryptoUtil;
+import com.astra.freyja.util.VoiceModelRequest;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -60,24 +61,29 @@ public class AiAudioApiServiceImpl implements AiAudioApiService {
             .build();
 
     @Override
-    public AudioArchiveResult cloneVoice(Long providerId, String modelCode, byte[] referenceWav, String emotion, String text, String archivePath) {
-        if (!"mimo-v2.5-tts-voiceclone".equals(modelCode)) throw new BizException(400, "请选择 MiMo VoiceClone 模型");
-        if (StringUtils.isBlank(text) || referenceWav == null || referenceWav.length == 0)
-            throw new BizException(400, "克隆台词和基础音频不能为空");
-        String voice = "data:audio/wav;base64," + Base64.getEncoder().encodeToString(referenceWav);
-        if (voice.length() > 10 * 1024 * 1024) throw new BizException(400, "基础音频编码后超过 MiMo 10 MiB 限制");
+    public AudioArchiveResult generateVoice(Long providerId, String modelCode, byte[] referenceWav,
+                                            Map<String, Object> modelRequest, String archivePath) {
+        VoiceModelRequest.snapshot(modelRequest);
         AiProvider provider = resolveProvider(providerId, modelCode);
-        Map<String,Object> payload = new HashMap<>();
+        Map<String, Object> payload = new HashMap<>(modelRequest);
+        if (payload.containsKey("model") && !modelCode.equals(payload.get("model")))
+            throw new BizException(400, "JSON 中的 model 与所选模型不一致");
         payload.put("model", modelCode);
-        payload.put("messages", List.of(
-                Map.of("role", "user", "content", StringUtils.isBlank(emotion) ? "" : "请以" + emotion + "的情绪朗读，保持参考音色，不添加声音特效。"),
-                Map.of("role", "assistant", "content", text)));
-        payload.put("audio", Map.of("format", "wav", "voice", voice));
+        Map<String, Object> audio = new HashMap<>();
+        if (modelRequest.get("audio") instanceof Map<?, ?> supplied)
+            supplied.forEach((key, value) -> audio.put((String) key, value));
+        audio.put("format", "wav");
+        if (referenceWav != null) {
+            if (referenceWav.length == 0) throw new BizException(400, "基础音频不能为空");
+            String voice = "data:audio/wav;base64," + Base64.getEncoder().encodeToString(referenceWav);
+            if (voice.length() > 10 * 1024 * 1024) throw new BizException(400, "基础音频编码后超过 MiMo 10 MiB 限制");
+            audio.put("voice", voice);
+        }
+        payload.put("audio", audio);
         payload.put("stream", false);
         byte[] bytes = executeAudioRequest(buildEndpointUrl(provider.getBaseUrl()), cryptoUtil.decrypt(provider.getApiKey()), payload, provider.getTimeout());
         return new AudioArchiveResult(uploadToMinio(archivePath, bytes, "audio/wav"), calculateAudioDuration(bytes), bytes.length);
     }
-
 
     @Override
     public AudioArchiveResult designVoice(Long providerId, String modelCode, String voiceDesc, String sampleText, String archivePath) {
@@ -95,7 +101,7 @@ public class AiAudioApiServiceImpl implements AiAudioApiService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", effectiveModel);
         payload.put("messages", List.of(
-                Map.of("role", "user", "content", voiceDesc.trim() + "\n只生成清晰的单人干声，不添加混响、回声、变调、无线电效果或背景音乐。"),
+                Map.of("role", "user", "content", voiceDesc.trim()),
                 Map.of("role", "assistant", "content", effectiveSampleText.trim())
         ));
         Map<String, Object> audioConfig = new HashMap<>();

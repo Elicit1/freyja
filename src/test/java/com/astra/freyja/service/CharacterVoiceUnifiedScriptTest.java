@@ -32,9 +32,28 @@ class CharacterVoiceUnifiedScriptTest {
         verifyNoInteractions(shots);
     }
 
+    @Test void manifestKeepsExactRelationshipDescriptionAndCenterIdentity() {
+        for (String type : com.astra.freyja.util.ShotAudioReferenceValidator.REFERENCE_TYPES) {
+            var reference = ShotRefAudioDTO.builder().audioId(900L).characterId(201L)
+                    .audioUrl("https://example.invalid/current.wav").referenceType(type)
+                    .referenceDescription("仅参考创作者明确选择的内容").text("原音频转录").build();
+            var item = prompts.buildReferenceManifest(input(List.of(reference))).getAudios().getFirst();
+            assertEquals(type,item.getReferenceType());
+            assertEquals(900L,item.getAudioId());
+            assertEquals(reference.getReferenceDescription(),item.getReferenceDescription());
+        }
+    }
+
+    @Test void oldSavedAudioClassificationIsRejectedInsteadOfMigrated() {
+        DramaShot saved=new DramaShot();
+        saved.setRefAudiosJson("[{\"audioUrl\":\"https://example.invalid/old.wav\",\"sourceType\":\"TTS\",\"usageMode\":\"VOICE_TIMBRE\"}]");
+        when(shots.selectById(1L)).thenReturn(saved);
+        assertThrows(BizException.class,() -> prompts.buildReferenceManifest(input(null)));
+    }
+
     @Test void omittedAudioRecoversSnapshotWithoutInventingDurationOrLanguage() {
         DramaShot saved = new DramaShot();
-        saved.setRefAudiosJson("[{\"id\":\"voice\",\"audioUrl\":\"https://example.invalid/sample.wav\",\"usageMode\":\"VOICE_TIMBRE\"}]");
+        saved.setRefAudiosJson("[{\"id\":\"voice\",\"audioUrl\":\"https://example.invalid/sample.wav\",\"referenceType\":\"reference\"}]");
         when(shots.selectById(1L)).thenReturn(saved);
         var manifest = prompts.buildReferenceManifest(input(null));
         assertEquals(1, manifest.getAudios().size());
@@ -44,7 +63,7 @@ class CharacterVoiceUnifiedScriptTest {
 
     @Test void overCapacityIsRejectedBeforeAnyTruncation() {
         var audios = java.util.stream.IntStream.range(0, 4).mapToObj(i -> ShotRefAudioDTO.builder()
-                .audioUrl("https://example.invalid/" + i + ".wav").sourceType("UPLOAD").build()).toList();
+                .audioUrl("https://example.invalid/" + i + ".wav").referenceType("reference").build()).toList();
         assertThrows(BizException.class, () -> prompts.buildReferenceManifest(input(audios)));
     }
 
@@ -85,7 +104,7 @@ class CharacterVoiceUnifiedScriptTest {
 
     @Test void oldPromptTaskInputsMigrateBothScriptAndDirectorInputWithoutInjectingLegacyAudio() {
         var json = tools.jackson.databind.json.JsonMapper.builder().build();
-        var raw = json.readTree("{\"shotId\":\"1\",\"dialogue\":\"别动。\",\"audioUrl\":\"legacy.wav\",\"directorPlanInput\":{\"dialogue\":\"别动。\"},\"refAudios\":[{\"sourceType\":\"UPLOAD\",\"audioUrl\":\"selected.wav\"}]}");
+        var raw = json.readTree("{\"shotId\":\"1\",\"dialogue\":\"别动。\",\"audioUrl\":\"legacy.wav\",\"directorPlanInput\":{\"dialogue\":\"别动。\"},\"refAudios\":[{\"referenceType\":\"reference\",\"audioUrl\":\"selected.wav\"}]}");
         var migrated = com.astra.freyja.util.LegacyShotJsonMigration.projectPromptInput(raw);
         var dto = json.treeToValue(migrated, ShotPromptDeriveDTO.class);
         assertTrue(dto.getScriptContent().contains("别动。"));
@@ -96,7 +115,7 @@ class CharacterVoiceUnifiedScriptTest {
 
     @Test void voiceTimbreMustBelongToTheExplicitSpeakerWhileAuthorizedRecordingKeepsItsMode() {
         var voice = ShotRefAudioDTO.builder().audioUrl("https://example.invalid/voice.wav")
-                .sourceType("CHARACTER").characterId(201L).usageMode("VOICE_TIMBRE").build();
+                .characterId(201L).referenceType("reference").build();
         var manifest = prompts.buildReferenceManifest(input(List.of(voice)));
         ShotSpeechLine line = new ShotSpeechLine(); line.setKind(ShotSpeechLine.Kind.OFF_SCREEN_DIALOGUE);
         line.setText("别动。"); line.setLanguage("Chinese"); line.setCharacterId(202L); line.setAudioIndex(1);
@@ -104,10 +123,10 @@ class CharacterVoiceUnifiedScriptTest {
         var output = output(List.of(line), "<Audio 1> " + line.getDialogueTag());
         assertTrue(prompts.validateAndNormalize(output, "REFERENCE_MODE", manifest, "有人说：“别动。”", true).hasErrors());
         var recording = ShotRefAudioDTO.builder().audioUrl("https://example.invalid/current.wav")
-                .sourceType("UPLOAD").usageMode("DIALOGUE_REUSE").build();
+                .referenceType("fully_copy").build();
         var recordingManifest = prompts.buildReferenceManifest(input(List.of(recording)));
         assertFalse(prompts.validateAndNormalize(output, "REFERENCE_MODE", recordingManifest, "有人说：“别动。”", true).hasErrors());
-        assertEquals("DIALOGUE_REUSE", recordingManifest.getAudios().getFirst().getUsageMode());
+        assertEquals("fully_copy", recordingManifest.getAudios().getFirst().getReferenceType());
     }
 
     private ShotPromptDeriveVO output(List<ShotSpeechLine> lines, String speech) {

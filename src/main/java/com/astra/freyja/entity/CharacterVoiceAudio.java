@@ -16,6 +16,7 @@ public class CharacterVoiceAudio extends BaseEntity {
     private String text;
     private String emotion;
     private String voiceDesc;
+    private String modelRequestJson;
     private String rawAudioUrl;
     private Double rawDuration;
     private String processedAudioUrl;

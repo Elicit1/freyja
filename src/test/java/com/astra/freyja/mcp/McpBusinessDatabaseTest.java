@@ -534,7 +534,7 @@ class McpBusinessDatabaseTest {
         data.put("characterRefs", List.of(Map.of("characterId", "50", "lookId", "60", "actionPrompt", "walking", "emotionPrompt", "calm", "positionTag", "left")));
         data.put("propRefs", List.of(Map.of("propId", "70", "propName", "bag", "propPrompt", "leather bag")));
         data.put("refImages", List.of(Map.of("id", "image1", "sourceType", "CHARACTER_REFERENCE", "sourceId", "60", "characterId", "50", "lookId", "60", "imageUrl", "https://media/look.png", "usageRole", "SUBJECT")));
-        data.put("refAudios", List.of(Map.of("id", "audio1", "sourceType", "TTS", "characterId", "50", "audioUrl", "https://media/voice.mp3", "duration", 3, "text", "到了")));
+        data.put("refAudios", List.of(Map.of("id", "audio1", "referenceType", "reference", "characterId", "50", "audioUrl", "https://media/voice.mp3", "duration", 3, "text", "到了")));
         var result = protocolCall("batch_create_records", caller, Map.of("requestId", "external-shot-01", "dramaId", ROOT,
                 "items", List.of(Map.of("clientKey", "shot", "type", "SHOT", "data", data))));
         assertFalse(result.isError(), json.write(result.structuredContent()));
@@ -577,7 +577,7 @@ class McpBusinessDatabaseTest {
         character(50L, PROJECT); character(51L, PROJECT + 1); look(60L, 51L, 1);
         var foreign = Map.<String, Object>of("sceneId", "30", "refImages", List.of(Map.of("sourceType", "CHARACTER_REFERENCE", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png")));
         assertEquals(403, assertThrows(BizException.class, () -> create("foreign-media-01", List.of(item("shot", McpRecordType.SHOT, foreign)))).getCode());
-        var audio = Map.<String, Object>of("sceneId", "30", "refAudios", List.of(Map.of("sourceType", "TTS", "characterId", "51", "audioUrl", "https://media/voice.mp3")));
+        var audio = Map.<String, Object>of("sceneId", "30", "refAudios", List.of(Map.of("referenceType", "reference", "characterId", "51", "audioUrl", "https://media/voice.mp3")));
         assertEquals(403, assertThrows(BizException.class, () -> create("foreign-audio-01", List.of(item("shot", McpRecordType.SHOT, audio)))).getCode());
         Map<String, Object> spoof = new LinkedHashMap<>(plan(5)); spoof.put("skills", List.of(Map.of("name", "internal")));
         assertTrue(protocolCall("batch_create_records", caller, Map.of("requestId", "spoof-plan-0001", "dramaId", ROOT, "items", List.of(Map.of("clientKey", "shot", "type", "SHOT", "data", Map.of("sceneId", "30", "directorPlan", spoof))))).isError());
@@ -620,7 +620,7 @@ class McpBusinessDatabaseTest {
         Map<String, Object> data = Map.of("sceneId", "30", "generationMode", "REFERENCE_MODE", "prompt", "<Picture 1> 风格；<Picture 2> 画外人物；<Audio 1> 音效。",
                 "refImages", List.of(Map.of("sourceType", "UPLOAD", "imageUrl", "https://media/style.png", "usageRole", "STYLE"),
                         Map.of("sourceType", "CHARACTER_REFERENCE", "sourceId", "61", "characterId", "50", "imageUrl", "https://media/look.png", "usageRole", "NON_SUBJECT", "referenceRole", "COMBINED")),
-                "refAudios", List.of(Map.of("sourceType", "UPLOAD", "audioUrl", "https://media/sfx.wav", "duration", 3, "usageMode", "SFX_REUSE")));
+                "refAudios", List.of(Map.of("audioUrl", "https://media/sfx.wav", "duration", 3, "referenceType", "partially_copy")));
         var created = create("workshop-order-01", List.of(item("shot", McpRecordType.SHOT, data)));
         String id = (String) map(created.get("idMap")).get("shot");
         DramaShot saved = shots.selectById(McpScope.id(id)); assertNull(saved.getDirectorPlanJson());

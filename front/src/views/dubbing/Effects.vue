@@ -1,6 +1,6 @@
 <template>
   <div class="effects-page">
-    <header class="page-heading"><div><p class="eyebrow">SOUND EFFECTS</p><h1>特效配置</h1><p>通过可视化参数配置声音特效，保存后可在角色配音中选择。</p></div><div><el-button @click="router.push('/dubbing/characters')">角色配音</el-button><el-button type="primary" @click="open()">创建特效</el-button></div></header>
+    <header class="page-heading"><div><p class="eyebrow">SOUND EFFECTS</p><h1>特效配置</h1><p>选择语音滤镜、调整参数并自由组合，保存后可在角色配音中使用。</p></div><div><el-button @click="router.push('/dubbing/characters')">角色配音</el-button><el-button type="primary" @click="open()">创建特效</el-button></div></header>
     <div class="search-bar"><el-input v-model="name" clearable placeholder="按特效名称模糊查询" @keyup.enter="search" /><el-button type="primary" @click="search">查询</el-button><el-button @click="name = ''; search()">重置</el-button></div>
     <el-alert v-if="filters.length && !filters.some(f => f.available)" title="未检测到可用的 FFmpeg 音频滤镜，请检查服务器 FFmpeg 配置。" type="warning" :closable="false" show-icon class="tool-warning" />
     <el-table :data="items" v-loading="loading" class="effect-table">
@@ -13,7 +13,7 @@
       <template #empty><el-empty description="暂无匹配的声音特效" /></template>
     </el-table>
     <el-pagination v-model:current-page="current" :total="total" :page-size="10" layout="total, prev, pager, next" @current-change="load" />
-    <el-dialog v-model="visible" :title="form.id ? '编辑声音特效' : '创建声音特效'" width="min(850px, 95vw)" destroy-on-close :close-on-click-modal="false" @closed="cleanupPreview">
+    <el-dialog v-model="visible" :title="form.id ? '编辑声音特效' : '创建声音特效'" width="min(1040px, 95vw)" top="4vh" class="effect-config-dialog" destroy-on-close :close-on-click-modal="false" @closed="cleanupPreview">
       <el-form label-position="top" @submit.prevent>
         <div class="name-row"><el-form-item label="特效名称" required><el-input v-model="form.name" maxlength="128" show-word-limit /></el-form-item><el-form-item label="状态"><el-switch v-model="form.enabled" active-text="启用" inactive-text="停用" /></el-form-item></div>
         <el-form-item label="描述"><el-input v-model="form.description" maxlength="1000" type="textarea" :rows="2" /></el-form-item>
@@ -53,5 +53,7 @@ onMounted(async () => { await Promise.allSettled([load(), dubbingApi.filters().t
 onBeforeUnmount(() => { ++queryVersion; cleanupPreview() })
 </script>
 <style scoped>
+:global(.effect-config-dialog .el-dialog__body){max-height:76vh;overflow:auto}
+
 .effects-page{max-width:1450px;margin:auto}.page-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:26px}.eyebrow{font-size:11px;letter-spacing:.18em;font-weight:700;color:var(--el-color-primary);margin-bottom:6px}h1{font-size:28px;font-weight:700}.page-heading p:not(.eyebrow){font-size:13px;color:var(--el-text-color-secondary);margin-top:8px}.search-bar{display:flex;gap:12px;padding:20px;border:1px solid var(--el-border-color-light);border-radius:14px;background:var(--el-bg-color);margin-bottom:20px}.search-bar>.el-input{max-width:360px}.effect-table{border-radius:14px;border:1px solid var(--el-border-color-light)}.el-pagination{justify-content:end;margin-top:22px}.tool-warning{margin-bottom:18px}.name-row{display:grid;grid-template-columns:1fr 180px;gap:24px}.preview-section{border:1px solid var(--el-border-color-light);border-radius:12px;padding:18px;margin-top:16px}.preview-section h3{font-size:15px;font-weight:600}.preview-section p{font-size:12px;color:var(--el-text-color-secondary);margin:8px 0 14px}.players{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:18px}.players>div{min-width:0}.players label{display:block;font-size:12px;margin-bottom:10px}.players span{font-size:12px;color:var(--el-text-color-secondary)}audio{width:100%;height:38px}.save-hint{margin-top:18px}@media(max-width:700px){.page-heading{align-items:start;flex-direction:column}.name-row,.players{grid-template-columns:1fr}.search-bar{flex-wrap:wrap}.search-bar>.el-input{max-width:none;width:100%}}
 </style>

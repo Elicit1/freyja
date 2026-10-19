@@ -114,12 +114,12 @@
       "source": "repository:skills/freyja-platform-guide",
       "sourceRevision": null,
       "package": "freyja-platform-guide.zip",
-      "sha256": "5fc512521e2f58be5fce7c59502d36ce03c776cd4322a1e02c34060d4682473f",
+      "sha256": "4b57f589396a455a3b715dce042d4b07bd12b33c03d1231b70bd5eaf34c30497",
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "c545ed029e7119e7a6f8e8d1d96db2f9d82185c39a3268819a6309a442d55701",
-          "size": 77449
+          "sha256": "3c00a3f367c2493a78f4c3572ccdf52d8bd66ee95df37f0f790ba4ce1e77e5a1",
+          "size": 77677
         },
         {
           "path": "references/architecture.md",
@@ -128,8 +128,8 @@
         },
         {
           "path": "references/dubbing-center.md",
-          "sha256": "13c76951db64e2822288982ded6338ed072808cc2256868265d4731a9923c0ff",
-          "size": 4066
+          "sha256": "a66c2cc41687fbb2fa3e40f50fc25275d7ce6b28b4d11c7c29b5eade4dd981d6",
+          "size": 6570
         },
         {
           "path": "references/storyboard-workflow.md",
@@ -138,8 +138,8 @@
         },
         {
           "path": "references/visual-references.md",
-          "sha256": "1e3958a7a8b135381073c7fa9f935b5eb8c90b7cf6022f5dcdac276d11c80768",
-          "size": 79824
+          "sha256": "9d478e2bebba722bebbbc49cf2d1360de910c9926f3f6da658b8a9451e460bb0",
+          "size": 79951
         }
       ]
     },
@@ -170,6 +170,27 @@
           "path": "references/ref-en.txt",
           "sha256": "1e574f356716ad55612247ffb7bbccbcdb484ad96599d63c7dca1af186b1fab7",
           "size": 23553
+        }
+      ]
+    },
+    {
+      "name": "mimo-speech-synthesis",
+      "displayName": "MiMo 语音合成与克隆",
+      "description": "MiMo V2.5 声音设计、克隆、情绪与音频标签控制，以及配音中心 modelRequest JSON 使用规范。",
+      "source": "repository:skills/mimo-speech-synthesis",
+      "sourceRevision": null,
+      "package": "mimo-speech-synthesis.zip",
+      "sha256": "8296ef01dab6e178fc807413ff5c0b631a5de46c87d3fe58fb458a1f402f0fd9",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "e6ca1fc95905e3001d809e704d4188ca7c3c51d492870ef55856286388ef3c1e",
+          "size": 2227
+        },
+        {
+          "path": "references/freyja.md",
+          "sha256": "20227d842979b5c1c61c79f5c79bde97a07bdbdee71cf859514495531d8ab158",
+          "size": 2445
         }
       ]
     }

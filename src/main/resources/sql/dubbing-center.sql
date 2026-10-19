@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS character_voice_audio (
  id BIGINT NOT NULL PRIMARY KEY, character_id BIGINT NOT NULL, base_audio_id BIGINT NULL,
  kind VARCHAR(24) NOT NULL, name VARCHAR(128) NOT NULL, text TEXT NULL, emotion VARCHAR(100) NULL,
+ model_request_json JSON NULL,
  voice_desc VARCHAR(512) NULL, raw_audio_url VARCHAR(1024) NULL, raw_duration DOUBLE NULL,
  processed_audio_url VARCHAR(1024) NULL, processed_duration DOUBLE NULL, effects_json JSON NOT NULL,
  revision INT NOT NULL DEFAULT 1, status VARCHAR(32) NOT NULL, error_message VARCHAR(1000) NULL,
@@ -26,14 +27,6 @@ INSERT INTO character_voice_audio(id,character_id,kind,name,text,voice_desc,raw_
  SELECT c.id,c.id,'BASE','基础参考音频',c.voice_sample_text,c.voice_desc,c.voice_sample_url,'[]','READY'
  FROM res_character c WHERE c.deleted=0 AND c.voice_sample_url IS NOT NULL AND c.voice_sample_url!=''
  AND NOT EXISTS(SELECT 1 FROM character_voice_audio a WHERE a.character_id=c.id);
-
-INSERT INTO sys_dict_type(id,dict_type,dict_name,status)
- SELECT 86000,'voice_emotion','配音情绪',1 WHERE NOT EXISTS(SELECT 1 FROM sys_dict_type WHERE dict_type='voice_emotion');
-INSERT IGNORE INTO sys_dict_data(id,dict_type,dict_label,dict_value,sort_order,status) VALUES
- (86001,'voice_emotion','平静','平静',1,1),(86002,'voice_emotion','喜悦','喜悦',2,1),
- (86003,'voice_emotion','愤怒','愤怒',3,1),(86004,'voice_emotion','悲伤','悲伤',4,1),
- (86005,'voice_emotion','恐惧','恐惧',5,1),(86006,'voice_emotion','惊讶','惊讶',6,1),
- (86007,'voice_emotion','兴奋','兴奋',7,1),(86008,'voice_emotion','温柔','温柔',8,1);
 
 INSERT IGNORE INTO voice_effect(id,name,description,steps_json) VALUES
  (86101,'无线电','窄频带、压缩与轻微失真','[{"type":"highpass","params":{"frequency":400}},{"type":"lowpass","params":{"frequency":3400}},{"type":"compressor","params":{"threshold":0.2,"ratio":5}},{"type":"distortion","params":{"amount":0.08}}]'),

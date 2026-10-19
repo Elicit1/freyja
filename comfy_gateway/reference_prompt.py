@@ -7,7 +7,7 @@ Prompt generation is handled purely by the caller / upstream Java service.
 """
 
 from enum import Enum
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any, Union, Literal
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -41,6 +41,9 @@ class ReferenceBinding(BaseModel):
     role: Optional[str] = Field(default=None, description="Optional role description or character tag")
     usage_role: Optional[str] = Field(default=None, alias="usageRole", description="Explicit usage role supplied by the system")
     reference_role: Optional[str] = Field(default=None, alias="referenceRole", description="Explicit semantic role supplied by the system")
+    audio_id: Optional[str] = Field(default=None, alias="audioId")
+    audio_reference_type: Optional[Literal["fully_copy", "partially_copy", "reference", "weak_reference"]] = Field(default=None, alias="audioReferenceType")
+    reference_description: Optional[str] = Field(default=None, alias="referenceDescription", max_length=1000)
 
     # Media asset sources
     images: Optional[List[str]] = Field(default=None, alias="referenceImages", description="List of image URLs or file paths")

@@ -1,0 +1,1581 @@
+[
+  {
+    "type": "highpass",
+    "label": "高通滤波",
+    "category": "频率与音量",
+    "description": "调整语音频段，可与其他滤镜自由组合。",
+    "ffmpegFilter": "highpass",
+    "parameters": [
+      {
+        "key": "frequency",
+        "label": "截止频率",
+        "kind": "number",
+        "min": 20,
+        "max": 20000,
+        "initial": 300,
+        "step": 10,
+        "unit": "Hz",
+        "option": "f",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "width",
+        "label": "带宽 Q 值",
+        "kind": "number",
+        "min": 0.1,
+        "max": 10,
+        "initial": 0.707,
+        "step": 0.01,
+        "unit": "",
+        "option": "w",
+        "advanced": true,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "poles",
+        "label": "滤波阶数",
+        "kind": "select",
+        "initial": "2",
+        "option": "p",
+        "advanced": true,
+        "options": [
+          {
+            "value": "1",
+            "label": "一阶"
+          },
+          {
+            "value": "2",
+            "label": "二阶"
+          }
+        ]
+      },
+      {
+        "key": "mix",
+        "label": "干湿比例",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 1,
+        "step": 0.01,
+        "unit": "",
+        "option": "m",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "normalize",
+        "label": "归一化系数",
+        "kind": "boolean",
+        "initial": false,
+        "option": "n",
+        "advanced": true
+      }
+    ],
+    "filters": [
+      "highpass"
+    ]
+  },
+  {
+    "type": "lowpass",
+    "label": "低通滤波",
+    "category": "频率与音量",
+    "description": "调整语音频段，可与其他滤镜自由组合。",
+    "ffmpegFilter": "lowpass",
+    "parameters": [
+      {
+        "key": "frequency",
+        "label": "截止频率",
+        "kind": "number",
+        "min": 20,
+        "max": 20000,
+        "initial": 3400,
+        "step": 10,
+        "unit": "Hz",
+        "option": "f",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "width",
+        "label": "带宽 Q 值",
+        "kind": "number",
+        "min": 0.1,
+        "max": 10,
+        "initial": 0.707,
+        "step": 0.01,
+        "unit": "",
+        "option": "w",
+        "advanced": true,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "poles",
+        "label": "滤波阶数",
+        "kind": "select",
+        "initial": "2",
+        "option": "p",
+        "advanced": true,
+        "options": [
+          {
+            "value": "1",
+            "label": "一阶"
+          },
+          {
+            "value": "2",
+            "label": "二阶"
+          }
+        ]
+      },
+      {
+        "key": "mix",
+        "label": "干湿比例",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 1,
+        "step": 0.01,
+        "unit": "",
+        "option": "m",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "normalize",
+        "label": "归一化系数",
+        "kind": "boolean",
+        "initial": false,
+        "option": "n",
+        "advanced": true
+      }
+    ],
+    "filters": [
+      "lowpass"
+    ]
+  },
+  {
+    "type": "equalizer",
+    "label": "参数均衡器",
+    "category": "频率与音量",
+    "description": "调整单个频段的增益；可重复添加形成多段均衡。",
+    "ffmpegFilter": "equalizer",
+    "parameters": [
+      {
+        "key": "frequency",
+        "label": "中心频率",
+        "kind": "number",
+        "min": 20,
+        "max": 20000,
+        "initial": 1000,
+        "step": 10,
+        "unit": "Hz",
+        "option": "f",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "width",
+        "label": "带宽 Q 值",
+        "kind": "number",
+        "min": 0.1,
+        "max": 10,
+        "initial": 1,
+        "step": 0.1,
+        "unit": "",
+        "option": "w",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "gain",
+        "label": "增益",
+        "kind": "number",
+        "min": -24,
+        "max": 24,
+        "initial": 0,
+        "step": 0.5,
+        "unit": "dB",
+        "option": "g",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "mix",
+        "label": "干湿比例",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 1,
+        "step": 0.01,
+        "unit": "",
+        "option": "m",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "equalizer"
+    ]
+  },
+  {
+    "type": "volume",
+    "label": "音量增益",
+    "category": "频率与音量",
+    "description": "以分贝调整音量，0 dB 保持原音量。",
+    "ffmpegFilter": "volume",
+    "parameters": [
+      {
+        "key": "gain",
+        "label": "音量增益",
+        "kind": "number",
+        "min": -30,
+        "max": 18,
+        "initial": 0,
+        "step": 0.5,
+        "unit": "dB",
+        "option": "volume",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": "dB"
+      }
+    ],
+    "filters": [
+      "volume"
+    ]
+  },
+  {
+    "type": "compressor",
+    "label": "动态压缩",
+    "category": "动态与响度",
+    "description": "压缩较强的声音，控制对白动态范围。",
+    "ffmpegFilter": "acompressor",
+    "parameters": [
+      {
+        "key": "threshold",
+        "label": "阈值",
+        "kind": "number",
+        "min": 0.001,
+        "max": 1,
+        "initial": 0.2,
+        "step": 0.001,
+        "unit": "",
+        "option": "threshold",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "ratio",
+        "label": "压缩比",
+        "kind": "number",
+        "min": 1,
+        "max": 20,
+        "initial": 4,
+        "step": 0.5,
+        "unit": "",
+        "option": "ratio",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "attack",
+        "label": "启动时间",
+        "kind": "number",
+        "min": 0.01,
+        "max": 2000,
+        "initial": 20,
+        "step": 1,
+        "unit": "ms",
+        "option": "attack",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "release",
+        "label": "释放时间",
+        "kind": "number",
+        "min": 1,
+        "max": 9000,
+        "initial": 250,
+        "step": 10,
+        "unit": "ms",
+        "option": "release",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "makeup",
+        "label": "补偿增益",
+        "kind": "number",
+        "min": 1,
+        "max": 16,
+        "initial": 1,
+        "step": 0.1,
+        "unit": "",
+        "option": "makeup",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "knee",
+        "label": "软拐点",
+        "kind": "number",
+        "min": 1,
+        "max": 8,
+        "initial": 2.82843,
+        "step": 0.1,
+        "unit": "",
+        "option": "knee",
+        "advanced": true,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "mix",
+        "label": "干湿比例",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 1,
+        "step": 0.01,
+        "unit": "",
+        "option": "mix",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "mode",
+        "label": "压缩方向",
+        "kind": "select",
+        "initial": "downward",
+        "option": "mode",
+        "advanced": true,
+        "options": [
+          {
+            "value": "downward",
+            "label": "向下压缩"
+          },
+          {
+            "value": "upward",
+            "label": "向上压缩"
+          }
+        ]
+      },
+      {
+        "key": "detection",
+        "label": "电平检测",
+        "kind": "select",
+        "initial": "rms",
+        "option": "detection",
+        "advanced": true,
+        "options": [
+          {
+            "value": "rms",
+            "label": "平均能量"
+          },
+          {
+            "value": "peak",
+            "label": "峰值"
+          }
+        ]
+      }
+    ],
+    "filters": [
+      "acompressor"
+    ]
+  },
+  {
+    "type": "gate",
+    "label": "噪声门",
+    "category": "动态与响度",
+    "description": "降低停顿时的底噪；阈值过高会截断轻声。",
+    "ffmpegFilter": "agate",
+    "parameters": [
+      {
+        "key": "threshold",
+        "label": "阈值",
+        "kind": "number",
+        "min": 0.001,
+        "max": 1,
+        "initial": 0.04,
+        "step": 0.001,
+        "unit": "",
+        "option": "threshold",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "ratio",
+        "label": "衰减比",
+        "kind": "number",
+        "min": 1,
+        "max": 20,
+        "initial": 2,
+        "step": 0.5,
+        "unit": "",
+        "option": "ratio",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "range",
+        "label": "最小增益",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.06125,
+        "step": 0.01,
+        "unit": "",
+        "option": "range",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "attack",
+        "label": "启动时间",
+        "kind": "number",
+        "min": 0.01,
+        "max": 1000,
+        "initial": 20,
+        "step": 1,
+        "unit": "ms",
+        "option": "attack",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "release",
+        "label": "释放时间",
+        "kind": "number",
+        "min": 1,
+        "max": 5000,
+        "initial": 250,
+        "step": 10,
+        "unit": "ms",
+        "option": "release",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "makeup",
+        "label": "补偿增益",
+        "kind": "number",
+        "min": 1,
+        "max": 8,
+        "initial": 1,
+        "step": 0.1,
+        "unit": "",
+        "option": "makeup",
+        "advanced": true,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "detection",
+        "label": "电平检测",
+        "kind": "select",
+        "initial": "rms",
+        "option": "detection",
+        "advanced": true,
+        "options": [
+          {
+            "value": "rms",
+            "label": "平均能量"
+          },
+          {
+            "value": "peak",
+            "label": "峰值"
+          }
+        ]
+      }
+    ],
+    "filters": [
+      "agate"
+    ]
+  },
+  {
+    "type": "limiter",
+    "label": "峰值限幅",
+    "category": "动态与响度",
+    "description": "限制峰值；关闭自动补偿可避免处理后音量被抬高。",
+    "ffmpegFilter": "alimiter",
+    "parameters": [
+      {
+        "key": "limit",
+        "label": "峰值上限",
+        "kind": "number",
+        "min": 0.0625,
+        "max": 1,
+        "initial": 0.95,
+        "step": 0.01,
+        "unit": "",
+        "option": "limit",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "attack",
+        "label": "启动时间",
+        "kind": "number",
+        "min": 0.1,
+        "max": 80,
+        "initial": 5,
+        "step": 0.1,
+        "unit": "ms",
+        "option": "attack",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "release",
+        "label": "释放时间",
+        "kind": "number",
+        "min": 1,
+        "max": 2000,
+        "initial": 50,
+        "step": 1,
+        "unit": "ms",
+        "option": "release",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "level",
+        "label": "自动补偿音量",
+        "kind": "boolean",
+        "initial": false,
+        "option": "level",
+        "advanced": false
+      },
+      {
+        "key": "asc",
+        "label": "自动释放",
+        "kind": "boolean",
+        "initial": false,
+        "option": "asc",
+        "advanced": true
+      }
+    ],
+    "filters": [
+      "alimiter"
+    ]
+  },
+  {
+    "type": "loudnorm",
+    "label": "响度归一化",
+    "category": "动态与响度",
+    "description": "单次动态响度处理，用于统一对白听感；并非双遍广播母带测量。",
+    "ffmpegFilter": "loudnorm",
+    "parameters": [
+      {
+        "key": "integrated",
+        "label": "目标响度",
+        "kind": "number",
+        "min": -36,
+        "max": -10,
+        "initial": -18,
+        "step": 0.5,
+        "unit": "LUFS",
+        "option": "I",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "range",
+        "label": "响度范围",
+        "kind": "number",
+        "min": 1,
+        "max": 20,
+        "initial": 7,
+        "step": 0.5,
+        "unit": "LU",
+        "option": "LRA",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "peak",
+        "label": "真峰值上限",
+        "kind": "number",
+        "min": -9,
+        "max": -0.5,
+        "initial": -1.5,
+        "step": 0.1,
+        "unit": "dBTP",
+        "option": "TP",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "loudnorm"
+    ]
+  },
+  {
+    "type": "echo",
+    "label": "单次回声",
+    "category": "回声与调制",
+    "description": "自由调整延迟、衰减与输入输出增益。",
+    "ffmpegFilter": null,
+    "parameters": [
+      {
+        "key": "delay",
+        "label": "延迟",
+        "kind": "number",
+        "min": 1,
+        "max": 1000,
+        "initial": 200,
+        "step": 1,
+        "unit": "ms",
+        "option": "delay",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "decay",
+        "label": "衰减",
+        "kind": "number",
+        "min": 0.01,
+        "max": 0.8,
+        "initial": 0.35,
+        "step": 0.01,
+        "unit": "",
+        "option": "decay",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "in_gain",
+        "label": "输入增益",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.8,
+        "step": 0.01,
+        "unit": "",
+        "option": "in_gain",
+        "advanced": true,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "out_gain",
+        "label": "输出增益",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.9,
+        "step": 0.01,
+        "unit": "",
+        "option": "out_gain",
+        "advanced": true,
+        "required": false,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "aecho"
+    ]
+  },
+  {
+    "type": "reverb",
+    "label": "多重回声",
+    "category": "回声与调制",
+    "description": "用可调整的多次短延迟模拟空间反射，无需外部混响素材。",
+    "ffmpegFilter": null,
+    "parameters": [
+      {
+        "key": "amount",
+        "label": "反射强度",
+        "kind": "number",
+        "min": 0.01,
+        "max": 0.7,
+        "initial": 0.3,
+        "step": 0.01,
+        "unit": "",
+        "option": "amount",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "delays",
+        "label": "各次延迟",
+        "kind": "numberList",
+        "min": 1,
+        "max": 1000,
+        "initial": [
+          40,
+          75,
+          110
+        ],
+        "step": 1,
+        "unit": "ms",
+        "option": "delays",
+        "advanced": false,
+        "required": false,
+        "description": "最多4项；同一步的各组列表需一一对应。",
+        "suffix": null,
+        "maxItems": 4
+      },
+      {
+        "key": "decays",
+        "label": "各次相对衰减",
+        "kind": "numberList",
+        "min": 0.01,
+        "max": 1,
+        "initial": [
+          1,
+          0.7,
+          0.4
+        ],
+        "step": 0.01,
+        "unit": "",
+        "option": "decays",
+        "advanced": false,
+        "required": false,
+        "description": "最多4项；同一步的各组列表需一一对应。",
+        "suffix": null,
+        "maxItems": 4
+      },
+      {
+        "key": "in_gain",
+        "label": "输入增益",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.8,
+        "step": 0.01,
+        "unit": "",
+        "option": "in_gain",
+        "advanced": true,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "out_gain",
+        "label": "输出增益",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.9,
+        "step": 0.01,
+        "unit": "",
+        "option": "out_gain",
+        "advanced": true,
+        "required": false,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "aecho"
+    ]
+  },
+  {
+    "type": "chorus",
+    "label": "合唱叠音",
+    "category": "回声与调制",
+    "description": "设置最多4组延迟、衰减和调制，形成声音叠加的厚度。",
+    "ffmpegFilter": "chorus",
+    "parameters": [
+      {
+        "key": "in_gain",
+        "label": "输入增益",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.4,
+        "step": 0.01,
+        "unit": "",
+        "option": "in_gain",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "out_gain",
+        "label": "输出增益",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.4,
+        "step": 0.01,
+        "unit": "",
+        "option": "out_gain",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "delays",
+        "label": "各声部延迟",
+        "kind": "numberList",
+        "min": 1,
+        "max": 100,
+        "initial": [
+          50
+        ],
+        "step": 1,
+        "unit": "ms",
+        "option": "delays",
+        "advanced": false,
+        "required": false,
+        "description": "最多4项；同一步的各组列表需一一对应。",
+        "suffix": null,
+        "maxItems": 4
+      },
+      {
+        "key": "decays",
+        "label": "各声部衰减",
+        "kind": "numberList",
+        "min": 0.01,
+        "max": 0.9,
+        "initial": [
+          0.4
+        ],
+        "step": 0.01,
+        "unit": "",
+        "option": "decays",
+        "advanced": false,
+        "required": false,
+        "description": "最多4项；同一步的各组列表需一一对应。",
+        "suffix": null,
+        "maxItems": 4
+      },
+      {
+        "key": "speeds",
+        "label": "各声部速率",
+        "kind": "numberList",
+        "min": 0.1,
+        "max": 5,
+        "initial": [
+          0.25
+        ],
+        "step": 0.05,
+        "unit": "Hz",
+        "option": "speeds",
+        "advanced": false,
+        "required": false,
+        "description": "最多4项；同一步的各组列表需一一对应。",
+        "suffix": null,
+        "maxItems": 4
+      },
+      {
+        "key": "depths",
+        "label": "各声部深度",
+        "kind": "numberList",
+        "min": 0.1,
+        "max": 10,
+        "initial": [
+          2
+        ],
+        "step": 0.1,
+        "unit": "ms",
+        "option": "depths",
+        "advanced": false,
+        "required": false,
+        "description": "最多4项；同一步的各组列表需一一对应。",
+        "suffix": null,
+        "maxItems": 4
+      }
+    ],
+    "filters": [
+      "chorus"
+    ]
+  },
+  {
+    "type": "flanger",
+    "label": "镶边效果",
+    "category": "回声与调制",
+    "description": "通过周期变化的短延迟形成金属、扫动质感。",
+    "ffmpegFilter": "flanger",
+    "parameters": [
+      {
+        "key": "delay",
+        "label": "基础延迟",
+        "kind": "number",
+        "min": 0,
+        "max": 30,
+        "initial": 0,
+        "step": 0.1,
+        "unit": "ms",
+        "option": "delay",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "depth",
+        "label": "延迟深度",
+        "kind": "number",
+        "min": 0,
+        "max": 10,
+        "initial": 2,
+        "step": 0.1,
+        "unit": "ms",
+        "option": "depth",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "regen",
+        "label": "反馈量",
+        "kind": "number",
+        "min": -95,
+        "max": 95,
+        "initial": 0,
+        "step": 1,
+        "unit": "%",
+        "option": "regen",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "width",
+        "label": "效果混合量",
+        "kind": "number",
+        "min": 0,
+        "max": 100,
+        "initial": 71,
+        "step": 1,
+        "unit": "%",
+        "option": "width",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "speed",
+        "label": "扫动速度",
+        "kind": "number",
+        "min": 0.1,
+        "max": 10,
+        "initial": 0.5,
+        "step": 0.1,
+        "unit": "Hz",
+        "option": "speed",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "shape",
+        "label": "调制波形",
+        "kind": "select",
+        "initial": "sinusoidal",
+        "option": "shape",
+        "advanced": false,
+        "options": [
+          {
+            "value": "sinusoidal",
+            "label": "正弦"
+          },
+          {
+            "value": "triangular",
+            "label": "三角"
+          }
+        ]
+      },
+      {
+        "key": "interp",
+        "label": "插值方式",
+        "kind": "select",
+        "initial": "linear",
+        "option": "interp",
+        "advanced": true,
+        "options": [
+          {
+            "value": "linear",
+            "label": "线性"
+          },
+          {
+            "value": "quadratic",
+            "label": "二次"
+          }
+        ]
+      }
+    ],
+    "filters": [
+      "flanger"
+    ]
+  },
+  {
+    "type": "tremolo",
+    "label": "音量颤动",
+    "category": "回声与调制",
+    "description": "控制周期变化的速率与深度。",
+    "ffmpegFilter": "tremolo",
+    "parameters": [
+      {
+        "key": "frequency",
+        "label": "颤动频率",
+        "kind": "number",
+        "min": 0.1,
+        "max": 20,
+        "initial": 5,
+        "step": 0.1,
+        "unit": "Hz",
+        "option": "f",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "depth",
+        "label": "颤动深度",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.5,
+        "step": 0.01,
+        "unit": "",
+        "option": "d",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "tremolo"
+    ]
+  },
+  {
+    "type": "vibrato",
+    "label": "音高颤动",
+    "category": "回声与调制",
+    "description": "控制周期变化的速率与深度。",
+    "ffmpegFilter": "vibrato",
+    "parameters": [
+      {
+        "key": "frequency",
+        "label": "颤动频率",
+        "kind": "number",
+        "min": 0.1,
+        "max": 20,
+        "initial": 5,
+        "step": 0.1,
+        "unit": "Hz",
+        "option": "f",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "depth",
+        "label": "颤动深度",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.5,
+        "step": 0.01,
+        "unit": "",
+        "option": "d",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "vibrato"
+    ]
+  },
+  {
+    "type": "distortion",
+    "label": "失真与软削波",
+    "category": "失真与音高",
+    "description": "增加驱动量并选择削波曲线，可用于通讯器或机械质感。",
+    "ffmpegFilter": null,
+    "parameters": [
+      {
+        "key": "amount",
+        "label": "驱动量",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.1,
+        "step": 0.01,
+        "unit": "",
+        "option": "amount",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "curve",
+        "label": "削波曲线",
+        "kind": "select",
+        "initial": "tanh",
+        "option": "curve",
+        "advanced": false,
+        "options": [
+          {
+            "value": "tanh",
+            "label": "双曲正切"
+          },
+          {
+            "value": "atan",
+            "label": "反正切"
+          },
+          {
+            "value": "cubic",
+            "label": "三次曲线"
+          },
+          {
+            "value": "hard",
+            "label": "硬削波"
+          }
+        ]
+      },
+      {
+        "key": "threshold",
+        "label": "削波阈值",
+        "kind": "number",
+        "min": 0.1,
+        "max": 1,
+        "initial": 1,
+        "step": 0.01,
+        "unit": "",
+        "option": "threshold",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "output",
+        "label": "输出增益",
+        "kind": "number",
+        "min": 0.1,
+        "max": 1,
+        "initial": 1,
+        "step": 0.01,
+        "unit": "",
+        "option": "output",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "volume",
+      "asoftclip"
+    ]
+  },
+  {
+    "type": "pitch",
+    "label": "基础变调",
+    "category": "失真与音高",
+    "description": "通过采样率与速度补偿调整音高，保持台词时长。",
+    "ffmpegFilter": null,
+    "parameters": [
+      {
+        "key": "semitones",
+        "label": "音高偏移",
+        "kind": "number",
+        "min": -12,
+        "max": 12,
+        "initial": 3,
+        "step": 0.5,
+        "unit": "半音",
+        "option": "semitones",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "asetrate",
+      "aresample",
+      "atempo"
+    ]
+  },
+  {
+    "type": "rubberband",
+    "label": "高质量变调与变速",
+    "category": "失真与音高",
+    "description": "独立控制音高、语速与共振峰；需要服务器的 Rubber Band 组件。",
+    "ffmpegFilter": "rubberband",
+    "parameters": [
+      {
+        "key": "pitch",
+        "label": "音高倍率",
+        "kind": "number",
+        "min": 0.5,
+        "max": 2,
+        "initial": 1,
+        "step": 0.01,
+        "unit": "",
+        "option": "pitch",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "tempo",
+        "label": "语速倍率",
+        "kind": "number",
+        "min": 0.5,
+        "max": 2,
+        "initial": 1,
+        "step": 0.01,
+        "unit": "",
+        "option": "tempo",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "formant",
+        "label": "共振峰",
+        "kind": "select",
+        "initial": "preserved",
+        "option": "formant",
+        "advanced": false,
+        "options": [
+          {
+            "value": "shifted",
+            "label": "随音高变化"
+          },
+          {
+            "value": "preserved",
+            "label": "保留原共振峰"
+          }
+        ]
+      },
+      {
+        "key": "transients",
+        "label": "瞬态处理",
+        "kind": "select",
+        "initial": "crisp",
+        "option": "transients",
+        "advanced": true,
+        "options": [
+          {
+            "value": "crisp",
+            "label": "清晰"
+          },
+          {
+            "value": "mixed",
+            "label": "混合"
+          },
+          {
+            "value": "smooth",
+            "label": "平滑"
+          }
+        ]
+      },
+      {
+        "key": "detector",
+        "label": "声音检测",
+        "kind": "select",
+        "initial": "compound",
+        "option": "detector",
+        "advanced": true,
+        "options": [
+          {
+            "value": "compound",
+            "label": "综合"
+          },
+          {
+            "value": "percussive",
+            "label": "打击型"
+          },
+          {
+            "value": "soft",
+            "label": "柔和"
+          }
+        ]
+      },
+      {
+        "key": "pitchq",
+        "label": "音高质量",
+        "kind": "select",
+        "initial": "quality",
+        "option": "pitchq",
+        "advanced": true,
+        "options": [
+          {
+            "value": "quality",
+            "label": "优先质量"
+          },
+          {
+            "value": "speed",
+            "label": "优先速度"
+          },
+          {
+            "value": "consistency",
+            "label": "优先一致性"
+          }
+        ]
+      }
+    ],
+    "filters": [
+      "rubberband"
+    ]
+  },
+  {
+    "type": "dual",
+    "label": "男女双声叠加",
+    "category": "失真与音高",
+    "description": "将同一表演的原声与变调声混合；分流和连接由系统完成。",
+    "ffmpegFilter": null,
+    "parameters": [
+      {
+        "key": "semitones",
+        "label": "叠加声偏移",
+        "kind": "number",
+        "min": -12,
+        "max": 12,
+        "initial": 5,
+        "step": 0.5,
+        "unit": "半音",
+        "option": "semitones",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "mix",
+        "label": "叠加比例",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.5,
+        "step": 0.05,
+        "unit": "",
+        "option": "mix",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "delay",
+        "label": "叠加声延迟",
+        "kind": "number",
+        "min": 0,
+        "max": 200,
+        "initial": 20,
+        "step": 1,
+        "unit": "ms",
+        "option": "delay",
+        "advanced": false,
+        "required": true,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "asplit",
+      "asetrate",
+      "aresample",
+      "atempo",
+      "adelay",
+      "amix",
+      "volume"
+    ]
+  },
+  {
+    "type": "afftdn",
+    "label": "频域降噪",
+    "category": "降噪修复",
+    "description": "抑制稳定底噪；降噪过强可能损失气声和细节。",
+    "ffmpegFilter": "afftdn",
+    "parameters": [
+      {
+        "key": "reduction",
+        "label": "降噪强度",
+        "kind": "number",
+        "min": 0.01,
+        "max": 40,
+        "initial": 12,
+        "step": 0.5,
+        "unit": "dB",
+        "option": "nr",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "floor",
+        "label": "噪声底线",
+        "kind": "number",
+        "min": -80,
+        "max": -20,
+        "initial": -50,
+        "step": 1,
+        "unit": "dB",
+        "option": "nf",
+        "advanced": false,
+        "required": false,
+        "description": "",
+        "suffix": null
+      },
+      {
+        "key": "tracking",
+        "label": "跟踪底噪",
+        "kind": "boolean",
+        "initial": false,
+        "option": "tn",
+        "advanced": false
+      },
+      {
+        "key": "adaptivity",
+        "label": "自适应程度",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.5,
+        "step": 0.01,
+        "unit": "",
+        "option": "ad",
+        "advanced": true,
+        "required": false,
+        "description": "",
+        "suffix": null
+      }
+    ],
+    "filters": [
+      "afftdn"
+    ]
+  },
+  {
+    "type": "deesser",
+    "label": "齿音抑制",
+    "category": "降噪修复",
+    "description": "抑制刺耳的齿音和嘶声；强度过高会损失发音细节。",
+    "ffmpegFilter": "deesser",
+    "filters": [
+      "deesser"
+    ],
+    "parameters": [
+      {
+        "key": "intensity",
+        "label": "抑制强度",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.2,
+        "step": 0.01,
+        "unit": "",
+        "option": "i",
+        "advanced": false,
+        "required": false,
+        "description": ""
+      },
+      {
+        "key": "maximum",
+        "label": "最大抑制量",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.5,
+        "step": 0.01,
+        "unit": "",
+        "option": "m",
+        "advanced": false,
+        "required": false,
+        "description": ""
+      },
+      {
+        "key": "frequency",
+        "label": "齿音频率权重",
+        "kind": "number",
+        "min": 0,
+        "max": 1,
+        "initial": 0.5,
+        "step": 0.01,
+        "unit": "",
+        "option": "f",
+        "advanced": false,
+        "required": false,
+        "description": ""
+      }
+    ]
+  }
+]

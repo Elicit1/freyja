@@ -1,6 +1,7 @@
 import { ref, computed, type Ref } from 'vue'
 import type { CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
+import { REFERENCE_AUDIO_TYPE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { requireKeyImageRole } from '@/constants/keyImageRoles'
 
 export interface ShotPromptDraft {
@@ -25,22 +26,6 @@ export interface CandidateImageItem {
   tag: string
   assetName: string
   assetType: 'CHARACTER' | 'SCENE' | 'PROP' | 'KEYFRAME' | 'UPLOAD'
-  isOccupied?: boolean
-  occupiedSlotIndex?: number
-}
-
-export interface CandidateAudioItem {
-  id: string
-  characterId?: string | number
-  characterName?: string
-  name: string
-  audioUrl: string
-  text?: string
-  duration?: number
-  sourceType: 'CHARACTER' | 'UPLOAD' | 'TTS'
-  usageMode: 'VOICE_TIMBRE' | 'DIALOGUE_REUSE' | string
-  language: string
-  tag: string
   isOccupied?: boolean
   occupiedSlotIndex?: number
 }
@@ -224,65 +209,6 @@ export function useShotReferenceAssets(
     return list
   })
 
-  // 2. 候选音频池 (仅从已选人物提取专属母音样本 + 已存在的上传音频)
-  const candidateAudios = computed<CandidateAudioItem[]>(() => {
-    const list: CandidateAudioItem[] = []
-    const seen = new Set<string>()
-
-    const pushAudio = (item: CandidateAudioItem) => {
-      if (seen.has(item.audioUrl)) return
-      seen.add(item.audioUrl)
-
-      const occIdx = draft.value.refAudios.findIndex(a => a.audioUrl === item.audioUrl)
-      list.push({
-        ...item,
-        isOccupied: occIdx >= 0,
-        occupiedSlotIndex: occIdx >= 0 ? occIdx : undefined
-      })
-    }
-
-    // A. 已选人物的专属声音样本 (默认用途: VOICE_TIMBRE)
-    for (const charRef of draft.value.characterRefs) {
-      if (!charRef.characterId) continue
-      const char = options.characterOptions.value.find(c => String(c.id) === String(charRef.characterId))
-      if (char && char.voiceSampleUrl) {
-        pushAudio({
-          id: `cand_aud_char_${char.id}`,
-          characterId: String(char.id),
-          characterName: char.name,
-          name: `${char.name} (角色母音)`,
-          audioUrl: char.voiceSampleUrl,
-          text: char.voiceSampleText || char.voiceDesc || '',
-          duration: undefined, // 未知时长必须探测，不能估算
-          sourceType: 'CHARACTER',
-          usageMode: 'VOICE_TIMBRE', // 规避模型复用旧台词，默认音色参考
-          language: '',
-          tag: '专属母音'
-        })
-      }
-    }
-
-    // B. 草稿中已存在的自定义上传音频
-    for (const aud of draft.value.refAudios) {
-      if (aud.sourceType === 'UPLOAD' && aud.audioUrl) {
-        pushAudio({
-          id: aud.id || `cand_upload_aud_${aud.audioUrl}`,
-          characterName: aud.characterName,
-          name: aud.name || '本地上传音频',
-          audioUrl: aud.audioUrl,
-          text: aud.text || '',
-          duration: aud.duration,
-          sourceType: 'UPLOAD',
-          usageMode: aud.usageMode || 'VOICE_TIMBRE',
-          language: aud.language || 'zh',
-          tag: '本地上传'
-        })
-      }
-    }
-
-    return list
-  })
-
   // 3. 统计指标与物理规则校验
   const totalAudioDuration = computed(() => {
     return draft.value.refAudios.reduce((sum, a) => sum + (Number(a.duration) || 0), 0)
@@ -304,6 +230,7 @@ export function useShotReferenceAssets(
     }
 
     draft.value.refAudios.forEach((aud, idx) => {
+      if (!REFERENCE_AUDIO_TYPE_OPTIONS.some(option => option.value === aud.referenceType)) errs.push(`音频 <Audio ${idx + 1}> 必须选择 H3 四种参考关系之一`)
       const dur = aud.duration
       if (dur === undefined) return
       if (dur < MIN_AUDIO_DURATION || dur > MAX_AUDIO_DURATION) {
@@ -378,43 +305,6 @@ export function useShotReferenceAssets(
     draft.value.refImages.splice(toIdx, 0, moved)
   }
 
-  function addRefAudio(cand: CandidateAudioItem): boolean {
-    if (draft.value.refAudios.length >= MAX_REF_AUDIOS) return false
-    const exists = draft.value.refAudios.some(a => a.audioUrl === cand.audioUrl)
-    if (exists) return false
-
-    draft.value.refAudios.push({
-      id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: cand.name,
-      audioUrl: cand.audioUrl,
-      sourceType: cand.sourceType,
-      characterId: cand.characterId,
-      characterName: cand.characterName,
-      text: cand.text,
-      duration: cand.duration,
-      usageMode: cand.usageMode || 'VOICE_TIMBRE',
-      language: cand.language || 'zh'
-    })
-    return true
-  }
-
-  function replaceRefAudio(index: number, cand: CandidateAudioItem): boolean {
-    if (index < 0 || index >= draft.value.refAudios.length) return false
-    draft.value.refAudios[index] = {
-      id: `aud_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      name: cand.name,
-      audioUrl: cand.audioUrl,
-      sourceType: cand.sourceType,
-      characterId: cand.characterId,
-      characterName: cand.characterName,
-      text: cand.text,
-      duration: cand.duration,
-      usageMode: cand.usageMode || 'VOICE_TIMBRE',
-      language: cand.language || 'zh'
-    }
-    return true
-  }
-
   function removeRefAudio(index: number) {
     if (index >= 0 && index < draft.value.refAudios.length) {
       draft.value.refAudios.splice(index, 1)
@@ -437,7 +327,7 @@ export function useShotReferenceAssets(
     const keyframe = String(draft.value.resKeyframeId || '')
     const props = draft.value.propRefs.map(p => String(p.propId || '')).sort().join(';')
     const imgs = draft.value.refImages.map(i => `${i.imageUrl}|${i.usageRole || ''}`).join(';')
-    const auds = draft.value.refAudios.map(a => `${a.audioUrl}|${a.usageMode || ''}|${a.characterId || ''}|${a.language || ''}`).join(';')
+    const auds = draft.value.refAudios.map(a => `${a.audioUrl}|${a.referenceType || ''}|${a.referenceDescription || ''}|${a.audioId || ''}|${a.characterId || ''}|${a.language || ''}`).join(';')
     return `${chars}__${scene}__${keyframe}__${props}__${imgs}__${auds}`
   }
 
@@ -456,7 +346,6 @@ export function useShotReferenceAssets(
 
   return {
     candidateImages,
-    candidateAudios,
     totalAudioDuration,
     validationErrors,
     validationWarnings,
@@ -464,8 +353,6 @@ export function useShotReferenceAssets(
     replaceRefImage,
     removeRefImage,
     moveRefImage,
-    addRefAudio,
-    replaceRefAudio,
     removeRefAudio,
     moveRefAudio,
     isResultStale,

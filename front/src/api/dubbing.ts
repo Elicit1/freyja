@@ -1,21 +1,27 @@
 import { request } from './request'
 import type { PageResult } from '@/types/api'
 
-export interface Step { type: string; params: Record<string, number> }
+export type ParameterValue = number | boolean | string | number[]
+export interface Step { type: string; params: Record<string, ParameterValue>; enabled?: boolean }
 export interface Effect { id: string; name: string; description?: string; stepsJson: string; version: number; enabled: number }
 export interface Selection { effectId: string; steps?: Step[] }
 export interface Snapshot extends Selection { name: string; version: number; steps: Step[] }
-export interface FilterParameter { key: string; label: string; min: number; max: number; initial: number; step: number }
-export interface Filter { type: string; label: string; parameters: FilterParameter[]; available: boolean }
+export interface FilterParameter {
+  key: string; label: string; kind: 'number' | 'select' | 'boolean' | 'numberList'; unit?: string; description?: string;
+  min?: number; max?: number; initial: ParameterValue; step?: number; advanced?: boolean; maxItems?: number;
+  options?: { value: string; label: string }[]; option?: string;
+}
+export interface Filter { type: string; label: string; category: string; description: string; ffmpegFilter: string; parameters: FilterParameter[]; available: boolean; missingFilters?: string[] }
 export interface VoiceAudio {
   id: string; characterId: string; baseAudioId?: string; kind: string; name: string; text: string; emotion?: string;
   voiceDesc?: string; rawAudioUrl?: string; rawDuration?: number; processedAudioUrl?: string; processedDuration?: number;
+  modelRequestJson?: string;
   revision: number; status: string; errorMessage?: string; providerId?: string; modelCode?: string; taskId?: string; createTime?: string;
 }
 export interface AudioView { audio: VoiceAudio; effects: Snapshot[]; playbackUrl?: string; duration?: number; references: number }
 export interface Character { id: string; name: string; drama_id?: string; drama_title?: string; has_base: number }
 export interface Model { providerId: string; providerName: string; modelCode: string; modelName: string }
-export interface CreateAudio { name: string; text: string; providerId: string; modelCode: string; method: 'DESIGN' | 'CLONE'; voiceDesc?: string; emotion?: string; effects: Selection[]; replaceBaseId?: string }
+export interface CreateAudio { name: string; providerId: string; modelCode: string; method: 'DESIGN' | 'CLONE'; modelRequest: Record<string, unknown>; effects: Selection[]; replaceBaseId?: string }
 async function effectOptions(): Promise<Effect[]> {
   const result: Effect[] = []
   for (let current = 1; ; current++) {
@@ -26,6 +32,9 @@ async function effectOptions(): Promise<Effect[]> {
 }
 export const dubbingApi = {
   effectOptions,
+  pickerCharacters: (params: Record<string, unknown>) => request<PageResult<Character>>({ url: '/dubbing/picker/characters', params, paramsSerializer: { indexes: null } }),
+  pickerBase: (id: string, params: Record<string, unknown>) => request<AudioView | null>({ url: `/dubbing/picker/characters/${id}/base`, params, paramsSerializer: { indexes: null } }),
+  pickerAudios: (id: string, params: Record<string, unknown>) => request<PageResult<AudioView>>({ url: `/dubbing/picker/characters/${id}/audios`, params, paramsSerializer: { indexes: null } }),
   characters: (params: Record<string, unknown>) => request<{ page: PageResult<Character>; selectedId?: string }>({ url: '/dubbing/characters', params }),
   base: (id: string) => request<AudioView | null>({ url: `/dubbing/characters/${id}/base` }),
   audios: (id: string, params: Record<string, unknown>) => request<PageResult<AudioView>>({ url: `/dubbing/characters/${id}/audios`, params, paramsSerializer: { indexes: null } }),

@@ -171,6 +171,15 @@ public class DramaShotServiceImpl implements DramaShotService {
         return list.stream().map(this::enrichShotVO).collect(Collectors.toList());
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private com.astra.freyja.service.DubbingService dubbingService;
+
+    private void validateAudioAssets(Long dramaId,List<ShotRefAudioDTO> references) {
+        if(references==null || references.stream().noneMatch(a -> a.getAudioId()!=null)) return;
+        if(dubbingService==null) throw new BizException(503,"配音中心暂不可用");
+        dubbingService.validateReferences(dramaId,references);
+    }
+
     @Override
     public DramaShotVO getById(Long id) {
         DramaShot shot = shotMapper.selectById(id);
@@ -195,6 +204,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             throw new BizException(404, "归属场次不存在: " + dto.getSceneId());
         }
 
+        validateAudioAssets(scene.getDramaId(),dto.getRefAudios());
         List<DramaShot> insertionShots = null;
         int insertionIndex = -1;
         Long anchorId = dto.getInsertBeforeShotId() != null ? dto.getInsertBeforeShotId() : dto.getInsertAfterShotId();
@@ -393,6 +403,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             throw new BizException(404, "分镜不存在: " + dto.getId());
         }
 
+        validateAudioAssets(existing.getDramaId(),dto.getRefAudios());
         DramaShot shot = new DramaShot();
         BeanUtils.copyProperties(dto, shot, "directorPlan", "directorPlanMode");
         shot.setScriptContent(dto.getScriptContent() != null ? dto.getScriptContent() : com.astra.freyja.util.UnifiedShotScript.fromShot(existing));
@@ -1179,10 +1190,11 @@ public class DramaShotServiceImpl implements DramaShotService {
             return Collections.emptyList();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<List<ShotRefAudioDTO>>() {});
+            var audios=objectMapper.readValue(json, new TypeReference<List<ShotRefAudioDTO>>() {});
+            com.astra.freyja.util.ShotAudioReferenceValidator.validateForSave(audios);
+            return audios;
         } catch (Exception e) {
-            log.warn("[DramaShotService] 反序列化 refAudiosJson 异常: {}", e.getMessage());
-            return Collections.emptyList();
+            throw new BizException(400,"参考音频配置无效，请重新选择音频及 H3 四种参考关系");
         }
     }
 

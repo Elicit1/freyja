@@ -53,10 +53,11 @@ public class ReferenceManifest {
         /** 1-based index (e.g. 1 -> Audio 1) */
         private Integer audioIndex;
         private String referenceId;
-        private String sourceType; // TTS, UPLOAD, CHARACTER
+        private Long audioId;
         private Long characterId;
         private String characterName;
-        private String usageMode; // DIALOGUE_REUSE, VOICE_TIMBRE, BGM_REUSE, BGM_STYLE, SFX_REUSE, SFX_REFERENCE, RHYTHM_REFERENCE
+        private String referenceType; // fully_copy, partially_copy, reference, weak_reference
+        private String referenceDescription;
         private String language; // Chinese, English, etc.
         private String text; // 原生台词
         private String audioUrl;
@@ -112,12 +113,14 @@ public class ReferenceManifest {
                 sb.append(String.format("Audio %d:\n", aud.getAudioIndex()));
                 sb.append(String.format("- 标签引用: <Audio %d>\n", aud.getAudioIndex()));
                 sb.append(String.format("- 对应说话人/实体: %s\n", StringUtils.defaultString(aud.getCharacterName(), "环境音/未指定")));
-                sb.append(String.format("- 音频用途模式: %s\n", StringUtils.defaultString(aud.getUsageMode(), "VOICE_TIMBRE")));
+                sb.append(String.format("- H3 音频参考关系: %s\n", aud.getReferenceType()));
                 sb.append(String.format("- 发音语言: %s\n", StringUtils.defaultIfBlank(aud.getLanguage(), "未指定，不得由服务端猜测")));
                 if (aud.getCharacterId() != null) sb.append("- 明确绑定的角色 ID: ").append(aud.getCharacterId()).append("\n");
                 if (StringUtils.isNotBlank(aud.getText())) {
-                    sb.append(String.format("- %s: %s\n", "VOICE_TIMBRE".equals(aud.getUsageMode()) ? "母音试音文本（仅样音元数据，禁止复用作本镜台词）" : "创作者提供的源录音文本", aud.getText().trim()));
+                    sb.append(String.format("- %s: %s\n", "创作者提供的源录音文本（仅元数据；是否复用须服从参考关系、参考说明与当前剧本）", aud.getText().trim()));
                 }
+                if (StringUtils.isNotBlank(aud.getReferenceDescription())) sb.append("- 参考说明: ").append(aud.getReferenceDescription()).append("\n");
+                if (aud.getAudioId() != null) sb.append("- 配音中心音频 ID: ").append(aud.getAudioId()).append("\n");
                 if (aud.getDuration() != null) {
                     sb.append(String.format("- 音频时长: %s 秒\n", aud.getDuration().toPlainString()));
                 }

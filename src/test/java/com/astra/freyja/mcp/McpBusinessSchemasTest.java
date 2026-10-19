@@ -120,8 +120,8 @@ class McpBusinessSchemasTest {
         assertTrue(failure.getMessage().contains("SUBJECT"));
         assertDoesNotThrow(() -> validator.validate(McpRecordType.SHOT, Map.of("refImages", List.of(
                 Map.of("sourceType", "UPLOAD", "imageUrl", "https://media/ref.png", "usageRole", "SUBJECT", "referenceRole", "IDENTITY"))), false, false));
-        for (String field : List.of("usageMode", "language")) {
-            Map<String, Object> audio = new HashMap<>(Map.of("sourceType", "UPLOAD", "audioUrl", "https://media/audio.wav"));
+        for (String field : List.of("referenceType", "language")) {
+            Map<String, Object> audio = new HashMap<>(Map.of("referenceType", "reference", "audioUrl", "https://media/audio.wav"));
             audio.put(field, "INVENTED");
             assertTrue(assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT,
                     Map.of("refAudios", List.of(audio)), false, false)).getMessage().contains("refAudios[0]." + field));
@@ -145,13 +145,13 @@ class McpBusinessSchemasTest {
     @Test void publicOptionSetsMatchSaveValidatorsAndFrontendDropdowns() throws Exception {
         assertEquals(com.astra.freyja.util.ShotImageReferenceValidator.USAGE_ROLES,
                 new HashSet<>(metadata.options("reference_image_usage_role").stream().map(McpSchemaMetadata.Option::value).toList()));
-        assertEquals(com.astra.freyja.util.ShotAudioReferenceValidator.USAGE_MODES,
-                new HashSet<>(metadata.options("reference_audio_usage_mode").stream().map(McpSchemaMetadata.Option::value).toList()));
+        assertEquals(com.astra.freyja.util.ShotAudioReferenceValidator.REFERENCE_TYPES,
+                new HashSet<>(metadata.options("reference_audio_type").stream().map(McpSchemaMetadata.Option::value).toList()));
         assertEquals(com.astra.freyja.util.ShotAudioReferenceValidator.LANGUAGES,
                 new HashSet<>(metadata.options("reference_audio_language").stream().map(McpSchemaMetadata.Option::value).toList()));
         String ts = java.nio.file.Files.readString(java.nio.file.Path.of("front/src/constants/referenceMediaOptions.ts"));
         var blocks = java.util.regex.Pattern.compile("export const \\w+ = (\\[[\\s\\S]*?]) as const").matcher(ts);
-        for (String name : List.of("reference_image_usage_role", "reference_audio_usage_mode", "reference_audio_language")) {
+        for (String name : List.of("reference_image_usage_role", "reference_audio_type", "reference_audio_language")) {
             assertTrue(blocks.find());
             List<?> entries = json.mapper().readValue(blocks.group(1), List.class);
             assertEquals(new HashSet<>(metadata.options(name).stream().map(McpSchemaMetadata.Option::value).toList()),

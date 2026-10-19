@@ -32,15 +32,17 @@ public class McpBusinessInputValidator {
             String path = (image ? "refImages" : "refAudios") + "[" + index + "]";
             if (!(items.get(index) instanceof Map<?, ?> item)) throw new BizException(400, path + " 必须为对象");
             Set<String> allowed = image ? metadata.referenceFields("IMAGE") : metadata.referenceFields("AUDIO");
-            if (!allowed.containsAll(item.keySet())) throw new BizException(400, path + " 包含未知字段；图片使用 imageUrl/sourceType/sourceId，声音使用 audioUrl/sourceType");
-            if (!(item.get("sourceType") instanceof String source)) throw new BizException(400, path + ".sourceType 必填");
+            if (!allowed.containsAll(item.keySet())) throw new BizException(400, path + " 包含未知字段；图片使用 imageUrl/sourceType/sourceId，声音使用 audioUrl/referenceType");
+            String source = image && item.get("sourceType") instanceof String text ? text : null;
+            if (image && source == null) throw new BizException(400, path + ".sourceType 必填");
+            if (!image && !(item.get("referenceType") instanceof String type && com.astra.freyja.util.ShotAudioReferenceValidator.REFERENCE_TYPES.contains(type))) throw new BizException(400, path + ".referenceType 必须为 H3 四种参考关系之一");
             String urlField = image ? "imageUrl" : "audioUrl";
             if (!(item.get(urlField) instanceof String url) || url.isBlank()) throw new BizException(400, path + "." + urlField + " 必填");
             if (image && !"UPLOAD".equals(source) && item.get("sourceId") == null)
                 throw new BizException(400, path + ".sourceId 必填；造型图传造型 ID，人物图传人物 ID");
             if (image && "UPLOAD".equals(source) && item.get("sourceId") != null)
                 throw new BizException(400, path + ".sourceId 在 UPLOAD 时必须省略或为 null");
-            if ((image && Set.of("CHARACTER_LOOK", "CHARACTER_REFERENCE").contains(source) || !image && Set.of("TTS", "CHARACTER").contains(source)) && item.get("characterId") == null)
+            if ((image && Set.of("CHARACTER_LOOK", "CHARACTER_REFERENCE").contains(source) || !image && item.get("audioId") != null) && item.get("characterId") == null)
                 throw new BizException(400, path + ".characterId 必填");
             if (image && "KEYFRAME".equals(source) && item.get("usageRole") != null
                     && Arrays.stream(com.astra.freyja.dto.drama.manifest.KeyImageRole.values()).noneMatch(role -> role.name().equals(item.get("usageRole"))))

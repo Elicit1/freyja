@@ -603,7 +603,7 @@
                   type="primary"
                   plain
                   :disabled="refAudios.length >= 3"
-                  @click="handleOpenCharacterVoicePicker"
+                  @click="handleOpenCharacterVoicePicker()"
                 >
                   引入配音中心音频
                 </el-button>
@@ -631,6 +631,7 @@
                     </el-tag>
                   </div>
                   <div class="flex items-center gap-2 flex-shrink-0">
+                    <el-button size="small" link type="primary" @click="handleOpenCharacterVoicePicker(aIdx)">替换</el-button>
                     <el-button size="small" link type="danger" @click="removeReferenceAudio(aIdx)">
                       移除
                     </el-button>
@@ -639,9 +640,9 @@
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 border-t border-slate-200/60 items-center">
                   <div class="flex items-center gap-1.5">
-                    <span class="text-[11px] text-gray-500 flex-shrink-0">用途:</span>
-                    <el-select v-model="aud.usageMode" size="small" class="w-full">
-                      <el-option v-for="option in REFERENCE_AUDIO_USAGE_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
+                    <span class="text-[11px] text-gray-500 flex-shrink-0">参考关系:</span>
+                    <el-select v-model="aud.referenceType" size="small" class="w-full">
+                      <el-option v-for="option in REFERENCE_AUDIO_TYPE_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
                     </el-select>
                   </div>
                   <div class="flex items-center gap-1.5">
@@ -651,8 +652,8 @@
                     </el-select>
                   </div>
                   <div class="flex items-center gap-1.5">
-                    <span class="text-[11px] text-gray-500 flex-shrink-0">台词:</span>
-                    <el-input v-model="aud.text" size="small" placeholder="关联台词/文本" clearable />
+                    <span class="text-[11px] text-gray-500 flex-shrink-0">参考说明:</span>
+                    <el-input v-model="aud.referenceDescription" size="small" placeholder="说明复用或参考哪些内容" maxlength="1000" clearable />
                   </div>
                 </div>
               </div>
@@ -867,7 +868,7 @@
   >
     <div class="p-2.5 rounded-lg bg-sky-50 border border-sky-100 text-xs text-sky-800 mb-2 flex items-center gap-2">
         <span>💡</span>
-        <span>角色的配音母音仅作为 MiniMax H3 视频生成的<b>音色/声线参考（VOICE_TIMBRE）</b>，当前分镜的实际台词内容由镜头剧本（scriptContent）决定，严禁混淆。</span>
+        <span>参考音频使用 H3 的<b>完整复用、部分复用、参考、弱参考</b>四种关系。请明确参考说明，参考音频中的旧台词不会自动成为当前对白。</span>
       </div>
       <div class="max-h-96 overflow-y-auto space-y-2 p-1">
       <div v-if="drawerAssetPickerList.length === 0" class="text-center py-8 text-xs text-gray-400">
@@ -897,12 +898,12 @@
     </div>
   </el-dialog>
 
-  <VoiceAudioPicker v-model="characterVoicePickerVisible" :characters="characterOptions" @select="selectDubbingAudio" />
+  <VoiceAudioPicker v-model="characterVoicePickerVisible" :drama-id="form.dramaId" :characters="dubbingCharacters" :preferred-character-id="characterRefs[0]?.characterId" :selected-audios="refAudios" :replace-index="replacingAudioIndex" @select="selectDubbingAudios" />
 
 </template>
 
 <script setup lang="ts">
-import { referenceImageUsageOptions, REFERENCE_AUDIO_USAGE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
+import { referenceImageUsageOptions, REFERENCE_AUDIO_TYPE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { ref, reactive, computed, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
@@ -912,7 +913,7 @@ import DictSelect from '@/components/DictSelect.vue'
 import { shotApi, shotGroupApi, episodeApi, dramaApi } from '@/api/drama'
 import { characterApi } from '@/api/res-character'
 import VoiceAudioPicker from '@/views/dubbing/components/VoiceAudioPicker.vue'
-import { MAX_REF_AUDIOS, MIN_AUDIO_DURATION, MAX_AUDIO_DURATION, MAX_TOTAL_AUDIO_DURATION } from '../composables/useShotReferenceAssets'
+import { MAX_REF_AUDIOS } from '../composables/useShotReferenceAssets'
 import { sceneApi } from '@/api/res-scene'
 import { resPropApi, type ResPropItem } from '@/api/res-prop'
 import { keyframeApi } from '@/api/res-keyframe'
@@ -1435,23 +1436,21 @@ function handleConfirmSelectDrawerAsset(item: any) {
 
 
 const characterVoicePickerVisible = ref(false)
-function handleOpenCharacterVoicePicker() {
-  if (refAudios.value.length >= 3) {
-    ElMessage.warning('参考音频最多支持 3 段')
-    return
-  }
+const replacingAudioIndex = ref<number | null>(null)
+const dubbingCharacters = computed(() => {
+  const selected = new Set(characterRefs.value.map(c => String(c.characterId)))
+  return characterOptions.value.filter(c => String(c.dramaId) === String(form.dramaId) || String(c.dramaId) === '0' && selected.has(String(c.id)))
+})
+function handleOpenCharacterVoicePicker(index: number | null = null) {
+  if (index == null && refAudios.value.length >= MAX_REF_AUDIOS) { ElMessage.warning('参考音频最多支持3段'); return }
+  replacingAudioIndex.value = index
   characterVoicePickerVisible.value = true
 }
-
-function selectDubbingAudio(reference: ShotRefAudio) {
-  if (refAudios.value.length >= MAX_REF_AUDIOS) return void ElMessage.warning(`最多选择 ${MAX_REF_AUDIOS} 段音频`)
-  if (refAudios.value.some(audio => audio.audioUrl === reference.audioUrl)) return void ElMessage.info('该音频已在参考列表中')
-  if (reference.duration == null || reference.duration < MIN_AUDIO_DURATION || reference.duration > MAX_AUDIO_DURATION || totalAudioDuration.value + reference.duration > MAX_TOTAL_AUDIO_DURATION) {
-    return void ElMessage.warning('音频单段需为2至15秒，参考音频总长不得超过15秒')
-  }
-  refAudios.value.push(reference)
+function selectDubbingAudios(selected: ShotRefAudio[]) {
+  const index = replacingAudioIndex.value
+  if (index != null && refAudios.value[index]) refAudios.value[index] = { ...selected[0]!, id: refAudios.value[index]!.id || selected[0]!.id }
+  else refAudios.value.push(...selected)
   form.refAudiosConfigured = true
-  characterVoicePickerVisible.value = false
 }
 
 function getOutfitsForCharacter(characterId?: string | number) {

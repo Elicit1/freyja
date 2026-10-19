@@ -20,7 +20,7 @@
         <p class="text-sky-800 leading-relaxed">
           本模式支持多重视觉特征与语音韵律协同驱动。
           <strong>参考图上限 {{ maxRefImages }} 张</strong>（可从场景、人物造型、道具资产库多选选取或自行上传）；
-          <strong>参考音频上限 {{ maxRefAudios }} 段</strong>（单段 3~8 秒，音频总长度 20~30 秒，可从人物 TTS 选取或自行上传）。
+          <strong>参考音频上限 {{ maxRefAudios }} 段</strong>（单段2至15秒，总长不超过15秒，从当前短剧角色的配音中心选择）。
           参考素材<strong>不强制要求</strong>，亦可仅凭提示词直接渲染。
         </p>
       </div>
@@ -229,16 +229,7 @@
 
           <!-- 添加入口按钮组 -->
           <div class="flex items-center gap-2">
-            <el-upload
-              :show-file-list="false"
-              :before-upload="handleUploadRefAudio"
-              accept="audio/*"
-              :disabled="refAudios.length >= maxRefAudios"
-            >
-              <el-button size="small" plain :disabled="refAudios.length >= maxRefAudios" :loading="uploadingAudio">
-                📤 本地上传音频
-              </el-button>
-            </el-upload>
+            <el-button size="small" plain :disabled="refAudios.length >= maxRefAudios" @click="openAudioPicker()">选择参考音频</el-button>
           </div>
         </div>
 
@@ -263,7 +254,7 @@
 
         <!-- 空状态 -->
         <div v-if="refAudios.length === 0" class="text-center py-6 text-xs text-gray-400 bg-white border border-dashed border-gray-200 rounded-lg">
-          暂无参考音频，点击上方按钮可引入人物台词配音或上传本地音频 (可选，非强制)
+          暂无参考音频，点击上方按钮可从配音中心选择角色参考音频 (可选，非强制)
         </div>
 
         <!-- 音频列表 -->
@@ -278,9 +269,7 @@
                 <span class="font-mono font-bold text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">
                   Audio {{ aIdx + 1 }}
                 </span>
-                <el-tag size="small" :type="aud.sourceType === 'TTS' ? 'success' : 'primary'" effect="light">
-                  {{ aud.sourceType === 'TTS' ? '🎙️ TTS配音' : '🎵 本地音频' }}
-                </el-tag>
+
                 <div class="overflow-hidden flex-1">
                   <div class="font-medium text-gray-800 truncate" :title="aud.name">
                     {{ aud.name || (aud.characterName ? `${aud.characterName} 对白` : `音频 ${aIdx + 1}`) }}
@@ -310,6 +299,8 @@
                   {{ playingAudioId === (aud.id || aIdx) ? '⏸' : '▶' }}
                 </el-button>
 
+                <el-button size="small" @click="audioReplaceIndex = aIdx; audioPickerVisible = true">替换</el-button>
+
                 <el-button
                   size="small"
                   circle
@@ -324,13 +315,9 @@
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1 border-t border-slate-100 items-center text-xs">
               <div class="flex items-center gap-1.5">
-                <span class="text-[11px] text-gray-500 flex-shrink-0">用途:</span>
-                <el-select v-model="aud.usageMode" size="small" class="w-full">
-                  <el-option label="台词复用 (DIALOGUE_REUSE)" value="DIALOGUE_REUSE" />
-                  <el-option label="音色参考 (VOICE_TIMBRE)" value="VOICE_TIMBRE" />
-                  <el-option label="BGM背景乐 (BGM_REUSE)" value="BGM_REUSE" />
-                  <el-option label="环境音 (AMBIENT_REUSE)" value="AMBIENT_REUSE" />
-                  <el-option label="特定音效 (SOUND_EFFECT)" value="SOUND_EFFECT" />
+                <span class="text-[11px] text-gray-500 flex-shrink-0">参考关系:</span>
+                <el-select v-model="aud.referenceType" size="small" class="w-full">
+                  <el-option v-for="option in REFERENCE_AUDIO_TYPE_OPTIONS" :key="option.value" :value="option.value" :label="option.label" />
                 </el-select>
               </div>
               <div class="flex items-center gap-1.5">
@@ -343,8 +330,8 @@
                 </el-select>
               </div>
               <div class="flex items-center gap-1.5">
-                <span class="text-[11px] text-gray-500 flex-shrink-0">台词:</span>
-                <el-input v-model="aud.text" size="small" placeholder="关联台词/文本" clearable />
+                <span class="text-[11px] text-gray-500 flex-shrink-0">参考说明:</span>
+                <el-input v-model="aud.referenceDescription" size="small" placeholder="说明复用或参考哪些内容" clearable />
               </div>
             </div>
           </div>
@@ -392,6 +379,8 @@
       </div>
     </template>
   </el-dialog>
+  <VoiceAudioPicker v-model="audioPickerVisible" :drama-id="dramaId" :characters="dubbingCharacters" :selected-audios="refAudios" :replace-index="audioReplaceIndex" @select="selectAudioReferences" />
+
 </template>
 
 <script setup lang="ts">
@@ -405,6 +394,10 @@ import type { DramaShot, ShotRefImage, ShotRefAudio } from '@/types/drama'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
 import { KEY_IMAGE_ROLE_OPTIONS } from '@/constants/keyImageRoles'
+import VoiceAudioPicker from '@/views/dubbing/components/VoiceAudioPicker.vue'
+import { characterApi } from '@/api/res-character'
+import type { ResCharacterOption } from '@/types/resource'
+import { REFERENCE_AUDIO_TYPE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { MAX_REF_AUDIOS } from '../composables/useShotReferenceAssets'
 
 const emit = defineEmits<{
@@ -426,9 +419,18 @@ const videoUrl = ref<string>('')
 
 const refImages = ref<ShotRefImage[]>([])
 const refAudios = ref<ShotRefAudio[]>([])
+const audioPickerVisible = ref(false), audioReplaceIndex = ref<number | null>(null)
+const audioCharacters = ref<ResCharacterOption[]>([]), explicitCharacterIds = ref<string[]>([])
+const dubbingCharacters = computed(() => audioCharacters.value.filter(c => String(c.dramaId) === String(dramaId.value) || String(c.dramaId) === '0' && explicitCharacterIds.value.includes(String(c.id))))
+function openAudioPicker(index: number | null = null) { audioReplaceIndex.value = index; audioPickerVisible.value = true }
+function selectAudioReferences(selected: ShotRefAudio[]) {
+  const index = audioReplaceIndex.value
+  if (index != null && refAudios.value[index]) refAudios.value[index] = { ...selected[0]!, id: refAudios.value[index]!.id || selected[0]!.id }
+  else refAudios.value.push(...selected)
+}
+
 
 const uploadingImage = ref(false)
-const uploadingAudio = ref(false)
 const savingConfig = ref(false)
 const renderingVideo = ref(false)
 
@@ -540,6 +542,9 @@ async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
   shotNo.value = shot.shotNo || 1
   shotName.value = shot.shotName || ''
   dramaId.value = shot.dramaId || 0
+  audioCharacters.value = []
+  explicitCharacterIds.value = (shot.characterRefs || []).flatMap(c => c.characterId ? [String(c.characterId)] : [])
+  if (shot.dramaId) void characterApi.getOptions(shot.dramaId).then(options => { if (String(currentShotId.value) === String(shot.id)) audioCharacters.value = options })
   sceneId.value = shot.sceneId || 0
 
   prompt.value = shot.prompt || shot.scriptContent || shot.actionDescription || ''
@@ -665,48 +670,6 @@ function togglePlayAudio(item: ShotRefAudio, id: string | number) {
   currentAudioPlayer.onended = () => {
     playingAudioId.value = null
   }
-}
-
-async function handleUploadRefAudio(file: File) {
-  if (refAudios.value.length >= maxRefAudios.value) {
-    ElMessage.warning(`参考音频最多支持 ${maxRefAudios.value} 段`)
-    return false
-  }
-  // 读取本地音频时长并校验 2~15s
-  const objectUrl = URL.createObjectURL(file)
-  const audio = new Audio(objectUrl)
-  audio.addEventListener('loadedmetadata', async () => {
-    const dur = Math.round(audio.duration * 10) / 10
-    if (dur < 2.0 || dur > 15.0) {
-      ElMessage.warning(`单段音频官方规范时长为 2~15 秒，当前音频为 ${dur} 秒`)
-    }
-    uploadingAudio.value = true
-    try {
-      const res = await assetApi.upload(file, 'shots')
-      if (res && res.url) {
-        refAudios.value.push({
-          id: `aud_${Date.now()}`,
-          sourceType: 'UPLOAD',
-          name: file.name,
-          audioUrl: res.url,
-          duration: dur,
-          usageMode: 'DIALOGUE_REUSE',
-          language: 'zh'
-        })
-        ElMessage.success(`音频上传成功 (${dur}s)`)
-      }
-    } catch (e: any) {
-      ElMessage.error(e.message || '上传音频失败')
-    } finally {
-      uploadingAudio.value = false
-      URL.revokeObjectURL(objectUrl)
-    }
-  })
-  audio.addEventListener('error', () => {
-    ElMessage.error('无法读取所选音频的时长，请检查文件格式')
-    URL.revokeObjectURL(objectUrl)
-  })
-  return false
 }
 
 // 保存配置

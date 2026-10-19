@@ -91,7 +91,9 @@
           v-model:ref-images="draft.refImages"
           v-model:ref-audios="draft.refAudios"
           :candidate-images="candidateImages"
-          :candidate-audios="candidateAudios"
+          :drama-id="currentShotContext?.dramaId"
+          :characters="dubbingCharacters"
+          :preferred-character-id="draft.characterRefs[0]?.characterId"
           :disabled="isStreaming || isExportingPackage"
           @change="handleReferenceMediaChange"
         />
@@ -296,7 +298,7 @@
             >
               <span class="font-bold text-indigo-700">&lt;Audio {{ idx + 1 }}&gt;</span>
               <span class="text-slate-800 truncate max-w-[100px]">{{ aud.name || '音频' }}</span>
-              <span class="text-[9px] bg-indigo-100 text-indigo-800 px-1 rounded">{{ aud.usageMode || 'VOICE_TIMBRE' }}</span>
+              <span class="text-[9px] bg-indigo-100 text-indigo-800 px-1 rounded">{{ audioReferenceTypeLabel(aud.referenceType) }}</span>
             </div>
           </div>
         </div>
@@ -798,10 +800,9 @@ import DictSelect from '@/components/DictSelect.vue'
 import SkillSelector from '@/components/SkillSelector.vue'
 import ShotAssetReferenceComposer from './ShotAssetReferenceComposer.vue'
 import ReferenceMediaSlots from './ReferenceMediaSlots.vue'
-import { initialVoiceReferences } from '@/utils/reference-audio'
+import { audioReferenceTypeLabel } from '@/constants/referenceMediaOptions'
 import {
   useShotReferenceAssets,
-  MAX_REF_AUDIOS,
   type ShotPromptDraft
 } from '../composables/useShotReferenceAssets'
 import { usePromptTaskStore } from '@/store/promptTask'
@@ -891,10 +892,15 @@ const draft = ref<ShotPromptDraft>({
   refAudios: []
 })
 
+const dubbingCharacters = computed(() => {
+  const dramaId = currentShotContext.value?.dramaId
+  const selected = new Set(draft.value.characterRefs.map(c => String(c.characterId)))
+  return characterOptions.value.filter(c => String(c.dramaId) === String(dramaId) || String(c.dramaId) === '0' && selected.has(String(c.id)))
+})
+
 // 组合式函数管理素材池、去重与 AI 结果失效检测
 const {
   candidateImages,
-  candidateAudios,
   isResultStale: assetsResultStale,
   recordAiGeneratedSnapshot,
   clearAiGeneratedSnapshot
@@ -1123,13 +1129,6 @@ async function open(params: {
     if (viewVersion !== promptViewVersion) return
   }
 
-  // Defaults apply once to an unconfigured shot, after asset loading; saved [] is an explicit opt-out.
-  if (!params.taskId) {
-    const initial = initialVoiceReferences(params.shot.refAudiosConfigured, draft.value.refAudios,
-      draft.value.characterRefs.flatMap(c => c.characterId ? [c.characterId] : []), characterOptions.value, MAX_REF_AUDIOS)
-    draft.value.refAudios = initial.audios
-    if (initial.requiresSelection) ElMessage.warning(`角色音色超过 ${MAX_REF_AUDIOS} 个槽位；请在音频参考中明确选择`)
-  }
 
   generationMode.value = params.generationMode || params.shot.generationMode || 'FIRST_LAST_FRAME'
   episodeSummary.value = params.episodeSummary || ''
@@ -1509,7 +1508,7 @@ function handleCopyManifestText() {
   }
   if (draft.value.refAudios.length > 0) {
     draft.value.refAudios.forEach((aud, idx) => {
-      lines.push(`<Audio ${idx + 1}>: ${aud.name || '音频'} (${aud.usageMode || 'VOICE_TIMBRE'})`)
+      lines.push(`<Audio ${idx + 1}>: ${aud.name || '音频'} (${aud.referenceType})`)
     })
   }
   handleCopy(lines.join('\n'), '参考素材清单')

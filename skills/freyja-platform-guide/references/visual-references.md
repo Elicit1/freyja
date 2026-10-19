@@ -483,7 +483,7 @@ AI 生图模型缺乏现实三维动力学常识，若在提示词中仅使用�
   在发起视频渲染时，系统后台通过 `AiImageApiService` 统一解析分镜配置的 `refAudios` 列表：
   - 提取角色的发声样本或当前镜头专属配音音频；
   - 校验时长（单段在 2–15 秒范围内，黄金区间 5–10 秒，总时长不超过 15 秒，符合视频端点物理规范）；
-  - 自动转码或读取并打包为多模态载荷：`referenceType: "REFERENCE_AUDIO"`，附带对应用法（如 `VOICE_TIMBRE` 音色参考或 `DIALOGUE_REUSE` 对白复用），作为参考音频传给视频生成大模型。
+  - 自动转码或读取并打包为多模态载荷：`referenceType: "REFERENCE_AUDIO"`，附带 `audioReferenceType`（`fully_copy` / `partially_copy` / `reference` / `weak_reference`）与 `referenceDescription`；分镜业务字段为 `referenceType`，传输层 `REFERENCE_AUDIO` 仅区分媒体类型，作为参考音频传给视频生成大模型。
 - **音频驱动唇形与微表情（Audio-Driven Lip-Sync & Acting）**：
   视频模型接收到参考音频（在提示词中映射为 `<Audio 1>`、`<Audio 2>` 等）后，将以音频轨道的波形、语调停顿、重音与字音节奏作为核心时空动力学依据：
   - 结合人物参考图（`<Picture 1>`）识别发声主体；

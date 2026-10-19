@@ -12,7 +12,8 @@ import com.fasterxml.jackson.databind.*;
 import com.sun.net.httpserver.HttpServer;
 import io.minio.*;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -21,7 +22,9 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class MimoVoiceCloneApiTest {
-    @SuppressWarnings("unchecked") @Test void sendsReferenceThroughAudioVoiceAndKeepsSpokenTextInAssistantMessage() throws Exception {
+    @SuppressWarnings("unchecked") @ParameterizedTest
+    @ValueSource(strings={"(愤怒 兴奋)马上[提高音量]离开。", "（悲伤）请你[哽咽]留下。", "[平静]你好。"})
+    void forwardsCallerMessagesAndOptionsWithoutRewritingTags(String spokenText) throws Exception {
         for(Class<?> type:List.of(AiModel.class,AiProvider.class)) TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(),""),type);
         ObjectMapper json=new ObjectMapper();byte[] wav=VoiceEffectEngineTest.sine();AtomicReference<JsonNode> received=new AtomicReference<>();
         HttpServer server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
@@ -36,11 +39,15 @@ class MimoVoiceCloneApiTest {
             when(providers.selectById(1L)).thenReturn(provider);when(models.selectOne(any(Wrapper.class))).thenReturn(new AiModel());when(crypto.decrypt("encrypted")).thenReturn("test-key");
             when(minio.bucketExists(any())).thenReturn(true);
             var api=new AiAudioApiServiceImpl(providers,models,minio,new MinioProperties(),crypto,json,mock(VideoFrameExtractService.class));
-            var output=api.cloneVoice(1L,"mimo-v2.5-tts-voiceclone",wav,"愤怒","马上离开。","dubbing/test.wav");
+            var input=Map.<String,Object>of("messages",List.of(Map.of("role","user","content","在句尾停顿。"),Map.of("role","assistant","content",spokenText)),
+                    "audio",Map.of("optimize_text_preview",false),"temperature",0.7);
+            var snapshot=json.writeValueAsString(input);
+            var output=api.generateVoice(1L,"mimo-v2.5-tts-voiceclone",wav,input,"dubbing/test.wav");
+            assertEquals(snapshot,json.writeValueAsString(input),"调用不能修改原始 JSON");
             JsonNode body=received.get();assertNotNull(body);assertEquals("mimo-v2.5-tts-voiceclone",body.path("model").asText());
             assertEquals("data:audio/wav;base64,"+Base64.getEncoder().encodeToString(wav),body.path("audio").path("voice").asText());
-            assertEquals("assistant",body.path("messages").get(1).path("role").asText());assertEquals("马上离开。",body.path("messages").get(1).path("content").asText());
-            assertTrue(body.path("messages").get(0).path("content").asText().contains("愤怒"));assertFalse(body.path("stream").asBoolean());
+            assertEquals("assistant",body.path("messages").get(1).path("role").asText());assertEquals(spokenText,body.path("messages").get(1).path("content").asText());
+            assertEquals(json.valueToTree(input.get("messages")),body.path("messages"));assertEquals(0.7,body.path("temperature").asDouble());assertFalse(body.path("audio").path("optimize_text_preview").asBoolean());assertFalse(body.path("stream").asBoolean());
             assertEquals(1.5,output.durationSeconds(),0.05);verify(minio).putObject(any(PutObjectArgs.class));
         } finally {server.stop(0);}
     }

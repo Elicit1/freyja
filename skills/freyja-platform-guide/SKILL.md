@@ -9,7 +9,7 @@ description: FREYJA AI 短剧平台使用指南。使用平台规划或编辑短
 
 ## 配音中心
 
-准备角色声音或分镜参考音频时，先读 [配音中心流程](references/dubbing-center.md)。所有发声角色先查询配音中心；没有基础参考声音时先生成唯一无特效基础音频，再按剧情台词、情绪与特效检索或创建克隆配音。特效只由 FFmpeg 处理，保留克隆原声；修改或清空特效不调用 TTS。角色旧 voice 字段只读，不能通过人物 CRUD 配音。
+准备角色声音或分镜参考音频时，先读 [配音中心流程](references/dubbing-center.md)。编写语音模型请求前，通过技能目录读取 `mimo-speech-synthesis` Skill，向配音工具提交 `modelRequest` JSON。所有发声角色先查询配音中心；没有基础参考声音时先生成唯一无特效基础音频，再按剧情台词、情绪与特效检索或创建克隆配音。特效只由 FFmpeg 处理，保留克隆原声；修改或清空特效不调用 TTS。角色旧 voice 字段只读，不能通过人物 CRUD 配音。
 
 ## 规范分层原则（Rules vs. Recommendations）
 
@@ -273,7 +273,7 @@ AI 在进行短剧规划、分镜设计与生图/视频提示词编写时，**�
     - **严重恶性后果**：如果画面中本来没有任何人说话、没有任何台词，却强行关联了角色的参考音频，模型的注意力机制会被无台词画面与参考音频强行拉扯撕裂，导致模型被动产生严重幻觉，**在画面中生成出极其怪异、恐怖且毫无意义的非人类语言音频（如含糊外星语般的低语咕哝、怪异机械电音噪音、不明意义的喃喃自语或鬼畜音频伪影）**，严重破坏视频的视听纯净度与品质；
   - **确保模型注意力纯粹集中**：无台词镜头配置 `refAudios = []`，可使模型将 100% 的注意力与算力聚焦于物理动力学运动、光影流动、面部神态与镜头运镜轨迹，环境声由整体声场（`overall_soundscape`）自然呈现，彻底杜绝非人类语言噪音污染；
 - **视频渲染时配音必须作为参考音频传给模型（Reference Audio Passed to Video Model）**：
-  在执行分镜视频渲染时，该镜头中出镜角色的台词配音（或音色参考音频，`refAudios` 中的 `VOICE_TIMBRE` / `DIALOGUE_REUSE`）**必须作为多模态参考音频（Reference Audio，如 `<Audio 1>`, `<Audio 2>`）传递给视频生成模型**。模型在渲染视频时，结合画面与传入的参考音频，驱动人物口型、面部表情、对白节奏与肢体动作（Audio-Driven Lip-Sync & Acting Synchronization），实现声画合一的高保真视听呈现；
+  在执行分镜视频渲染时，该镜头中出镜角色的台词配音（或音色参考音频，`refAudios` 中显式选择的 `fully_copy` / `partially_copy` / `reference` / `weak_reference`，详见 [配音中心](references/dubbing-center.md)）**必须作为多模态参考音频（Reference Audio，如 `<Audio 1>`, `<Audio 2>`）传递给视频生成模型**。模型在渲染视频时，结合画面与传入的参考音频，驱动人物口型、面部表情、对白节奏与肢体动作（Audio-Driven Lip-Sync & Acting Synchronization），实现声画合一的高保真视听呈现；
 - **有台词的镜头必须采用参考模式生成（Mandatory REFERENCE_MODE for Dialogue Shots）**：
   凡是包含人物对白台词的镜头，**必须且只能选用参考图模式（`REFERENCE_MODE`）生成，绝对严禁使用首尾帧模式（`FIRST_LAST_FRAME`）**！首尾帧模式两端静态锁死无法对口型，只有参考图模式才能完整激活多模态唇形驱动与微表情动态；
 - **画内台词对白 vs 画外音严格分流**：
