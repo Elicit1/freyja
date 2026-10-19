@@ -29,7 +29,7 @@ public class McpSkillTools {
 
     public List<McpTool<?>> tools() {
         return List.of(
-                McpTool.read("list_skills", "创作开始及任务阶段改变时先读取已启用且已发布的 Skill 轻量目录，按 name/description 选择并读取相关正文，不返回全文。平台创作先读 freyja-platform-guide，理解短剧/场次/镜头组/分镜及首尾帧/参考图模式，按任务读取其 references。人物/造型设定图使用 character-sheet-design；分镜使用 cinematography/camera-direction；MiniMax H3 视频卡片使用 h3-prompt-writing。用户明确要求的布局、背景和风格优先。", McpInputs.Search.class, (c, i) -> list(i)),
+                McpTool.read("list_skills", "创作开始及任务阶段改变时先读取已启用且已发布的 Skill 轻量目录，按 name/description 选择并读取相关正文，不返回全文。平台创作先读 freyja-platform-guide；原创、续写、改编或实质重写剧情先读 story-writing 及其 references/story-design.md、references/story-review.md，在当前任务中设计、举证自审和修稿，无阻断问题再简短说明并保存剧本，纯查询/排序/媒体更新不触发故事重审。分镜使用 cinematography/camera-direction；人物/造型设定图使用 character-sheet-design；MiniMax H3 视频卡片使用 h3-prompt-writing。按任务读取参考文件，用户明确要求和锁定优先。", McpInputs.Search.class, (c, i) -> list(i)),
                 McpTool.read("read_skill", "按名称读取已启用 Skill 的 SKILL.md 和可读 references/ 文件目录；可传目录中的 versionId 固定版本，版本改变返回409。仅返回知识，不调用内部 AI。H3 首尾帧随后读取 base-en.txt，多模态参考读取 ref-en.txt。", Read.class, (c, i) -> read(i)),
                 McpTool.read("read_skill_file", "读取 read_skill 返回的 references/ 下 .md/.txt 文本；必填 name、versionId、path，固定版本防止规范漂移。单文件最多128 KiB，不执行脚本、不返回存储地址。", ReadFile.class, (c, i) -> readFile(i)));
     }

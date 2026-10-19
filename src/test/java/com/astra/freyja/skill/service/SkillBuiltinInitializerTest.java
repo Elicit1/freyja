@@ -7,6 +7,8 @@ import com.astra.freyja.skill.model.StandardSkillPackage;
 import com.astra.freyja.skill.validation.SkillPackageValidator;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InjectMocks;
@@ -22,6 +24,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.nio.file.Files;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -116,6 +120,40 @@ class SkillBuiltinInitializerTest {
         assertEquals(source, pkg.getEntrypointContent());
         assertArrayEquals(source.getBytes(StandardCharsets.UTF_8), pkg.getFiles().get("SKILL.md"));
         assertTrue(pkg.getTotalSize() < 128 * 1024L);
+        verifyNoInteractions(packageValidator);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"story-writing", "freyja-platform-guide"})
+    void distributableStorySkillsPreserveSourceAndAutoPublish(String name, @TempDir Path tempDir) throws Exception {
+        Path sourceDir = Path.of("skills", name);
+        Path archive = Path.of("skills", name + ".zip");
+        Files.copy(archive, tempDir.resolve(archive.getFileName()));
+        ReflectionTestUtils.setField(initializer, "customSkillsDir", tempDir.toString());
+        ReflectionTestUtils.setField(initializer, "packageValidator", new SkillPackageValidator());
+        when(skillMapper.selectOne(any(LambdaQueryWrapper.class))).thenReturn(null);
+
+        initializer.initBuiltinSkills();
+
+        var imported = org.mockito.ArgumentCaptor.forClass(StandardSkillPackage.class);
+        verify(skillAdminService).saveSkillPackage(eq(null), eq(null), eq(10), imported.capture());
+        var pkg = imported.getValue();
+        assertEquals(name, pkg.getMetadata().getName());
+        assertEquals(Files.readString(sourceDir.resolve("SKILL.md")).replace("\r\n", "\n").replace('\r', '\n'),
+                pkg.getEntrypointContent());
+        Set<String> sourcePaths;
+        try (var paths = Files.walk(sourceDir)) {
+            sourcePaths = paths.filter(Files::isRegularFile)
+                    .map(path -> sourceDir.relativize(path).toString().replace('\\', '/'))
+                    .collect(Collectors.toSet());
+        }
+        assertEquals(sourcePaths, pkg.getFiles().keySet());
+        for (String path : sourcePaths) {
+            byte[] source = Files.readString(sourceDir.resolve(path)).replace("\r\n", "\n").replace('\r', '\n')
+                    .getBytes(StandardCharsets.UTF_8);
+            assertArrayEquals(source, pkg.getFiles().get(path), path);
+            assertTrue(pkg.getFiles().get(path).length < 128 * 1024, path);
+        }
         verifyNoInteractions(packageValidator);
     }
 }

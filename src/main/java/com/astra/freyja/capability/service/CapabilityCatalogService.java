@@ -35,6 +35,7 @@ public class CapabilityCatalogService {
     public static final String DEFAULT_RULES = """
             公共创作规则：非提示词内容使用简体中文，已确认姓名及用户原文保持原样。所有业务ID使用字符串。
             平台创作开始先按Skill目录读取freyja-platform-guide及当前阶段需要的references，理解短剧/剧集/场次/镜头组/分镜与资产关系、参考图组合及首尾帧模式。人物图可与场景图共用；经核验已覆盖必要人物/造型/环境的关键图可替代冗余图，保留人物业务关联；当镜表情与变化写入scriptContent。
+            原创、续写、改编或实质重写剧情前读取story-writing及references/story-design.md、references/story-review.md；已有项目先读相关大纲、前集正文和人物事实。在当前任务中设计故事、完成草稿、按具体情节举证自审并修稿复查，默认最多修订两轮。无阻断问题才简短说明问题和修改并自动继续授权写入，审稿报告不混入剧情字段；仍有阻断问题时不保存相关剧本，说明冲突并询问必要信息。保留用户锁定与已确认设定，纯查询/排序/媒体更新不重审。Skill缺失时报告并恢复读取，不声称已自审；MCP不证明执行，也不提供持久故事记忆。
             项目画幅必须显式选择启用的系统比例；用户未指定先询问，明确委托AI选择时优先启用的16:9，已有项目画幅保留。
             场景类型可空，明确时填写INDOOR/OUTDOOR/STUDIO/VIRTUAL；河畔、街道用OUTDOOR。时段可空，支持DAY/NIGHT/SUNSET/DAWN，不默认日间。
             更新省略字段保留，支持清空的字段显式null清空；不猜测人物状态、场景、造型或媒体来源。
