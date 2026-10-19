@@ -329,7 +329,7 @@ class McpBusinessDatabaseTest {
         var created = map(call("create_shot", caller, new McpRecordInputs.Create("long-shot-readback", ROOT,
                 Map.of("sceneId", "30", "duration", 7.5, "generationMode", "REFERENCE_MODE", "prompt", prompt,
                         "characterRefs", List.of(Map.of("characterId", "50", "lookId", "60")),
-                        "refImages", List.of(Map.of("sourceType", "CHARACTER_LOOK", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png"))))));
+                        "refImages", List.of(Map.of("sourceType", "CHARACTER_LOOK", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png", "usageRole", "SUBJECT"))))));
         var read = records.read(caller, McpRecordType.SHOT, (String) created.get("recordId"), ROOT);
         assertEquals(0, new BigDecimal("7.5").compareTo(new BigDecimal(read.get("duration").toString())));
         assertEquals("REFERENCE_MODE", read.get("generationMode")); assertEquals(prompt, read.get("prompt"));
@@ -575,7 +575,7 @@ class McpBusinessDatabaseTest {
 
     @Test void referenceMediaCannotCrossProjectsAndInternalSkillProvenanceCannotBeSpoofed() {
         character(50L, PROJECT); character(51L, PROJECT + 1); look(60L, 51L, 1);
-        var foreign = Map.<String, Object>of("sceneId", "30", "refImages", List.of(Map.of("sourceType", "CHARACTER_REFERENCE", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png")));
+        var foreign = Map.<String, Object>of("sceneId", "30", "refImages", List.of(Map.of("sourceType", "CHARACTER_REFERENCE", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png", "usageRole", "SUBJECT")));
         assertEquals(403, assertThrows(BizException.class, () -> create("foreign-media-01", List.of(item("shot", McpRecordType.SHOT, foreign)))).getCode());
         var audio = Map.<String, Object>of("sceneId", "30", "refAudios", List.of(Map.of("referenceType", "reference", "characterId", "51", "audioUrl", "https://media/voice.mp3")));
         assertEquals(403, assertThrows(BizException.class, () -> create("foreign-audio-01", List.of(item("shot", McpRecordType.SHOT, audio)))).getCode());

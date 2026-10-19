@@ -38,6 +38,7 @@ public class ShotRefImageDTO {
 
     /**
      * 参考图角色定位 (MiniMax H3 / 视觉映射):
+     * 保存时必填，必须精确匹配用途下拉选项，不接受自由文本或默认推断。
      * SUBJECT: 主体人物参考
      * NON_SUBJECT: 第一人称视角/画外人物设定参考，不据此安排人物出镜
      * SCENE: 场景布局

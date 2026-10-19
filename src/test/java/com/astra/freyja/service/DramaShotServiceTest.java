@@ -591,18 +591,26 @@ class DramaShotServiceTest {
         verify(shotMapper, never()).updateById(any(DramaShot.class));
     }
 
-    @Test
-    void savingInvalidKeyImageRoleIsRejectedBeforeDatabaseWrites() {
-        List<ShotRefImageDTO> refs = List.of(ShotRefImageDTO.builder()
-                .sourceType("KEYFRAME").usageRole("ACTION_BEAT").build());
-        DramaShotDTO create = new DramaShotDTO();
-        create.setSceneId(10L);
-        create.setRefImages(refs);
-        assertThrows(BizException.class, () -> shotService.create(create));
-        DramaShotDTO update = new DramaShotDTO();
-        update.setId(1000L);
-        update.setRefImages(refs);
-        assertThrows(BizException.class, () -> shotService.update(update));
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.NullAndEmptySource
+    @ValueSource(strings = {" ", "ACTION_BEAT", "主体", "subject", " SUBJECT ", "IDENTITY"})
+    void savingInvalidImageUsageIsRejectedBeforeDatabaseWrites(String usageRole) {
+        for (String sourceType : com.astra.freyja.util.ShotImageReferenceValidator.SOURCE_TYPES) {
+            List<ShotRefImageDTO> refs = List.of(ShotRefImageDTO.builder()
+                    .sourceType(sourceType).usageRole(usageRole).build());
+            DramaShotDTO create = new DramaShotDTO();
+            create.setSceneId(10L);
+            create.setRefImages(refs);
+            BizException createError = assertThrows(BizException.class, () -> shotService.create(create));
+            assertEquals(400, createError.getCode());
+            assertTrue(createError.getMessage().contains("refImages[0].usageRole"));
+            DramaShotDTO update = new DramaShotDTO();
+            update.setId(1000L);
+            update.setRefImages(refs);
+            BizException updateError = assertThrows(BizException.class, () -> shotService.update(update));
+            assertEquals(400, updateError.getCode());
+            assertTrue(updateError.getMessage().contains("refImages[0].usageRole"));
+        }
         verifyNoInteractions(shotMapper, sceneMapper);
     }
 

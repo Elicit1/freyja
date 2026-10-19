@@ -128,6 +128,22 @@ class McpBusinessSchemasTest {
         }
     }
 
+    @Test void imageUsageIsRequiredForBothCreateAndUpdate() {
+        for (boolean create : List.of(true, false)) {
+            Map<String, Object> image = new HashMap<>(Map.of("sourceType", "UPLOAD", "imageUrl", "https://media/ref.png"));
+            Map<String, Object> data = Map.of("sceneId", "30", "refImages", List.of(image));
+            assertTrue(assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT, data, false, create))
+                    .getMessage().contains("refImages[0].usageRole"));
+            for (Object role : Arrays.asList(null, "", " ", "subject", " SUBJECT ", 123)) {
+                image.put("usageRole", role);
+                assertTrue(assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT, data, false, create))
+                        .getMessage().contains("refImages[0].usageRole"));
+            }
+            image.put("usageRole", "SUBJECT");
+            assertDoesNotThrow(() -> validator.validate(McpRecordType.SHOT, data, false, create));
+        }
+    }
+
     @Test void everyWritableAssetDropdownHasAnExactContractAndStatusIsScoped() {
         record Bad(McpRecordType type, String field, Object value) {}
         for (Bad bad : List.of(new Bad(McpRecordType.CHARACTER, "gender", "PERSON"),

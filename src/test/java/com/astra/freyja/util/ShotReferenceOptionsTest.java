@@ -8,6 +8,21 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ShotReferenceOptionsTest {
+    @Test void imageUsageChoicesMatchSourceSpecificDropdowns() {
+        for (String source : ShotImageReferenceValidator.SOURCE_TYPES) {
+            for (String role : ShotImageReferenceValidator.USAGE_ROLES) {
+                var image = ShotRefImageDTO.builder().sourceType(source).usageRole(role).build();
+                boolean allowed = "KEYFRAME".equals(source)
+                        ? com.astra.freyja.dto.drama.manifest.KeyImageRole.fromCode(role) != null
+                        : !"NON_SUBJECT".equals(role) || List.of("CHARACTER", "CHARACTER_LOOK", "CHARACTER_REFERENCE", "UPLOAD").contains(source);
+                if (allowed) assertDoesNotThrow(() -> ShotImageReferenceValidator.validate(List.of(image)), source + "/" + role);
+                else assertThrows(BizException.class, () -> ShotImageReferenceValidator.validate(List.of(image)), source + "/" + role);
+            }
+        }
+        assertDoesNotThrow(() -> ShotImageReferenceValidator.validate(null));
+        assertDoesNotThrow(() -> ShotImageReferenceValidator.validate(List.of()));
+    }
+
     @Test void exactlyFourRelationshipsAreAcceptedWithoutDefaultsOrAliases() {
         var audio = ShotRefAudioDTO.builder().audioUrl("https://media/audio.wav").build();
         assertThrows(BizException.class, () -> ShotAudioReferenceValidator.validate(List.of(audio)));

@@ -35,6 +35,8 @@ public class McpBusinessInputValidator {
             if (!allowed.containsAll(item.keySet())) throw new BizException(400, path + " 包含未知字段；图片使用 imageUrl/sourceType/sourceId，声音使用 audioUrl/referenceType");
             String source = image && item.get("sourceType") instanceof String text ? text : null;
             if (image && source == null) throw new BizException(400, path + ".sourceType 必填");
+            if (image) com.astra.freyja.util.ShotImageReferenceValidator.validateUsageRole(
+                    item.get("usageRole") instanceof String role ? role : null, "data." + path + ".usageRole");
             if (!image && !(item.get("referenceType") instanceof String type && com.astra.freyja.util.ShotAudioReferenceValidator.REFERENCE_TYPES.contains(type))) throw new BizException(400, path + ".referenceType 必须为 H3 四种参考关系之一");
             String urlField = image ? "imageUrl" : "audioUrl";
             if (!(item.get(urlField) instanceof String url) || url.isBlank()) throw new BizException(400, path + "." + urlField + " 必填");

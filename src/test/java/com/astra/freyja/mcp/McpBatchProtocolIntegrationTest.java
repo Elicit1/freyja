@@ -265,12 +265,12 @@ class McpBatchProtocolIntegrationTest {
         for (JsonNode tool : rpc("tools/list", Map.of()).path("tools")) if (tool.path("name").asText().equals("create_shot")) {
             JsonNode image = tool.path("inputSchema").path("properties").path("data").path("properties").path("refImages").path("items");
             assertEquals("object", image.path("type").asText()); assertFalse(image.has("allOf"));
-            assertEquals(List.of("sourceType", "imageUrl"), json.convertValue(image.path("required"), List.class));
+            assertEquals(List.of("sourceType", "imageUrl", "usageRole"), json.convertValue(image.path("required"), List.class));
             assertTrue(image.path("properties").has("sourceId")); assertTrue(image.path("properties").path("sourceType").path("enum").toString().contains("CHARACTER_LOOK"));
         }
         Map<String, Object> data = new LinkedHashMap<>(Map.of("sceneId", "30", "shotType", "AUTO", "cameraMovement", "AUTO", "shotTypeLocked", false, "cameraMovementLocked", false,
                 "characterRefs", List.of(Map.of("characterId", "50", "lookId", "60")),
-                "refImages", List.of(Map.of("sourceType", "CHARACTER_LOOK", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png"))));
+                "refImages", List.of(Map.of("sourceType", "CHARACTER_LOOK", "sourceId", "60", "characterId", "50", "imageUrl", "https://media/look.png", "usageRole", "SUBJECT"))));
         data.put("videoPrompt", "integrated_multimodal_description: 0-4s the subject walks.\noverall_soundscape: footsteps.\nnon_diegetic_music: none."); data.put("duration", 4);
         JsonNode single = rpc("tools/call", Map.of("name", "create_shot", "arguments", Map.of("requestId", "look-single-001", "dramaId", McpBusinessDatabaseTest.ROOT, "data", data)));
         assertFalse(single.path("isError").asBoolean(), single.toString());

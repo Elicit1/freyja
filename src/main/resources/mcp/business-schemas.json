@@ -384,7 +384,7 @@
     "IMAGE.imageUrl": "必填的已有参考图 URL；服务端不抓取外部 URL、不调用内部生图。",
     "IMAGE.sourceId": "除 UPLOAD 外必填；CHARACTER 为人物 ID，CHARACTER_LOOK/CHARACTER_REFERENCE 为造型 ID并补齐 lookId；SCENE/PROP/KEYFRAME 为对应资产 ID。UPLOAD 省略。",
     "IMAGE.characterId": "显式人物弱绑定；CHARACTER_LOOK/CHARACTER_REFERENCE 必填，UPLOAD 可按需关联，画外人物也可绑定。",
-    "IMAGE.usageRole": "参考图在本镜头中的用途，仅允许列出的用途值；身份/造型细分约束填写 referenceRole，不能自行创造 usageRole。KEYFRAME 来源只允许七种关键图用途。",
+    "IMAGE.usageRole": "必填，必须明确选择参考图在本镜头中的用途，仅允许列出的下拉用途值，不得留空或自行创造。身份/造型细分约束填写 referenceRole。KEYFRAME 来源只允许七种关键图用途。",
     "IMAGE.sourceType": "人物身份图用 CHARACTER；人物造型图用 CHARACTER_LOOK（兼容 CHARACTER_REFERENCE，保存为 CHARACTER_REFERENCE）；二者 sourceId 含义不同。",
     "AUDIO.audioUrl": "必填的实际参考音频 URL，选择配音中心音频时同时提交 audioId 与 characterId。",
     "AUDIO.duration": "可选的真实秒数；已知音频总长不超过15秒，不会猜测时长。",
@@ -430,10 +430,7 @@
         "x-freyja-options": "reference_image_reference_role"
       },
       "usageRole": {
-        "type": [
-          "string",
-          "null"
-        ],
+        "type": "string",
         "x-freyja-options": "reference_image_usage_role"
       }
     },
