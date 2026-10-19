@@ -63,3 +63,4 @@ docker-compose.override.yaml
 front/node_modules/
 front/dist/
 
+/docs/
