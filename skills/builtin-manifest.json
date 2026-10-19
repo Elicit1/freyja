@@ -140,12 +140,12 @@
       "source": "repository:skills/freyja-platform-guide",
       "sourceRevision": null,
       "package": "freyja-platform-guide.zip",
-      "sha256": "76772e26d2e654b286ce1d66286c71d6a5b8c1f0944752296c08232e12577d31",
+      "sha256": "3c07e9372a6410dd518df2fd93b0a4374432220b48407f123a1ca68b2890c2c3",
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "c99595a13359d3efec98cce800f0508bad462acfaa3bebf1da514c1e07082ff3",
-          "size": 64356
+          "sha256": "e8e63ab962842e235c773327f11a890a8ef9f5c1f7aaf5a9a7201af4ea088cb1",
+          "size": 65544
         },
         {
           "path": "references/architecture.md",
@@ -154,13 +154,18 @@
         },
         {
           "path": "references/dubbing-center.md",
-          "sha256": "0163a7639eda9cb41cc4b4528a74817afba4f5a15f908fd1cc3a246449b4ab76",
-          "size": 11220
+          "sha256": "07e4a11907c6700179c2f61583592093d13a74f3960e23b67781ff73da9a235c",
+          "size": 11444
         },
         {
           "path": "references/h3-integration.md",
-          "sha256": "0076359f46a380fcc2d3bcb025d458c4db8afd01beb60d7f1c48023fd5aa8a4c",
-          "size": 8605
+          "sha256": "a85e253f9d5b94cae89f025f976b05a85eff4d9a023c6a88c806bcdd0ba69264",
+          "size": 8847
+        },
+        {
+          "path": "references/sound-design.md",
+          "sha256": "76e77b246068a2c4362acf20ee924edb72bd55ccd24e485ad090323ad9011284",
+          "size": 8082
         },
         {
           "path": "references/storyboard-workflow.md",

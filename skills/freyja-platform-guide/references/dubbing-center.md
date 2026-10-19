@@ -2,6 +2,8 @@
 
 配音中心是角色声音的维护入口：角色配音 `/dubbing/characters`，声音特效 `/dubbing/effects`。角色资产只提供跳转按钮。`ResCharacter.voiceSampleUrl/voiceSampleText/voiceDesc` 为基础声音的只读兼容投影，不能通过人物 CRUD 修改。
 
+镜头中的声音方向、远近、移动与遮挡按 [声音设计与空间连续性](sound-design.md) 编排。音色参考不等于本镜头的空间混音，不为走位变化逐镜生成样本或覆盖共用录音。
+
 ## 生成前读取模型 Skill
 
 实际使用 MiMo TTS（`mimo-v2.5-tts`、`mimo-v2.5-tts-voicedesign`、`mimo-v2.5-tts-voiceclone`）生成语音时，必须先通过 `list_skills` 定位 `mimo-speech-synthesis`，再用 `read_skill` 读取正文，按其指引通过 `read_skill_file` 读取所需参考文件，然后组织请求并调用生成工具。模型的声音设计、克隆与表演控制规范以该 Skill 为准。上传、下载音频或 FFmpeg 后处理不需要此步骤；其他 TTS 按其实际能力与对应 Skill 使用。
