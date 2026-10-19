@@ -1646,6 +1646,7 @@ INSERT IGNORE INTO video_render_dispatch_state(id) VALUES (1);
 
 -- Shot video ZIP exports (20261016)
 CREATE TABLE IF NOT EXISTS shot_video_export_task (
+ concat_videos TINYINT(1) NOT NULL DEFAULT 0,
  id BIGINT NOT NULL PRIMARY KEY,
  drama_id BIGINT NOT NULL,
  drama_title VARCHAR(255) NOT NULL,

@@ -31,14 +31,16 @@ public class ShotVideoExportArchiveService {
     private final MinioProperties minioProperties;
     private final MinioClient minio;
     private final ObjectMapper json;
+    private final ShotVideoConcatService concat;
     private String initializedBucket;
     private final java.util.concurrent.ConcurrentMap<Long,InputStream> activeReads=new java.util.concurrent.ConcurrentHashMap<>();
     public void interruptRead(Long id){InputStream input=activeReads.remove(id);if(input!=null)try{input.close();}catch(IOException ignored){}}
     public record ReadResult(long size,long crc,String sha256) {}
-    public record Artifact(Path directory,Path zip) {}
+    public record Artifact(Path directory,Path file) {}
     public static class ArchiveFailure extends IOException { public ArchiveFailure(String message){super(message);} }
 
     public Artifact build(Task task,List<Item> items,BooleanSupplier active,BiConsumer<Long,String> progress,Consumer<Item> itemFinished) throws Exception {
+        if(task.isConcatVideos())return buildConcatenated(task,items,active,progress,itemFinished);
         Path root=Path.of(properties.getTempDirectory()).toAbsolutePath().normalize();Files.createDirectories(root);
         Path directory=Files.createTempDirectory(root,task.getId()+"-");Path zip=directory.resolve("package.zip");
         var bytes=new java.util.concurrent.atomic.AtomicLong();int success=0;
@@ -74,6 +76,44 @@ public class ShotVideoExportArchiveService {
             return new Artifact(directory,zip);
         }catch(Exception e){cleanup(directory);throw e;}
     }
+    private Artifact buildConcatenated(Task task,List<Item> items,BooleanSupplier active,BiConsumer<Long,String> progress,Consumer<Item> itemFinished) throws Exception {
+        Path root=Path.of(properties.getTempDirectory()).toAbsolutePath().normalize();Files.createDirectories(root);
+        Path directory=Files.createTempDirectory(root,task.getId()+"-");Path merged=directory.resolve("merged.mp4");
+        var bytes=new java.util.concurrent.atomic.AtomicLong();List<Path> clips=new ArrayList<>();
+        ShotVideoConcatService.Format target=null;long clipBytes=0;
+        try{
+            checkDisk(directory);
+            for(Item item:items){
+                check(active);if("SKIPPED".equals(item.getStatus()))continue;
+                Path source=directory.resolve("source.tmp");ReadResult result;
+                try{
+                    long already=bytes.get();
+                    result=download(task.getId(),item.getSnapshot(),source,active,read->{
+                        bytes.set(already+read);progress.accept(bytes.get(),item.getName());
+                    });
+                }catch(java.util.concurrent.CancellationException e){throw e;}
+                catch(ArchiveFailure e){throw e;}
+                catch(Exception e){item.setStatus("FAILED");item.setErrorMessage("源视频读取失败或对象已变化");itemFinished.accept(item);Files.deleteIfExists(source);continue;}
+                if(bytes.get()>properties.getMaxArchiveBytes())throw new ArchiveFailure("超过导出容量限制");
+                progress.accept(bytes.get(),"正在统一视频格式 · "+item.getName());
+                Path clip=directory.resolve("clip-"+clips.size()+".mp4");
+                try{
+                    var input=concat.probe(source,active);if(target==null)target=input;
+                    concat.normalize(source,clip,input,target,properties.getMaxArchiveBytes()-clipBytes,active);
+                    checkDisk(directory);clipBytes+=Files.size(clip);
+                    if(clipBytes>properties.getMaxArchiveBytes())throw new ArchiveFailure("超过拼接视频容量限制");
+                }catch(java.util.concurrent.CancellationException e){throw e;}
+                catch(Exception e){item.setStatus("FAILED");item.setErrorMessage("源视频无法转换为拼接格式");itemFinished.accept(item);throw e;}
+                Files.delete(source);clips.add(clip);
+                item.setStatus("SUCCESS");item.setSize(result.size());item.setChecksum(result.sha256());item.setErrorMessage(null);itemFinished.accept(item);
+            }
+            if(clips.isEmpty())throw new ArchiveFailure("没有成功导出的视频，未生成拼接文件");
+            progress.accept(bytes.get(),"正在拼接 "+clips.size()+" 个视频");
+            concat.concat(clips,merged,active);check(active);checkDisk(directory);
+            if(Files.size(merged)>properties.getMaxArchiveBytes())throw new ArchiveFailure("超过拼接视频容量限制");
+            return new Artifact(directory,merged);
+        }catch(Exception e){cleanup(directory);throw e;}
+    }
     private ReadResult download(Long taskId,Snapshot snapshot,Path file,BooleanSupplier active,LongConsumer progress) throws Exception {
         CRC32 crc=new CRC32();MessageDigest sha=MessageDigest.getInstance("SHA-256");long size=0;
         long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(properties.getReadTimeoutSeconds());
@@ -105,7 +145,7 @@ public class ShotVideoExportArchiveService {
     private static void check(BooleanSupplier active){if(Thread.currentThread().isInterrupted()||!active.getAsBoolean())throw new java.util.concurrent.CancellationException("导出任务已取消或执行权已变更");}
 
     public void upload(String key,Path path)throws Exception{
-        ensureBucket();minio.uploadObject(UploadObjectArgs.builder().bucket(properties.getBucket()).object(key).filename(path.toString()).contentType("application/zip").build());
+        ensureBucket();minio.uploadObject(UploadObjectArgs.builder().bucket(properties.getBucket()).object(key).filename(path.toString()).contentType(key.endsWith(".mp4")?"video/mp4":"application/zip").build());
         if(minio.statObject(StatObjectArgs.builder().bucket(properties.getBucket()).object(key).build()).size()!=Files.size(path))throw new IOException("导出包上传校验失败");
     }
     public void remove(String key){if(key==null)return;try{minio.removeObject(RemoveObjectArgs.builder().bucket(properties.getBucket()).object(key).build());}catch(Exception ignored){/* Lifecycle also expires abandoned attempts. */}}
@@ -115,7 +155,7 @@ public class ShotVideoExportArchiveService {
             minio.statObject(StatObjectArgs.builder().bucket(properties.getBucket()).object(task.getObjectKey()).build());
             try(var external=MinioClient.builder().endpoint(minioProperties.getExternalEndpoint()).credentials(minioProperties.getAccessKey(),minioProperties.getSecretKey()).region("us-east-1").build()){
                 String encoded=java.net.URLEncoder.encode(task.getFilename(),StandardCharsets.UTF_8).replace("+","%20");
-                String url=external.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder().method(Method.GET).bucket(properties.getBucket()).object(task.getObjectKey()).expiry((int)seconds).extraQueryParams(Map.of("response-content-disposition","attachment; filename=videos.zip; filename*=UTF-8''"+encoded)).build());
+                String url=external.getPresignedObjectUrl(GetPresignedObjectUrlArgs.builder().method(Method.GET).bucket(properties.getBucket()).object(task.getObjectKey()).expiry((int)seconds).extraQueryParams(Map.of("response-content-disposition","attachment; filename="+(task.isConcatVideos()?"videos.mp4":"videos.zip")+"; filename*=UTF-8''"+encoded)).build());
                 return new DownloadLink(url,task.getFilename(),LocalDateTime.now().plusSeconds(seconds));
             }
         }catch(BizException e){throw e;}catch(Exception e){throw new BizException(410,"导出包不可用或已被清理，请重新创建任务");}

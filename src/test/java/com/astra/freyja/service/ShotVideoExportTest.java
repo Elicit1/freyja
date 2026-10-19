@@ -33,6 +33,7 @@ class ShotVideoExportTest {
     final ObjectMapper json=new ObjectMapper().findAndRegisterModules();
     DramaShotMapper shots;DramaShotVideoTakeMapper takes;VideoAssetSourceResolver sources;
     ShotVideoExportSelection selection;ShotVideoExportStore store;ShotVideoExportService service;ShotVideoExportArchiveService archive;
+    ShotVideoConcatService concat;
     JdbcTemplate jdbc;TransactionTemplate tx;VideoExportProperties properties;
     final Map<Long,DramaShot> shotData=new LinkedHashMap<>();final Map<String,byte[]> media=new HashMap<>();
     final Map<Long,Path> archives=new HashMap<>();
@@ -53,7 +54,8 @@ class ShotVideoExportTest {
         when(sources.open(any())).thenAnswer(call->new ByteArrayInputStream(media.get(((Snapshot)call.getArgument(0)).getObjectKey())));
         properties=new VideoExportProperties();properties.setTempDirectory(temporary.resolve("work").toString());properties.setMinFreeBytes(0);
         selection=new ShotVideoExportSelection(dramas,episodes,scenes,groups,shots,takes,sources,properties,json);
-        archive=spy(new ShotVideoExportArchiveService(sources,properties,new MinioProperties(),mock(MinioClient.class),json));
+        concat=spy(new ShotVideoConcatService(new MediaToolProperties(),properties,new NativeProcessExecutor(),json));
+        archive=spy(new ShotVideoExportArchiveService(sources,properties,new MinioProperties(),mock(MinioClient.class),json,concat));
         doAnswer(call->{String key=call.getArgument(0);Path source=call.getArgument(1);Long id=Long.valueOf(key.split("/")[1]);Path target=temporary.resolve(id+".zip");Files.copy(source,target,StandardCopyOption.REPLACE_EXISTING);archives.put(id,target);return null;}).when(archive).upload(anyString(),any());
         service=new ShotVideoExportService(selection,store,archive,properties,tx,mock(ApplicationEventPublisher.class));
     }
@@ -127,5 +129,76 @@ class ShotVideoExportTest {
         long id=2032095628944588801L;shot(id,1,true);Preview preview=service.preview(request(id));
         var builder=tools.jackson.databind.json.JsonMapper.builder();new JacksonConfig().longToStringCustomizer().customize(builder);String encoded=builder.build().writeValueAsString(preview);
         assertTrue(encoded.contains("\"shotId\":\""+id+"\""));assertFalse(encoded.contains("videoUrl"));assertFalse(encoded.contains("etag-"));
+    }
+
+    @Test void concatModeParticipatesInPreviewAndIdempotencyAndSurvivesRetryAndRecovery()throws Exception{
+        shot(41,1,true);Request request=request(41L);
+        request.setExpectedPreviewHash(service.preview(request).getPreviewHash());request.setConcatVideos(true);
+        assertEquals(409,assertThrows(BizException.class,()->service.create(request)).getCode());
+        Task task=create(request);assertTrue(task.isConcatVideos());assertTrue(task.getFilename().endsWith(".mp4"));
+        request.setConcatVideos(false);assertEquals(409,assertThrows(BizException.class,()->service.create(request)).getCode());
+        doThrow(new IOException("invalid video")).when(concat).probe(any(),any());service.runNext();
+        assertEquals("FAILED",service.detail(task.getId()).getStatus());verify(archive,never()).upload(anyString(),any());
+        Task retry=service.retry(task.getId(),UUID.randomUUID().toString());assertTrue(retry.isConcatVideos());assertTrue(retry.getFilename().endsWith(".mp4"));
+        tx.executeWithoutResult(status->{store.lock();store.claim();});service.recover();
+        assertTrue(service.detail(retry.getId()).isConcatVideos());assertEquals("QUEUED",service.detail(retry.getId()).getStatus());
+    }
+
+    @Test void concatCancellationCleansFilesAndNeverUploads()throws Exception{
+        shot(41,1,true);Request request=request(41L);request.setConcatVideos(true);Task task=create(request);
+        doAnswer(call->{service.cancel(task.getId());throw new java.util.concurrent.CancellationException();}).when(concat).probe(any(),any());
+        service.runNext();assertEquals("CANCELLED",service.detail(task.getId()).getStatus());verify(archive,never()).upload(anyString(),any());
+        try(var files=Files.list(Path.of(properties.getTempDirectory()))){assertTrue(files.findAny().isEmpty());}
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans={true,false})
+    void realConcatReturnsOrderedMp4WithMixedSizesFrameRatesAndMissingAudio(boolean firstHasAudio)throws Exception{
+        var processes=new NativeProcessExecutor();
+        try{Assumptions.assumeTrue(processes.execute(List.of("ffmpeg","-version"),java.time.Duration.ofSeconds(10)).exitCode()==0,"FFmpeg unavailable");}
+        catch(IOException e){Assumptions.abort("FFmpeg unavailable");}
+        shot(41,1,true);shot(42,2,true);shot(43,3,false);
+        media.put("41.mp4",fixture(processes,"red","160x120",24,0.6,firstHasAudio));
+        media.put("42.mp4",fixture(processes,"blue","80x160",15,0.8,!firstHasAudio));
+        Request request=request(43L,42L,41L);request.setConcatVideos(true);Task task=create(request);service.runNext();
+        Task completed=service.detail(task.getId());assertEquals("PARTIAL_SUCCESS",completed.getStatus());assertEquals(2,completed.getSucceeded());assertEquals(1,completed.getSkipped());assertTrue(completed.isDownloadAvailable());
+        Path video=archives.get(task.getId());
+        verify(archive).upload(endsWith("/merged.mp4"),any());
+        var probe=processes.execute(List.of("ffprobe","-v","error","-show_entries","stream=codec_type,width,height,r_frame_rate,codec_name:format=duration","-of","json",video.toString()),java.time.Duration.ofSeconds(10));
+        assertEquals(0,probe.exitCode(),probe.output());var metadata=json.readTree(probe.output());
+        var picture=metadata.path("streams").get(0);assertEquals(160,picture.path("width").asInt());assertEquals(120,picture.path("height").asInt());assertEquals("30/1",picture.path("r_frame_rate").asText());
+        assertEquals("aac",metadata.path("streams").get(1).path("codec_name").asText());assertEquals(1.4,metadata.path("format").path("duration").asDouble(),0.2);
+        byte[] first=pixel(processes,video,0.1),last=pixel(processes,video,1.1);
+        assertTrue(Byte.toUnsignedInt(first[0])>Byte.toUnsignedInt(first[2])+100,"first shot must be red");
+        assertTrue(Byte.toUnsignedInt(last[2])>Byte.toUnsignedInt(last[0])+50,"second shot must be blue");
+        var audio=processes.execute(List.of("ffmpeg","-hide_banner","-nostdin","-i",video.toString(),"-af","volumedetect","-vn","-f","null","-"),java.time.Duration.ofSeconds(10));
+        assertEquals(0,audio.exitCode());assertTrue(audio.output().contains("max_volume:"));assertFalse(audio.output().contains("max_volume: -inf"),"original audio must be retained");
+        try(var files=Files.list(Path.of(properties.getTempDirectory()))){assertTrue(files.findAny().isEmpty());}
+    }
+
+    @Test void nativeProcessMonitorStopsLongRunningWorkBeforeCleanup()throws Exception{
+        var processes=new NativeProcessExecutor();
+        try{Assumptions.assumeTrue(processes.execute(List.of("ffmpeg","-version"),java.time.Duration.ofSeconds(10)).exitCode()==0,"FFmpeg unavailable");}
+        catch(IOException e){Assumptions.abort("FFmpeg unavailable");}
+        AtomicInteger checks=new AtomicInteger();Path output=temporary.resolve("monitored.mp4");
+        long started=System.nanoTime();
+        assertThrows(IOException.class,()->processes.execute(List.of("ffmpeg","-hide_banner","-loglevel","error","-nostdin","-y","-re","-f","lavfi","-i","color=c=red:s=64x64:r=30","-t","20","-c:v","libx264",output.toString()),java.time.Duration.ofSeconds(30),()->{
+            if(checks.incrementAndGet()>=3)throw new IOException("disk quota exceeded");
+        }));
+        assertTrue(System.nanoTime()-started<java.time.Duration.ofSeconds(5).toNanos(),"monitor must stop encoding promptly");
+        Files.deleteIfExists(output); // On Windows this also proves that the encoder released its file handle.
+    }
+
+    private byte[] fixture(NativeProcessExecutor processes,String color,String size,int fps,double duration,boolean audio)throws Exception{
+        Path path=temporary.resolve(color+".mp4");List<String> command=new ArrayList<>(List.of("ffmpeg","-hide_banner","-loglevel","error","-nostdin","-y","-f","lavfi","-i","color=c="+color+":s="+size+":r="+fps));
+        if(audio)command.addAll(List.of("-f","lavfi","-i","sine=frequency=440:sample_rate=44100"));
+        command.addAll(List.of("-t",Double.toString(duration),"-c:v","libx264","-pix_fmt","yuv420p"));if(audio)command.addAll(List.of("-c:a","aac"));command.add(path.toString());
+        var result=processes.execute(command,java.time.Duration.ofSeconds(15));assertEquals(0,result.exitCode(),result.output());return Files.readAllBytes(path);
+    }
+
+    private byte[] pixel(NativeProcessExecutor processes,Path video,double time)throws Exception{
+        Path path=temporary.resolve("pixel-"+time+".rgb");
+        var result=processes.execute(List.of("ffmpeg","-hide_banner","-loglevel","error","-nostdin","-y","-ss",Double.toString(time),"-i",video.toString(),"-frames:v","1","-vf","scale=1:1","-f","rawvideo","-pix_fmt","rgb24",path.toString()),java.time.Duration.ofSeconds(10));
+        assertEquals(0,result.exitCode(),result.output());return Files.readAllBytes(path);
     }
 }

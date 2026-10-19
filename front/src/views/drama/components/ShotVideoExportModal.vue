@@ -9,8 +9,9 @@
       </aside>
       <section class="flex-1 min-w-0 space-y-3">
         <el-input v-model="name" placeholder="导出任务名称（可选）" maxlength="100" />
+        <div class="flex items-center gap-3 text-sm"><span>是否拼接</span><el-radio-group v-model="concatVideos"><el-radio :value="false">不拼接（原视频 ZIP）</el-radio><el-radio :value="true">拼接（单个 MP4）</el-radio></el-radio-group></div>
         <el-checkbox v-model="skipMissing">跳过未绑定当前视频的分镜</el-checkbox>
-        <el-alert type="info" title="每镜导出一个当前绑定视频，保留分集 / 场景 / 镜头组目录。正在渲染的镜头使用当前已有视频，不等待新结果。" :closable="false" />
+        <el-alert type="info" :title="concatVideos ? '按分集 / 场景 / 镜头组 / 分镜顺序拼接为一个 MP4，画面等比适配首个视频尺寸，保留原音轨，无音轨的视频补静音。正在渲染的镜头使用当前已有视频。' : '每镜导出一个当前绑定视频，保留分集 / 场景 / 镜头组目录。正在渲染的镜头使用当前已有视频，不等待新结果。'" :closable="false" />
         <div class="text-sm">已选 {{ selected.length }} 镜<span v-if="preview"> · 可导出 {{ preview.accepted }} · 无视频 {{ preview.missing }} · 不可导出 {{ preview.blocked }} · 视频大小 {{ exportBytes(preview.knownBytes) }}</span></div>
         <el-table :data="preview?.items || []" height="300" size="small" empty-text="选择范围后点击检查">
           <el-table-column label="镜头" min-width="180"><template #default="{ row }"><div>{{ row.name }}</div><div class="text-xs text-[var(--text-muted)]">{{ row.episodeName }} / {{ row.sceneName }} / {{ row.groupName }}</div></template></el-table-column>
@@ -20,7 +21,7 @@
         </el-table>
       </section>
     </div>
-    <template #footer><el-button @click="visible = false">关闭</el-button><el-button :disabled="!selected.length || submitting" :loading="checking" @click="check">检查</el-button><el-button type="primary" :disabled="!canSubmit" :loading="submitting" @click="submit">生成 ZIP（{{ preview?.accepted || 0 }} 个视频）</el-button></template>
+    <template #footer><el-button @click="visible = false">关闭</el-button><el-button :disabled="!selected.length || submitting" :loading="checking" @click="check">检查</el-button><el-button type="primary" :disabled="!canSubmit" :loading="submitting" @click="submit">{{ concatVideos ? '生成拼接 MP4' : '生成 ZIP' }}（{{ preview?.accepted || 0 }} 个视频）</el-button></template>
   </el-dialog>
   <el-dialog v-model="historyVisible" title="视频打包历史" width="min(850px, 94vw)" append-to-body><el-table :data="history" v-loading="historyLoading"><el-table-column prop="name" label="任务" min-width="200" /><el-table-column label="状态" width="120"><template #default="{ row }">{{ exportLabels[row.status] }}</template></el-table-column><el-table-column prop="createdAt" label="创建时间" width="190" /><el-table-column width="90"><template #default="{ row }"><el-button link type="primary" @click="details?.open(String(row.id))">详情</el-button></template></el-table-column></el-table><el-pagination v-model:current-page="historyPage" :page-size="20" :total="historyTotal" layout="total,prev,pager,next" @current-change="loadHistory" /></el-dialog>
   <ShotVideoExportDrawer ref="details" />
@@ -33,12 +34,13 @@ import type { DramaOption } from '@/types/drama'
 import { videoExportApi, exportLabels, exportBytes, type ExportNode, type ExportPreview, type ExportRequest, type ExportTask } from '@/api/shot-video-export'
 import ShotVideoExportDrawer from './ShotVideoExportDrawer.vue'
 const visible = ref(false), loading = ref(false), checking = ref(false), submitting = ref(false), dramaId = ref(''), name = ref(''), filter = ref(''), skipMissing = ref(true)
+const concatVideos = ref(false)
 const dramas = ref<DramaOption[]>([]), nodes = ref<ExportNode[]>([]), selected = ref<string[]>([]), tree = ref<InstanceType<typeof ElTree>>(), preview = ref<ExportPreview | null>(null), details = ref<InstanceType<typeof ShotVideoExportDrawer>>()
 const historyVisible = ref(false), historyLoading = ref(false), history = ref<ExportTask[]>([]), historyPage = ref(1), historyTotal = ref(0)
 let version = 0, requestId = '', pending: ExportRequest | null = null
 const canSubmit = computed(() => !!preview.value?.accepted && !preview.value.blocked && (skipMissing.value || !preview.value.missing) && !checking.value && !loading.value)
 function invalidate() { version++; preview.value = null; pending = null; requestId = crypto.randomUUID() }
-watch([name, skipMissing], invalidate, { flush: 'sync' })
+watch([name, skipMissing, concatVideos], invalidate, { flush: 'sync' })
 watch(filter, value => tree.value?.filter(value))
 function filterNode(value: string, data: Record<string, any>) { return !value || String(data.searchText).toLowerCase().includes(value.toLowerCase()) }
 function selectionChanged() { selected.value = (tree.value?.getCheckedNodes(false, false) || []).filter(n => n.type === 'SHOT').map(n => String(n.id)); invalidate() }
@@ -51,12 +53,12 @@ async function loadTree() {
   catch (e: any) { ElMessage.error(e.message || '读取分镜失败') } finally { if (id === dramaId.value) loading.value = false }
 }
 async function open(id?: string | number) {
-  visible.value = true; name.value = ''; skipMissing.value = true
+  visible.value = true; name.value = ''; skipMissing.value = true; concatVideos.value = false
   try { dramas.value = await dramaApi.getOptions(); dramaId.value = id == null ? String(dramas.value[0]?.id || '') : String(id); await loadTree() } catch (e: any) { ElMessage.error(e.message || '读取短剧失败') }
 }
 async function check() {
   const current = version; checking.value = true
-  const request: ExportRequest = { dramaId: dramaId.value, name: name.value.trim() || undefined, shotIds: [...selected.value], missingVideoPolicy: skipMissing.value ? 'SKIP' : 'FAIL' }
+  const request: ExportRequest = { dramaId: dramaId.value, name: name.value.trim() || undefined, shotIds: [...selected.value], missingVideoPolicy: skipMissing.value ? 'SKIP' : 'FAIL', concatVideos: concatVideos.value }
   try { const result = await videoExportApi.preview(request); if (current !== version) return; preview.value = result; pending = { ...request, shotIds: result.shotIds, expectedPreviewHash: result.previewHash, clientRequestId: requestId } }
   catch (e: any) { ElMessage.error(e.message || '检查失败') } finally { checking.value = false }
 }

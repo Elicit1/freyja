@@ -3,13 +3,14 @@
     <div v-if="task" class="space-y-4">
       <div class="flex justify-between items-center gap-3">
         <el-tag>{{ exportLabels[task.status] || task.status }}</el-tag>
-        <div class="flex gap-2"><el-button v-if="active" type="danger" plain :loading="busy" @click="cancel">取消打包</el-button><el-button v-if="['FAILED', 'PARTIAL_SUCCESS'].includes(task.status)" :loading="busy" @click="retry">按原快照重试</el-button><el-button type="primary" :disabled="!task.downloadAvailable" :loading="downloading" @click="download">下载 ZIP</el-button></div>
+        <div class="flex gap-2"><el-button v-if="active" type="danger" plain :loading="busy" @click="cancel">取消打包</el-button><el-button v-if="['FAILED', 'PARTIAL_SUCCESS'].includes(task.status)" :loading="busy" @click="retry">按原快照重试</el-button><el-button type="primary" :disabled="!task.downloadAvailable" :loading="downloading" @click="download">{{ task.concatVideos ? '下载拼接 MP4' : '下载 ZIP' }}</el-button></div>
       </div>
       <el-progress :percentage="task.progress" />
+      <div class="text-sm">导出方式：{{ task.concatVideos ? '按剧作顺序拼接为单个 MP4' : '原视频 ZIP（不拼接）' }}</div>
       <div class="text-sm">{{ task.currentStage }} · 已读取 {{ exportBytes(task.bytesRead) }}</div>
       <div class="text-sm">已处理 {{ task.processed }}/{{ task.total }} · 成功 {{ task.succeeded }} · 失败 {{ task.failed }} · 跳过 {{ task.skipped }}</div>
       <el-alert v-if="task.errorMessage" type="error" :title="task.errorMessage" :closable="false" />
-      <el-alert v-if="task.status === 'PARTIAL_SUCCESS'" type="warning" title="部分镜头缺失或读取失败，ZIP 中包含失败清单，成功视频可正常下载。" :closable="false" />
+      <el-alert v-if="task.status === 'PARTIAL_SUCCESS'" type="warning" :title="task.concatVideos ? '部分镜头缺失或读取失败，拼接视频仅包含成功镜头，请核对下方明细。' : '部分镜头缺失或读取失败，ZIP 中包含失败清单，成功视频可正常下载。'" :closable="false" />
       <div v-if="task.expiresAt" class="text-sm text-[var(--text-secondary)]">{{ task.filename }} · {{ exportBytes(task.size) }} · 保留至 {{ task.expiresAt.replace('T', ' ') }}<span v-if="!task.downloadAvailable">（产物已过期）</span></div>
       <el-table :data="items" size="small" v-loading="loading">
         <el-table-column prop="executionOrder" label="顺序" width="65" />

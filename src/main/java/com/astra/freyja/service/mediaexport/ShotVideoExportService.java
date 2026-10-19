@@ -37,7 +37,7 @@ public class ShotVideoExportService {
     public Task create(Request request){
         if(request==null)throw new BizException(400,"导出请求不能为空");
         enabled();validRequestId(request.getClientRequestId());
-        String hash=ShotVideoExportSelection.hash(selection.write(Arrays.asList(request.getDramaId(),request.getName(),request.getMissingVideoPolicy(),request.getShotIds()==null?null:request.getShotIds().stream().sorted().toList(),request.getSelection())));
+        String hash=ShotVideoExportSelection.hash(selection.write(Arrays.asList(request.getDramaId(),request.getName(),request.getMissingVideoPolicy(),request.getShotIds()==null?null:request.getShotIds().stream().sorted().toList(),request.getSelection(),request.isConcatVideos())));
         Task previous=store.byRequest(request.getClientRequestId());if(previous!=null)return same(previous,hash);
         Preview checked=selection.preview(request);
         if(!Objects.equals(checked.getPreviewHash(),request.getExpectedPreviewHash()))throw new BizException(409,"预检结果已变化，请重新检查");
@@ -48,18 +48,19 @@ public class ShotVideoExportService {
         Long id=tx.execute(status->{store.lock();Task old=store.byRequest(request.getClientRequestId());if(old!=null)return same(old,hash).getId();
             selection.lock(request,checked.getShotIds());Preview current=selection.prepare(request,snapshots);
             if(!Objects.equals(current.getPreviewHash(),request.getExpectedPreviewHash()))throw new BizException(409,"镜头或绑定视频已变化，请重新检查");
-            Task task=newTask(request.getClientRequestId(),hash,current.getItems(),request.getName(),null);store.insert(task,current.getItems());return task.getId();});
+            Task task=newTask(request.getClientRequestId(),hash,current.getItems(),request.getName(),null,request.isConcatVideos());store.insert(task,current.getItems());return task.getId();});
         publish(id);events.publishEvent(new QueueChanged());return detail(id);
     }
-    private Task newTask(String request,String hash,List<Item> items,String name,Long retryOf){
-        Task task=new Task();task.setId(IdWorker.getId());task.setDramaId(items.getFirst().getSnapshot().getDramaId());task.setDramaTitle(items.getFirst().getSnapshot().getDramaTitle());task.setName(StringUtils.abbreviate(StringUtils.defaultIfBlank(name,task.getDramaTitle()+" · 视频打包下载"),200));task.setRequestId(request);task.setRequestHash(hash);task.setRetryOfTaskId(retryOf);task.setCreatedAt(LocalDateTime.now());task.setFilename(ShotVideoExportSelection.safe(task.getDramaTitle(),80)+"_"+task.getId()+".zip");
+    private Task newTask(String request,String hash,List<Item> items,String name,Long retryOf,boolean concatVideos){
+        Task task=new Task();task.setId(IdWorker.getId());task.setDramaId(items.getFirst().getSnapshot().getDramaId());task.setDramaTitle(items.getFirst().getSnapshot().getDramaTitle());task.setName(StringUtils.abbreviate(StringUtils.defaultIfBlank(name,task.getDramaTitle()+" · 视频打包下载"),200));task.setRequestId(request);task.setRequestHash(hash);task.setRetryOfTaskId(retryOf);task.setCreatedAt(LocalDateTime.now());
+        task.setConcatVideos(concatVideos);task.setFilename(ShotVideoExportSelection.safe(task.getDramaTitle(),80)+"_"+task.getId()+(concatVideos?".mp4":".zip"));
         items.forEach(i->{i.setId(IdWorker.getId());i.setTaskId(task.getId());i.setStatus(i.getSnapshot().getStatus());});return task;
     }
     public Task retry(Long id,String requestId){
         enabled();validRequestId(requestId);String hash=ShotVideoExportSelection.hash("retry:"+id);
         Long created=tx.execute(status->{store.lock();Task old=store.byRequest(requestId);if(old!=null)return same(old,hash).getId();Task source=detail(id);
             if(!Set.of("FAILED","PARTIAL_SUCCESS").contains(source.getStatus()))throw new BizException(409,"仅失败或部分成功的任务支持按原快照重试");
-            List<Item> items=store.items(id);Task task=newTask(requestId,hash,items,source.getName()+" · 重试",id);store.insert(task,items);return task.getId();});
+            List<Item> items=store.items(id);Task task=newTask(requestId,hash,items,source.getName()+" · 重试",id,source.isConcatVideos());store.insert(task,items);return task.getId();});
         publish(created);events.publishEvent(new QueueChanged());return detail(created);
     }
     private Task same(Task task,String hash){if(!Objects.equals(task.getRequestHash(),hash))throw new BizException(409,"同一请求标识的导出内容不一致");return decorate(task);}
@@ -83,17 +84,18 @@ public class ShotVideoExportService {
     public boolean runNext(){
         Task task=tx.execute(status->{store.lock();return store.claim();});if(task==null)return false;
         AtomicBoolean active=new AtomicBoolean(true);running.put(task.getId(),new Execution(active,Thread.currentThread()));publish(task.getId());
-        ShotVideoExportArchiveService.Artifact artifact=null;String key="shot-video-exports/"+task.getId()+"/"+task.getAttemptToken()+"/package.zip";
+        ShotVideoExportArchiveService.Artifact artifact=null;String key="shot-video-exports/"+task.getId()+"/"+task.getAttemptToken()+(task.isConcatVideos()?"/merged.mp4":"/package.zip");
         AtomicLong lastPush=new AtomicLong(),bytes=new AtomicLong();AtomicInteger processed=new AtomicInteger(task.getProcessed());
+        AtomicReference<String> lastStage=new AtomicReference<>();
         try{
             // Cancellation may have committed between claiming and local registration.
             if(!store.active(task.getId(),task.getAttemptToken()))active.set(false);
             artifact=archive.build(task,store.items(task.getId()),active::get,(read,name)->{
-                bytes.set(read);long now=System.nanoTime();if(now-lastPush.get()>1_000_000_000L){lastPush.set(now);if(!store.progress(task,"已处理 "+processed.get()+"/"+task.getTotal()+" · 当前 "+name,read,Math.min(90,processed.get()*90/Math.max(1,task.getTotal()))))active.set(false);publish(task.getId());}
+                bytes.set(read);long now=System.nanoTime();if(!Objects.equals(name,lastStage.get())||now-lastPush.get()>1_000_000_000L){lastPush.set(now);lastStage.set(name);if(!store.progress(task,"已处理 "+processed.get()+"/"+task.getTotal()+" · 当前 "+name,read,Math.min(90,processed.get()*90/Math.max(1,task.getTotal()))))active.set(false);publish(task.getId());}
             },item->{store.result(task,item,item.getStatus(),item.getSize(),item.getChecksum(),item.getErrorMessage());processed.incrementAndGet();store.progress(task,"已处理 "+processed.get()+"/"+task.getTotal()+" 个视频",bytes.get(),Math.min(90,processed.get()*90/Math.max(1,task.getTotal())));publish(task.getId());});
             if(!active.get()||!store.uploading(task,key))throw new CancellationException();publish(task.getId());
-            archive.upload(key,artifact.zip());
-            if(!store.finish(task,Files.size(artifact.zip()),LocalDateTime.now().plusHours(properties.getRetentionHours())))archive.remove(key);
+            archive.upload(key,artifact.file());
+            if(!store.finish(task,Files.size(artifact.file()),LocalDateTime.now().plusHours(properties.getRetentionHours())))archive.remove(key);
         }catch(CancellationException e){archive.remove(key);}
         catch(Exception e){archive.remove(key);store.fail(task,"视频打包失败："+StringUtils.defaultIfBlank(e.getMessage(),"请查看服务日志"));log.warn("视频打包失败 task={}",task.getId(),e);}
         finally{running.remove(task.getId());if(artifact!=null)archive.cleanup(artifact.directory());tx.executeWithoutResult(status->{store.lock();store.release(task);});Thread.interrupted();publish(task.getId());}

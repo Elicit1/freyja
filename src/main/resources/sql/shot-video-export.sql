@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS shot_video_export_task (
  request_id VARCHAR(80) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
  request_hash VARCHAR(64) NOT NULL,
  retry_of_task_id BIGINT NULL,
+ concat_videos TINYINT(1) NOT NULL DEFAULT 0,
  status VARCHAR(32) NOT NULL DEFAULT 'QUEUED',
  attempt_token VARCHAR(40) NULL,
  revision INT NOT NULL DEFAULT 1,

@@ -114,7 +114,7 @@ public class ShotVideoExportSelection {
         }
         result.setItems(items);result.setShotIds(items.stream().map(Item::getShotId).toList());
         result.setAccepted((int)items.stream().filter(i->"READY".equals(i.getStatus())).count());result.setMissing((int)items.stream().filter(i->"MISSING_VIDEO".equals(i.getStatus())).count());result.setBlocked(items.size()-result.getAccepted()-result.getMissing());result.setKnownBytes(items.stream().filter(i->"READY".equals(i.getStatus())).map(Item::getSourceSize).filter(Objects::nonNull).mapToLong(Long::longValue).sum());
-        result.setPreviewHash(hash(write(Arrays.asList(req.getDramaId(),req.getMissingVideoPolicy(),req.getName(),items.stream().map(Item::getSnapshot).toList()))));return result;
+        result.setPreviewHash(hash(write(Arrays.asList(req.getDramaId(),req.getMissingVideoPolicy(),req.getName(),items.stream().map(Item::getSnapshot).toList(),req.isConcatVideos()))));return result;
     }
     public void lock(Request req,List<Long> ids){
         dramas.selectOne(new LambdaQueryWrapper<Drama>().eq(Drama::getId,req.getDramaId()).last("FOR UPDATE"));

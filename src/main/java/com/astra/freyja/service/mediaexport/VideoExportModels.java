@@ -16,6 +16,7 @@ public final class VideoExportModels {
         private List<Long> shotIds;
         private Selection selection;
         private String missingVideoPolicy = "SKIP";
+        private boolean concatVideos;
         private String clientRequestId;
         private String expectedPreviewHash;
     }
@@ -60,6 +61,7 @@ public final class VideoExportModels {
         private Long size;
         private LocalDateTime createdAt, startedAt, finishedAt, expiresAt;
         private boolean downloadAvailable;
+        private boolean concatVideos;
         @JsonIgnore private String requestId, requestHash, attemptToken, objectKey;
     }
     public record Page<T>(List<T> records, long total, int current, int size) {}
