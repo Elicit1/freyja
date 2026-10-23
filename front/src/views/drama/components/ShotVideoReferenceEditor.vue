@@ -1,23 +1,21 @@
 <template>
-  <section class="border border-violet-200 rounded-xl p-4 space-y-3 bg-violet-50/20">
-    <div class="flex flex-wrap justify-between items-center gap-2">
-      <strong class="text-sm text-violet-950">参考视频（{{ modelValue.length }}{{ countLimit == null ? ' 段' : ` / ${countLimit} 段` }}）</strong>
-      <div class="flex flex-wrap gap-2">
+  <section class="space-y-2 pt-2 border-t border-sky-100">
+    <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+      <span class="font-bold text-gray-700">参考视频列表 ({{ modelValue.length }}{{ countLimit == null ? '' : ` / ${countLimit}` }}):</span>
+      <div class="flex flex-wrap items-center justify-end gap-2">
         <el-upload :show-file-list="false" :before-upload="upload" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" :disabled="!canAdd || uploading">
-          <el-button size="small" :loading="uploading" :disabled="!canAdd">上传视频</el-button>
+          <el-button size="small" type="primary" plain :loading="uploading" :disabled="!canAdd">上传视频</el-button>
         </el-upload>
-        <el-button size="small" :disabled="!canAdd" @click="materialPicker?.open(dramaId)">从视频素材库选择</el-button>
-        <el-button size="small" :disabled="!canAdd" @click="picker?.open(dramaId)">选择分镜 / 历史 Take</el-button>
+        <el-button size="small" type="primary" plain :disabled="!canAdd" @click="materialPicker?.open(dramaId)">+ 从视频素材库选取</el-button>
       </div>
     </div>
-    <p class="text-xs text-slate-500">目标生成 {{ targetDuration || '待设置' }} 秒；每段参考范围独立设置。{{ countLimit == null ? '参考数量以渲染工坊所选模型配置为准。' : `当前模型允许最多 ${countLimit} 段参考视频。` }}</p>
-    <el-alert v-if="notice" :title="notice" type="info" :closable="false" />
+    <p v-if="notice" class="text-xs text-slate-500">{{ notice }}</p>
     <el-alert v-if="countLimit != null && modelValue.length > countLimit" :title="`已有 ${modelValue.length} 段视频，超过当前模型配置的 ${countLimit} 段；请移除多余引用或更换模型。`" type="warning" :closable="false" />
-    <el-collapse v-if="modelValue.length" v-model="expanded">
-      <el-collapse-item v-for="(item, index) in modelValue" :key="item.id" :name="item.id">
+    <el-collapse v-if="modelValue.length" v-model="expanded" class="reference-video-list !border-0 space-y-2">
+      <el-collapse-item v-for="(item, index) in modelValue" :key="item.id" :name="item.id" class="border border-slate-200 rounded-lg overflow-hidden bg-white">
         <template #title>
           <div class="flex flex-wrap items-center gap-2 flex-1 pr-3 text-xs">
-            <strong class="text-violet-800">Video {{ index + 1 }}</strong>
+            <strong class="font-mono text-sky-700 bg-sky-100 px-1.5 py-0.5 rounded text-[11px]">Video {{ index + 1 }}</strong>
             <span class="truncate max-w-52">{{ item.name || '视频参考' }}</span>
             <span class="text-slate-500">{{ item.startSeconds ?? 0 }} ～ {{ item.endSeconds ?? '源片结尾' }} 秒</span>
             <div class="ml-auto flex gap-1" @click.stop @keydown.stop>
@@ -47,8 +45,7 @@
     <el-button v-if="modelValue.length && purpose !== 'prompt'" size="small" type="primary" plain :disabled="disabled || countLimit != null && modelValue.length > countLimit" :loading="preparing" @click="emit('prepare')">{{ purpose === 'draft' ? '保存并进入渲染工坊' : '保存并预检全部参考片段' }}</el-button>
     <el-alert v-if="preflight?.status === 'READY'" title="全部片段已准备完成。生成前还会检查模型与视频版本。" type="success" :closable="false" />
     <el-alert v-if="preflight?.errorMessage" :title="preflight.errorMessage" type="error" :closable="false" />
-    <p v-if="!modelValue.length" class="text-center text-xs text-slate-400 py-3">可上传视频、从视频素材库选择或选用当前短剧已生成的视频版本。</p>
-    <ShotVideoPickerDialog ref="picker" @selected="selectSource" />
+    <div v-if="!modelValue.length" class="text-center py-4 text-xs text-gray-400 bg-gray-50 rounded border border-dashed border-gray-200">暂未绑定参考视频，点击上方按钮上传或从视频素材库选取</div>
     <VideoMaterialPickerDialog ref="materialPicker" @selected="selectMaterial" />
   </section>
 </template>
@@ -62,7 +59,6 @@ import VideoMaterialPickerDialog from '@/views/assets/components/VideoMaterialPi
 import type { VideoProbeInfoVO } from '@/api/videoProcessing'
 import { shotVideoReferenceApi } from '@/api/shot-video-reference'
 import type { ShotRefVideo, ShotVideoModelOption, VideoReferencePreflight } from '@/types/drama'
-import ShotVideoPickerDialog, { type SelectedVideoProcessSource } from '@/views/production/components/ShotVideoPickerDialog.vue'
 
 const props = defineProps<{ modelValue: ShotRefVideo[]; shotId?: string; dramaId?: string | number; providerId?: string; modelCode?: string; maxVideos?: number; option?: ShotVideoModelOption; targetDuration?: number; contextFingerprint?: string; purpose?: 'render' | 'draft' | 'prompt'; disabled?: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', value: ShotRefVideo[]): void; (e: 'prepare'): void; (e: 'prepared', value?: VideoReferencePreflight): void }>()
@@ -73,10 +69,9 @@ const countLimit = computed(() => {
 const canAdd = computed(() => !props.disabled && (countLimit.value == null || props.modelValue.length < countLimit.value))
 const notice = computed(() => {
   if (props.purpose === 'prompt') return '请为各段视频填写参考说明。AI 将结合片段范围和说明生成 <Video N> 引用；当前提示词生成使用文字说明，不会自动识别视频内容。确认采纳时，视频配置与提示词一起保存。'
-  if (props.purpose === 'draft') return '在此添加视频、设置片段范围和参考说明后保存；进入渲染工坊选择模型并预检。引用数量以所选模型配置为准。'
+  if (props.purpose === 'draft') return ''
   return props.option?.reason || (!props.option ? '请选择模型；素材可保存为草稿，视频生成能力须完成验证后启用。' : '')
 })
-const picker = ref<InstanceType<typeof ShotVideoPickerDialog>>()
 const materialPicker = ref<InstanceType<typeof VideoMaterialPickerDialog>>()
 const expanded = ref<string[]>([])
 const players = new Map<string, HTMLVideoElement>()
@@ -102,13 +97,6 @@ function append(item: ShotRefVideo) {
   if (!canAdd.value) { ElMessage.warning('参考视频数量已达到当前模型配置上限'); return }
   if (props.modelValue.some(existing => existing.id === item.id)) item = { ...item, id: `video_${crypto.randomUUID()}` }
   emit('update:modelValue', [...props.modelValue, item])
-}
-function selectSource(source: SelectedVideoProcessSource) {
-  if (!canAdd.value) return
-  if (props.dramaId && source.sourceDramaId !== String(props.dramaId)) { ElMessage.warning('请选择当前短剧的视频'); return }
-  append({ id: `video_${crypto.randomUUID()}`, name: source.shotName || '分镜视频', sourceType: source.sourceType,
-    sourceShotId: String(source.sourceShotId), sourceVideoTakeId: source.sourceType === 'SHOT_VIDEO_TAKE' && source.sourceVideoTakeId ? String(source.sourceVideoTakeId) : undefined,
-    startSeconds: 0, includeAudio: false })
 }
 function selectMaterial(video: ResVideo) {
   if (!canAdd.value) return
@@ -171,3 +159,16 @@ async function prepare() {
 onBeforeUnmount(() => { alive = false; revision++; probeVersions.clear() })
 defineExpose({ prepare })
 </script>
+
+<style scoped>
+.reference-video-list :deep(.el-collapse-item__header) {
+  padding: 0 12px;
+  border-bottom: 0;
+}
+.reference-video-list :deep(.el-collapse-item__wrap) {
+  border-bottom: 0;
+}
+.reference-video-list :deep(.el-collapse-item__content) {
+  padding-bottom: 0;
+}
+</style>

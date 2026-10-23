@@ -526,19 +526,7 @@
             <h4 class="text-sm font-bold text-sky-950 flex items-center gap-1.5">
               <span>🖼️</span> 图片、视频与音频参考资产
             </h4>
-            <span class="text-xs text-sky-700">参考视频数量与生成限制以渲染工坊所选模型配置为准</span>
           </div>
-
-          <ShotVideoReferenceEditor
-            :model-value="form.refVideos || []"
-            :shot-id="form.id != null ? String(form.id) : undefined"
-            :drama-id="form.dramaId"
-            :target-duration="form.duration"
-            :disabled="saving || loading || rendering"
-            purpose="draft"
-            @update:model-value="form.refVideos = $event"
-            @prepare="handleRender"
-          />
 
           <!-- 1. 参考图列表 -->
           <div class="space-y-2">
@@ -670,6 +658,19 @@
               </div>
             </div>
           </div>
+
+          <!-- 3. 参考视频列表 -->
+          <ShotVideoReferenceEditor
+              :model-value="form.refVideos || []"
+              :shot-id="form.id != null ? String(form.id) : undefined"
+              :drama-id="form.dramaId"
+              :target-duration="form.duration"
+              :disabled="saving || loading || rendering"
+              purpose="draft"
+              @update:model-value="form.refVideos = $event"
+              @prepare="handleRender"
+          />
+
         </div>
 
         <div v-if="form.generationMode !== 'REFERENCE_MODE' && form.refVideos?.length" class="border border-violet-200 rounded-xl p-3 text-xs space-y-2 mt-3">

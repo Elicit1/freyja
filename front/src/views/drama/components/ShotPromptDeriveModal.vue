@@ -86,16 +86,6 @@
           :disabled="isStreaming"
         />
 
-      <ShotVideoReferenceEditor
-        v-if="generationMode === 'REFERENCE_MODE'"
-        :model-value="draft.refVideos || []"
-        :shot-id="currentShotContext?.id != null ? String(currentShotContext.id) : undefined"
-        :drama-id="currentShotContext?.dramaId"
-        :target-duration="currentShotContext?.duration"
-        :disabled="isStreaming || isExportingPackage || isParsingResult || preparingGeneration || isApplying || restoringTask || restoredTaskRunning"
-        purpose="prompt"
-        @update:model-value="updateReferenceVideos"
-      />
       <!-- 二、参考图槽位 (Picture 1..N) 与 三、参考音频槽位 (Audio 1..N) -->
         <ReferenceMediaSlots
           v-model:ref-images="draft.refImages"
@@ -107,6 +97,17 @@
           :disabled="isStreaming || isExportingPackage"
           @change="handleReferenceMediaChange"
         />
+
+      <ShotVideoReferenceEditor
+        v-if="generationMode === 'REFERENCE_MODE'"
+        :model-value="draft.refVideos || []"
+        :shot-id="currentShotContext?.id != null ? String(currentShotContext.id) : undefined"
+        :drama-id="currentShotContext?.dramaId"
+        :target-duration="currentShotContext?.duration"
+        :disabled="isStreaming || isExportingPackage || isParsingResult || preparingGeneration || isApplying || restoringTask || restoredTaskRunning"
+        purpose="prompt"
+        @update:model-value="updateReferenceVideos"
+      />
 
         <SkillSelector
           v-model="skillNames"
