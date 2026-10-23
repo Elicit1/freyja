@@ -104,6 +104,8 @@ public class VideoRenderBatchService {
         return VideoBatchPreparation.hash(preparation.write(Arrays.asList(r.getDramaId(),r.getName(),r.getShotIds()==null?null:r.getShotIds().stream().sorted().toList(),r.getSelection(),r.getAspectRatio(),r.getSize(),r.getExistingVideoPolicy(),r.getModeConfigs()==null?Map.of():new TreeMap<>(r.getModeConfigs()),r.getRetryOfBatchId(),r.getInputSource())));
     }
     public ComfyRenderTaskVO enqueueSingle(Long id,DramaShotRenderRequestDTO request) {
+        if(request!=null&&(request.getResolvedRefVideos()!=null||request.getReferenceVideoRevision()!=null||request.getReferenceVideoNodeId()!=null))
+            throw new BizException(400,"请仅提交 preflightId，参考视频快照必须由服务端生成");
         String task=tx.execute(s->{
             store.lockQueue();DramaShot shot=shots.lockById(id);if(shot==null)throw new BizException(404,"分镜不存在");
             if(store.occupied(id)||renders.selectCount(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getShotId,id).eq(RenderTask::getTaskType,"SHOT_VIDEO").in(RenderTask::getStatus,"QUEUED","RENDERING"))>0)throw new BizException(409,"分镜已有排队、渲染中或待核实任务");
@@ -135,7 +137,8 @@ public class VideoRenderBatchService {
         shots.update(null,new UpdateWrapper<DramaShot>().eq("id",i.getShotId()).set("latest_task_id",i.getTaskId()).set("render_status","QUEUED"));
         renderTasks.createTask(RenderTaskVO.builder().taskId(i.getTaskId()).taskType("SHOT_VIDEO").taskName(i.getName()+" 视频渲染")
                 .dramaId(snap.getShot().getDramaId()).episodeId(snap.getShot().getEpisodeId()).sceneId(snap.getShot().getSceneId()).shotGroupId(snap.getShot().getShotGroupId()).shotId(i.getShotId())
-                .providerId(snap.getRequest().getProviderId()).modelCode(snap.getRequest().getWorkflowTemplateId()).prompt(snap.getRequest().getPrompt()).negativePrompt(snap.getShot().getNegativePrompt()).status("QUEUED").progress(0).currentNode("等待全局串行渲染队列").build());
+                .providerId(snap.getRequest().getProviderId()).modelCode(snap.getRequest().getWorkflowTemplateId()).prompt(snap.getRequest().getPrompt()).negativePrompt(snap.getShot().getNegativePrompt())
+                .requestSnapshotJson(com.astra.freyja.util.VideoReferenceSnapshotJson.write(snap.getRequest(),json)).status("QUEUED").progress(0).currentNode("等待全局串行渲染队列").build());
     }
     public boolean owns(String taskId){return store.task(taskId)!=null;}
     public Long batchForTask(String taskId){Item i=store.task(taskId);return i==null?null:i.getBatchId();}

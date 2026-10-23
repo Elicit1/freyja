@@ -3,6 +3,37 @@
   "source": "FREYJA published system Skills and repository-authored Skills",
   "skills": [
     {
+      "name": "freyja-music-video",
+      "displayName": "音乐驱动画面制作",
+      "description": "在 FREYJA 中根据给定音乐、歌曲或带台词音频规划并制作画面。用于音乐段落与分镜对应、节奏和运镜设计、H3 帧数与音频时长核对、音轨复制与对嘴验收；不用于单独作曲或普通角色音色设计。",
+      "source": "repository:skills/freyja-music-video",
+      "sourceRevision": null,
+      "package": "freyja-music-video.zip",
+      "sha256": "19384d34d320d6418a5cbf96c50072b1d56a19439274102ec82c3fcc7747e802",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "6a07d039dbb8c343032f2418eed04cb51a0c59951a87cad8d12be45cd9706555",
+          "size": 4616
+        },
+        {
+          "path": "references/h3-sync.md",
+          "sha256": "ee3ef30794a39ebc158a3ab7cfd1d26ac2df0bb6de4c0e03099789f100fd72a9",
+          "size": 6624
+        },
+        {
+          "path": "references/music-planning.md",
+          "sha256": "f9a8c7b3aeb4a3f4f7c15d879ddd7bd301eb8683a67dd2254c6dbb8d4f739ab5",
+          "size": 5559
+        },
+        {
+          "path": "references/platform-workflow.md",
+          "sha256": "2c3d56680a762b1be2d0a42b76b39aa5ac006c6e83791f6ebd899817fcdf7440",
+          "size": 6531
+        }
+      ]
+    },
+    {
       "name": "story-writing",
       "displayName": "故事创作与自审",
       "description": "原创、续写、改编与剧情重写前设计故事，以具体情节自审人物动机、剧情因果、信息逻辑、伏笔回收和连续性，修稿后再通过 MCP 保存。",
@@ -136,31 +167,31 @@
     {
       "name": "freyja-platform-guide",
       "displayName": "FREYJA 平台使用指南",
-      "description": "平台业务架构、叙事层级、视觉参考、配音中心、声音克隆与FFmpeg特效。",
+      "description": "FREYJA 平台创作、叙事层级、视觉参考、配音与声音空间指南，引导读取运镜拆镜和音乐画面制作 Skill。",
       "source": "repository:skills/freyja-platform-guide",
       "sourceRevision": null,
       "package": "freyja-platform-guide.zip",
-      "sha256": "3c07e9372a6410dd518df2fd93b0a4374432220b48407f123a1ca68b2890c2c3",
+      "sha256": "7c3d34b4867b3de9aa181c2b89d615f67752a3f19c0e757327512ce08dde01b9",
       "files": [
         {
-          "path": "SKILL.md",
-          "sha256": "e8e63ab962842e235c773327f11a890a8ef9f5c1f7aaf5a9a7201af4ea088cb1",
-          "size": 65544
-        },
-        {
           "path": "references/architecture.md",
-          "sha256": "e0e66bb838f476496dbe5a4928bb707a6656b97dee4d2c810b8631ce9f3ca1d2",
-          "size": 10181
+          "sha256": "c0e5a84c7f52a91167dc6fa67fcae1b8f5c037250e96521e20c0b88d235843c2",
+          "size": 10261
         },
         {
           "path": "references/dubbing-center.md",
-          "sha256": "07e4a11907c6700179c2f61583592093d13a74f3960e23b67781ff73da9a235c",
-          "size": 11444
+          "sha256": "c43181c2bca62cce5cb3f74cd8692f5104263c9c9f749e382e14503ffecd5080",
+          "size": 11516
         },
         {
           "path": "references/h3-integration.md",
-          "sha256": "a85e253f9d5b94cae89f025f976b05a85eff4d9a023c6a88c806bcdd0ba69264",
-          "size": 8847
+          "sha256": "eebc5bbe12b2b7be62d08abc19108d86083be52f11045fa361164a01f27832ad",
+          "size": 9543
+        },
+        {
+          "path": "references/reference-video.md",
+          "sha256": "58450a3b4d2d14473bbbd347ab90076a95551d9ec36e59298a4955ccacc7e717",
+          "size": 2789
         },
         {
           "path": "references/sound-design.md",
@@ -169,13 +200,18 @@
         },
         {
           "path": "references/storyboard-workflow.md",
-          "sha256": "8b69886a5a5ca867ae9ec2c9a903b278606ff1144e38a589eb5b255f04bad9e8",
-          "size": 24672
+          "sha256": "0a0a0f6b89639c927645041cfd7d05d8db33b3a07967806b1a71111e4faa9e37",
+          "size": 25237
         },
         {
           "path": "references/visual-references.md",
-          "sha256": "2aaecbaae0b907488967395acf787910cf54197c6b897e24358d6d209be49618",
-          "size": 56445
+          "sha256": "176eca4442a8967d01884b4830a4df15346a3269b76be6d846fbd1636d9150df",
+          "size": 56930
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "bf1c28307dff702442093788d98080211228ec2c7afc66250fe5ff93e6cc3718",
+          "size": 71365
         }
       ]
     },
@@ -206,6 +242,47 @@
           "path": "references/ref-en.txt",
           "sha256": "1e574f356716ad55612247ffb7bbccbcdb484ad96599d63c7dca1af186b1fab7",
           "size": 23553
+        }
+      ]
+    },
+    {
+      "name": "minimax-h3-camera",
+      "displayName": "MiniMax H3 运镜与拆镜",
+      "description": "基于 Seedance 运镜方法本地化的 H3 机位、摄影路径、起落幅、自然拆镜和镜间连续性指导。",
+      "source": "repository:skills/minimax-h3-camera",
+      "sourceRevision": null,
+      "package": "minimax-h3-camera.zip",
+      "sha256": "f7374d4c66597b435e3eb17463b4ff2113b03dfdbfc743ae24d1b9e6c529fbf8",
+      "files": [
+        {
+          "path": "LICENSE",
+          "sha256": "c84a6216f6e006b4e4a65e9d056837a61ee9c4ca79f43f386df2992bc690a7f6",
+          "size": 1085
+        },
+        {
+          "path": "SKILL.md",
+          "sha256": "14f933a8c4768542355dcaa273153213dd6df8de21322ff3636425321324b173",
+          "size": 6489
+        },
+        {
+          "path": "references/camera-language.md",
+          "sha256": "098cadca7e57f3d31c5bd7f6ce72ade57d159c1a692c6b068c3868b9626e30b8",
+          "size": 6248
+        },
+        {
+          "path": "references/h3-mapping.md",
+          "sha256": "fa9e6895ccb49b8385a14749fa6f93a8a647b1ae2ae3cfa4a48fc5e7aa136d0b",
+          "size": 8894
+        },
+        {
+          "path": "references/shot-planning.md",
+          "sha256": "34d738a0d955dfbef18f8ae6a15bb41602975a600bc873f0c63ec50bfe75b1b9",
+          "size": 6434
+        },
+        {
+          "path": "references/sources.md",
+          "sha256": "bd3191058cbca5176197f3aca0a93c2146016decc710e1bf3643eca3f2b36092",
+          "size": 2265
         }
       ]
     },

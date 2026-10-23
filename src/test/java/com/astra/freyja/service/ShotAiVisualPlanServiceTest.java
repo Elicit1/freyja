@@ -129,6 +129,21 @@ class ShotAiVisualPlanServiceTest {
     }
 
     @Test
+    void videoManifestUsesExplicitIntentAndPreservesAnEmptySelection() {
+        DramaShot shot = new DramaShot(); shot.setId(101L);
+        shot.setRefVideosJson("[{\"id\":\"video1\",\"name\":\"untrusted-name.mp4\",\"sourceType\":\"DIRECT_URL\",\"sourceVideoUrl\":\"https://media/video.mp4\",\"startSeconds\":1.25,\"endSeconds\":4.25,\"includeAudio\":false,\"referenceDescription\":\"Only reference the camera speed\"}]");
+        when(shotMapper.selectById(101L)).thenReturn(shot);
+        var dto = ShotPromptDeriveDTO.builder().shotId(101L).refImages(List.of()).refAudios(List.of()).build();
+        var manifest = shotAiVisualPlanService.buildReferenceManifest(dto);
+        assertEquals(1, manifest.getVideos().size());
+        assertTrue(manifest.toPromptContext().contains("<Video 1>"));
+        assertTrue(manifest.toPromptContext().contains("Only reference the camera speed"));
+        assertFalse(manifest.getVideos().getFirst().getIncludeAudio());
+        dto.setRefVideos(List.of());
+        assertTrue(shotAiVisualPlanService.buildReferenceManifest(dto).getVideos().isEmpty());
+    }
+
+    @Test
     void testBuildPromptContextWithAllFieldsAndScriptWeight() throws Exception {
         // 准备短剧、剧集、场景、角色、服装、道具
         Drama drama = new Drama();

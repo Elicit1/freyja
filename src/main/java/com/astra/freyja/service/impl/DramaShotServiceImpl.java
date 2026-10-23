@@ -197,6 +197,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
         validateSeed(dto.getSeed());
         com.astra.freyja.util.ShotAudioReferenceValidator.validateForSave(dto.getRefAudios());
+        com.astra.freyja.util.ShotVideoReferenceValidator.validate(dto.getRefVideos());
         com.astra.freyja.util.ShotImageReferenceValidator.validate(dto.getRefImages());
         KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
         DramaScene scene = sceneMapper.selectById(dto.getSceneId());
@@ -370,6 +371,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             }
         }
 
+        if (dto.getRefVideos() != null) shot.setRefVideosJson(writeVideoReferences(dto.getRefVideos()));
         shotMapper.insert(shot);
         if (insertionShots != null) {
             insertionShots.add(insertionIndex, shot);
@@ -395,6 +397,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             throw new BizException(400, "分镜 ID 不能为空");
         }
         validateSeed(dto.getSeed());
+        com.astra.freyja.util.ShotVideoReferenceValidator.validate(dto.getRefVideos());
         com.astra.freyja.util.ShotAudioReferenceValidator.validateForSave(dto.getRefAudios());
         com.astra.freyja.util.ShotImageReferenceValidator.validate(dto.getRefImages());
         KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
@@ -492,6 +495,7 @@ public class DramaShotServiceImpl implements DramaShotService {
             }
         }
 
+        if (dto.getRefVideos() != null) shot.setRefVideosJson(writeVideoReferences(dto.getRefVideos()));
         if (dto.getPreviewImageUrl() != null && dto.getPreviewImageUrl().isEmpty()) {
             shot.setPreviewImageUrl(null);
             shot.setFirstFrameSourceType(null);
@@ -1077,6 +1081,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         // 3. 补充多模态参考图与参考音频列表
         vo.setRefImages(parseRefImages(shot.getRefImagesJson()));
         vo.setRefAudios(parseRefAudios(shot.getRefAudiosJson()));
+        vo.setRefVideos(com.astra.freyja.util.ShotVideoReferenceValidator.parse(shot.getRefVideosJson(), objectMapper));
         if (StringUtils.isBlank(vo.getGenerationMode())) {
             vo.setGenerationMode("FIRST_LAST_FRAME");
         }
@@ -1171,6 +1176,11 @@ public class DramaShotServiceImpl implements DramaShotService {
             log.warn("[DramaShotService] 反序列化 propRefsJson 异常: {}", e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    private String writeVideoReferences(List<com.astra.freyja.dto.drama.ShotRefVideoDTO> references) {
+        try { return com.astra.freyja.util.VideoReferenceSnapshotJson.write(references, objectMapper); }
+        catch (Exception e) { throw new BizException(400, "参考视频配置保存失败"); }
     }
 
     private List<ShotRefImageDTO> parseRefImages(String json) {

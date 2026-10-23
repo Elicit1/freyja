@@ -596,6 +596,7 @@ CREATE TABLE `drama_shot` (
     `end_frame_image_url`        VARCHAR(512)    DEFAULT NULL COMMENT '尾帧图URL (MinIO URL)',
     `ref_images_json`            TEXT            DEFAULT NULL COMMENT '参考图列表 JSON (上限5个)',
     `ref_audios_json`            TEXT            DEFAULT NULL COMMENT '参考音频列表 JSON (上限4个, 单段3-8s, 总长20-30s)',
+    `ref_videos_json`            LONGTEXT        DEFAULT NULL COMMENT 'Creator-authored reference video selection',
     `last_frame_url`             VARCHAR(512)    DEFAULT NULL COMMENT '本镜生成视频末帧图 (MinIO URL, 供组内下一镜首帧续接)',
     `last_frame_source_video_url` VARCHAR(512)   DEFAULT NULL COMMENT 'last_frame_url 对应的视频版本 URL，用于缓存失效判断',
     `last_frame_source_take_id`  BIGINT UNSIGNED DEFAULT NULL COMMENT 'last_frame_url 对应的视频版本 Take ID，用于缓存失效判断',
@@ -658,6 +659,7 @@ CREATE TABLE `drama_shot_video_take` (
     `end_frame_url`         VARCHAR(512) DEFAULT NULL COMMENT '生成时尾帧URL快照',
     `ref_images_json`       LONGTEXT DEFAULT NULL COMMENT '生成时参考图快照',
     `ref_audios_json`       LONGTEXT DEFAULT NULL COMMENT '生成时参考音频快照',
+    `ref_videos_json`       LONGTEXT DEFAULT NULL COMMENT 'Immutable prepared video reference snapshot',
     `request_snapshot_json` LONGTEXT DEFAULT NULL COMMENT '规范化后的请求参数快照JSON',
     `create_by`             BIGINT DEFAULT 0 COMMENT '创建人',
     `create_time`           DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -1252,6 +1254,7 @@ CREATE TABLE `render_task` (
     `prompt`            TEXT            DEFAULT NULL COMMENT '渲染正向提示词快照',
     `negative_prompt`   TEXT            DEFAULT NULL COMMENT '渲染负向提示词快照',
     `reference_images`  TEXT            DEFAULT NULL COMMENT '参考图列表 (JSON Array)',
+    `request_snapshot_json` LONGTEXT DEFAULT NULL COMMENT 'Versioned render input snapshot',
     `output_url`        VARCHAR(512)    DEFAULT NULL COMMENT '渲染产物 MinIO 访问 URL',
     `last_frame_url`    VARCHAR(512)    DEFAULT NULL COMMENT '抽取尾帧 MinIO URL',
     `error_message`     TEXT            DEFAULT NULL COMMENT '异常简要信息',
@@ -1665,3 +1668,11 @@ CREATE TABLE IF NOT EXISTS shot_video_export_dispatch (
  attempt_token VARCHAR(40) NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 INSERT IGNORE INTO shot_video_export_dispatch(id) VALUES (1);
+
+CREATE TABLE IF NOT EXISTS shot_video_reference_preflight (
+ preflight_id VARCHAR(64) PRIMARY KEY,
+ shot_id BIGINT NOT NULL, provider_id BIGINT NOT NULL, model_code VARCHAR(100) NOT NULL,
+ input_fingerprint VARCHAR(64) NOT NULL, status VARCHAR(20) NOT NULL,
+ data_json LONGTEXT NOT NULL, created_at DATETIME(3) NOT NULL, expires_at DATETIME(3) NOT NULL,
+ KEY ix_video_reference_preflight(shot_id,provider_id,model_code,input_fingerprint,status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

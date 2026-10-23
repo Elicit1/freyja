@@ -17,7 +17,9 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 import aiofiles
 
-from config import get_config, GatewayConfig, NodeConfig
+from config import get_config, get_base_dir, GatewayConfig, NodeConfig
+from video_reference import require_verified, workflow_revision
+from reference_media import upload_reference_video
 from schemas import (
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -255,7 +257,8 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         )
 
     # 1. Resolve target model configuration
-    model_cfg = config.get_model(request.model)
+    video_references = request.get_all_ref_videos()
+    model_cfg = config.get_exact_model(request.model, request.node_id) if video_references else config.get_model(request.model)
     if not model_cfg:
         available = [m.model_name for m in config.models]
         raise ValueError(f"Model '{request.model}' not supported. Available models: {available}")
@@ -272,6 +275,8 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     )
 
     if request.target_backend:
+        if video_references:
+            raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: direct backend overrides are not accepted")
         logger.info(f"Using direct target_backend override: {request.target_backend}")
         client = await pool.get_client_by_url(request.target_backend)
     else:
@@ -280,6 +285,31 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
             raise RuntimeError(f"No active compute node found for model '{request.model}' (preferred node: '{preferred_node}').")
         logger.info(f"Routing request for model '{request.model}' to node '{target_node.node_id}' ({target_node.http_url})")
         client = await pool.get_client_for_node(target_node)
+
+    video_capability = None
+    if video_references:
+        model_cfg = config.get_exact_model(request.model, target_node.node_id)
+        if not model_cfg:
+            raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: model is not registered on the selected node")
+        video_capability = require_verified(model_cfg, get_base_dir(), target_node.http_url)
+        if request.reference_video_revision != workflow_revision(model_cfg, get_base_dir()):
+            raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: refresh reference-video preflight")
+        if request.video_url or request.first_frame or request.last_frame:
+            raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: H3 references use video bindings, not video_url or first/last frames")
+        if request.prompt_format != "MINIMAX_H3_REF2VA_VIDEO_V1":
+            raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: expected video reference prompt format")
+        if len(video_references) > video_capability.max_videos:
+            raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: too many reference videos")
+        total = len(request.get_all_ref_images()) + len(request.get_all_ref_audios()) + len(video_references)
+        total += sum(1 for ref in video_references if ref.include_audio)
+        if total > video_capability.max_mixed_assets:
+            raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: mixed reference limit exceeded")
+        if any(ref.include_audio for ref in video_references) and not video_capability.supports_video_audio:
+            raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: source video audio has not been accepted")
+        if not await client.check_health():
+            raise RuntimeError("COMPUTE_NODE_OFFLINE: selected reference-video node is offline")
+        # Pin the exact model configuration for workflow assembly too.
+        request.node_id = target_node.node_id
 
     # 2.5 MiniMax H3 parameter validation
     is_minimax = "minimax" in model_cfg.model_name.lower() or "minimax" in model_cfg.handler.lower()
@@ -303,6 +333,12 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     if request.video_url:
         logger.info(f"Uploading input video for lip-sync/video generation to {client.http_base}...")
         uploaded_video_name = await client.load_and_upload_media(request.video_url, default_name="input_video.mp4")
+
+    uploaded_ref_videos = []
+    if video_capability:
+        hosts = {host.strip().lower() for host in os.getenv("REFERENCE_MEDIA_HOSTS", "").split(",") if host.strip()}
+        for binding in video_references:
+            uploaded_ref_videos.append(await asyncio.wait_for(upload_reference_video(client, binding, video_capability, hosts), timeout=120))
 
     # Multi-audio upload for MiniMax H3 (up to 3 audios)
     uploaded_ref_audios: List[str] = []
@@ -331,7 +367,8 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         uploaded_ref_images=uploaded_ref_names,
         uploaded_video=uploaded_video_name,
         uploaded_audio=uploaded_audio_name,
-        uploaded_ref_audios=uploaded_ref_audios
+        uploaded_ref_audios=uploaded_ref_audios,
+        uploaded_ref_videos=uploaded_ref_videos
     )
 
     # Extract the exact prompt submitted to ComfyUI
@@ -445,6 +482,34 @@ async def generate_videos(request: ImageGenerationRequest, http_req: Request):
     Dispatches to multi-node generation pipeline.
     """
     return await generate_images(request, http_req)
+
+
+@app.get("/v1/models/{model_code}/capabilities")
+async def model_capabilities(model_code: str, node_id: Optional[str] = None):
+    model = config.get_exact_model(model_code, node_id)
+    if not model:
+        raise HTTPException(status_code=404, detail="Model is not registered with this exact identifier")
+    capability = model.reference_video
+    if capability is None:
+        return {"modelCode": model_code, "nodeId": model.node_id,
+                "referenceVideo": {"status": "UNSUPPORTED"}, "healthy": False}
+    revision = workflow_revision(model, get_base_dir())
+    values = capability.model_dump()
+    names = {"schema_version": "schemaVersion", "max_videos": "maxVideos", "min_clip_seconds": "minClipSeconds",
+             "max_clip_seconds": "maxClipSeconds", "max_total_clip_seconds": "maxTotalClipSeconds",
+             "decode_fps": "decodeFps", "max_decoded_frames": "maxDecodedFrames", "max_decode_width": "maxDecodeWidth",
+             "max_decode_height": "maxDecodeHeight", "max_mixed_assets": "maxMixedAssets",
+             "supports_video_audio": "supportsVideoAudio", "max_download_bytes": "maxDownloadBytes"}
+    public = {names.get(key, key): value for key, value in values.items()
+              if key not in ("verified_revision", "verified_backend", "condition_node_id", "output_node_ids")}
+    if capability.status == "VERIFIED" and revision != capability.verified_revision:
+        public["status"] = "UNVERIFIED"
+    node = config.get_node(model.node_id) if model.node_id else None
+    if capability.status == "VERIFIED" and (not node or node.http_url != capability.verified_backend):
+        public["status"] = "UNVERIFIED"
+    healthy = await (await get_client_pool().get_client_for_node(node)).check_health() if node and node.enabled else False
+    return {"modelCode": model_code, "nodeId": model.node_id, "workflowRevision": revision,
+            "referenceVideo": public, "healthy": healthy}
 
 
 async def _execute_cancel(

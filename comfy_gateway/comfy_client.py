@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 import httpx
 import websockets
+from websockets.exceptions import WebSocketException
 import aiofiles
 
 from config import GatewayConfig, NodeConfig
@@ -109,7 +110,7 @@ class ComfyAsyncClient:
         """Alias for reference image upload"""
         return await self.load_and_upload_media(ref_source, default_name="ref_download.png")
 
-    async def upload_file_to_comfy(self, raw_bytes: bytes, filename: str) -> str:
+    async def upload_file_to_comfy(self, raw_bytes: bytes, filename: str, preserve_subfolder: bool = False) -> str:
         """Upload binary file (image/video/audio) to ComfyUI /upload/image endpoint"""
         client = await self.get_http_client()
         content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
@@ -124,6 +125,11 @@ class ComfyAsyncClient:
             resp.raise_for_status()
             data = resp.json()
             uploaded_name = data.get("name", filename)
+            if preserve_subfolder:
+                parts = [data.get("subfolder", ""), uploaded_name]
+                uploaded_name = "/".join(part.strip("/") for part in parts if part)
+                if ".." in uploaded_name.split("/") or "\\" in uploaded_name or uploaded_name.startswith("/"):
+                    raise ValueError("Invalid ComfyUI input relative path")
             logger.info(f"[{self.http_base}] Uploaded file to ComfyUI input: {uploaded_name}")
             return uploaded_name
         except Exception as e:
@@ -206,7 +212,7 @@ class ComfyAsyncClient:
                     raise asyncio.TimeoutError()
                 return await asyncio.wait_for(
                     self._wait_completion_connection(prompt_id, client_id, remaining), remaining)
-            except (websockets.exceptions.WebSocketException, OSError, TimeoutError, asyncio.TimeoutError) as exc:
+            except (WebSocketException, OSError, TimeoutError, asyncio.TimeoutError) as exc:
                 logger.warning("Completion connection lost: prompt=%s attempt=%s error_type=%s error=%r",
                                prompt_id, attempt, type(exc).__name__, exc)
                 # One bounded final snapshot also covers completion at the deadline.
@@ -308,7 +314,7 @@ class ComfyAsyncClient:
                         if msg_data.get("prompt_id") == prompt_id:
                             raise ComfyExecutionError(f"ComfyUI execution on {self.http_base} was interrupted.")
 
-        except (websockets.exceptions.WebSocketException, OSError, TimeoutError, asyncio.TimeoutError):
+        except (WebSocketException, OSError, TimeoutError, asyncio.TimeoutError):
             raise
 
         if not output_assets:

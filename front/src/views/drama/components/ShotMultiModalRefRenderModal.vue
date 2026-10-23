@@ -1,18 +1,18 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="`🎬 分镜 [S${shotNo} ${shotName || ''}] 参考图与音频渲染工坊`"
+    :title="`🎬 分镜 [S${shotNo} ${shotName || ''}] 多模态参考渲染工坊`"
     width="960px"
     destroy-on-close
     append-to-body
     :close-on-click-modal="false"
   >
-    <!-- 顶部横幅提示：多模态参考图与音频规则 -->
+    <!-- 顶部横幅提示：多模态参考素材规则 -->
     <div class="p-3.5 mb-4 bg-sky-50/80 border border-sky-200 rounded-xl flex items-start gap-2.5 text-xs text-sky-950">
       <span class="text-lg leading-none">💡</span>
       <div class="flex-1 space-y-1">
         <div class="font-bold flex items-center gap-2">
-          <span>参考图与参考音频生成模式 (Reference Images & Audio Mode)</span>
+          <span>多模态参考生成模式（图片 / 视频 / 音频）</span>
           <el-tag size="small" type="primary" effect="dark" class="!bg-sky-600 !border-sky-600 text-[10px]">
             多模态特征融合
           </el-tag>
@@ -20,6 +20,7 @@
         <p class="text-sky-800 leading-relaxed">
           本模式支持多重视觉特征与语音韵律协同驱动。
           <strong>参考图上限 {{ maxRefImages }} 张</strong>（可从场景、人物造型、道具资产库多选选取或自行上传）；
+          <strong>参考视频上限 1 段</strong>（可上传或选择分镜历史视频，并设置片段范围）；
           <strong>参考音频上限 {{ maxRefAudios }} 段</strong>（单段2至15秒，总长不超过15秒，从当前短剧角色的配音中心选择）。
           参考素材<strong>不强制要求</strong>，亦可仅凭提示词直接渲染。
         </p>
@@ -31,7 +32,7 @@
       <div class="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-3">
         <div class="flex items-center justify-between text-xs font-bold text-slate-700">
           <span>⚙️ 渲染引擎与多模态模型参数</span>
-          <span class="text-[11px] font-normal text-slate-400">兼容多参考图与音频输入视频模型 (如 MiniMax H3 Ref2VA 等)</span>
+          <span class="text-[11px] font-normal text-slate-400">支持的参考素材类型以所选模型能力为准</span>
         </div>
         <div class="grid grid-cols-4 gap-3 text-xs">
           <div>
@@ -338,6 +339,9 @@
         </div>
       </div>
 
+      <ShotVideoReferenceEditor ref="videoReferenceEditor" v-model="refVideos" :shot-id="currentShotId ? String(currentShotId) : undefined" :drama-id="dramaId" :provider-id="renderConfig.providerId" :model-code="renderConfig.modelCode" :option="videoModelOption" :target-duration="targetDuration" :context-fingerprint="JSON.stringify([refImages, refAudios])" @prepare="prepareVideoReferences" @prepared="videoPreflight = $event" />
+      <el-checkbox v-if="refVideos.length" v-model="videoPromptConfirmed">已检查提示词中的 Video 1 引用、参考说明与当前素材一致</el-checkbox>
+
       <!-- 最终生成视频预览区 (若已有产物) -->
       <div v-if="videoUrl" class="p-3 bg-slate-900 rounded-xl border border-slate-800 flex flex-col gap-2">
         <div class="flex items-center justify-between text-xs text-white">
@@ -360,7 +364,7 @@
       <div class="flex justify-between items-center">
         <div class="text-xs text-gray-500">
           <span>分镜: <strong>#{{ shotNo }} {{ shotName }}</strong></span>
-          <span class="ml-3 text-sky-700">图: {{ refImages.length }}/{{ maxRefImages }} · 音: {{ refAudios.length }}/{{ maxRefAudios }} ({{ totalAudioDuration.toFixed(1) }}s)</span>
+          <span class="ml-3 text-sky-700">图: {{ refImages.length }}/{{ maxRefImages }} · 视频: {{ refVideos.length }}/1 · 音: {{ refAudios.length }}/{{ maxRefAudios }} ({{ totalAudioDuration.toFixed(1) }}s)</span>
         </div>
         <div class="flex items-center gap-2.5">
           <el-button @click="visible = false">取消</el-button>
@@ -371,6 +375,7 @@
             type="primary"
             class="!bg-sky-600 !border-sky-600 hover:!bg-sky-500 !font-bold"
             :loading="renderingVideo"
+            :disabled="refVideos.length > 0 && (!videoModelOption?.renderable || videoPreflight?.status !== 'READY' || !videoPromptConfirmed)"
             @click="handleStartRender"
           >
             🚀 启动参考模态渲染
@@ -384,13 +389,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { dramaApi, shotApi } from '@/api/drama'
 import { assetApi } from '@/api/res-asset'
 import { aiProviderApi } from '@/api/ai-provider'
 import AssetMultiSelectDialog, { type AssetSelectItem } from './AssetMultiSelectDialog.vue'
-import type { DramaShot, ShotRefImage, ShotRefAudio } from '@/types/drama'
+import type { DramaShot, ShotRefImage, ShotRefAudio, ShotRefVideo, ShotVideoModelOption, VideoReferencePreflight } from '@/types/drama'
+import ShotVideoReferenceEditor from './ShotVideoReferenceEditor.vue'
+import { shotVideoReferenceApi } from '@/api/shot-video-reference'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
 import { KEY_IMAGE_ROLE_OPTIONS } from '@/constants/keyImageRoles'
@@ -419,6 +426,16 @@ const videoUrl = ref<string>('')
 
 const refImages = ref<ShotRefImage[]>([])
 const refAudios = ref<ShotRefAudio[]>([])
+const refVideos = ref<ShotRefVideo[]>([])
+const targetDuration = ref<number>()
+const videoReferenceEditor = ref<InstanceType<typeof ShotVideoReferenceEditor>>()
+const videoPreflight = ref<VideoReferencePreflight>()
+const videoPromptConfirmed = ref(false)
+const videoModelOptions = ref<ShotVideoModelOption[]>([])
+const videoModelOption = computed(() => videoModelOptions.value.find(model => model.modelCode === renderConfig.modelCode))
+async function prepareVideoReferences() {
+  if (await handleSaveConfig()) await videoReferenceEditor.value?.prepare()
+}
 const audioPickerVisible = ref(false), audioReplaceIndex = ref<number | null>(null)
 const audioCharacters = ref<ResCharacterOption[]>([]), explicitCharacterIds = ref<string[]>([])
 const dubbingCharacters = computed(() => audioCharacters.value.filter(c => String(c.dramaId) === String(dramaId.value) || String(c.dramaId) === '0' && explicitCharacterIds.value.includes(String(c.id))))
@@ -441,6 +458,8 @@ const renderConfig = reactive({
   modelCode: 'minimax-h3-ref2va',
   size: '960x544'
 })
+watch(() => JSON.stringify([refImages.value, refAudios.value, refVideos.value, renderConfig.providerId, renderConfig.modelCode]), () => { videoPromptConfirmed.value = false; videoPreflight.value = undefined })
+watch(prompt, () => { videoPromptConfirmed.value = false })
 
 function getStandardSizeByRatio(ratio?: string): string {
   return resolveGenerationSize(ratio, 'video')
@@ -521,7 +540,10 @@ async function loadProviders() {
   } catch (ignored) {}
 }
 
+let providerLoadRevision = 0
 async function handleProviderChange(pid: string) {
+  const revision = ++providerLoadRevision
+  videoModelOptions.value = []
   models.value = []
   renderConfig.modelCode = ''
   if (!pid) {
@@ -529,8 +551,11 @@ async function handleProviderChange(pid: string) {
   }
   try {
     const list = await aiProviderApi.getModelList(pid, 'TXT2VIDEO_REF')
+    if (revision !== providerLoadRevision || renderConfig.providerId !== String(pid)) return
     models.value = (list || []).filter((m: AiModel) => m.status === 1 && m.modelType === 'TXT2VIDEO_REF')
     renderConfig.modelCode = models.value[0]?.modelCode || ''
+    const options = await shotVideoReferenceApi.options(String(pid)).catch(() => [])
+    if (revision === providerLoadRevision && renderConfig.providerId === String(pid)) videoModelOptions.value = options
   } catch (e: any) {
     console.error('加载视频模型列表失败:', e)
   }
@@ -553,6 +578,10 @@ async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
 
   refImages.value = shot.refImages ? [...shot.refImages] : []
   refAudios.value = shot.refAudios ? [...shot.refAudios] : []
+  refVideos.value = (shot.refVideos || []).map(item => ({ ...item }))
+  targetDuration.value = shot.duration
+  videoPreflight.value = undefined
+  videoPromptConfirmed.value = false
 
   // 读取短剧配置并预先解析为 H3 可原样生成的 32 对齐尺寸。
   dramaAspectRatio.value = dramaAspectRatioParam || ''
@@ -683,12 +712,15 @@ async function handleSaveConfig() {
       prompt: prompt.value,
       negativePrompt: negativePrompt.value,
       refImages: refImages.value,
-      refAudios: refAudios.value
+      refAudios: refAudios.value,
+      refVideos: refVideos.value
     })
     ElMessage.success('多模态参考配置保存成功！')
     emit('success', currentShotId.value)
+    return true
   } catch (e: any) {
     ElMessage.error(e.message || '保存配置失败')
+    return false
   } finally {
     savingConfig.value = false
   }
@@ -707,8 +739,8 @@ async function handleStartRender() {
     return
   }
   // MiniMax H3 官方多模态参考约束校验
-  if (refAudios.value.length > 0 && refImages.value.length === 0) {
-    ElMessage.warning('MiniMax H3 规范要求：音频不可作为唯一参考模态，请至少添加一张参考图！')
+  if (refAudios.value.length > 0 && refImages.value.length === 0 && refVideos.value.length === 0) {
+    ElMessage.warning('参考音频不可作为唯一模态，请添加参考图或参考视频')
     return
   }
   if (totalAudioDuration.value > 15.0) {
@@ -721,12 +753,17 @@ async function handleStartRender() {
     return
   }
 
-  await handleSaveConfig()
+  if (refVideos.value.length && (!videoModelOption.value?.renderable || !videoPreflight.value || !videoPromptConfirmed.value)) {
+    ElMessage.warning('请完成参考视频预检并确认提示词，模型须通过在线验证')
+    return
+  }
+  if (!await handleSaveConfig()) return
   renderingVideo.value = true
   try {
     await shotApi.submitRender(currentShotId.value, {
       providerId: renderConfig.providerId ? (renderConfig.providerId as any) : undefined,
       workflowTemplateId: renderConfig.modelCode,
+      preflightId: refVideos.value.length ? videoPreflight.value?.preflightId : undefined,
       size: sizeValidation.normalized
     })
     ElMessage.success('多模态视频渲染任务已提交！')

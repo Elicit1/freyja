@@ -1064,6 +1064,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             if (manifest != null) {
                 sb.append(manifest.toPromptContext());
             }
+            sb.append("|video-references=").append(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(dto.getRefVideos()));
             byte[] hash = md.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
             for (byte b : hash) {
@@ -1216,6 +1217,14 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             if (maxPic > 0 && !p.contains("<Picture")) {
                 warnings.add(String.format("当前分镜配置了 %d 张参考图，但生成的提示词中未引用任何 <Picture N> 标签", maxPic));
             }
+
+            int maxVideo = manifest != null && manifest.getVideos() != null ? manifest.getVideos().size() : 0;
+            Matcher videoMatcher = Pattern.compile("<Video\\s*(\\d+)>").matcher(p);
+            while (videoMatcher.find()) {
+                int index = Integer.parseInt(videoMatcher.group(1));
+                if (index < 1 || index > maxVideo) errors.add("提示词引用了未分配的视频 <Video " + index + ">");
+            }
+            if (maxVideo > 0 && !p.contains("<Video 1>")) errors.add("参考视频提示词缺少 <Video 1> 引用，请检查参考意图");
 
             // Audio 标签边界与合法性 (硬性错误)
             int maxAud = manifest != null && manifest.getAudios() != null ? manifest.getAudios().size() : 0;
@@ -1413,7 +1422,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if ("REFERENCE_MODE".equalsIgnoreCase(genMode)) {
             systemPrompt = sysConfigService.getConfigValue("ai.prompt.minimax_h3_ref2va_system", DEFAULT_MINIMAX_H3_REF2VA_SYSTEM_PROMPT);
             userTemplate = sysConfigService.getConfigValue("ai.prompt.minimax_h3_ref2va_user", DEFAULT_MINIMAX_H3_REF2VA_USER_TEMPLATE);
-            templateVersion = "minimax-h3-ref2va-v1";
+            templateVersion = manifest.getVideos().isEmpty() ? "minimax-h3-ref2va-v1" : "minimax-h3-ref2va-video-v1";
         } else {
             systemPrompt = sysConfigService.getConfigValue("ai.prompt.minimax_h3_fl2va_system", DEFAULT_MINIMAX_H3_FL2VA_SYSTEM_PROMPT);
             userTemplate = sysConfigService.getConfigValue("ai.prompt.minimax_h3_fl2va_user", DEFAULT_MINIMAX_H3_FL2VA_USER_TEMPLATE);
@@ -1497,6 +1506,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 .propRefs(request.getPropRefs())
                 .refImages(request.getRefImages())
                 .refAudios(request.getRefAudios())
+                .refVideos(request.getRefVideos())
                 .selectedSkillNames(request.getSelectedSkillNames())
                 .build();
 
@@ -1514,7 +1524,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         ReferenceManifest manifest = buildReferenceManifest(contextDto);
 
         String templateVersion = "REFERENCE_MODE".equalsIgnoreCase(genMode)
-                ? "minimax-h3-ref2va-v1"
+                ? manifest.getVideos().isEmpty() ? "minimax-h3-ref2va-v1" : "minimax-h3-ref2va-video-v1"
                 : "minimax-h3-fl2va-v1";
         String currentSystemPrompt = "REFERENCE_MODE".equalsIgnoreCase(genMode)
                 ? sysConfigService.getConfigValue("ai.prompt.minimax_h3_ref2va_system", DEFAULT_MINIMAX_H3_REF2VA_SYSTEM_PROMPT)
@@ -2068,6 +2078,11 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
      * 将参考图片分配为 Picture 1..N，参考音频分配为 Audio 1..N，并挂载资产视觉/语义描述。
      */
     public ReferenceManifest buildReferenceManifest(ShotPromptDeriveDTO dto) {
+        if (dto.getRefVideos() == null && dto.getShotId() != null) {
+            var shot = shotMapper.selectById(dto.getShotId());
+            if (shot != null) dto.setRefVideos(com.astra.freyja.util.ShotVideoReferenceValidator.parse(shot.getRefVideosJson(), new com.fasterxml.jackson.databind.ObjectMapper()));
+        }
+        com.astra.freyja.util.ShotVideoReferenceValidator.validate(dto.getRefVideos());
         List<ReferenceManifest.PictureManifestItem> pictures = new ArrayList<>();
         List<ReferenceManifest.AudioManifestItem> audios = new ArrayList<>();
         com.fasterxml.jackson.databind.ObjectMapper jacksonMapper = new com.fasterxml.jackson.databind.ObjectMapper();
@@ -2227,7 +2242,12 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             }
         }
 
-        return ReferenceManifest.builder().pictures(pictures).audios(audios).build();
+        List<ReferenceManifest.VideoManifestItem> videos = new ArrayList<>();
+        if (dto.getRefVideos() != null) for (var video : dto.getRefVideos()) videos.add(ReferenceManifest.VideoManifestItem.builder()
+                .videoIndex(videos.size()+1).referenceId(video.getId()).name(video.getName()).sourceType(video.getSourceType())
+                .sourceShotId(video.getSourceShotId()).sourceVideoTakeId(video.getSourceVideoTakeId()).startSeconds(video.getStartSeconds()).endSeconds(video.getEndSeconds())
+                .includeAudio(video.getIncludeAudio()).referenceDescription(video.getReferenceDescription()).build());
+        return ReferenceManifest.builder().pictures(pictures).audios(audios).videos(videos).build();
     }
 
     /**

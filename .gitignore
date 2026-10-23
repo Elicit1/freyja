@@ -63,4 +63,5 @@ docker-compose.override.yaml
 front/node_modules/
 front/dist/
 
-/docs/
+/docs/*
+!/docs/reference-video-generation-design.md

@@ -93,6 +93,15 @@ public class VideoFrameExtractService {
         }
     }
 
+    public VideoProbeInfoVO probeVideoFile(Path path, boolean countFrames) throws IOException {
+        var command = new java.util.ArrayList<>(List.of(properties.getFfprobePath(), "-v", "error"));
+        if (countFrames) command.add("-count_frames");
+        command.addAll(List.of("-show_entries", "stream=width,height,r_frame_rate,codec_type,codec_name,nb_read_frames:format=duration", "-of", "json", path.toString()));
+        var result = processExecutor.execute(command, timeout());
+        if (result.timedOut() || result.exitCode() != 0) throw new IOException("视频无法解码或探测超时");
+        return parseProbe(result.output());
+    }
+
     private VideoProbeInfoVO parseProbe(String json) throws IOException {
         var root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
         var vo = new VideoProbeInfoVO();
@@ -103,6 +112,7 @@ public class VideoFrameExtractService {
                 vo.setWidth(stream.path("width").asInt());
                 vo.setHeight(stream.path("height").asInt());
                 vo.setVideoCodec(stream.path("codec_name").asText());
+                if (stream.path("nb_read_frames").asLong(0) > 0) vo.setFrameCount(stream.path("nb_read_frames").asLong());
                 String rate = stream.path("r_frame_rate").asText();
                 if (rate.contains("/")) {
                     String[] parts = rate.split("/");

@@ -28,7 +28,7 @@ class VideoTaskQueryTest {
                     mock(com.astra.freyja.dao.AiModelMapper.class),mock(com.astra.freyja.dao.ResKeyframeMapper.class),
                     mock(com.astra.freyja.util.CryptoUtil.class),mock(io.minio.MinioClient.class),
                     mock(com.astra.freyja.config.MinioProperties.class),new ObjectMapper(),
-                    mock(VideoFrameExtractService.class),mock(RenderDispatchCoordinator.class)));
+                    mock(VideoFrameExtractService.class),mock(RenderDispatchCoordinator.class),mock(ReferenceVideoMediaService.class)));
             AiProvider provider=new AiProvider();
             provider.setBaseUrl("http://127.0.0.1:"+server.getAddress().getPort()+"/v1/");
             doReturn(provider).when(service).resolveProvider(9L);

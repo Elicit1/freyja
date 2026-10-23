@@ -77,7 +77,7 @@ public class ProductionPlans {
     public String fingerprint(DramaShot s, Plan p) {
         Map<String, Object> basis = new TreeMap<>();
         for (String key : List.of("id", "dramaId", "episodeId", "sceneId", "shotGroupId", "shotNo", "shotName", "scriptContent", "actionDescription", "soundEffect", "duration",
-                "shotTypeLocked", "cameraMovementLocked", "resSceneId", "resKeyframeId", "customScenePrompt", "characterRefsJson", "propRefsJson", "generationMode", "refImagesJson", "refAudiosJson", "stylePreset",
+                "shotTypeLocked", "cameraMovementLocked", "resSceneId", "resKeyframeId", "customScenePrompt", "characterRefsJson", "propRefsJson", "generationMode", "refImagesJson", "refAudiosJson", "refVideosJson", "stylePreset",
                 "prompt", "videoPrompt", "firstFramePrompt", "endFramePrompt", "negativePrompt", "previewImageUrl", "endFrameImageUrl", "firstFrameSourceType", "firstFrameSourceShotId")) {
             try { basis.put(key, new org.springframework.beans.BeanWrapperImpl(s).getPropertyValue(key)); }
             catch (RuntimeException e) { throw new IllegalStateException(key, e); }
@@ -307,7 +307,7 @@ public class ProductionPlans {
         Map<String, Object> state = new TreeMap<>();
         var bean = new org.springframework.beans.BeanWrapperImpl(s);
         for (String key : List.of("scriptContent", "actionDescription", "soundEffect", "duration", "generationMode", "resSceneId", "resKeyframeId", "customScenePrompt",
-                "characterRefsJson", "propRefsJson", "refImagesJson", "refAudiosJson", "stylePreset", "prompt", "videoPrompt", "firstFramePrompt", "endFramePrompt", "negativePrompt", "previewImageUrl", "endFrameImageUrl", "shotTypeLocked", "cameraMovementLocked")) state.put(key, bean.getPropertyValue(key));
+                "characterRefsJson", "propRefsJson", "refImagesJson", "refAudiosJson", "refVideosJson", "stylePreset", "prompt", "videoPrompt", "firstFramePrompt", "endFramePrompt", "negativePrompt", "previewImageUrl", "endFrameImageUrl", "shotTypeLocked", "cameraMovementLocked")) state.put(key, bean.getPropertyValue(key));
         return digest(json.write(state));
     }
     @Transactional public Object lock(Long shotId, Locks input) {

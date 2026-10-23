@@ -134,6 +134,7 @@ public class DramaShot extends BaseEntity {
 
     /** 参考音频列表 JSON (上限3个, 单段2-15s, 总长≤15s；null=未配置，[]=明确不使用) */
     private String refAudiosJson;
+    private String refVideosJson;
 
     /** 本镜生成视频末帧图 (MinIO URL, 供组内下一镜首帧续接) */
     private String lastFrameUrl;

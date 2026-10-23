@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from config import GatewayConfig, ModelConfig, HandlerConfig, get_base_dir
 from schemas import ImageGenerationRequest
+from video_reference import require_verified, assert_video_paths
 
 logger = logging.getLogger("workflow_engine")
 
@@ -68,19 +69,28 @@ class WorkflowEngine:
         uploaded_ref_images: Optional[List[str]] = None,
         uploaded_video: Optional[str] = None,
         uploaded_audio: Optional[str] = None,
-        uploaded_ref_audios: Optional[List[str]] = None
+        uploaded_ref_audios: Optional[List[str]] = None,
+        uploaded_ref_videos: Optional[List[dict]] = None
     ) -> dict:
         """
         Assemble executable ComfyUI prompt JSON from request, reference images,
         and uploaded media (video/audio).
         """
-        model_cfg = self.config.get_model(request.model)
+        has_videos = bool(request.get_all_ref_videos())
+        model_cfg = self.config.get_exact_model(request.model, request.node_id) if has_videos else self.config.get_model(request.model)
         if not model_cfg:
             available = [m.model_name for m in self.config.models]
             raise ValueError(f"Model '{request.model}' not supported. Available models: {available}")
 
         # 1. Load base template
         workflow = self.get_template(model_cfg)
+        if has_videos:
+            capability = require_verified(model_cfg, self._base_dir)
+            if len(uploaded_ref_videos or []) != len(request.get_all_ref_videos()):
+                raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: missing uploaded reference clips")
+            for path in model_cfg.mappings.values():
+                if len(path) != 3 or path[0] not in workflow or path[1] != "inputs" or path[2] not in workflow[path[0]].get("inputs", {}):
+                    raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: invalid parameter mapping")
 
         # 2. Extract dimensions
         is_minimax = "minimax" in model_cfg.model_name.lower() or "minimax" in model_cfg.handler.lower()
@@ -151,6 +161,8 @@ class WorkflowEngine:
         # Allow extra_body to dynamically override any mapped parameter
         if request.extra_body and isinstance(request.extra_body, dict):
             for extra_key, extra_val in request.extra_body.items():
+                if has_videos and extra_key in mappings:
+                    raise ValueError("Reference-video mapped parameters must be supplied at the top level")
                 if extra_key in mappings and extra_val is not None:
                     _set_nested_value(workflow, mappings[extra_key], extra_val)
                     logger.info(f"Dynamically mapped extra_body parameter: {extra_key} = '{extra_val}'")
@@ -203,7 +215,51 @@ class WorkflowEngine:
         else:
             logger.warning(f"Unknown handler '{handler_name}', skipping custom node modifications.")
 
+        if model_cfg.reference_video:
+            self._apply_reference_videos(workflow, model_cfg, uploaded_ref_videos or [])
+
+        if handler_name in {"minimax_h3_fl2va", "minimax_h3_ref2va", "minimax_h3_face_refine"}:
+            used = {value[0] for node in workflow.values() for value in node.get("inputs", {}).values()
+                    if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str)}
+            for node_id in list(workflow):
+                if workflow[node_id].get("class_type") in {"LoadImage", "VHS_LoadVideo"} and node_id not in used:
+                    workflow.pop(node_id)
+
         return workflow
+
+    def _apply_reference_videos(self, workflow, model_cfg, videos):
+        capability = model_cfg.reference_video
+        cond = capability.condition_node_id
+        if cond not in workflow or workflow[cond].get("class_type") != "MiniMaxH3ReferenceToVideo":
+            raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: missing conditioning node")
+        inputs = workflow[cond]["inputs"]
+        previous_loaders = {value[0] for key, value in inputs.items() if key.startswith("ref_videos.")
+                            and isinstance(value, list) and len(value) == 2 and isinstance(value[0], str)}
+        for key in list(inputs):
+            if key.startswith(("ref_videos.", "ref_video_audios.")):
+                inputs.pop(key)
+        for node_id in list(workflow):
+            if node_id.startswith(f"{cond}_ref_vid_") or node_id in previous_loaders and workflow[node_id].get("class_type") == "VHS_LoadVideo":
+                workflow.pop(node_id)
+        if not videos:
+            return
+        require_verified(model_cfg, self._base_dir)
+        if len(videos) > capability.max_videos:
+            raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: too many videos")
+        loaders = []
+        for index, video in enumerate(videos):
+            node_id = f"{cond}_ref_vid_{index}"
+            loaders.append(node_id)
+            workflow[node_id] = {"class_type": "VHS_LoadVideo", "inputs": {
+                "video": video["filename"], "force_rate": capability.decode_fps,
+                "custom_width": 0, "custom_height": 0, "frame_load_cap": 0,
+                "skip_first_frames": 0, "select_every_nth": 1, "format": "None"}}
+            inputs[f"ref_videos.ref_video_{index}"] = [node_id, 0]
+            if video["include_audio"]:
+                if not capability.supports_video_audio:
+                    raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: video audio is not supported")
+                inputs[f"ref_video_audios.ref_video_audio_{index}"] = [node_id, 2]
+        assert_video_paths(workflow, capability, loaders)
 
     def _apply_flux2_reference_chain(
         self,

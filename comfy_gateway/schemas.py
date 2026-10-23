@@ -41,10 +41,17 @@ class ImageGenerationRequest(BaseModel):
 
     # Prompt Format Specification
     prompt_format: Optional[str] = Field(default=None, description="Prompt format specification (e.g. 'MINIMAX_H3_REF2VA_V1', 'MINIMAX_H3_FL2VA_V1')")
+    reference_video_revision: Optional[str] = None
 
     @model_validator(mode="after")
     def populate_video_and_ref_fields(self) -> "ImageGenerationRequest":
         """Merge ref_images, video, audio, and generation parameters from extra_body"""
+        if self.references is not None and self.extra_body and "references" in self.extra_body:
+            if not isinstance(self.extra_body["references"], list):
+                raise ValueError("extra_body.references must be a list when supplied")
+            other = [ReferenceBinding.model_validate(item).model_dump() for item in self.extra_body["references"]]
+            if other != [item.model_dump() for item in self.references]:
+                raise ValueError("Conflicting top-level and extra_body.references")
         if self.seed is not None and self.seed < 0:
             self.seed = None
         if self.extra_body and isinstance(self.extra_body, dict):
@@ -262,6 +269,19 @@ class ImageGenerationRequest(BaseModel):
                 audios.append(a)
         return audios
 
+    def get_all_ref_videos(self) -> List[ReferenceBinding]:
+        videos = [b for b in (self.references or []) if b.reference_type == ReferenceType.REFERENCE_VIDEO]
+        ids = set()
+        for video in videos:
+            if video.images or video.audio_url:
+                raise ValueError("Reference video bindings cannot also contain separate image/audio sources")
+            if not video.reference_id or video.reference_id in ids or not video.video_url or not video.content_sha256:
+                raise ValueError("Reference video requires unique referenceId, referenceVideo and contentSha256")
+            if not video.video_url.startswith(("http://", "https://")):
+                raise ValueError("Reference video must be an archived HTTP(S) clip, not a local path or Base64")
+            ids.add(video.reference_id)
+        return videos
+
     def validate_minimax_h3_limits(self) -> None:
         """Validate input parameters against MiniMax H3 official constraints"""
         ref_imgs = self.get_all_ref_images()
@@ -272,7 +292,7 @@ class ImageGenerationRequest(BaseModel):
             raise ValueError(f"MiniMax H3 allows at most 3 reference audios, but {len(ref_auds)} were provided.")
         if len(ref_imgs) + len(ref_auds) > 12:
             raise ValueError(f"MiniMax H3 allows at most 12 mixed reference assets, but {len(ref_imgs) + len(ref_auds)} were provided.")
-        if ref_auds and not ref_imgs and not self.video_url:
+        if ref_auds and not ref_imgs and not self.get_all_ref_videos():
             raise ValueError("MiniMax H3 does not allow reference audio as the sole reference input. At least one reference image or video is required.")
         if self.duration is not None and (self.duration < 4.0 or self.duration > 15.0):
             # Log warning or clamp if appropriate, MiniMax H3 video duration is typically 4-15s

@@ -82,6 +82,7 @@ public class DramaShotVideoTake extends BaseEntity {
 
     /** 生成时参考音频快照 */
     private String refAudiosJson;
+    private String refVideosJson;
 
     /** 规范化后的请求参数快照JSON */
     private String requestSnapshotJson;

@@ -96,6 +96,7 @@ public class RenderTaskVO implements Serializable {
 
     /** 参考图列表 */
     private String referenceImages;
+    private String requestSnapshotJson;
 
     /** 渲染产物 MinIO 访问 URL */
     private String outputUrl;

@@ -41,4 +41,14 @@ public class RenderAsyncConfig {
         executor.initialize();
         return executor;
     }
+
+    @Bean("referenceVideoPreparationExecutor")
+    public Executor referenceVideoPreparationExecutor() {
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        executor.setCorePoolSize(2); executor.setMaxPoolSize(2); executor.setQueueCapacity(4);
+        executor.setThreadNamePrefix("reference-video-");
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.AbortPolicy());
+        executor.initialize();
+        return executor;
+    }
 }

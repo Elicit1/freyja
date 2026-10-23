@@ -25,6 +25,25 @@ public class ReferenceManifest {
 
     @Builder.Default
     private List<AudioManifestItem> audios = new ArrayList<>();
+    @Builder.Default
+    private List<VideoManifestItem> videos = new ArrayList<>();
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class VideoManifestItem {
+        private Integer videoIndex;
+        private String referenceId;
+        private String name;
+        private String sourceType;
+        private Long sourceShotId;
+        private Long sourceVideoTakeId;
+        private BigDecimal startSeconds;
+        private BigDecimal endSeconds;
+        private Boolean includeAudio;
+        private String referenceDescription;
+    }
 
     @Data
     @Builder
@@ -68,7 +87,7 @@ public class ReferenceManifest {
      * 格式化输出为大模型提示词注入的结构化素材清单块。
      */
     public String toPromptContext() {
-        if ((pictures == null || pictures.isEmpty()) && (audios == null || audios.isEmpty())) {
+        if ((pictures == null || pictures.isEmpty()) && (audios == null || audios.isEmpty()) && (videos == null || videos.isEmpty())) {
             return "【MiniMax H3 有序参考素材清单】: 本镜头未提供外部参考图或参考音频。\n";
         }
         StringBuilder sb = new StringBuilder();
@@ -128,6 +147,17 @@ public class ReferenceManifest {
             }
         }
 
+        if (videos != null) for (VideoManifestItem video : videos) {
+            sb.append("--- Video ").append(video.getVideoIndex()).append(" ---\n")
+                    .append("- 标签引用: <Video ").append(video.getVideoIndex()).append(">\n")
+                    .append("- 素材名称（仅名称，不代表视频内容）: ").append(StringUtils.defaultString(video.getName())).append("\n")
+                    .append("- 稳定素材标识: ").append(video.getReferenceId()).append("\n")
+                    .append("- 来源类型 / 分镜 / Take: ").append(video.getSourceType()).append(" / ").append(video.getSourceShotId()).append(" / ").append(video.getSourceVideoTakeId()).append("\n")
+                    .append("- 参考范围（秒，独立于输出时长）: ").append(video.getStartSeconds() == null ? BigDecimal.ZERO : video.getStartSeconds())
+                    .append(" ～ ").append(video.getEndSeconds() == null ? "源视频结尾" : video.getEndSeconds()).append("\n")
+                    .append("- 视频原音作为条件: ").append(Boolean.TRUE.equals(video.getIncludeAudio()) ? "开启" : "关闭").append("\n")
+                    .append("- 创作者明确参考说明: ").append(StringUtils.defaultIfBlank(video.getReferenceDescription(), "未提供，不得自行推断视频内容或保留意图")).append("\n");
+        }
         return sb.toString();
     }
 
@@ -162,6 +192,7 @@ public class ReferenceManifest {
     public String toSystemRoleGuidance() {
         StringBuilder sb = new StringBuilder("\n【本次关键图 Picture 的用途约束】\n");
         sb.append("以下逐图规则优先于模板中笼统的关键图定格或参考图构图规则。KEYFRAME 只是本系统的资产来源类型；目标视频中的用途由下列逐图角色决定。提示词 AI 未收到图片像素，只能依据提供的文字事实编写提示词。\n");
+        if (videos != null && !videos.isEmpty()) sb.append("本次包含有序视频条件 <Video 1>。保持六段结构，在 subject_definitions、retention_analysis 与 detailed_description 中按创作者说明建立视频与 Picture/Audio 的关系。提示词 AI 未收到视频像素，不能依据文件名编造动作、运镜或视频内容；缺少说明时标记未指定并由创作者补充。视频片段时长与输出时长独立。原音关闭时不得引用源片声音；开启也不代表允许复用背景音乐，应遵守创作者音乐要求。不要承诺逐帧复刻或引入未经声明的参考强度参数。\n");
         sb.append("本次 Ref2VA 输出按官方 full-reference 语言规则：六段正文使用英文，但 <d> 内的对白、歌词和画面可见文字保留原语言；如旧模板要求把非英文台词翻译为英文，以本条为准。\n");
         sb.append("按官方 full-reference 格式：具体帧或构图/故事板/镜头规划锚点在 subject_definitions 中独立定义 <Picture N>；summary 根据实际用途使用 [keyframe completion] 或 [reference generation]，并与其他任务类型去重组合。retention_analysis 按该 Picture 的已定义用途说明保留关系；detailed_description 只在该用途实际生效处引用。仅凭关键图来源不得虚构人物、时间点、Shot 映射或画面细节。\n");
         if (pictures != null) {

@@ -2,6 +2,8 @@
 
 使用 H3 编写提示词、选择生成模式或配置音频参考时读取。模型语法使用系统已发布的 `h3-prompt-writing`：基础模式读 `references/base-en.txt`，全参考模式读 `references/ref-en.txt`；不要把 FREYJA 的枚举、资产规范或当前算力限制当作所有 H3 接口的要求。
 
+设计机位、推拉摇移、运动节奏和拆镜切点时，先通过 Skill 工具读取 `minimax-h3-camera` 及其 `references/camera-language.md`、`references/shot-planning.md`；编译 H3 卡片时再读其 `references/h3-mapping.md`。摄影方法与最终协议分工明确，不使用 Seedance 的 `@` 媒体标签或专有参数；`h3-prompt-writing` 的当前发布规范决定最终格式。
+
 ## 平台模式与模型能力
 
 | 平台模式 | 当前输入与用途 | 提示词字段与结构 |
@@ -78,6 +80,8 @@ The woman (S1) says in an off-screen voiceover: <d>[Chinese] 我还记得那条�
 - 生成后检查实际声轨、意外语音、音色、情绪和复制片段的完整性；发现异常按实际问题修正，不能虚构“注意力必然撕裂”“100% 消除杂音”等机理或保证。
 
 ## 依据与维护
+
+视频作为参考条件时，另读 [视频参考流程](reference-video.md)：`refVideos` 使用明确来源、秒级范围、原音开关与参考说明，按 `<Video 1>` 对齐；实际生成需要片段预检与模型在线验收，不能只上传视频就声称它已参与生成。
 
 - [MiniMax H3 官方项目与提示词技能](https://github.com/MiniMax-AI/MiniMax-H3)
 - [官方基础模式规范](https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/base-en.txt)

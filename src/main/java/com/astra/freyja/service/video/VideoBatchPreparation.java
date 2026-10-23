@@ -21,6 +21,8 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class VideoBatchPreparation {
+    private final com.astra.freyja.service.ShotVideoReferenceService videoReferences;
+    private final com.astra.freyja.service.ShotVideoCapabilityService videoCapabilities;
     private final DramaShotMapper shots;
     private final DramaMapper dramas;
     private final DramaEpisodeMapper episodes;
@@ -154,9 +156,11 @@ public class VideoBatchPreparation {
         if(shot.getDuration()==null||shot.getDuration().signum()<=0||shot.getDuration().doubleValue()>15) throw new BizException(400,"镜头时长应在 0～15 秒内");
         var images=KeyImageReferenceValidator.parseAndValidate(shot.getRefImagesJson(),json,id->{var k=keyframes.selectById(id);return k==null?null:k.getFrameType();});
         List<ShotRefAudioDTO> audios=readAudios(shot.getRefAudiosJson());ShotAudioReferenceValidator.validate(audios);
+        var videos=com.astra.freyja.util.ShotVideoReferenceValidator.parse(shot.getRefVideosJson(),json);
+        if(!videos.isEmpty()&&!REF.equals(shot.getGenerationMode()))throw new BizException(400,"参考视频只适用于参考生成模式，请切换模式或清空视频草稿");
         if(model.getMaxImages()!=null&&images.size()>model.getMaxImages()) throw new BizException(400,"参考图数量超过模型上限");
         if(model.getMaxAudios()!=null&&audios.size()>model.getMaxAudios()) throw new BizException(400,"参考音频数量超过模型上限");
-        if(REF.equals(shot.getGenerationMode())&&!audios.isEmpty()&&images.isEmpty()) throw new BizException(400,"参考音频不能作为唯一参考模态");
+        if(REF.equals(shot.getGenerationMode())&&!audios.isEmpty()&&images.isEmpty()&&videos.isEmpty()) throw new BizException(400,"参考音频不能作为唯一参考模态");
         if(size==null||!size.matches("[0-9]+x[0-9]+")) throw new BizException(400,"视频尺寸无效");
         String[] wh=size.split("x");if(Integer.parseInt(wh[0])%32!=0||Integer.parseInt(wh[1])%32!=0||Integer.parseInt(wh[0])<32||Integer.parseInt(wh[1])<32) throw new BizException(400,"视频尺寸需按 32 像素对齐");
         if(StringUtils.isNotBlank(model.getParamsJson())){
@@ -171,14 +175,28 @@ public class VideoBatchPreparation {
             }catch(BizException e){throw e;}catch(Exception e){throw new BizException(400,"模型视频能力配置无效");}
         }
         Snapshot snap=new Snapshot();snap.setShot(copy(shot));snap.setAspectRatio(ratio);snap.setModelFingerprint(fingerprint(model,provider));
-        DramaShotRenderRequestDTO dto=new DramaShotRenderRequestDTO();dto.setProviderId(provider.getId());dto.setWorkflowTemplateId(model.getModelCode());dto.setSize(size);dto.setPrompt(prompt);dto.setSeed(shot.getSeed());snap.setRequest(dto);return snap;
+        DramaShotRenderRequestDTO dto=new DramaShotRenderRequestDTO();dto.setProviderId(provider.getId());dto.setWorkflowTemplateId(model.getModelCode());dto.setSize(size);dto.setPrompt(prompt);dto.setSeed(shot.getSeed());
+        if(!videos.isEmpty()) {
+            var prepared=videoReferences.forSubmission(shot,model,supplied==null?null:supplied.getPreflightId());
+            dto.setPreflightId(prepared.getPreflightId());dto.setResolvedRefVideos(prepared.getReferences());
+            dto.setReferenceVideoRevision(prepared.getModel().getWorkflowRevision());dto.setReferenceVideoNodeId(prepared.getModel().getNodeId());
+        }
+        snap.setRequest(dto);return snap;
     }
     public void validateRoute(Snapshot snap) {
         var p=providers.selectById(snap.getRequest().getProviderId());
         var m=models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId,snap.getRequest().getProviderId()).eq(AiModel::getModelCode,snap.getRequest().getWorkflowTemplateId()).last("LIMIT 1"));
-        if(m==null||p==null||!Objects.equals(m.getStatus(),1)||!Objects.equals(p.getStatus(),1)||!fingerprint(m,p).equals(snap.getModelFingerprint())) throw new BizException(409,"提供商或模型配置已变更，请重新预检");
+        boolean hasVideos=snap.getRequest().getResolvedRefVideos()!=null&&!snap.getRequest().getResolvedRefVideos().isEmpty();
+        boolean matches=m!=null&&p!=null&&(fingerprint(m,p).equals(snap.getModelFingerprint())||!hasVideos&&legacyFingerprint(m,p).equals(snap.getModelFingerprint()));
+        if(m==null||p==null||!Objects.equals(m.getStatus(),1)||!Objects.equals(p.getStatus(),1)||!matches) throw new BizException(409,"提供商或模型配置已变更，请重新预检");
+        if(snap.getRequest().getResolvedRefVideos()!=null&&!snap.getRequest().getResolvedRefVideos().isEmpty()) {
+            var option=videoCapabilities.describe(m,p);
+            videoReferences.validateSnapshot(snap.getRequest().getResolvedRefVideos(),option,snap.getShot());
+            if(!Objects.equals(option.getNodeId(),snap.getRequest().getReferenceVideoNodeId())||!Objects.equals(option.getWorkflowRevision(),snap.getRequest().getReferenceVideoRevision()))throw new BizException(409,"REFERENCE_VIDEO_WORKFLOW_MISMATCH: 视频工作流版本已变化");
+        }
     }
-    private String fingerprint(AiModel m,AiProvider p) { return hash(write(Arrays.asList(m.getId(),m.getModelCode(),m.getModelType(),m.getParamsJson(),m.getMaxImages(),m.getMaxAudios(),p.getId(),p.getBaseUrl()))); }
+    private String fingerprint(AiModel m,AiProvider p) { return hash(write(Arrays.asList(m.getId(),m.getModelCode(),m.getModelType(),m.getParamsJson(),m.getMaxImages(),m.getMaxAudios(),m.getMaxVideos(),p.getId(),p.getBaseUrl()))); }
+    private String legacyFingerprint(AiModel m,AiProvider p) { return hash(write(Arrays.asList(m.getId(),m.getModelCode(),m.getModelType(),m.getParamsJson(),m.getMaxImages(),m.getMaxAudios(),p.getId(),p.getBaseUrl()))); }
     private FramePlan plan(String configured,boolean enabled,DramaShot source,Map<Long,Candidate> accepted,int order,String frameType) {
         FramePlan p=new FramePlan();p.setFrameType(frameType);
         if(StringUtils.isNotBlank(configured)){p.setType("CONFIGURED");return p;}

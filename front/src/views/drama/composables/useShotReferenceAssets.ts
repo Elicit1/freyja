@@ -1,5 +1,5 @@
 import { ref, computed, type Ref } from 'vue'
-import type { CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio } from '@/types/drama'
+import type { CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, ShotRefVideo } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
 import { REFERENCE_AUDIO_TYPE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { requireKeyImageRole } from '@/constants/keyImageRoles'
@@ -11,6 +11,7 @@ export interface ShotPromptDraft {
   resKeyframeId?: string | number
   refImages: ShotRefImage[]
   refAudios: ShotRefAudio[]
+  refVideos?: ShotRefVideo[]
 }
 
 export interface CandidateImageItem {
@@ -238,8 +239,8 @@ export function useShotReferenceAssets(
       }
     })
 
-    if (draft.value.refAudios.length > 0 && draft.value.refImages.length === 0) {
-      errs.push('存在参考音频时，MiniMax H3 规范要求必须至少配置 1 张参考图')
+    if (draft.value.refAudios.length > 0 && draft.value.refImages.length === 0 && !draft.value.refVideos?.length) {
+      errs.push('存在参考音频时，需要配置参考图或参考视频')
     }
 
     return errs
@@ -247,8 +248,8 @@ export function useShotReferenceAssets(
 
   const validationWarnings = computed<string[]>(() => {
     const warns: string[] = []
-    if (draft.value.refImages.length === 0 && draft.value.refAudios.length === 0) {
-      warns.push('尚未编排任何参考图或音频槽位，模型将基于纯文本剧本与文字设定生成。')
+    if (draft.value.refImages.length === 0 && draft.value.refAudios.length === 0 && !draft.value.refVideos?.length) {
+      warns.push('尚未编排任何图片、视频或音频参考，模型将基于纯文本剧本与文字设定生成。')
     }
     return warns
   })
@@ -328,7 +329,11 @@ export function useShotReferenceAssets(
     const props = draft.value.propRefs.map(p => String(p.propId || '')).sort().join(';')
     const imgs = draft.value.refImages.map(i => `${i.imageUrl}|${i.usageRole || ''}`).join(';')
     const auds = draft.value.refAudios.map(a => `${a.audioUrl}|${a.referenceType || ''}|${a.referenceDescription || ''}|${a.audioId || ''}|${a.characterId || ''}|${a.language || ''}`).join(';')
-    return `${chars}__${scene}__${keyframe}__${props}__${imgs}__${auds}`
+    const videos = JSON.stringify((draft.value.refVideos || []).map(video => [
+      video.id, video.sourceType, video.sourceVideoUrl, video.sourceShotId, video.sourceVideoTakeId,
+      video.name, video.startSeconds ?? 0, video.endSeconds, video.includeAudio === true, video.referenceDescription
+    ]))
+    return `${chars}__${scene}__${keyframe}__${props}__${imgs}__${auds}__${videos}`
   }
 
   const isResultStale = computed(() => {

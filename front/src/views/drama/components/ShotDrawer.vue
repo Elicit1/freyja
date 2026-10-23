@@ -65,7 +65,7 @@
                 <span>首尾帧模式</span>
               </el-radio-button>
               <el-radio-button value="REFERENCE_MODE">
-                <span>参考图与音频模式</span>
+                <span>多模态参考（图片 / 视频 / 音频）</span>
               </el-radio-button>
             </el-radio-group>
           </div>
@@ -96,9 +96,9 @@
             </div>
           </el-popover>
 
-          <!-- 参考图与音频模式徽章 -->
+          <!-- 多模态参考模式徽章 -->
           <div v-else class="text-xs text-sky-700 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded font-medium">
-            <span>🖼️ 参考图≤5张 · 🎵 音频≤4段 (3~8s，总长20~30s)</span>
+            <span>图片 / 视频 / 音频参考 · 生成限制以所选模型为准</span>
           </div>
         </div>
       </div>
@@ -520,14 +520,25 @@
           </el-form-item>
         </div>
 
-        <!-- 参考图与音频多模态管理 (仅当为 REFERENCE_MODE 时展示，位于提示词工作台下方) -->
+        <!-- 多模态参考素材管理 -->
         <div v-if="form.generationMode === 'REFERENCE_MODE'" class="bg-white border border-sky-200 rounded-xl p-4 shadow-sm mt-4 space-y-4">
           <div class="flex items-center justify-between border-b border-sky-100 pb-2">
             <h4 class="text-sm font-bold text-sky-950 flex items-center gap-1.5">
-              <span>🖼️</span> 参考图与音频资产 (多模态模式专属)
+              <span>🖼️</span> 图片、视频与音频参考资产
             </h4>
-            <span class="text-xs text-sky-700">参考图最多 9 张 · 参考音频最多 3 段 (单段 2~15s，总长 ≤ 15s)</span>
+            <span class="text-xs text-sky-700">视频参考最多 1 段 · 具体生成限制在渲染工坊查看</span>
           </div>
+
+          <ShotVideoReferenceEditor
+            :model-value="form.refVideos || []"
+            :shot-id="form.id != null ? String(form.id) : undefined"
+            :drama-id="form.dramaId"
+            :target-duration="form.duration"
+            :disabled="saving || loading || rendering"
+            purpose="draft"
+            @update:model-value="form.refVideos = $event"
+            @prepare="handleRender"
+          />
 
           <!-- 1. 参考图列表 -->
           <div class="space-y-2">
@@ -661,7 +672,13 @@
           </div>
         </div>
 
-        <!-- 首帧图与尾帧图关键帧设置卡片 (仅首尾帧模式展示，位于提示词工作台下方) -->
+        <div v-if="form.generationMode !== 'REFERENCE_MODE' && form.refVideos?.length" class="border border-violet-200 rounded-xl p-3 text-xs space-y-2 mt-3">
+          <strong>已保存参考视频</strong>
+          <p v-for="(video, index) in form.refVideos" :key="video.id">Video {{ index + 1 }} · {{ video.name || '视频' }} · {{ video.startSeconds || 0 }} ～ {{ video.endSeconds ?? '结尾' }} 秒</p>
+          <p>当前首尾帧模式不使用参考视频；请清空草稿或切回多模态参考模式后生成。</p>
+          <el-button size="small" link type="danger" @click="form.refVideos = []">清空视频参考（保存后生效）</el-button>
+        </div>
+        <!-- 首尾帧模式关键帧设置 -->
         <div
           v-if="form.generationMode !== 'REFERENCE_MODE'"
           class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mt-4"
@@ -921,12 +938,13 @@ import { requireKeyImageRole } from '@/constants/keyImageRoles'
 import { assetApi } from '@/api/res-asset'
 import DirectorPlanEditor from './DirectorPlanEditor.vue'
 import { useDirectorInputCheck, directorPlanInput } from '@/utils/director-plan-input'
-import type { DramaShot, DramaShotSaveRequest, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, DirectorPlan } from '@/types/drama'
+import type { DramaShot, DramaShotSaveRequest, DramaShotGroup, CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, ShotRefVideo, DirectorPlan } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResKeyframeOption } from '@/types/resource'
 import ShotPromptDeriveModal from './ShotPromptDeriveModal.vue'
 import ShotPromptPreviewModal from './ShotPromptPreviewModal.vue'
 import ShotFirstEndFrameRenderModal from './ShotFirstEndFrameRenderModal.vue'
 import ShotMultiModalRefRenderModal from './ShotMultiModalRefRenderModal.vue'
+import ShotVideoReferenceEditor from './ShotVideoReferenceEditor.vue'
 import ShotImageGenerateModal from './ShotImageGenerateModal.vue'
 import ShotVideoHistoryDrawer from './ShotVideoHistoryDrawer.vue'
 
@@ -949,6 +967,7 @@ type DerivedPromptResult = {
   resKeyframeId?: string | number
   refImages: ShotRefImage[]
   refAudios: ShotRefAudio[]
+  refVideos: ShotRefVideo[]
   directorPlan?: DirectorPlan
   directorPlanJson?: string
 }
@@ -1588,6 +1607,7 @@ function openCreate(dramaId: string | number, episodeId: string | number, sceneI
   propRefs.value = []
   refImages.value = []
   refAudios.value = []
+  form.refVideos = []
   currentDramaAspectRatio.value = dramaAspectRatio || ''
   if (!currentDramaAspectRatio.value && dramaId) {
     dramaApi.getById(dramaId).then((res: any) => {
@@ -1696,6 +1716,7 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
       propRefs.value = res.propRefs ? [...res.propRefs] : []
       refImages.value = res.refImages ? [...res.refImages] : []
       refAudios.value = res.refAudios ? [...res.refAudios] : []
+      form.refVideos = (res.refVideos || []).map(video => ({ ...video }))
       form.refAudiosConfigured = res.refAudiosConfigured === true
     }
   } catch (e: any) {
@@ -2072,6 +2093,7 @@ function handleApplyDerivedPrompts(res: DerivedPromptResult) {
     form.refAudiosConfigured = true
     refAudios.value = res.refAudios.map(item => ({ ...item }))
   }
+  form.refVideos = res.refVideos.map(item => ({ ...item }))
   // Always show the latest persisted plan, independently of the result being adopted.
   if (form.id) void shotApi.getById(form.id).then(latest => {
     form.directorPlanJson = latest.directorPlanJson
@@ -2108,6 +2130,7 @@ async function handleApplyDerivedPromptsForPanel(shotId: string, res: DerivedPro
     resKeyframeId: res.resKeyframeId || null,
     refImages: res.refImages.map(item => ({ ...item })),
     refAudios: res.refAudios.map(item => ({ ...item })),
+    refVideos: res.refVideos.map(item => ({ ...item })),
   }
   try {
     await shotApi.update(payload)

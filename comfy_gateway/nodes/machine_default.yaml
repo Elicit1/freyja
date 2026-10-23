@@ -166,6 +166,13 @@ models:
     description: "Official MiniMax H3 Ref2VA INT8 with Turbo LoRA 8 steps"
     template_file: "comfyUIApi/minimax_h3_ref2va_official_turbo8.json"
     handler: "minimax_h3_ref2va"
+    # Enable only after online acceptance; set verified_revision to the capabilities revision.
+    reference_video:
+      status: "UNVERIFIED"
+      condition_node_id: "136"
+      output_node_ids: ["130"]
+      max_videos: 1
+      decode_fps: 24
     default_steps: 8
     default_cfg: 1.0
     timeout_seconds: 1800

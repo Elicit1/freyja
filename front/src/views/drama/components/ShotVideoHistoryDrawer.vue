@@ -112,6 +112,7 @@
               </div>
             </div>
 
+            <ReferenceVideoSnapshot class="mx-3 mb-2" :json="take.refVideosJson" />
             <!-- 底部选择操作按钮 -->
             <div class="px-3.5 py-2.5 bg-[var(--surface-muted)] border-t border-[var(--border-default)] flex items-center justify-between">
               <span class="text-[10px] text-[var(--text-muted)]">
@@ -171,6 +172,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import ReferenceVideoSnapshot from '@/components/media/ReferenceVideoSnapshot.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { shotApi } from '@/api/drama'
 import type { ShotVideoTake } from '@/types/drama'

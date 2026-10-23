@@ -15,7 +15,7 @@ RUN if [ "$MAINLAND" = "true" ]; then \
         sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list 2>/dev/null || true; \
     fi && \
     apt-get update && \
-    apt-get install -y --no-install-recommends curl && \
+    apt-get install -y --no-install-recommends curl ffmpeg && \
     rm -rf /var/lib/apt/lists/*
 
 # 优先安装 Python 依赖 (若处于大陆则静默使用清华镜像源加速)

@@ -46,6 +46,7 @@ public class McpBusinessView {
             result.put("propRefs", references(source.get("propRefsJson"), metadata.referenceFields("PROP")));
             result.put("refImages", references(source.get("refImagesJson"), metadata.referenceFields("IMAGE")));
             result.put("refAudios", references(source.get("refAudiosJson"), metadata.referenceFields("AUDIO")));
+            result.put("refVideos", references(source.get("refVideosJson"), metadata.referenceFields("VIDEO")));
             result.put("directorPlan", directorPlan(source.get("directorPlanJson")));
         }
         result.put("editFingerprint", fingerprint(entity));

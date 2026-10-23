@@ -61,6 +61,7 @@ public class ShotPromptParseRequestDTO {
 
     /** 有序参考音频清单 (用于校验 Audio 1..N 标签越界) */
     private List<ShotRefAudioDTO> refAudios;
+    private List<ShotRefVideoDTO> refVideos;
 
     /** 是否包含背景配乐 (BGM)，默认为 false */
     @Builder.Default

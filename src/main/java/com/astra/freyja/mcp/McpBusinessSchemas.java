@@ -43,6 +43,7 @@ public class McpBusinessSchemas {
                 if (field.equals("propRefs")) schema = array(30, nested(PropShotRefDTO.class, references, List.of("propId")));
                 if (field.equals("refImages")) schema = array(9, nested(ShotRefImageDTO.class, references, List.of("sourceType", "imageUrl", "usageRole")));
                 if (field.equals("refAudios")) schema = array(3, nested(ShotRefAudioDTO.class, references, List.of("audioUrl", "referenceType")));
+                if (field.equals("refVideos")) schema = array(1, nested(ShotRefVideoDTO.class, references, List.of("id", "sourceType")));
                 if (field.equals("directorPlan")) schema = directorPlan();
                 if (field.equals("seed")) schema = described(schema, "1 到 " + ShotSeedUtil.MAX_SEED + " 的整数字符串");
                 String description = description(type, field);
@@ -74,12 +75,12 @@ public class McpBusinessSchemas {
         Map<String, Object> source = json.mapper().readValue(JsonSchemaGenerator.generateForType(type), Map.class);
         Map<String, Object> properties = new TreeMap<>((Map<String, Object>) source.get("properties"));
         String kind = type == CharacterShotRefDTO.class ? "CHARACTER" : type == PropShotRefDTO.class ? "PROP"
-                : type == ShotRefImageDTO.class ? "IMAGE" : "AUDIO";
+                : type == ShotRefImageDTO.class ? "IMAGE" : type == ShotRefVideoDTO.class ? "VIDEO" : "AUDIO";
         Set<String> allowed = metadata.referenceFields(kind);
         if (!properties.keySet().containsAll(allowed)) throw new IllegalStateException("DTO 缺少媒体引用业务字段: " + kind);
         properties.keySet().retainAll(allowed);
         for (String name : properties.keySet()) {
-            if (IDS.contains(name) || name.equals("sourceId") || name.equals("audioId")) properties.put(name, identifier(refs, !required.contains(name)));
+            if (IDS.contains(name) || name.equals("sourceId") || name.equals("audioId") || name.equals("sourceShotId") || name.equals("sourceVideoTakeId")) properties.put(name, identifier(refs, !required.contains(name)));
             else if (type != ShotRefAudioDTO.class || !name.equals("duration")) properties.put(name, Map.of("type", List.of("string", "null")));
         }
         properties.putAll(metadata.referenceSchemas(kind));

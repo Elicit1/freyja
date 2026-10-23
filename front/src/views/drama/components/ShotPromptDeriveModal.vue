@@ -86,6 +86,16 @@
           :disabled="isStreaming"
         />
 
+      <ShotVideoReferenceEditor
+        v-if="generationMode === 'REFERENCE_MODE'"
+        :model-value="draft.refVideos || []"
+        :shot-id="currentShotContext?.id != null ? String(currentShotContext.id) : undefined"
+        :drama-id="currentShotContext?.dramaId"
+        :target-duration="currentShotContext?.duration"
+        :disabled="isStreaming || isExportingPackage || isParsingResult || preparingGeneration || isApplying || restoringTask || restoredTaskRunning"
+        purpose="prompt"
+        @update:model-value="updateReferenceVideos"
+      />
       <!-- 二、参考图槽位 (Picture 1..N) 与 三、参考音频槽位 (Audio 1..N) -->
         <ReferenceMediaSlots
           v-model:ref-images="draft.refImages"
@@ -269,7 +279,7 @@
         </div>
 
         <!-- 外部 AI 附件顺序提示卡 (多模态素材提示) -->
-        <div v-if="draft.refImages.length > 0 || draft.refAudios.length > 0" class="bg-amber-50/90 border border-amber-200 rounded-xl p-3 text-xs space-y-2">
+        <div v-if="draft.refImages.length > 0 || draft.refAudios.length > 0 || draft.refVideos?.length" class="bg-amber-50/90 border border-amber-200 rounded-xl p-3 text-xs space-y-2">
           <div class="flex items-center justify-between">
             <div class="font-bold text-amber-900 flex items-center gap-1.5">
               <span>📎</span> 外部 AI 多模态附件上传指南 (重要)
@@ -299,6 +309,15 @@
               <span class="font-bold text-indigo-700">&lt;Audio {{ idx + 1 }}&gt;</span>
               <span class="text-slate-800 truncate max-w-[100px]">{{ aud.name || '音频' }}</span>
               <span class="text-[9px] bg-indigo-100 text-indigo-800 px-1 rounded">{{ audioReferenceTypeLabel(aud.referenceType) }}</span>
+            </div>
+            <div
+              v-for="(video, idx) in draft.refVideos"
+              :key="video.id"
+              class="flex items-center gap-1 bg-white border border-amber-200 rounded px-2 py-1 text-[11px] text-amber-950 font-mono shadow-xs"
+            >
+              <span class="font-bold text-violet-700">&lt;Video {{ idx + 1 }}&gt;</span>
+              <span class="text-slate-800 truncate max-w-[120px]">{{ video.name || '视频' }}</span>
+              <span>{{ video.startSeconds ?? 0 }} ～ {{ video.endSeconds ?? '源片结尾' }} 秒</span>
             </div>
           </div>
         </div>
@@ -800,6 +819,7 @@ import DictSelect from '@/components/DictSelect.vue'
 import SkillSelector from '@/components/SkillSelector.vue'
 import ShotAssetReferenceComposer from './ShotAssetReferenceComposer.vue'
 import ReferenceMediaSlots from './ReferenceMediaSlots.vue'
+import ShotVideoReferenceEditor from './ShotVideoReferenceEditor.vue'
 import { audioReferenceTypeLabel } from '@/constants/referenceMediaOptions'
 import {
   useShotReferenceAssets,
@@ -814,6 +834,7 @@ import type {
   PropShotRefInfo,
   ShotRefImage,
   ShotRefAudio,
+  ShotRefVideo,
   ShotPromptDeriveDTO,
   ShotPromptDeriveVO,
   ShotPromptPackageVO,
@@ -837,6 +858,7 @@ const emit = defineEmits<{
     resKeyframeId?: string | number
     refImages: ShotRefImage[]
     refAudios: ShotRefAudio[]
+    refVideos: ShotRefVideo[]
     directorPlan?: DirectorPlan
     directorPlanJson?: string
   }, done: (success: boolean) => void): void
@@ -913,7 +935,7 @@ const {
 
 const modalTitle = computed(() => {
   return generationMode.value === 'REFERENCE_MODE'
-    ? '⚡ AI 智能生成多模态参考图提示词'
+    ? '⚡ AI 智能生成多模态参考提示词（图片 / 视频 / 音频）'
     : '⚡ AI 智能生成首尾帧提示词'
 })
 
@@ -1115,7 +1137,8 @@ async function open(params: {
     resSceneId: params.resSceneId !== undefined ? params.resSceneId : params.shot.resSceneId,
     resKeyframeId: params.resKeyframeId !== undefined ? params.resKeyframeId : params.shot.resKeyframeId,
     refImages: (params.refImages || params.shot.refImages || []).map(img => ({ ...img })),
-    refAudios: (params.refAudios ?? params.shot.refAudios ?? []).map(aud => ({ ...aud }))
+    refAudios: (params.refAudios ?? params.shot.refAudios ?? []).map(aud => ({ ...aud })),
+    refVideos: (params.shot.refVideos || []).map(video => ({ ...video }))
   }
 
   // 2. 载入资产选项
@@ -1291,7 +1314,8 @@ function restorePromptInputSnapshot(inputPayload?: string, expectedShotId?: stri
       resSceneId: payload.resSceneId,
       resKeyframeId: payload.resKeyframeId,
       refImages: (payload.refImages || []).map(item => ({ ...item })),
-      refAudios: (payload.refAudios || []).map(item => ({ ...item }))
+      refAudios: (payload.refAudios || []).map(item => ({ ...item })),
+      refVideos: (payload.refVideos || []).map(item => ({ ...item }))
     }
     if (payload.generationMode) generationMode.value = payload.generationMode
     episodeSummary.value = payload.episodeSummary || ''
@@ -1423,6 +1447,7 @@ function buildDerivePayload(): ShotPromptDeriveDTO {
     generationMode: generationMode.value,
     refImages: draft.value.refImages.map(image => ({ ...image })),
     refAudios: draft.value.refAudios.map(audio => ({ ...audio })),
+    refVideos: (draft.value.refVideos || []).map(video => ({ ...video })),
     requiredSkillNames: executionMode.value === 'API' && skillNames.value.length > 0 ? skillNames.value : undefined,
     selectedSkillNames: executionMode.value === 'MANUAL' && skillNames.value.length > 0 ? skillNames.value : undefined
   }
@@ -1431,6 +1456,11 @@ function buildDerivePayload(): ShotPromptDeriveDTO {
 function handleReferenceMediaChange() {
   promptPackage.value = null
   exportedContext.value = undefined
+}
+
+function updateReferenceVideos(videos: ShotRefVideo[]) {
+  draft.value.refVideos = videos
+  handleReferenceMediaChange()
 }
 
 function handleBgmChange() {
@@ -1511,6 +1541,9 @@ function handleCopyManifestText() {
       lines.push(`<Audio ${idx + 1}>: ${aud.name || '音频'} (${aud.referenceType})`)
     })
   }
+  draft.value.refVideos?.forEach((video, index) => {
+    lines.push(`<Video ${index + 1}>: ${video.name || '视频'} (${video.startSeconds ?? 0} ~ ${video.endSeconds ?? '结尾'}s; 原音${video.includeAudio ? '开启' : '关闭'}) ${video.referenceDescription || '参考意图未指定'}`)
+  })
   handleCopy(lines.join('\n'), '参考素材清单')
 }
 
@@ -1543,6 +1576,7 @@ async function handleParseManualResponse() {
       propRefs: draft.value.propRefs.length > 0 ? draft.value.propRefs : undefined,
       refImages: draft.value.refImages.map(image => ({ ...image })),
       refAudios: draft.value.refAudios.map(audio => ({ ...audio })),
+      refVideos: (draft.value.refVideos || []).map(video => ({ ...video })),
       includeBgm: includeBgm.value,
       selectedSkillNames: skillNames.value.length > 0 ? skillNames.value : undefined
     })
@@ -1750,7 +1784,8 @@ async function doApply() {
     resSceneId: draft.value.resSceneId,
     resKeyframeId: draft.value.resKeyframeId,
     refImages: draft.value.refImages.map(item => ({ ...item })),
-    refAudios: draft.value.refAudios.map(item => ({ ...item }))
+    refAudios: draft.value.refAudios.map(item => ({ ...item })),
+    refVideos: (draft.value.refVideos || []).map(item => ({ ...item }))
   }
   try {
     const saved = await new Promise<boolean>(resolve => emit('apply', result, resolve))
@@ -1769,7 +1804,7 @@ function handleConfirmApply() {
 
   if (isResultStale.value) {
     ElMessageBox.confirm(
-      '检测到素材、参考用途或槽位顺序在 AI 分析完成后发生了变更。继续采纳可能导致人物出镜方式或 <Picture N> 引用与当前配置不一致。确定仍要采纳并回填吗？',
+      '检测到素材、参考用途、视频片段范围或槽位顺序在 AI 分析完成后发生了变更。继续采纳可能导致人物出镜方式或 <Picture N> / <Video N> / <Audio N> 引用与当前配置不一致。确定仍要采纳并回填吗？',
       '素材变更提示',
       {
         type: 'warning',

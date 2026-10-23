@@ -36,5 +36,7 @@ public class ShotVideoTakeVO {
     private String negativePromptSnapshot;
     private String firstFrameUrl;
     private String endFrameUrl;
+    private String refVideosJson;
+    private String requestSnapshotJson;
     private LocalDateTime createTime;
 }

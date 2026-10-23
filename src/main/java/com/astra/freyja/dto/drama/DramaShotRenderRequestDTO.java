@@ -7,6 +7,7 @@ import lombok.Data;
  */
 @Data
 public class DramaShotRenderRequestDTO {
+    private Integer schemaVersion = 1;
 
     /** 指定 AI 提供商 ID (为空则使用系统默认) */
     private Long providerId;
@@ -28,4 +29,9 @@ public class DramaShotRenderRequestDTO {
 
     /** 画面/视频渲染画幅尺寸 (如 960x544, 1280x768, 720x1280) */
     private String size;
+    /** Prepared reference-video inputs; clients only submit preflightId. */
+    private String preflightId;
+    private java.util.List<ResolvedShotVideoReference> resolvedRefVideos;
+    private String referenceVideoRevision;
+    private String referenceVideoNodeId;
 }

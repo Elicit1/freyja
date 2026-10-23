@@ -105,6 +105,8 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
                     .negativePromptSnapshot(take.getNegativePromptSnapshot())
                     .firstFrameUrl(take.getFirstFrameUrl())
                     .endFrameUrl(take.getEndFrameUrl())
+                    .refVideosJson(take.getRefVideosJson())
+                    .requestSnapshotJson(take.getRequestSnapshotJson())
                     .createTime(take.getCreateTime())
                     .build();
         }).toList());
@@ -182,6 +184,8 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
             take.setEndFrameUrl(shotSnapshot.getEndFrameImageUrl());
             take.setRefImagesJson(shotSnapshot.getRefImagesJson());
             take.setRefAudiosJson(shotSnapshot.getRefAudiosJson());
+            take.setRefVideosJson(requestSnapshot != null && requestSnapshot.getResolvedRefVideos() != null
+                    ? serializeVideoReferences(requestSnapshot.getResolvedRefVideos()) : shotSnapshot.getRefVideosJson());
             take.setRequestSnapshotJson(serializeCleanRequestSnapshot(requestSnapshot));
 
             try {
@@ -429,6 +433,11 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
         }
     }
 
+    private String serializeVideoReferences(Object references) {
+        try { return com.astra.freyja.util.VideoReferenceSnapshotJson.write(references, objectMapper); }
+        catch (Exception e) { throw new BizException(500, "参考视频快照保存失败"); }
+    }
+
     private String serializeCleanRequestSnapshot(DramaShotRenderRequestDTO requestDTO) {
         if (requestDTO == null) {
             return null;
@@ -440,7 +449,12 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
             map.put("seed", requestDTO.getSeed());
             map.put("size", requestDTO.getSize());
             map.put("taskId", requestDTO.getTaskId());
-            return objectMapper.writeValueAsString(map);
+            map.put("schemaVersion", 1);
+            map.put("preflightId", requestDTO.getPreflightId());
+            map.put("resolvedRefVideos", requestDTO.getResolvedRefVideos());
+            map.put("referenceVideoRevision", requestDTO.getReferenceVideoRevision());
+            map.put("referenceVideoNodeId", requestDTO.getReferenceVideoNodeId());
+            return com.astra.freyja.util.VideoReferenceSnapshotJson.write(map, objectMapper);
         } catch (Exception e) {
             log.warn("[ShotVideoTakeService] 序列化请求参数快照异常: {}", e.getMessage());
             return null;

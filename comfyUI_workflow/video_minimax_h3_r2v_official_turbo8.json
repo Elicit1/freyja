@@ -1,8 +1,8 @@
 {
   "id": "e3f2b845-8f2c-4b5a-9caf-eac1029d3e7e",
   "revision": 0,
-  "last_node_id": 146,
-  "last_link_id": 291,
+  "last_node_id": 148,
+  "last_link_id": 292,
   "nodes": [
     {
       "id": 92,
@@ -858,7 +858,7 @@
           "name": "ref_videos.ref_video_0",
           "shape": 7,
           "type": "IMAGE",
-          "link": null
+          "link": 292
         },
         {
           "label": "ref_video_audio_0",
@@ -1375,6 +1375,98 @@
       },
       "color": "#322",
       "bgcolor": "#533"
+    },
+    {
+      "id": 147,
+      "type": "VHS_LoadVideo",
+      "title": "参考视频 1（上传后 Ctrl+M 启用）",
+      "pos": [
+        -1050,
+        7100
+      ],
+      "size": [
+        420,
+        600
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "meta_batch",
+          "type": "VHS_BatchManager",
+          "shape": 7,
+          "link": null
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "shape": 7,
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            292
+          ]
+        },
+        {
+          "name": "frame_count",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": null
+        },
+        {
+          "name": "video_info",
+          "type": "VHS_VIDEOINFO",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VHS_LoadVideo"
+      },
+      "widgets_values": {
+        "video": "",
+        "force_rate": 24,
+        "custom_width": 768,
+        "custom_height": 0,
+        "frame_load_cap": 120,
+        "skip_first_frames": 0,
+        "select_every_nth": 1,
+        "format": "None"
+      }
+    },
+    {
+      "id": 148,
+      "type": "MarkdownNote",
+      "title": "视频参考 · 使用说明",
+      "pos": [
+        -560,
+        7100
+      ],
+      "size": [
+        600,
+        500
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {},
+      "widgets_values": [
+        "## 视频参考使用说明\n\n1. 选中左侧「参考视频 1」节点，按 Ctrl+M 启用（默认关闭）；点击上传按钮选择参考视频。\n2. IMAGE 已连接 MiniMax H3 的 ref_videos.ref_video_0。在原提示词中添加：参考 `<Video 1>` 的运镜与动作节奏，并明确要保留的内容。\n3. 自动转换为 24 fps；默认取前 120 帧（5 秒），宽度 768，高度等比缩放。建议参考片段为 2–15 秒；frame_load_cap 可调整为 48–360，skip_first_frames 可调整起始位置。\n4. 仅参考画面时保持 audio 输出不连接。若视频含音轨且需要参考声音，可将 audio 接到 ref_video_audios.ref_video_audio_0（不是 ref_audios.ref_audio_0）。无音轨视频请勿连接 audio。\n5. 不使用视频时，选中加载节点按 Ctrl+M 关闭即可。\n\n原图片参考仍使用 `<Picture 1>`、`<Picture 2>`；独立音频参考使用 `<Audio 1>`。视频参考使用 `<Video 1>`。\n"
+      ],
+      "widgets_values_named": {
+        "text": "## 视频参考使用说明\n\n1. 选中左侧「参考视频 1」节点，按 Ctrl+M 启用（默认关闭）；点击上传按钮选择参考视频。\n2. IMAGE 已连接 MiniMax H3 的 ref_videos.ref_video_0。在原提示词中添加：参考 `<Video 1>` 的运镜与动作节奏，并明确要保留的内容。\n3. 自动转换为 24 fps；默认取前 120 帧（5 秒），宽度 768，高度等比缩放。建议参考片段为 2–15 秒；frame_load_cap 可调整为 48–360，skip_first_frames 可调整起始位置。\n4. 仅参考画面时保持 audio 输出不连接。若视频含音轨且需要参考声音，可将 audio 接到 ref_video_audios.ref_video_audio_0（不是 ref_audios.ref_audio_0）。无音轨视频请勿连接 audio。\n5. 不使用视频时，选中加载节点按 Ctrl+M 关闭即可。\n\n原图片参考仍使用 `<Picture 1>`、`<Picture 2>`；独立音频参考使用 `<Audio 1>`。视频参考使用 `<Video 1>`。\n"
+      }
     }
   ],
   "links": [
@@ -1641,6 +1733,14 @@
       142,
       2,
       "BOOLEAN"
+    ],
+    [
+      292,
+      147,
+      0,
+      136,
+      6,
+      "IMAGE"
     ]
   ],
   "groups": [
@@ -1712,6 +1812,18 @@
         5350,
         730,
         480
+      ],
+      "color": "#3f789e",
+      "flags": {}
+    },
+    {
+      "id": 7,
+      "title": "视频参考（可选 / 24 fps）",
+      "bounding": [
+        -1080,
+        7010,
+        1150,
+        740
       ],
       "color": "#3f789e",
       "flags": {}

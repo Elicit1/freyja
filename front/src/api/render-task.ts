@@ -26,6 +26,7 @@ export interface RenderTaskVO {
   prompt?: string
   negativePrompt?: string
   referenceImages?: string
+  requestSnapshotJson?: string
   outputUrl?: string
   lastFrameUrl?: string
   errorMessage?: string

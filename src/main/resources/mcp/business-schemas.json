@@ -98,7 +98,8 @@
         "generationMode",
         "seed",
         "previewImageUrl",
-        "endFrameImageUrl"
+        "endFrameImageUrl",
+        "refVideos"
       ],
       "required": [
         "sceneId"
@@ -240,6 +241,18 @@
       "referenceType",
       "referenceDescription",
       "language"
+    ],
+    "VIDEO": [
+      "id",
+      "name",
+      "sourceType",
+      "sourceVideoUrl",
+      "sourceShotId",
+      "sourceVideoTakeId",
+      "startSeconds",
+      "endSeconds",
+      "includeAudio",
+      "referenceDescription"
     ]
   },
   "fieldSchemas": {
@@ -392,7 +405,8 @@
     "SHOT.refAudios": "按提交顺序保存；第1项对应 <Audio 1>。只关联已有音频，不生成声音。",
     "AUDIO.audioId": "配音中心音频ID，必须属于当前短剧可用角色。",
     "AUDIO.referenceType": "必填，只支持 fully_copy、partially_copy、reference、weak_reference。",
-    "AUDIO.referenceDescription": "明确说明复用或参考的内容，不根据来源分类或台词自动推断。"
+    "AUDIO.referenceDescription": "明确说明复用或参考的内容，不根据来源分类或台词自动推断。",
+    "refVideos": "有序参考视频，首期一段。DIRECT_URL 传 sourceVideoUrl；SHOT_CURRENT 仅传 sourceShotId；SHOT_VIDEO_TAKE 同时传 sourceShotId/sourceVideoTakeId。业务ID为字符串。startSeconds/endSeconds 指源片秒级范围，includeAudio 显式控制原音，referenceDescription 描述创作参考意图。生成前需服务端预检及模型在线验收。"
   },
   "dictionaries": {
     "aspectRatio": "drama_aspect_ratio",
@@ -473,7 +487,55 @@
       }
     },
     "CHARACTER": {},
-    "PROP": {}
+    "PROP": {},
+    "VIDEO": {
+      "id": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100
+      },
+      "sourceType": {
+        "type": "string",
+        "enum": [
+          "DIRECT_URL",
+          "SHOT_CURRENT",
+          "SHOT_VIDEO_TAKE"
+        ]
+      },
+      "sourceVideoUrl": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "startSeconds": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "minimum": 0
+      },
+      "endSeconds": {
+        "type": [
+          "number",
+          "null"
+        ],
+        "exclusiveMinimum": 0
+      },
+      "includeAudio": {
+        "type": [
+          "boolean",
+          "null"
+        ]
+      },
+      "referenceDescription": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 1000
+      }
+    }
   },
   "contentFields": [
     "prompt",

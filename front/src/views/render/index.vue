@@ -415,6 +415,7 @@
           </div>
 
           <!-- Prompt 提示词展示 -->
+          <ReferenceVideoSnapshot :json="currentDetail.requestSnapshotJson" />
           <div v-if="currentDetail.prompt" class="studio-card p-3.5 space-y-1.5">
             <div class="flex items-center justify-between text-xs">
               <span class="font-bold text-[var(--text-primary)]">正向提示词 (Prompt):</span>
@@ -453,6 +454,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
+import ReferenceVideoSnapshot from '@/components/media/ReferenceVideoSnapshot.vue'
 import { ElMessage } from 'element-plus'
 import { VideoCamera, Tickets, Refresh, Search, Loading, DocumentCopy, WarningFilled } from '@element-plus/icons-vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'

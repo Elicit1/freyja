@@ -324,6 +324,7 @@ export interface DramaShot {
   endFrameImageUrl?: string
   refImages?: ShotRefImage[]
   refAudios?: ShotRefAudio[]
+  refVideos?: ShotRefVideo[]
   refAudiosConfigured?: boolean
   legacyScriptPending?: boolean
   startState?: ShotState
@@ -379,6 +380,8 @@ export interface ShotVideoTake {
   negativePromptSnapshot?: string
   firstFrameUrl?: string
   endFrameUrl?: string
+  refVideosJson?: string
+  requestSnapshotJson?: string
   createTime?: string
 }
 
@@ -489,6 +492,7 @@ export interface ShotPromptDeriveDTO {
   promptTarget?: 'GENERIC' | 'MINIMAX_H3' | string
   refImages?: ShotRefImage[]
   refAudios?: ShotRefAudio[]
+  refVideos?: ShotRefVideo[]
   requiredSkillNames?: string[]
   selectedSkillNames?: string[]
   /** 是否包含背景配乐 (BGM)，默认为 false */
@@ -574,6 +578,7 @@ export interface ShotPromptParseRequestDTO {
   propRefs?: PropShotRefInfo[]
   refImages?: ShotRefImage[]
   refAudios?: ShotRefAudio[]
+  refVideos?: ShotRefVideo[]
   selectedSkillNames?: string[]
   /** 是否包含背景配乐 (BGM)，默认为 false */
   includeBgm?: boolean
@@ -627,11 +632,72 @@ export interface DramaShotFirstFrame {
 }
 
 export interface DramaShotRenderRequest {
+  preflightId?: string
   providerId?: number | string
   workflowTemplateId?: string
   prompt?: string
   seed?: number
   size?: string
+}
+
+export interface ShotRefVideo {
+  id: string
+  name?: string
+  sourceType: 'DIRECT_URL' | 'SHOT_CURRENT' | 'SHOT_VIDEO_TAKE'
+  sourceVideoUrl?: string
+  sourceShotId?: string
+  sourceVideoTakeId?: string
+  startSeconds?: number
+  endSeconds?: number
+  includeAudio?: boolean
+  referenceDescription?: string
+}
+
+export interface ReferenceVideoCapability {
+  status: 'UNSUPPORTED' | 'UNVERIFIED' | 'VERIFIED'
+  maxVideos?: number
+  minClipSeconds?: number
+  maxClipSeconds?: number
+  maxTotalClipSeconds?: number
+  decodeFps?: number
+  maxDecodedFrames?: number
+  maxDecodeWidth?: number
+  maxDecodeHeight?: number
+  maxMixedAssets?: number
+  supportsVideoAudio?: boolean
+}
+
+export interface ShotVideoModelOption {
+  id: string
+  providerId: string
+  modelCode: string
+  modelName: string
+  maxVideos?: number
+  renderable: boolean
+  healthy: boolean
+  reason?: string
+  referenceVideo: ReferenceVideoCapability
+}
+
+export interface VideoReferencePreflight {
+  preflightId: string
+  status: 'PREPARING' | 'READY' | 'FAILED' | 'EXPIRED'
+  errorCode?: string
+  errorMessage?: string
+  expiresAt?: string
+  previewUrls?: string[]
+  references?: Array<{
+    id: string
+    sourceVideoTakeId?: string
+    sourceShotId?: string
+    startSeconds: number
+    endSeconds: number
+    includeAudio: boolean
+    referenceDescription?: string
+    contentSha256: string
+    metadata: { duration?: number; width?: number; height?: number; fps?: number; hasAudio?: boolean }
+  }>
+  model: ShotVideoModelOption
 }
 
 export interface ShotSummary {

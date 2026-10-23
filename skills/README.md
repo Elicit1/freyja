@@ -1,6 +1,6 @@
 # 系统预置 Skills
 
-本目录包含从本地 FREYJA 已发布版本导出的 ZIP，以及仓库维护的 `freyja-platform-guide` 平台使用技能、`mimo-speech-synthesis` 语音技能和 `story-writing` 故事创作与自审技能。包内包含完整 `SKILL.md` 和所需参考文件。导出脚本使用只读 API，不修改系统中的版本、开关或配置。
+本目录包含从本地 FREYJA 已发布版本导出的 ZIP，以及仓库维护的 `freyja-platform-guide` 平台使用技能、`minimax-h3-camera` 运镜与拆镜技能、`freyja-music-video` 音乐画面制作技能、`mimo-speech-synthesis` 语音技能和 `story-writing` 故事创作与自审技能。包内包含完整 `SKILL.md` 和所需参考文件。导出脚本使用只读 API，不修改系统中的版本、开关或配置。
 
 | Skill | 本地来源版本 | 文件数 | 职责 |
 | --- | --- | --- | --- |
@@ -9,8 +9,10 @@
 | `character-sheet-design` | 1 | 1 | 角色 / 造型设定图、三视图、头像、细节与背景规范 |
 | `cinematography` | 49 | 6 | 视觉导演、可读机位、二维投影、景别运镜与 H3 动作编译 |
 | `h3-prompt-writing` | 2 | 4 | H3 首尾帧三段式、参考模式六段式提示词与音画结构 |
+| `minimax-h3-camera` | 仓库源文件 | 6 | 从 Seedance 运镜方法本地化的 H3 摄影、机位、起落幅、合理拆镜与连续性指导；含上游 MIT 许可 |
+| `freyja-music-video` | 仓库源文件 | 4 | 根据原曲/台词建立音乐时间表与分镜，核对 H3 帧数档位、音轨复制、对嘴、拼接与后期能力，验收实际音画同步 |
 | `mimo-speech-synthesis` | 仓库源文件 | 2 | MiMo 请求 JSON、音色设计与克隆、风格标签与局部音频标签 |
-| `freyja-platform-guide` | 仓库源文件 | 7 | 故事自审入口、平台概念、叙事层级、参考图组合、首尾帧/参考模式、表情剧本、声音空间与制作验收 |
+| `freyja-platform-guide` | 仓库源文件 | 7 | 故事自审入口、平台概念、叙事层级、参考图组合、首尾帧/参考模式、表情剧本、声音空间、运镜/音乐画面 Skill 读取与制作验收 |
 | `story-writing` | 仓库源文件 | 3 | 人物动机、剧情因果、信息揭示、铺垫回收与写入前举证自审、修稿复查 |
 
 来源版本是开发环境中的发布序号；新部署导入后会按自己的数据库生成版本号。ZIP 保留 `refs/`、`references/` 和 `agents/` 的完整内容，不依赖开发环境的数据库或 MinIO。
@@ -50,6 +52,10 @@ python scripts/package_repository_skills.py story-writing freyja-platform-guide
 python scripts/package_repository_skills.py --check story-writing freyja-platform-guide
 ```
 
+`minimax-h3-camera` 的维护源在同名目录；它与 `freyja-platform-guide` 配套发布。变更后运行 `python scripts/package_repository_skills.py minimax-h3-camera freyja-platform-guide`，再加 `--check` 校验。现有部署先上传/启用运镜 Skill，再上传引用它的 guide；通过版本预览与 ZIP 下载读回核验，保留已有历史，不需要重建镜像或重启业务服务。上游固定修订、适配范围和许可见该 Skill 的 `references/sources.md` 与 `LICENSE`。
+
 此命令读取清单标为 `repository:skills/<name>` 的源目录，更新相应 ZIP 和哈希，不修改源文件、不访问服务。Markdown、文本、YAML 与 JSON 换行统一为 LF，避免 Windows/Linux 检出方式改变包哈希。上面的服务器导出命令会按服务器发布目录重建整个清单；尚未上线的新技能不要通过服务器导出来打包，否则可能丢失其清单条目。
+
+`freyja-music-video` 的维护源在同名目录，变更后运行 `python scripts/package_repository_skills.py freyja-music-video freyja-platform-guide`，再加 `--check` 校验。已有部署先上传/启用音乐画面 Skill，再上传引用它的 guide，并通过固定版本预览、包下载和 MCP 正文/参考读取验证。它提供音乐驱动画面的制作方法，不新增音乐上传、自动踩点、精确裁剪或混音接口。
 
 新部署同步包后重启可自动导入；已有部署需导入 `story-writing.zip`，合并更新当前平台指南及能力规则后发布。仓库平台指南可能早于线上自定义版本，**不要直接用旧包覆盖线上新版**。逐步升级、可直接合并的规则及行为验收用例见 [故事 Skill 接入与验收](../docs/story-writing-skill.md)。

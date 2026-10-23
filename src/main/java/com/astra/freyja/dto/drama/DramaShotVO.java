@@ -67,6 +67,7 @@ public class DramaShotVO {
     private String endFrameImageUrl;
     private List<ShotRefImageDTO> refImages;
     private List<ShotRefAudioDTO> refAudios;
+    private List<ShotRefVideoDTO> refVideos;
     /** Includes a persisted empty selection; opening a dialog must not restore defaults. */
     private Boolean refAudiosConfigured;
     /** Legacy speech has been projected into scriptContent for creator review. */

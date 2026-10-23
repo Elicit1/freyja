@@ -155,6 +155,7 @@ public class DramaShotDTO {
 
     /** 参考音频列表 (上限3段, 单段2-15s, 总长≤15s) */
     private List<ShotRefAudioDTO> refAudios;
+    private List<ShotRefVideoDTO> refVideos;
 
     /** 风格预设 (为空则继承短剧全局风格) */
     private String stylePreset;

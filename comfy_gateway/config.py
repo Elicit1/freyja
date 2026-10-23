@@ -5,6 +5,7 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 from pydantic import BaseModel, Field
+from video_reference import ReferenceVideoCapability
 
 logger = logging.getLogger("config")
 
@@ -31,6 +32,7 @@ class HandlerConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
+    reference_video: Optional[ReferenceVideoCapability] = None
     model_name: str = Field(..., description="OpenAI model identifier")
     description: Optional[str] = Field(default="", description="Model description")
     template_file: str = Field(..., description="Relative or absolute path to workflow JSON template")
@@ -77,6 +79,10 @@ class GatewayConfig(BaseModel):
     nodes: Dict[str, NodeConfig] = Field(default_factory=dict)
     models: List[ModelConfig] = Field(default_factory=list)
     model_to_nodes: Dict[str, List[str]] = Field(default_factory=dict)
+
+    def get_exact_model(self, model_name: str, node_id: Optional[str] = None) -> Optional[ModelConfig]:
+        return next((m for m in self.models if m.model_name == model_name
+                     and (node_id is None or m.node_id == node_id)), None)
 
     def get_model(self, model_name: str) -> Optional[ModelConfig]:
         """Find model configuration by name (case-insensitive with fallback partial matching)"""

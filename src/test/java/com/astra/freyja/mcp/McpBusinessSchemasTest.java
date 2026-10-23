@@ -158,6 +158,15 @@ class McpBusinessSchemasTest {
         assertDoesNotThrow(() -> validator.validate(McpRecordType.CHARACTER, Map.of("status", 1, "gender", "FEMALE"), false, false));
     }
 
+    @Test void videoReferenceSchemaPreservesStringIdsNumericRangesAndAudioSwitch() {
+        Map<String,Object> video = Map.of("id", "video1", "sourceType", "SHOT_VIDEO_TAKE", "sourceShotId", "2032095628944588801",
+                "sourceVideoTakeId", "2032095628944588802", "startSeconds", 1.25, "endSeconds", 4.25, "includeAudio", false);
+        assertDoesNotThrow(() -> validator.validate(McpRecordType.SHOT, Map.of("refVideos", List.of(video)), false, false));
+        var bad = new LinkedHashMap<>(video); bad.put("sourceShotId", 2032095628944588801L);
+        assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT, Map.of("refVideos", List.of(bad)), false, false));
+        assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT, Map.of("refVideos", List.of(video, video)), false, false));
+    }
+
     @Test void publicOptionSetsMatchSaveValidatorsAndFrontendDropdowns() throws Exception {
         assertEquals(com.astra.freyja.util.ShotImageReferenceValidator.USAGE_ROLES,
                 new HashSet<>(metadata.options("reference_image_usage_role").stream().map(McpSchemaMetadata.Option::value).toList()));

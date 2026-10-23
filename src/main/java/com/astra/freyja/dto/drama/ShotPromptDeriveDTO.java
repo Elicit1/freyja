@@ -138,6 +138,7 @@ public class ShotPromptDeriveDTO {
 
     /** 有序参考音频清单 (用于生成和对齐 Audio 1..N 标签) */
     private List<ShotRefAudioDTO> refAudios;
+    private List<ShotRefVideoDTO> refVideos;
 
     /** @deprecated 系统已全量原生切换为 MiniMax H3 规范，此字段已废弃忽略 */
     @Deprecated

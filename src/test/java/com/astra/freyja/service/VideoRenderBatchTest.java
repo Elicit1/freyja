@@ -47,7 +47,7 @@ class VideoRenderBatchTest {
         var models=mock(AiModelMapper.class);var providers=mock(AiProviderMapper.class);var keyframes=mock(ResKeyframeMapper.class);renders=mock(RenderTaskMapper.class);
         api=mock(AiImageApiService.class);rendersService=mock(RenderTaskService.class);frames=mock(VideoBatchFrameService.class);var takes=mock(ShotVideoTakeService.class);
         store=new VideoBatchStore(jdbc);var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
-        preparation=new VideoBatchPreparation(shots,dramas,episodes,scenes,groups,models,providers,keyframes,renders,store,json);
+        preparation=new VideoBatchPreparation(mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,renders,store,json);
         service=new VideoRenderBatchService(store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,mock(ApplicationEventPublisher.class));
         when(dramas.selectById(1L)).thenReturn(new Drama());
         DramaEpisode ep=new DramaEpisode();ep.setId(10L);ep.setDramaId(1L);ep.setTitle("第一集");when(episodes.selectList(any())).thenReturn(List.of(ep));

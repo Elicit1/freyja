@@ -33,4 +33,6 @@ public class VideoProbeInfoVO {
 
     /** 原始文件名或 URL */
     private String sourceUrl;
+    /** Actual decoded frame count when explicitly requested by the reference-video pipeline. */
+    private Long frameCount;
 }

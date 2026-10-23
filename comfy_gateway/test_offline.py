@@ -222,10 +222,9 @@ class TestGatewayOffline(unittest.TestCase):
 
         cond_inputs = wf["136"]["inputs"]
         self.assertEqual(cond_inputs["length"], 124)
-        self.assertIn("137", wf)
-        self.assertEqual(wf["137"]["class_type"], "LoadImage")
-        self.assertEqual(wf["137"]["inputs"]["image"], "start_frame.png")
-        self.assertEqual(cond_inputs["first_frame"], ["137", 0])
+        first_node = cond_inputs["first_frame"][0]
+        self.assertEqual(wf[first_node]["class_type"], "LoadImage")
+        self.assertEqual(wf[first_node]["inputs"]["image"], "start_frame.png")
         self.assertNotIn("last_frame", cond_inputs)
         self.assertNotIn("139", wf)
 
@@ -239,13 +238,9 @@ class TestGatewayOffline(unittest.TestCase):
         wf = self.engine.assemble_workflow(req, uploaded_ref_images=["day.png", "night.png"])
 
         cond_inputs = wf["136"]["inputs"]
-        self.assertIn("137", wf)
-        self.assertEqual(wf["137"]["inputs"]["image"], "day.png")
-        self.assertEqual(cond_inputs["first_frame"], ["137", 0])
-
-        self.assertIn("139", wf)
-        self.assertEqual(wf["139"]["inputs"]["image"], "night.png")
-        self.assertEqual(cond_inputs["last_frame"], ["139", 0])
+        self.assertEqual(wf[cond_inputs["first_frame"][0]]["inputs"]["image"], "day.png")
+        self.assertEqual(wf[cond_inputs["last_frame"][0]]["inputs"]["image"], "night.png")
+        self.assertNotEqual(cond_inputs["first_frame"][0], cond_inputs["last_frame"][0])
 
     def test_minimax_ref2va_multiple_references(self):
         """Test MiniMax H3 Ref2VA with multiple reference images"""
@@ -263,17 +258,10 @@ class TestGatewayOffline(unittest.TestCase):
         self.assertEqual(cond_inputs["ref_image_size"], "match")
 
         # Check ref slots
-        self.assertIn("1370", wf)
-        self.assertEqual(wf["1370"]["inputs"]["image"], "char_costume.png")
-        self.assertEqual(cond_inputs["ref_images.ref_image_0"], ["1370", 0])
-
-        self.assertIn("1371", wf)
-        self.assertEqual(wf["1371"]["inputs"]["image"], "magic_sword.png")
-        self.assertEqual(cond_inputs["ref_images.ref_image_1"], ["1371", 0])
-
-        self.assertIn("1372", wf)
-        self.assertEqual(wf["1372"]["inputs"]["image"], "castle_bg.png")
-        self.assertEqual(cond_inputs["ref_images.ref_image_2"], ["1372", 0])
+        for index, filename in enumerate(refs):
+            node_id = cond_inputs[f"ref_images.ref_image_{index}"][0]
+            self.assertEqual(wf[node_id]["class_type"], "LoadImage")
+            self.assertEqual(wf[node_id]["inputs"]["image"], filename)
 
         # Verify DiT model name
         self.assertEqual(wf["127"]["inputs"]["unet_name"], "minimax_h3_ref2va_dit_16g.safetensors")

@@ -58,6 +58,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
     private final ObjectMapper objectMapper;
     private final com.astra.freyja.service.VideoFrameExtractService videoFrameExtractService;
     private final com.astra.freyja.service.RenderDispatchCoordinator renderDispatchCoordinator;
+    private final com.astra.freyja.service.ReferenceVideoMediaService referenceVideoMediaService;
     @org.springframework.beans.factory.annotation.Autowired
     @org.springframework.context.annotation.Lazy
     private com.astra.freyja.service.RenderTaskService renderTaskService;
@@ -514,6 +515,9 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         }
         List<ShotRefImageDTO> validatedRefImages = KeyImageReferenceValidator.parseAndValidate(
                 shot.getRefImagesJson(), objectMapper, this::keyImageAssetType);
+        boolean hasVideoReferences = !com.astra.freyja.util.ShotVideoReferenceValidator.parse(shot.getRefVideosJson(), objectMapper).isEmpty();
+        if (hasVideoReferences && (dto == null || dto.getResolvedRefVideos() == null || dto.getResolvedRefVideos().isEmpty()))
+            throw new BizException(409, "REFERENCE_VIDEO_PREFLIGHT_REQUIRED: 参考视频必须先完成服务端预检");
 
         // 1. 获取 AI 提供商
         AiProvider provider = resolveProvider(dto != null ? dto.getProviderId() : null);
@@ -562,11 +566,11 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         payload.put("response_format", "url");
 
         // 首尾帧 Base64 转换
-        if (StringUtils.isNotBlank(shot.getPreviewImageUrl())) {
+        if (!hasVideoReferences && StringUtils.isNotBlank(shot.getPreviewImageUrl())) {
             String firstFrameB64 = prepareMediaAsBase64(shot.getPreviewImageUrl(), "image/png");
             payload.put("first_frame", firstFrameB64);
         }
-        if (StringUtils.isNotBlank(shot.getEndFrameImageUrl())) {
+        if (!hasVideoReferences && StringUtils.isNotBlank(shot.getEndFrameImageUrl())) {
             String lastFrameB64 = prepareMediaAsBase64(shot.getEndFrameImageUrl(), "image/png");
             payload.put("last_frame", lastFrameB64);
         }
@@ -579,6 +583,22 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 ? "MINIMAX_H3_REF2VA_V1"
                 : "MINIMAX_H3_FL2VA_V1";
         payload.put("prompt_format", promptFormat);
+        if (dto != null && dto.getResolvedRefVideos() != null && !dto.getResolvedRefVideos().isEmpty()) {
+            if (!"REFERENCE_MODE".equals(shot.getGenerationMode()) || dto.getReferenceVideoRevision() == null || dto.getReferenceVideoNodeId() == null)
+                throw new BizException(400, "参考视频缺少预检快照或生成模式不兼容");
+            promptFormat = "MINIMAX_H3_REF2VA_VIDEO_V1";
+            payload.put("prompt_format", promptFormat);
+            payload.put("reference_video_revision", dto.getReferenceVideoRevision());
+            payload.put("node_id", dto.getReferenceVideoNodeId());
+            for (var video : dto.getResolvedRefVideos()) {
+                Map<String,Object> binding = new HashMap<>();
+                binding.put("referenceId", video.getId()); binding.put("referenceType", "REFERENCE_VIDEO");
+                binding.put("entityId", video.getSourceVideoTakeId() == null ? null : video.getSourceVideoTakeId().toString());
+                binding.put("referenceVideo", referenceVideoMediaService.transportUrl(video.getObjectPath()));
+                binding.put("contentSha256", video.getContentSha256()); binding.put("includeAudio", video.getIncludeAudio());
+                binding.put("referenceDescription", video.getReferenceDescription()); references.add(binding);
+            }
+        }
 
         // a. 处理参考图列表 (refImagesJson)
         if (StringUtils.isNotBlank(shot.getRefImagesJson())) {
