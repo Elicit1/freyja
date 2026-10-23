@@ -62,7 +62,7 @@ class McpBatchProtocolIntegrationTest {
     @Test void discoversBusinessCrudToolsAndNoInternalAi() throws Exception {
         JsonNode init = rpc("initialize", Map.of("protocolVersion", "2025-06-18", "capabilities", Map.of(), "clientInfo", Map.of("name", "batch-test", "version", "1")));
         assertFalse(init.path("capabilities").has("prompts"));
-        JsonNode catalog = rpc("tools/list", Map.of()).path("tools"); assertEquals(72, catalog.size());
+        JsonNode catalog = rpc("tools/list", Map.of()).path("tools"); assertEquals(74, catalog.size());
         Set<String> names = new HashSet<>(); catalog.forEach(tool -> names.add(tool.path("name").asText()));
         assertTrue(names.containsAll(Set.of("append_storyboard", "batch_create_records", "batch_update_shots", "batch_delete_records", "batch_read_records")));
         assertTrue(names.containsAll(Set.of("list_skills", "read_skill", "read_skill_file")));

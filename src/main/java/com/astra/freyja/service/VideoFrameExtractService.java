@@ -96,7 +96,7 @@ public class VideoFrameExtractService {
     public VideoProbeInfoVO probeVideoFile(Path path, boolean countFrames) throws IOException {
         var command = new java.util.ArrayList<>(List.of(properties.getFfprobePath(), "-v", "error"));
         if (countFrames) command.add("-count_frames");
-        command.addAll(List.of("-show_entries", "stream=width,height,r_frame_rate,codec_type,codec_name,nb_read_frames:format=duration", "-of", "json", path.toString()));
+        command.addAll(List.of("-show_entries", "stream=width,height,r_frame_rate,codec_type,codec_name,nb_read_frames:format=duration,format_name", "-of", "json", path.toString()));
         var result = processExecutor.execute(command, timeout());
         if (result.timedOut() || result.exitCode() != 0) throw new IOException("视频无法解码或探测超时");
         return parseProbe(result.output());
@@ -105,6 +105,7 @@ public class VideoFrameExtractService {
     private VideoProbeInfoVO parseProbe(String json) throws IOException {
         var root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(json);
         var vo = new VideoProbeInfoVO();
+        vo.setContainerFormat(root.path("format").path("format_name").asText(null));
         var streams = root.path("streams");
         if (streams.isArray()) for (var stream : streams) {
             String type = stream.path("codec_type").asText();

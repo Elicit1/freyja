@@ -7,6 +7,15 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CapabilitySchemaPolicyTest {
+    @Test void retiredDefaultVideoCountIsRemovedWhileOtherCustomConstraintsSurviveRebase() {
+        var old = Map.<String, Object>of("type", "object", "properties", Map.of("refVideos", Map.of("type", "array", "maxItems", 1, "items", Map.of("type", "object")), "name", Map.of("type", "string", "maxLength", 200)));
+        var custom = Map.<String, Object>of("type", "object", "properties", Map.of("refVideos", Map.of("type", "array", "maxItems", 1, "items", Map.of("type", "object")), "name", Map.of("type", "string", "maxLength", 100)));
+        var current = Map.<String, Object>of("type", "object", "properties", Map.of("refVideos", Map.of("type", "array", "items", Map.of("type", "object")), "name", Map.of("type", "string", "maxLength", 200)));
+        var result = new CapabilitySchemaPolicy().rebase("update_shot", old, custom, current);
+        Map<?, ?> fields = (Map<?, ?>) result.get("properties");
+        assertFalse(((Map<?, ?>) fields.get("refVideos")).containsKey("maxItems"));
+        assertEquals(100, ((Number) ((Map<?, ?>) fields.get("name")).get("maxLength")).intValue());
+    }
     final CapabilitySchemaPolicy policy = new CapabilitySchemaPolicy();
     final Map<String, Object> baseline = Map.of("type", "object", "additionalProperties", false, "required", List.of("name"),
             "properties", Map.of("name", Map.of("type", "string", "maxLength", 64), "mode", Map.of("type", "string", "enum", List.of("A", "B"))));

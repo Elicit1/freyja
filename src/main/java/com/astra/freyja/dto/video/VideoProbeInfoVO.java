@@ -33,6 +33,8 @@ public class VideoProbeInfoVO {
 
     /** 原始文件名或 URL */
     private String sourceUrl;
+    /** FFprobe container names, e.g. mov,mp4,m4a,3gp,3g2,mj2 or matroska,webm. */
+    private String containerFormat;
     /** Actual decoded frame count when explicitly requested by the reference-video pipeline. */
     private Long frameCount;
 }

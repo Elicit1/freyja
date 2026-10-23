@@ -171,7 +171,7 @@
       "source": "repository:skills/freyja-platform-guide",
       "sourceRevision": null,
       "package": "freyja-platform-guide.zip",
-      "sha256": "7c3d34b4867b3de9aa181c2b89d615f67752a3f19c0e757327512ce08dde01b9",
+      "sha256": "20393572b4a09482233edd730a23a711425a898c92c86cd0e7ae1c347c13a5e7",
       "files": [
         {
           "path": "references/architecture.md",
@@ -190,8 +190,8 @@
         },
         {
           "path": "references/reference-video.md",
-          "sha256": "58450a3b4d2d14473bbbd347ab90076a95551d9ec36e59298a4955ccacc7e717",
-          "size": 2789
+          "sha256": "ab58765d84d3ad655c92b2a82159c7e263b1aa40109ba975a14d462c33d9f623",
+          "size": 4534
         },
         {
           "path": "references/sound-design.md",

@@ -68,4 +68,4 @@ async def upload_reference_video(client, binding, capability, allowed_hosts):
         if binding.include_audio and not any(s.get("codec_type") == "audio" for s in probe.get("streams", [])):
             raise ValueError("REFERENCE_VIDEO_DECODE_FAILED: requested video audio track is missing")
     uploaded = await client.upload_file_to_comfy(bytes(raw), f"ref_video_{uuid.uuid4().hex}.mp4", preserve_subfolder=True)
-    return {"reference_id": binding.reference_id, "filename": uploaded, "include_audio": binding.include_audio}
+    return {"reference_id": binding.reference_id, "filename": uploaded, "include_audio": binding.include_audio, "duration": duration}

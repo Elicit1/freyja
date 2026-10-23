@@ -23,6 +23,9 @@ public class McpBusinessInputValidator {
         if (type == McpRecordType.SHOT) {
             validateMedia(data.get("refImages"), true);
             validateMedia(data.get("refAudios"), false);
+            // Named batch references are resolved before the normal DTO/save validators run.
+            if (!references && data.get("refVideos") != null && validator.validate(schema, data).valid())
+                com.astra.freyja.util.ShotVideoReferenceValidator.validate(schemas.videoReferences(data.get("refVideos")));
         }
         if (!validator.validate(schema, data).valid()) throw new BizException(400, "业务字段不符合 Schema：检查必填字段、媒体 URL 和来源 ID；画幅、景别、运镜等选项请通过 get_business_options 读取当前启用值；运行状态、模型及 Skill 等内部字段不能写入，ID 必须为字符串");
     }

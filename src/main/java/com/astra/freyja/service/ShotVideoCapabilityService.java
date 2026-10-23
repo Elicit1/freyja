@@ -51,6 +51,8 @@ public class ShotVideoCapabilityService {
                 result.setErrorCode("REFERENCE_VIDEO_UNSUPPORTED"); result.setReason("该模型尚未配置参考视频能力；仍可保存素材草稿"); return result;
             }
             local = json.treeToValue(root, ReferenceVideoCapability.class); result.setReferenceVideo(local);
+            // Model-center maxVideos is the platform count setting; the verified gateway may narrow it.
+            local.setMaxVideos(model.getMaxVideos());
             String base = apiRoot(provider.getBaseUrl());
             var request = HttpRequest.newBuilder(URI.create(base + "/models/" + URLEncoder.encode(model.getModelCode(), StandardCharsets.UTF_8) + "/capabilities"))
                     .timeout(Duration.ofSeconds(5)).GET().header("Accept", "application/json");
@@ -66,7 +68,7 @@ public class ShotVideoCapabilityService {
             if (!java.util.Objects.equals(local.getWorkflowRevision(), result.getWorkflowRevision()) || !java.util.Objects.equals(local.getAdapter(), capability.getAdapter()) || result.getNodeId() == null) {
                 result.setErrorCode("REFERENCE_VIDEO_WORKFLOW_MISMATCH"); result.setReason("模型与网关的参考视频版本不一致，请重新验收配置"); return result;
             }
-            local.setMaxVideos(Math.min(1, Math.min(model.getMaxVideos(), Math.min(local.getMaxVideos(), capability.getMaxVideos()))));
+            local.setMaxVideos(Math.min(model.getMaxVideos(), Math.min(local.getMaxVideos(), capability.getMaxVideos())));
             local.setMinClipSeconds(local.getMinClipSeconds().max(capability.getMinClipSeconds()));
             local.setMaxClipSeconds(local.getMaxClipSeconds().min(capability.getMaxClipSeconds()));
             local.setMaxTotalClipSeconds(local.getMaxTotalClipSeconds().min(capability.getMaxTotalClipSeconds()));

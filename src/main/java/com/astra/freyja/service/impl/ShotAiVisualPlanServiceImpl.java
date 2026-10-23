@@ -1220,11 +1220,13 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
             int maxVideo = manifest != null && manifest.getVideos() != null ? manifest.getVideos().size() : 0;
             Matcher videoMatcher = Pattern.compile("<Video\\s*(\\d+)>").matcher(p);
+            java.util.Set<Integer> videoLabels = new java.util.HashSet<>();
             while (videoMatcher.find()) {
                 int index = Integer.parseInt(videoMatcher.group(1));
+                videoLabels.add(index);
                 if (index < 1 || index > maxVideo) errors.add("提示词引用了未分配的视频 <Video " + index + ">");
             }
-            if (maxVideo > 0 && !p.contains("<Video 1>")) errors.add("参考视频提示词缺少 <Video 1> 引用，请检查参考意图");
+            for (int index = 1; index <= maxVideo; index++) if (!videoLabels.contains(index)) errors.add("参考视频提示词缺少 <Video " + index + "> 引用，请检查参考意图");
 
             // Audio 标签边界与合法性 (硬性错误)
             int maxAud = manifest != null && manifest.getAudios() != null ? manifest.getAudios().size() : 0;

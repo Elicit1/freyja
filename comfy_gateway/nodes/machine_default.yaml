@@ -91,6 +91,12 @@ models:
     description: "MiniMax H3 16GB HiFi (Reference Images to Video+Audio, Ref2VA-Fast)"
     template_file: "comfyUIApi/minimax_h3_ref2va_fast.json"
     handler: "minimax_h3_ref2va"
+    reference_video:
+      status: "UNVERIFIED"
+      condition_node_id: "136"
+      output_node_ids: ["130"]
+      max_videos: 3
+      decode_fps: 24
     default_steps: 20
     default_cfg: 1.0
     timeout_seconds: 1800
@@ -111,6 +117,12 @@ models:
     description: "MiniMax H3 Ref2VA with H3 FaceRefine second pass"
     template_file: "comfyUIApi/minimax_h3_face_refine.json"
     handler: "minimax_h3_face_refine"
+    reference_video:
+      status: "UNVERIFIED"
+      condition_node_id: "136"
+      output_node_ids: ["130"]
+      max_videos: 3
+      decode_fps: 24
     default_steps: 20
     default_cfg: 1.0
     timeout_seconds: 3600
@@ -130,6 +142,12 @@ models:
     description: "Official MiniMax H3 Ref2VA INT8 with Turbo LoRA 4 steps"
     template_file: "comfyUIApi/minimax_h3_ref2va_official_turbo4.json"
     handler: "minimax_h3_ref2va"
+    reference_video:
+      status: "UNVERIFIED"
+      condition_node_id: "136"
+      output_node_ids: ["130"]
+      max_videos: 3
+      decode_fps: 24
     default_steps: 4
     default_cfg: 1.0
     timeout_seconds: 1800
@@ -148,6 +166,12 @@ models:
     description: "Official MiniMax H3 Ref2VA INT8 Turbo4 with H3 FaceRefine 4-step second pass"
     template_file: "comfyUIApi/minimax_h3_ref2va_turbo4_face_refine.json"
     handler: "minimax_h3_face_refine"
+    reference_video:
+      status: "UNVERIFIED"
+      condition_node_id: "136"
+      output_node_ids: ["130"]
+      max_videos: 3
+      decode_fps: 24
     default_steps: 4
     default_cfg: 1.0
     timeout_seconds: 3600
@@ -171,7 +195,8 @@ models:
       status: "UNVERIFIED"
       condition_node_id: "136"
       output_node_ids: ["130"]
-      max_videos: 1
+      # Reference input slots declared by this model/node; platform maxVideos may be lower.
+      max_videos: 3
       decode_fps: 24
     default_steps: 8
     default_cfg: 1.0
@@ -191,6 +216,12 @@ models:
     description: "Official MiniMax H3 Ref2VA INT8 Turbo8 with H3 FaceRefine 8-step second pass"
     template_file: "comfyUIApi/minimax_h3_ref2va_turbo8_face_refine.json"
     handler: "minimax_h3_face_refine"
+    reference_video:
+      status: "UNVERIFIED"
+      condition_node_id: "136"
+      output_node_ids: ["130"]
+      max_videos: 3
+      decode_fps: 24
     default_steps: 8
     default_cfg: 1.0
     timeout_seconds: 3600

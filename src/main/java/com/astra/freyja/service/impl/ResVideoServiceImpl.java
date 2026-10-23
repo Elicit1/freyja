@@ -84,6 +84,9 @@ public class ResVideoServiceImpl implements ResVideoService {
             temporary = Files.createTempFile("freyja_video_asset_", "." + extension);
             try (var input = file.getInputStream()) { Files.copy(input, temporary, StandardCopyOption.REPLACE_EXISTING); }
             var info = probe.probeVideoFile(temporary, false);
+            Set<String> formats = info.getContainerFormat() == null ? Set.of() : new HashSet<>(Arrays.asList(info.getContainerFormat().split(",")));
+            boolean containerMatches = Set.of("mp4", "mov").contains(extension) ? formats.contains("mov") || formats.contains("mp4") : formats.contains("matroska") || formats.contains("webm");
+            if (!containerMatches) throw new BizException(400, "视频真实容器格式与文件类型不匹配");
             if (info.getWidth() == null || info.getHeight() == null || info.getWidth() <= 0 || info.getHeight() <= 0
                     || info.getDuration() == null || info.getDuration().signum() <= 0 || info.getDuration().doubleValue() > limits.getMaxSourceSeconds())
                 throw new BizException(400, "视频没有有效画面、时长无效或超过素材时长限制");

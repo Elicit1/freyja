@@ -20,7 +20,7 @@
         <p class="text-sky-800 leading-relaxed">
           本模式支持多重视觉特征与语音韵律协同驱动。
           <strong>参考图上限 {{ maxRefImages }} 张</strong>（可从场景、人物造型、道具资产库多选选取或自行上传）；
-          <strong>参考视频上限 1 段</strong>（可上传或选择分镜历史视频，并设置片段范围）；
+          <strong>参考视频{{ maxRefVideos == null ? '数量以所选模型配置为准' : `上限 ${maxRefVideos} 段` }}</strong>（可上传或选择视频，并分别设置片段范围）；
           <strong>参考音频上限 {{ maxRefAudios }} 段</strong>（单段2至15秒，总长不超过15秒，从当前短剧角色的配音中心选择）。
           参考素材<strong>不强制要求</strong>，亦可仅凭提示词直接渲染。
         </p>
@@ -339,8 +339,8 @@
         </div>
       </div>
 
-      <ShotVideoReferenceEditor ref="videoReferenceEditor" v-model="refVideos" :shot-id="currentShotId ? String(currentShotId) : undefined" :drama-id="dramaId" :provider-id="renderConfig.providerId" :model-code="renderConfig.modelCode" :option="videoModelOption" :target-duration="targetDuration" :context-fingerprint="JSON.stringify([refImages, refAudios])" @prepare="prepareVideoReferences" @prepared="videoPreflight = $event" />
-      <el-checkbox v-if="refVideos.length" v-model="videoPromptConfirmed">已检查提示词中的 Video 1 引用、参考说明与当前素材一致</el-checkbox>
+      <ShotVideoReferenceEditor ref="videoReferenceEditor" v-model="refVideos" :shot-id="currentShotId ? String(currentShotId) : undefined" :drama-id="dramaId" :provider-id="renderConfig.providerId" :model-code="renderConfig.modelCode" :max-videos="maxRefVideos" :option="videoModelOption" :target-duration="targetDuration" :context-fingerprint="JSON.stringify([refImages, refAudios])" @prepare="prepareVideoReferences" @prepared="videoPreflight = $event" />
+      <el-checkbox v-if="refVideos.length" v-model="videoPromptConfirmed">已检查全部 Video N 引用、参考说明与当前素材一致</el-checkbox>
 
       <!-- 最终生成视频预览区 (若已有产物) -->
       <div v-if="videoUrl" class="p-3 bg-slate-900 rounded-xl border border-slate-800 flex flex-col gap-2">
@@ -364,7 +364,7 @@
       <div class="flex justify-between items-center">
         <div class="text-xs text-gray-500">
           <span>分镜: <strong>#{{ shotNo }} {{ shotName }}</strong></span>
-          <span class="ml-3 text-sky-700">图: {{ refImages.length }}/{{ maxRefImages }} · 视频: {{ refVideos.length }}/1 · 音: {{ refAudios.length }}/{{ maxRefAudios }} ({{ totalAudioDuration.toFixed(1) }}s)</span>
+          <span class="ml-3 text-sky-700">图: {{ refImages.length }}/{{ maxRefImages }} · 视频: {{ refVideos.length }}{{ maxRefVideos == null ? '' : `/${maxRefVideos}` }} · 音: {{ refAudios.length }}/{{ maxRefAudios }} ({{ totalAudioDuration.toFixed(1) }}s)</span>
         </div>
         <div class="flex items-center gap-2.5">
           <el-button @click="visible = false">取消</el-button>
@@ -375,7 +375,7 @@
             type="primary"
             class="!bg-sky-600 !border-sky-600 hover:!bg-sky-500 !font-bold"
             :loading="renderingVideo"
-            :disabled="refVideos.length > 0 && (!videoModelOption?.renderable || videoPreflight?.status !== 'READY' || !videoPromptConfirmed)"
+            :disabled="refVideos.length > 0 && (!videoModelOption?.renderable || videoPreflight?.status !== 'READY' || !videoPromptConfirmed || maxRefVideos != null && refVideos.length > maxRefVideos)"
             @click="handleStartRender"
           >
             🚀 启动参考模态渲染
@@ -468,6 +468,11 @@ function getStandardSizeByRatio(ratio?: string): string {
 // 模型最大限制
 const currentModel = computed(() => {
   return models.value.find(m => m.modelCode === renderConfig.modelCode)
+})
+
+const maxRefVideos = computed(() => {
+  const values = [currentModel.value?.maxVideos, videoModelOption.value?.maxVideos, videoModelOption.value?.referenceVideo.maxVideos].filter((n): n is number => typeof n === 'number' && n >= 0)
+  return values.length ? Math.min(...values) : undefined
 })
 
 const maxRefImages = computed(() => {
@@ -753,7 +758,7 @@ async function handleStartRender() {
     return
   }
 
-  if (refVideos.value.length && (!videoModelOption.value?.renderable || !videoPreflight.value || !videoPromptConfirmed.value)) {
+  if (refVideos.value.length && (!videoModelOption.value?.renderable || !videoPreflight.value || !videoPromptConfirmed.value || maxRefVideos.value != null && refVideos.value.length > maxRefVideos.value)) {
     ElMessage.warning('请完成参考视频预检并确认提示词，模型须通过在线验证')
     return
   }

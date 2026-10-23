@@ -198,6 +198,7 @@ public class CapabilityCatalogService {
         Release draft = read(mapper.draft().getPayloadJson());
         List<Binding> newBindings = handlers.initialBindings().stream().filter(b -> Set.of(
                 "MCP:" + McpPresignedImageUploads.PREPARE_TOOL, "MCP:" + McpPresignedImageUploads.COMPLETE_TOOL,
+                "MCP:" + McpPresignedVideoUploads.PREPARE_TOOL, "MCP:" + McpPresignedVideoUploads.COMPLETE_TOOL,
                 "MCP:" + McpVoiceTools.MODELS_TOOL, "MCP:" + McpVoiceTools.DESIGN_TOOL)
                 .contains(b.handlerKey()) || b.handlerKey().startsWith("MCP:dubbing_")).toList();
         Release nextActive = null;
@@ -244,6 +245,14 @@ public class CapabilityCatalogService {
     private Binding migrateBinding(Binding binding, boolean draft) {
         var handler = handlers.require(binding.handlerKey());
         Map<String, Object> currentSchema = baseline(binding, handler);
+        if (hasRetiredVideoLimit(binding.schema(), currentSchema)) {
+            String contract = mapper.versionContract(Long.valueOf(binding.versionId()), Long.valueOf(binding.capabilityId()));
+            if (contract != null) {
+                Map<String, Object> previous = handlers.parse(contract);
+                if (binding.consumer() == Consumer.INTERNAL_AGENT && handler.business() != null) previous = handlers.internalSchema(previous);
+                binding = withSchema(binding, schemas.rebase(binding.name(), previous, binding.schema(), currentSchema));
+            }
+        }
         try { schemas.verify(binding.name(), currentSchema, binding.schema()); return binding; }
         catch (BizException incompatible) {
             String contract = mapper.versionContract(Long.valueOf(binding.versionId()), Long.valueOf(binding.capabilityId()));
@@ -254,6 +263,19 @@ public class CapabilityCatalogService {
             Map<String, Object> migrated = schemas.rebase(binding.name(), previous, binding.schema(), currentSchema);
             return withSchema(binding, migrated);
         }
+    }
+    private boolean hasRetiredVideoLimit(Object before, Object current) {
+        if (before instanceof Map<?, ?> old && current instanceof Map<?, ?> next) {
+            for (var entry : old.entrySet()) {
+                Object replacement = next.get(entry.getKey());
+                if ("refVideos".equals(entry.getKey()) && entry.getValue() instanceof Map<?, ?> array
+                        && array.containsKey("maxItems") && replacement instanceof Map<?, ?> updated && !updated.containsKey("maxItems")) return true;
+                if (hasRetiredVideoLimit(entry.getValue(), replacement)) return true;
+            }
+        } else if (before instanceof List<?> old && current instanceof List<?> next && old.size() == next.size()) {
+            for (int index = 0; index < old.size(); index++) if (hasRetiredVideoLimit(old.get(index), next.get(index))) return true;
+        }
+        return false;
     }
     private Map<String, Object> baseline(Binding binding, CapabilityHandlers.Handler handler) {
         return binding.consumer() == Consumer.INTERNAL_AGENT && handler.business() != null

@@ -22,9 +22,10 @@ public final class ShotVideoReferenceValidator {
 
     public static void validate(List<ShotRefVideoDTO> references) {
         if (references == null) return;
-        if (references.size() > 1) fail("首期最多选择一段参考视频");
+        Set<String> ids = new java.util.HashSet<>();
         for (ShotRefVideoDTO ref : references) {
             if (ref == null || ref.getId() == null || ref.getId().isBlank() || ref.getId().length() > 100) fail("参考视频缺少稳定标识");
+            if (!ids.add(ref.getId())) fail("参考视频标识不能重复");
             if (ref.getSourceType() == null || !Set.of("DIRECT_URL", "SHOT_CURRENT", "SHOT_VIDEO_TAKE").contains(ref.getSourceType())) fail("参考视频来源类型无效");
             if ("DIRECT_URL".equals(ref.getSourceType())) {
                 if (ref.getSourceVideoUrl() == null || ref.getSourceVideoUrl().isBlank() || ref.getSourceShotId() != null || ref.getSourceVideoTakeId() != null) fail("直接视频地址与分镜来源不能混传");

@@ -339,6 +339,8 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         hosts = {host.strip().lower() for host in os.getenv("REFERENCE_MEDIA_HOSTS", "").split(",") if host.strip()}
         for binding in video_references:
             uploaded_ref_videos.append(await asyncio.wait_for(upload_reference_video(client, binding, video_capability, hosts), timeout=120))
+            if sum(video["duration"] for video in uploaded_ref_videos) > video_capability.max_total_clip_seconds + len(uploaded_ref_videos) / video_capability.decode_fps:
+                raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: total reference duration exceeds model configuration")
 
     # Multi-audio upload for MiniMax H3 (up to 3 audios)
     uploaded_ref_audios: List[str] = []

@@ -526,7 +526,7 @@
             <h4 class="text-sm font-bold text-sky-950 flex items-center gap-1.5">
               <span>🖼️</span> 图片、视频与音频参考资产
             </h4>
-            <span class="text-xs text-sky-700">视频参考最多 1 段 · 具体生成限制在渲染工坊查看</span>
+            <span class="text-xs text-sky-700">参考视频数量与生成限制以渲染工坊所选模型配置为准</span>
           </div>
 
           <ShotVideoReferenceEditor

@@ -57,7 +57,7 @@ public class McpOperationStore {
         if (result == null) throw new BizException(404, "业务请求尚未提交或尚未完成；可使用原 requestId 重试");
         scope.authorizeProject(caller, result.getDramaId().toString());
         if (expectedTool != null && !expectedTool.equals(result.getToolName()))
-            throw new BizException(409, "UPLOAD_ID_INVALID: 该请求不是图片直传凭证");
+            throw new BizException(409, "UPLOAD_ID_INVALID: 该请求不是所需类型的直传凭证");
         try { return Map.of("requestId", key, "status", result.getStatus(), "data", json.mapper().readValue(result.getResultJson(), Object.class)); }
         catch (Exception e) { throw new BizException(500, "业务请求结果记录无效"); }
     }

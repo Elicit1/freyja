@@ -31,6 +31,10 @@ public class McpImageTransferStorage {
     }
 
     Map<String, Object> authorize(McpPresignedImageUploads.Pending upload) {
+        return authorize(upload.bucket(), upload.objectKey(), upload.contentType(), upload.size(), upload.expiresAt());
+    }
+
+    Map<String, Object> authorize(String bucket, String objectKey, String contentType, long size, String expiresAt) {
         // Sign and access storage over the internal endpoint, but send clients their own reachable address.
         String endpoint = properties.getMcpUploadEndpoint();
         if (endpoint == null || endpoint.isBlank()) endpoint = properties.getExternalEndpoint();
@@ -44,16 +48,16 @@ public class McpImageTransferStorage {
             throw new BizException(500, "MCP_UPLOAD_CONFIG_INVALID: 请配置客户端可访问的 MINIO_MCP_UPLOAD_ENDPOINT（未配置时使用 MINIO_EXTERNAL_ENDPOINT）");
         }
         try {
-            ensureBucket(upload.bucket());
-            PostPolicy policy = new PostPolicy(upload.bucket(), ZonedDateTime.parse(upload.expiresAt()));
-            policy.addEqualsCondition("key", upload.objectKey());
-            policy.addEqualsCondition("Content-Type", upload.contentType());
+            ensureBucket(bucket);
+            PostPolicy policy = new PostPolicy(bucket, ZonedDateTime.parse(expiresAt));
+            policy.addEqualsCondition("key", objectKey);
+            policy.addEqualsCondition("Content-Type", contentType);
             // S3 enforces the actual file size, excluding multipart envelope bytes, before accepting the object.
-            policy.addContentLengthRangeCondition(upload.size(), upload.size());
+            policy.addContentLengthRangeCondition(size, size);
             Map<String, String> fields = new LinkedHashMap<>(minio.getPresignedPostFormData(policy));
-            fields.put("key", upload.objectKey());
-            fields.put("Content-Type", upload.contentType());
-            return Map.of("method", "POST", "uploadUrl", endpoint.replaceAll("/+$", "") + "/" + upload.bucket(),
+            fields.put("key", objectKey);
+            fields.put("Content-Type", contentType);
+            return Map.of("method", "POST", "uploadUrl", endpoint.replaceAll("/+$", "") + "/" + bucket,
                     "fields", fields, "fileField", "file");
         } catch (Exception e) {
             throw new BizException(502, "IMAGE_UPLOAD_AUTHORIZATION_FAILED: 无法签发上传凭证，请使用原 requestId 重试");

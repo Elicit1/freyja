@@ -104,7 +104,7 @@ tool_timeout_sec = 300
 ```
 *如果是直连后端服务端口，URL 填写 `http://localhost:8080/mcp`。*
 
-### MCP 图片上传地址配置
+### MCP 图片与参考视频上传地址配置
 
 MCP 返回的 `uploadUrl` 必须能从 AI 客户端所在机器访问。Docker 内部存储、资产预览和 MCP 上传分别配置：
 
@@ -112,11 +112,13 @@ MCP 返回的 `uploadUrl` 必须能从 AI 客户端所在机器访问。Docker �
 | --- | --- | --- |
 | `MINIO_ENDPOINT` | 后端读写 MinIO，Compose 已配置 | `http://minio:9000` |
 | `MINIO_EXTERNAL_ENDPOINT` | 正式资产预览、下载及渲染引用 | `http://minio.localhost:9000` |
-| `MINIO_MCP_UPLOAD_ENDPOINT` | `prepare_asset_image_upload` 返回的客户端直传地址 | `http://127.0.0.1:9000` |
+| `MINIO_MCP_UPLOAD_ENDPOINT` | 图片及视频上传申请返回的客户端直传地址 | `http://127.0.0.1:9000` |
 
 在 `.env` 设置 `MINIO_MCP_UPLOAD_ENDPOINT`，然后执行 `docker compose up -d --no-deps backend` 应用配置。修改 `MINIO_API_PORT` 时需同步修改上传地址端口。远程客户端应填写服务器可访问的 IP 或 HTTPS 域名，不能使用客户端自己的回环地址、Docker 服务名或 MinIO 控制台端口 `9001`。反向代理必须将该地址的桶路径和 multipart POST 转发到 MinIO S3 API；使用客户端代理时，将该上传域名加入 `NO_PROXY`。
 
 Java 直接运行时，未设置 MCP 上传地址会兼容使用 `MINIO_EXTERNAL_ENDPOINT`，不会回退到内部 `MINIO_ENDPOINT`。无需改变签名字段：客户端原样提交返回的全部 `fields`，真实文件字段最后提交，成功后以独立 `requestId` 调用 `complete_asset_image_upload`。凭证有效期为 15 分钟，过期后使用新的申请 `requestId`。
+
+参考视频使用 `prepare_asset_video_upload` → 文件直传 → `complete_asset_video_upload`，确认后自动登记视频素材，返回可写入分镜 `refVideos` 的 `reference`。支持 MP4/WebM/MOV/MKV，默认256 MiB、600秒；可逐个上传多个文件，实际引用数量由所选模型 `maxVideos` 与网关能力配置决定。视频卡片默认折叠，上传不自动覆盖分镜或启动渲染。
 
 ### MCP 角色声音设计
 

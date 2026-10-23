@@ -43,6 +43,16 @@ class ShotVideoCapabilityServiceTest {
             assertEquals(120, option.getReferenceVideo().getMaxDecodedFrames());
             assertEquals(0, option.getReferenceVideo().getMaxClipSeconds().compareTo(new java.math.BigDecimal("5")));
             assertFalse(option.getReferenceVideo().getSupportsVideoAudio());
+            remote.put("maxVideos", 2);
+            responseBody.set(json.writeValueAsString(Map.of("nodeId", "node1", "workflowRevision", "a".repeat(64), "healthy", true, "referenceVideo", remote)));
+            assertEquals(2, service.describe(model, provider).getReferenceVideo().getMaxVideos());
+            model.setMaxVideos(1);
+            assertEquals(1, service.describe(model, provider).getReferenceVideo().getMaxVideos());
+            model.setMaxVideos(2);
+            model.setMaxVideos(3); remote.put("maxVideos", 3);
+            responseBody.set(json.writeValueAsString(Map.of("nodeId", "node1", "workflowRevision", "a".repeat(64), "healthy", true, "referenceVideo", remote)));
+            assertEquals(3, service.describe(model, provider).getReferenceVideo().getMaxVideos(), "model-center count overrides the legacy duplicated JSON count");
+            model.setMaxVideos(2);
             remote.put("status", "UNVERIFIED");
             responseBody.set(json.writeValueAsString(Map.of("nodeId", "node1", "workflowRevision", "a".repeat(64), "healthy", true, "referenceVideo", remote)));
             assertFalse(service.describe(model, provider).getRenderable());

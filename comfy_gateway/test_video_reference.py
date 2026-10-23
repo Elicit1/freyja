@@ -19,14 +19,19 @@ from workflow_engine import WorkflowEngine
 
 
 BASE = Path(__file__).resolve().parent
+REF_MODELS = (
+    "minimax-h3-ref2va", "minimax-h3-face-refine", "minimax-h3-ref",
+    "minimax-h3-ref-turbo4-face-refine", "minimax-h3-ref-turbo8",
+    "minimax-h3-ref-turbo8-face-refine",
+)
 
 
-def setup_model(verified=True):
+def setup_model(verified=True, model_name="minimax-h3-ref-turbo8"):
     node = NodeConfig(**yaml.safe_load((BASE / "nodes/machine_default.yaml").read_text(encoding="utf-8")))
-    model = next(m for m in node.models if m.model_name == "minimax-h3-ref-turbo8")
+    model = next(m for m in node.models if m.model_name == model_name)
     model.node_id = node.node_id
     model.reference_video = ReferenceVideoCapability(
-        min_clip_seconds=0.1, max_clip_seconds=5, max_total_clip_seconds=5,
+        max_videos=1, min_clip_seconds=0.1, max_clip_seconds=5, max_total_clip_seconds=5,
         max_decoded_frames=120, max_decode_width=768, max_decode_height=768,
         max_mixed_assets=12, supports_video_audio=True)
     if verified:
@@ -50,6 +55,97 @@ def request(model, audio=False, **extra):
 
 
 class VideoReferenceAssemblyTests(unittest.TestCase):
+    def test_all_ref_models_declare_video_capability_without_claiming_online_acceptance(self):
+        node = NodeConfig(**yaml.safe_load((BASE / "nodes/machine_default.yaml").read_text(encoding="utf-8")))
+        models = {model.model_name: model for model in node.models
+                  if model.handler in {"minimax_h3_ref2va", "minimax_h3_face_refine"}}
+        self.assertEqual(set(models), set(REF_MODELS))
+        for name, model in models.items():
+            with self.subTest(model=name):
+                self.assertIsNotNone(model.reference_video)
+                self.assertEqual(model.reference_video.status, "UNVERIFIED")
+                self.assertEqual(model.reference_video.max_videos, 3)
+
+    def test_all_ref_models_bind_three_videos_through_each_pass_to_final_output(self):
+        for name in REF_MODELS:
+            with self.subTest(model=name):
+                model, config = setup_model(model_name=name)
+                model.reference_video.max_videos = 3
+                model.reference_video.verified_revision = workflow_revision(model, BASE)
+                refs = [{**binding(index == 1), "referenceId": f"video{index + 1}",
+                         "referenceVideo": f"https://archive.test/{index}.mp4"} for index in range(3)]
+                req = request(model)
+                req.references = [ReferenceBinding.model_validate(ref) for ref in refs]
+                req.prompt = "Reference <Video 1>, <Video 2>, <Video 3> and Picture 1"
+                engine = WorkflowEngine(config)
+                graph = engine.assemble_workflow(req, uploaded_ref_images=["portrait.png"],
+                    uploaded_ref_audios=["voice.wav"], uploaded_ref_videos=[{
+                        "reference_id": f"video{index + 1}", "filename": f"task/{index}.mp4",
+                        "include_audio": index == 1} for index in range(3)])
+                face = model.handler == "minimax_h3_face_refine"
+                self.assertEqual(graph["130"]["inputs"]["images"], ["165" if face else "122", 0])
+                self.assertEqual(graph["130"]["inputs"]["audio"], ["121", 0])
+                self.assertEqual(graph["124"]["inputs"]["steps"], model.default_steps)
+                self.assertEqual(sum(node["class_type"] == "VHS_LoadVideo" for node in graph.values()), 3)
+                self.assertEqual(graph["136"]["inputs"]["ref_audios.ref_audio_0"], ["136_ref_aud_0", 0])
+                for cond in (("136", "158") if face else ("136",)):
+                    self.assertEqual(graph[cond]["inputs"]["prompt"], req.prompt)
+                    image_loader = graph[cond]["inputs"]["ref_images.ref_image_0"][0]
+                    self.assertEqual(graph[image_loader]["inputs"]["image"], "portrait.png")
+                    for index in range(3):
+                        loader = f"136_ref_vid_{index}"
+                        self.assertEqual(graph[cond]["inputs"][f"ref_videos.ref_video_{index}"], [loader, 0])
+                        self.assertEqual(graph[loader]["inputs"]["video"], f"task/{index}.mp4")
+                        self.assertEqual(f"ref_video_audios.ref_video_audio_{index}" in graph[cond]["inputs"], index == 1)
+                    self.assertEqual(graph[cond]["inputs"]["ref_video_audios.ref_video_audio_1"], ["136_ref_vid_1", 2])
+                if face:
+                    self.assertEqual(graph["162"]["inputs"]["steps"], engine.get_template(model)["162"]["inputs"]["steps"])
+                    self.assertEqual(graph["158"]["inputs"]["ref_audios.ref_audio_0"], ["121", 0])
+                empty = engine.assemble_workflow(ImageGenerationRequest(model=name, size="960x544", prompt="text only"))
+                self.assertFalse(any(node["class_type"] == "VHS_LoadVideo" for node in empty.values()))
+                for cond in (("136", "158") if face else ("136",)):
+                    self.assertFalse(any(key.startswith(("ref_videos.", "ref_video_audios.")) for key in empty[cond]["inputs"]))
+
+    def test_every_ref_variant_still_requires_its_own_acceptance(self):
+        for name in REF_MODELS:
+            with self.subTest(model=name):
+                model, config = setup_model(False, name)
+                with self.assertRaisesRegex(ValueError, "UNVERIFIED"):
+                    WorkflowEngine(config).assemble_workflow(request(model))
+
+    def test_face_refine_disconnected_second_pass_is_rejected(self):
+        model, config = setup_model(model_name="minimax-h3-ref-turbo8-face-refine")
+        engine = WorkflowEngine(config)
+        template = engine.get_template(model)
+        template["165"]["inputs"].pop("refined_crops")
+        engine._template_cache[str((BASE / model.template_file).resolve())] = template
+        with self.assertRaisesRegex(ValueError, "disconnected from output"):
+            engine.assemble_workflow(request(model), uploaded_ref_videos=[{"filename": "clip.mp4", "include_audio": False}])
+
+    def test_other_handlers_cannot_opt_in_by_copying_ref_configuration(self):
+        model, _ = setup_model()
+        model.handler = "standard"
+        model.reference_video.verified_revision = workflow_revision(model, BASE)
+        with self.assertRaisesRegex(ValueError, "handler has not been accepted"):
+            require_verified(model, BASE)
+
+    def test_multiple_videos_use_the_configured_model_limit_and_separate_inputs(self):
+        model, config = setup_model()
+        model.reference_video.max_videos = 2
+        model.reference_video.verified_revision = workflow_revision(model, BASE)
+        refs = [binding(), {**binding(True), "referenceId": "video2", "referenceVideo": "https://archive.test/second.mp4"}]
+        req = ImageGenerationRequest(model=model.model_name, size="960x544", prompt="Reference <Video 1> and <Video 2>", references=refs,
+                                     prompt_format="MINIMAX_H3_REF2VA_VIDEO_V1", reference_video_revision=model.reference_video.verified_revision)
+        uploaded = [{"reference_id": "video1", "filename": "one.mp4", "include_audio": False}, {"reference_id": "video2", "filename": "two.mp4", "include_audio": True}]
+        graph = WorkflowEngine(config).assemble_workflow(req, uploaded_ref_videos=uploaded)
+        self.assertEqual(graph["136"]["inputs"]["ref_videos.ref_video_1"], ["136_ref_vid_1", 0])
+        self.assertEqual(graph["136"]["inputs"]["ref_video_audios.ref_video_audio_1"], ["136_ref_vid_1", 2])
+        self.assertEqual(graph["136_ref_vid_1"]["inputs"]["video"], "two.mp4")
+        model.reference_video.max_videos = 1
+        model.reference_video.verified_revision = workflow_revision(model, BASE)
+        with self.assertRaisesRegex(ValueError, "too many videos"):
+            WorkflowEngine(config).assemble_workflow(req, uploaded_ref_videos=uploaded)
+
     def test_frames_reach_conditioning_and_actual_output(self):
         model, config = setup_model()
         engine = WorkflowEngine(config)

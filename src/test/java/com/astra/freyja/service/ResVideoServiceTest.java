@@ -34,7 +34,7 @@ class ResVideoServiceTest {
     ResVideoServiceImpl service() { return new ResVideoServiceImpl(mapper, dramas, shots, media, probe, limits, cleanup); }
 
     @Test void uploadedReferenceIsMeasuredAndRegisteredWithImmutableUrl() throws Exception {
-        var info = new VideoProbeInfoVO(); info.setWidth(640); info.setHeight(360); info.setFps(24.0); info.setDuration(new BigDecimal("4.25")); info.setHasAudio(true);
+        var info = new VideoProbeInfoVO(); info.setWidth(640); info.setHeight(360); info.setFps(24.0); info.setContainerFormat("mov,mp4,m4a"); info.setDuration(new BigDecimal("4.25")); info.setHasAudio(true);
         when(probe.probeVideoFile(any(Path.class), eq(false))).thenReturn(info);
         when(media.upload(any(), eq("video-material"))).thenReturn(AssetUploadResultVO.builder().url("http://minio/video-assets/video-material/unique.mp4").build());
         when(mapper.insert(any(ResVideo.class))).thenAnswer(call -> { ResVideo row = call.getArgument(0); row.setId(2032095628944588801L); when(mapper.selectById(row.getId())).thenReturn(row); return 1; });

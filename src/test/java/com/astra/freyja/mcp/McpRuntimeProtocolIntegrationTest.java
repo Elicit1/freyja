@@ -140,13 +140,13 @@ class McpRuntimeProtocolIntegrationTest {
 
     @Test void uiConfigEnablesDefaultOffServerWithoutRestartAndNeverReturnsToken() throws Exception {
         assertEquals(404, rpc("tools/list", Map.of(), TOKEN).statusCode());
-        JsonNode initial = admin("/system/mcp", null).path("data"); assertFalse(initial.path("enabled").asBoolean()); assertEquals(72, initial.path("tools").size());
+        JsonNode initial = admin("/system/mcp", null).path("data"); assertFalse(initial.path("enabled").asBoolean()); assertEquals(74, initial.path("tools").size());
         assertEquals(400, admin("/system/mcp/enabled", Map.of("revision", 0, "enabled", true)).path("code").asInt()); assertNull(configs.find());
         JsonNode saved = configure(false, true); assertEquals(200, saved.path("code").asInt(), saved.toString());
         assertFalse(saved.toString().contains(TOKEN)); assertFalse(saved.toString().contains("tokenCiphertext")); assertTrue(saved.path("data").path("tokenConfigured").asBoolean());
         assertFalse(configs.find().getConfigValue().contains(TOKEN));
         assertEquals(200, admin("/system/mcp/enabled", Map.of("revision", revision(), "enabled", true)).path("code").asInt());
-        assertEquals(401, rpc("tools/list", Map.of(), "incorrect").statusCode()); assertEquals(72, toolNames().size());
+        assertEquals(401, rpc("tools/list", Map.of(), "incorrect").statusCode()); assertEquals(74, toolNames().size());
     }
     @Test void disabledToolDisappearsAndCachedHandlerCannotExecuteIt() throws Exception {
         assertEquals(200, configure(true, true).path("code").asInt());

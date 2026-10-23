@@ -54,6 +54,9 @@ public class ShotVideoReferenceService {
         if (inputs.isEmpty()) throw new BizException(400, "请先保存参考视频选择");
         var resolved = resolve(shot, inputs);
         var option = capabilities.describe(model);
+        Integer countLimit = option.getReferenceVideo().getMaxVideos() == null ? model.getMaxVideos() : option.getReferenceVideo().getMaxVideos();
+        if (countLimit == null || countLimit < 1 || inputs.size() > countLimit)
+            throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 参考视频数量超过所选模型配置，请调整素材或模型配置");
         var result = new VideoReferencePreflightVO();
         result.setPreflightId(UUID.randomUUID().toString()); result.setShotId(shotId); result.setProviderId(model.getProviderId()); result.setModelCode(model.getModelCode());
         result.setStatus("PREPARING"); result.setModel(option); result.setExpiresAt(LocalDateTime.now().plusMinutes(properties.getPreflightMinutes()));
@@ -71,7 +74,15 @@ public class ShotVideoReferenceService {
     private void prepare(VideoReferencePreflightVO result, List<ShotRefVideoDTO> inputs, List<ResolvedVideoProcessSource> resolved) {
         try {
             List<ResolvedShotVideoReference> prepared = new ArrayList<>();
-            for (int index = 0; index < inputs.size(); index++) prepared.add(media.prepare(inputs.get(index), resolved.get(index), result.getModel().getReferenceVideo()));
+            java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+            for (int index = 0; index < inputs.size(); index++) {
+                var ref = media.prepare(inputs.get(index), resolved.get(index), result.getModel().getReferenceVideo());
+                ref.setOrdinal(index + 1); prepared.add(ref);
+                total = total.add(ref.getEndSeconds().subtract(ref.getStartSeconds()));
+                var limit = result.getModel().getReferenceVideo().getMaxTotalClipSeconds();
+                if (limit != null && total.compareTo(limit) > 0)
+                    throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 参考片段总时长超过所选模型配置");
+            }
             result.setReferences(prepared); result.setStatus("READY");
         } catch (Exception e) {
             result.setStatus("FAILED");
@@ -124,19 +135,22 @@ public class ShotVideoReferenceService {
     public void validateSnapshot(List<ResolvedShotVideoReference> references, ShotVideoModelOptionVO option, DramaShot shot) {
         capabilities.requireRenderable(option);
         var cap = option.getReferenceVideo();
-        if (references == null || references.isEmpty() || references.size() > Math.min(1, cap.getMaxVideos())) throw new BizException(400, "参考视频快照数量无效");
+        if (references == null || references.isEmpty() || references.size() > cap.getMaxVideos()) throw new BizException(400, "参考视频数量超过所选模型配置");
         int mixed = references.size();
+        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
         try {
             mixed += json.readTree(shot.getRefImagesJson() == null ? "[]" : shot.getRefImagesJson()).size();
             mixed += json.readTree(shot.getRefAudiosJson() == null ? "[]" : shot.getRefAudiosJson()).size();
         } catch (Exception e) { throw new BizException(400, "参考素材配置无法读取"); }
         for (var ref : references) {
+            total = total.add(ref.getEndSeconds().subtract(ref.getStartSeconds()));
             if (Boolean.TRUE.equals(ref.getIncludeAudio())) {
                 if (!Boolean.TRUE.equals(cap.getSupportsVideoAudio())) throw new BizException(400, "所选模型尚未验证视频原音参考能力");
                 mixed++;
             }
             media.validatePrepared(ref.getMetadata(), cap, ref.getIncludeAudio());
         }
+        if (total.compareTo(cap.getMaxTotalClipSeconds()) > 0) throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 参考片段总时长超过所选模型配置");
         if (mixed > cap.getMaxMixedAssets()) throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 混合参考素材总量超过模型限制");
     }
 

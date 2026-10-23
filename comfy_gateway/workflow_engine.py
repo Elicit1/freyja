@@ -230,14 +230,22 @@ class WorkflowEngine:
     def _apply_reference_videos(self, workflow, model_cfg, videos):
         capability = model_cfg.reference_video
         cond = capability.condition_node_id
-        if cond not in workflow or workflow[cond].get("class_type") != "MiniMaxH3ReferenceToVideo":
-            raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: missing conditioning node")
-        inputs = workflow[cond]["inputs"]
-        previous_loaders = {value[0] for key, value in inputs.items() if key.startswith("ref_videos.")
-                            and isinstance(value, list) and len(value) == 2 and isinstance(value[0], str)}
-        for key in list(inputs):
-            if key.startswith(("ref_videos.", "ref_video_audios.")):
-                inputs.pop(key)
+        # FaceRefine reuses the prompt in its second pass, including <Video N> labels.
+        # Share the same ordered inputs so those labels stay bound in both passes.
+        conditioning_nodes = [cond]
+        if model_cfg.handler == "minimax_h3_face_refine":
+            conditioning_nodes.append("158")
+        previous_loaders = set()
+        for node_id in conditioning_nodes:
+            if node_id not in workflow or workflow[node_id].get("class_type") != "MiniMaxH3ReferenceToVideo":
+                raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: missing conditioning node")
+            inputs = workflow[node_id]["inputs"]
+            previous_loaders.update(value[0] for key, value in inputs.items()
+                                    if key.startswith(("ref_videos.", "ref_video_audios."))
+                                    and isinstance(value, list) and len(value) == 2 and isinstance(value[0], str))
+            for key in list(inputs):
+                if key.startswith(("ref_videos.", "ref_video_audios.")):
+                    inputs.pop(key)
         for node_id in list(workflow):
             if node_id.startswith(f"{cond}_ref_vid_") or node_id in previous_loaders and workflow[node_id].get("class_type") == "VHS_LoadVideo":
                 workflow.pop(node_id)
@@ -254,12 +262,15 @@ class WorkflowEngine:
                 "video": video["filename"], "force_rate": capability.decode_fps,
                 "custom_width": 0, "custom_height": 0, "frame_load_cap": 0,
                 "skip_first_frames": 0, "select_every_nth": 1, "format": "None"}}
-            inputs[f"ref_videos.ref_video_{index}"] = [node_id, 0]
-            if video["include_audio"]:
-                if not capability.supports_video_audio:
-                    raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: video audio is not supported")
-                inputs[f"ref_video_audios.ref_video_audio_{index}"] = [node_id, 2]
-        assert_video_paths(workflow, capability, loaders)
+            if video["include_audio"] and not capability.supports_video_audio:
+                raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: video audio is not supported")
+            for conditioning_node in conditioning_nodes:
+                inputs = workflow[conditioning_node]["inputs"]
+                inputs[f"ref_videos.ref_video_{index}"] = [node_id, 0]
+                if video["include_audio"]:
+                    inputs[f"ref_video_audios.ref_video_audio_{index}"] = [node_id, 2]
+        for conditioning_node in conditioning_nodes:
+            assert_video_paths(workflow, capability.model_copy(update={"condition_node_id": conditioning_node}), loaders)
 
     def _apply_flux2_reference_chain(
         self,

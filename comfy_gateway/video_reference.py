@@ -13,7 +13,7 @@ class ReferenceVideoCapability(BaseModel):
     adapter: Literal["MINIMAX_H3_REF_VIDEO_V1"] = "MINIMAX_H3_REF_VIDEO_V1"
     verified_revision: Optional[str] = None
     verified_backend: Optional[str] = None
-    max_videos: int = Field(default=1, ge=1, le=1)
+    max_videos: int = Field(ge=1)
     min_clip_seconds: Optional[float] = Field(default=None, gt=0)
     max_clip_seconds: Optional[float] = Field(default=None, gt=0)
     max_total_clip_seconds: Optional[float] = Field(default=None, gt=0)
@@ -65,7 +65,7 @@ def require_verified(model, base_dir: Path, backend_url=None):
         raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: workflow/adapter changed since acceptance")
     if backend_url is not None and capability.verified_backend != backend_url:
         raise ValueError("REFERENCE_VIDEO_UNVERIFIED: this compute backend has not been accepted")
-    if model.handler != "minimax_h3_ref2va":
+    if model.handler not in {"minimax_h3_ref2va", "minimax_h3_face_refine"}:
         raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: handler has not been accepted for video references")
     return capability
 

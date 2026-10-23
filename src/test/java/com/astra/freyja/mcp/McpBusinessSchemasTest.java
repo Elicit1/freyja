@@ -165,6 +165,10 @@ class McpBusinessSchemasTest {
         var bad = new LinkedHashMap<>(video); bad.put("sourceShotId", 2032095628944588801L);
         assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT, Map.of("refVideos", List.of(bad)), false, false));
         assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT, Map.of("refVideos", List.of(video, video)), false, false));
+        var second = new LinkedHashMap<>(video); second.put("id", "video2");
+        assertDoesNotThrow(() -> validator.validate(McpRecordType.SHOT, Map.of("refVideos", List.of(video, second)), false, false));
+        var named = new LinkedHashMap<>(video); named.put("sourceShotId", Map.of("ref", "source-shot"));
+        assertDoesNotThrow(() -> validator.validate(McpRecordType.SHOT, Map.of("refVideos", List.of(named)), true, false));
     }
 
     @Test void publicOptionSetsMatchSaveValidatorsAndFrontendDropdowns() throws Exception {

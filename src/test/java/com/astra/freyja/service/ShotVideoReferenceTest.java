@@ -39,16 +39,34 @@ class ShotVideoReferenceTest {
         shot.setRefVideosJson(json.writeValueAsString(List.of(ref)));
         model = new AiModel(); model.setId(20L); model.setProviderId(30L); model.setModelType("TXT2VIDEO_REF"); model.setModelCode("test-video"); model.setStatus(1);
         option = new ShotVideoModelOptionVO(); option.setId(20L); option.setProviderId(30L); option.setModelCode("test-video"); option.setModelFingerprint("model1"); option.setWorkflowRevision("revision1"); option.setNodeId("node1"); option.setRenderable(true);
-        var cap = new ReferenceVideoCapability(); cap.setMaxVideos(1); cap.setMaxMixedAssets(12); cap.setSupportsVideoAudio(false); option.setReferenceVideo(cap);
+        var cap = new ReferenceVideoCapability(); cap.setMaxVideos(1); cap.setMaxTotalClipSeconds(BigDecimal.valueOf(15)); cap.setMaxMixedAssets(12); cap.setSupportsVideoAudio(false); option.setReferenceVideo(cap);
         current = ResolvedVideoProcessSource.builder().sourceType("SHOT_CURRENT").shotId(ref.getSourceShotId()).dramaId(10L).videoTakeId(40L).videoUrl("https://archive/current.mp4").build();
         var clip = new ResolvedShotVideoReference(); clip.setId("video1"); clip.setSourceVideoTakeId(40L); clip.setContentSha256("a".repeat(64)); clip.setObjectPath("reference-video/immutable/clip.mp4");
-        clip.setMetadata(new VideoProbeInfoVO()); clip.setIncludeAudio(false);
+        clip.setStartSeconds(ref.getStartSeconds()); clip.setEndSeconds(ref.getEndSeconds()); clip.setMetadata(new VideoProbeInfoVO()); clip.setIncludeAudio(false);
         when(shots.selectById(shot.getId())).thenReturn(shot); when(models.selectOne(any())).thenReturn(model);
         when(capabilities.describe(model)).thenReturn(option); when(sources.resolveForProbe(any())).thenAnswer(invocation -> current);
         when(media.prepare(any(), any(), any())).thenReturn(clip); when(media.transportUrl(any())).thenReturn("https://archive/temporary-preview");
     }
 
     private DramaShotRenderRequestDTO request() { var req = new DramaShotRenderRequestDTO(); req.setProviderId(30L); req.setWorkflowTemplateId("test-video"); return req; }
+
+    @Test void multipleVideosFollowModelCountPreserveOrdinalsAndCheckTotalDuration() throws Exception {
+        var first = ShotVideoReferenceValidator.parse(shot.getRefVideosJson(), json).getFirst();
+        var second = json.readValue(json.writeValueAsString(first), ShotRefVideoDTO.class); second.setId("video2");
+        shot.setRefVideosJson(json.writeValueAsString(List.of(first, second)));
+        model.setMaxVideos(2); option.getReferenceVideo().setMaxVideos(2);
+        when(media.prepare(any(), any(), any())).thenAnswer(call -> {
+            ShotRefVideoDTO input = call.getArgument(0);
+            var ref = new ResolvedShotVideoReference(); ref.setId(input.getId()); ref.setStartSeconds(input.getStartSeconds()); ref.setEndSeconds(input.getEndSeconds());
+            ref.setObjectPath("reference-video/" + input.getId() + "/clip.mp4"); ref.setMetadata(new VideoProbeInfoVO()); ref.setIncludeAudio(false); return ref;
+        });
+        var result = service.start(shot.getId(), request()); assertEquals("READY", result.getStatus());
+        assertEquals(List.of(1, 2), result.getReferences().stream().map(ResolvedShotVideoReference::getOrdinal).toList());
+        option.getReferenceVideo().setMaxVideos(1);
+        assertThrows(BizException.class, () -> service.start(shot.getId(), request()));
+        option.getReferenceVideo().setMaxVideos(2); option.getReferenceVideo().setMaxTotalClipSeconds(BigDecimal.valueOf(7));
+        assertEquals("FAILED", service.start(shot.getId(), request()).getStatus());
+    }
 
     @Test void sourceChangeBetweenPreparationAndSubmissionRequiresNewPreflight() {
         var prepared = service.start(shot.getId(), request());

@@ -27,6 +27,10 @@ public class McpBusinessSchemas {
     }
     public Set<String> fields(McpRecordType type) { return metadata.fields(type); }
 
+    public List<ShotRefVideoDTO> videoReferences(Object value) {
+        return new com.fasterxml.jackson.databind.ObjectMapper().convertValue(value, new com.fasterxml.jackson.core.type.TypeReference<List<ShotRefVideoDTO>>() {});
+    }
+
     @SuppressWarnings("unchecked")
     public Map<String, Object> data(McpRecordType type, boolean references, boolean create) {
         try {
@@ -43,7 +47,7 @@ public class McpBusinessSchemas {
                 if (field.equals("propRefs")) schema = array(30, nested(PropShotRefDTO.class, references, List.of("propId")));
                 if (field.equals("refImages")) schema = array(9, nested(ShotRefImageDTO.class, references, List.of("sourceType", "imageUrl", "usageRole")));
                 if (field.equals("refAudios")) schema = array(3, nested(ShotRefAudioDTO.class, references, List.of("audioUrl", "referenceType")));
-                if (field.equals("refVideos")) schema = array(1, nested(ShotRefVideoDTO.class, references, List.of("id", "sourceType")));
+                if (field.equals("refVideos")) schema = Map.of("type", "array", "items", nested(ShotRefVideoDTO.class, references, List.of("id", "sourceType")), "description", "有序参考视频；引用数量在预检与渲染时根据所选模型 maxVideos 配置校验");
                 if (field.equals("directorPlan")) schema = directorPlan();
                 if (field.equals("seed")) schema = described(schema, "1 到 " + ShotSeedUtil.MAX_SEED + " 的整数字符串");
                 String description = description(type, field);

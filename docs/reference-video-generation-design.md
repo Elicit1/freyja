@@ -12,7 +12,7 @@
 
 用户可以参考动作、运镜、节奏、构图或明确指定的其他内容。参考意图由创作者明确填写，或由 AI 生成供创作者编辑；Java 仅透传与校验。不会通过关键词猜测意图，也不承诺逐帧复刻、精确动作迁移或确定性换人。
 
-首期产品上限为 **1 段参考视频**，这是控制解码内存与推理成本的产品范围，不是宣称 H3 只能接收一段视频。视频时长、解码尺寸、帧数、混合素材总量等限制由经过验证的具体模型配置决定。
+参考视频数量取所选模型 `maxVideos`、平台参考视频能力和网关模型配置的有效交集，不设固定单段上限。视频时长、解码尺寸、帧数、混合素材总量等限制由经过验证的具体模型配置决定。
 
 优先适配 `minimax-h3-ref-turbo8` 的基础生成链路；原版、Turbo4、人脸修复分别验收后开放。`FIRST_LAST_FRAME` 不接收本功能的视频输入；保留切换模式前的素材草稿，提交时发现不兼容素材应明确阻止，不能静默丢弃。
 
@@ -202,7 +202,7 @@
 
 ### 7.1 新增视频处理链
 
-`schemas.py` 提供 `get_all_ref_videos()`，只从合法 `REFERENCE_VIDEO` binding 收集，保留素材 ID 与顺序。不使用“相同 URL 自动去重”：同一源视频的不同片段或不同语义引用可能是不同素材；首期数量为一，仍保持可扩展结构。
+`schemas.py` 提供 `get_all_ref_videos()`，只从合法 `REFERENCE_VIDEO` binding 收集，保留素材 ID 与顺序。不使用“相同 URL 自动去重”：同一源视频的不同片段或不同语义引用可能是不同素材；不同片段使用独立稳定标识，并按列表顺序编号。
 
 `main.py` 在上传媒体前完成模型精确匹配、能力状态、数量、混合素材、目标节点版本验证。参考视频模型匹配不能走 `GatewayConfig.get_model()` 的部分名称回退；不存在的编码直接失败，防止新增名称误落到相似模型。
 
@@ -354,7 +354,11 @@ Java 的 `freyja.reference-video` 默认准备限制为：源文件 256 MiB、�
 
 ### 11.3 在线验收后的能力配置
 
-默认仅在 `minimax-h3-ref-turbo8` 登记待验证适配。节点私有 YAML 会覆盖默认节点配置：部署使用 `machine_local.yaml` 时，应在该文件的对应模型维护 `reference_video`，不能只改 `machine_default.yaml`。
+现有 6 个 H3 REF 模型均登记参考视频适配：`minimax-h3-ref2va`、`minimax-h3-ref`、`minimax-h3-ref-turbo8`，以及各自的 FaceRefine 版本（`minimax-h3-face-refine`、`minimax-h3-ref-turbo4-face-refine`、`minimax-h3-ref-turbo8-face-refine`）。每个模型独立维护验收状态、revision 和限制。节点私有 YAML 会覆盖默认节点配置：部署使用 `machine_local.yaml` 时，应在该文件的对应模型维护 `reference_video`，不能只改 `machine_default.yaml`。
+
+普通 REF 将参考视频连接到 `136`；FaceRefine 在首阶段 `136` 和精修阶段 `158` 共享同一组有序视频加载节点及可选原音，两个阶段的 `<Video N>` 对应关系一致。精修阶段继续使用首阶段生成的独立音频条件，保留各模板原有采样步数和最终拼接输出 `130`；装配时检查每个阶段到最终输出的连通性。
+
+2026-10-23 扩展验证：网关 50 项回归测试全部通过，覆盖全部 6 个 REF 模型的三段视频输入、图片及独立音频共存、FaceRefine 双阶段连通、原有采样步数保留、无视频输入清理，以及逐模型验收门禁；未执行真实 GPU 渲染。
 
 完成第 10.2 节的节点与短片段验证后，填写网关 `reference_video` 的实测范围：
 
@@ -363,7 +367,7 @@ reference_video:
   schema_version: 1
   status: UNVERIFIED
   adapter: MINIMAX_H3_REF_VIDEO_V1
-  max_videos: 1
+  max_videos: 3
   min_clip_seconds: null
   max_clip_seconds: null
   max_total_clip_seconds: null
@@ -381,7 +385,7 @@ reference_video:
 
 上面的 `null` 必须由实测值替换。先保持 `UNVERIFIED` 填好限制并重启网关，从 capabilities 读取 `workflowRevision`。验收记录确认后，将 `verified_backend` 设为实际节点 `http_url`，`verified_revision` 设为该 revision，再设置网关状态。工作流、适配代码、映射或实测限制变更会改变 revision；切换后端地址也会使旧验收失效。
 
-平台模型中心设置 `maxVideos=1`，在已有 `paramsJson.videoGeneration` 中合并第 5.1 节的 `referenceVideo` 子对象：使用相同的 adapter、`workflowRevision` 和实测限制。平台配置也须明确为 `VERIFIED`，且网关报告同版本已验收、节点健康时，生成入口才会启用。不要替换原有比例、尺寸与时长配置。可先在验收环境验证网关 API，平台生成入口保持未验证，完成联调后再启用平台配置。
+平台模型中心按实际模型能力设置 `maxVideos`，在已有 `paramsJson.videoGeneration` 中合并第 5.1 节的 `referenceVideo` 子对象：使用相同的 adapter、`workflowRevision` 和实测限制。平台配置也须明确为 `VERIFIED`，且网关报告同版本已验收、节点健康时，生成入口才会启用。不要替换原有比例、尺寸与时长配置。可先在验收环境验证网关 API，平台生成入口保持未验证，完成联调后再启用平台配置。
 
 ### 11.4 指引与验证边界
 
@@ -393,6 +397,6 @@ MCP 分镜读写 Schema、平台系统指引、生产计划指纹、提示词 Ma
 
 ### 11.5 分镜编辑与 AI 提示词入口
 
-分镜编辑页切换到「多模态参考（图片 / 视频 / 音频）」后，即使尚未添加视频，也直接展示参考视频编辑器，支持上传、选择当前短剧分镜或历史 Take、设置片段范围、预览与填写参考说明。可保存配置，或保存后进入渲染工坊选择模型并预检；模型未验证不会隐藏编辑入口。
+分镜编辑页切换到「多模态参考（图片 / 视频 / 音频）」后，即使尚未添加视频，也直接展示参考视频编辑器（各段卡片默认折叠），支持上传、选择当前短剧分镜或历史 Take、设置片段范围、预览与填写参考说明。可保存配置，或保存后进入渲染工坊选择模型并预检；模型未验证不会隐藏编辑入口。
 
 AI 提示词生成弹窗在多模态参考模式下也可直接编辑同一类视频草稿。API 自动生成和外部 AI 任务包均携带视频来源、片段范围、原音设置和明确的参考说明，生成 `<Video 1>` 引用；当前提示词推理不自动识别视频内容，创作者需要说明希望参考的动作、运镜或其他内容。采纳时，视频引用与提示词、图片、音频一并回填并保存；清空视频会显式提交空列表。生成后修改视频来源、范围、原音或说明会标记结果已过期，外部 AI 任务包也需重新导出。视频实际解码并作为模型条件输入发生在后续渲染阶段。

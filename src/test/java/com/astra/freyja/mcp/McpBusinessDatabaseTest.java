@@ -89,7 +89,7 @@ class McpBusinessDatabaseTest {
     @Import({McpJson.class, McpScope.class, McpBusinessView.class, McpAssets.class, McpBusinessSchemas.class,
             McpSchemaMetadata.class, McpBusinessOptions.class, McpBusinessInputValidator.class,
             McpBusinessRecords.class, McpRecordTools.class, McpOperationStore.class, McpBusinessTools.class, McpReadTools.class, McpImageAssets.class, MediaAssetServiceImpl.class,
-            McpPresignedImageUploads.class, McpImageTransferStorage.class,
+            McpPresignedImageUploads.class, McpImageTransferStorage.class, McpPresignedVideoUploads.class, McpVideoTransferStorage.class, com.astra.freyja.service.impl.ResVideoServiceImpl.class,
             DramaServiceImpl.class, DramaEpisodeServiceImpl.class, DramaSceneServiceImpl.class,
             DramaShotGroupServiceImpl.class, DramaShotServiceImpl.class, ResCharacterServiceImpl.class,
             ResCharacterLookServiceImpl.class, ResCharacterOutfitServiceImpl.class, ResSceneServiceImpl.class,
@@ -113,6 +113,8 @@ class McpBusinessDatabaseTest {
         McpProperties properties() { McpProperties p = new McpProperties(); p.setWriteEnabled(true); return p; }
         @Bean ObjectMapper objectMapper() { return new ObjectMapper().findAndRegisterModules(); }
         @Bean com.astra.freyja.service.AssetMediaCleanupService mediaCleanup() { return mock(com.astra.freyja.service.AssetMediaCleanupService.class); }
+        @Bean com.astra.freyja.config.ReferenceVideoProperties referenceVideoProperties() { return new com.astra.freyja.config.ReferenceVideoProperties(); }
+        @Bean com.astra.freyja.service.VideoFrameExtractService videoProbe() { return mock(com.astra.freyja.service.VideoFrameExtractService.class); }
         @Bean AiModelFactory models() { return mock(AiModelFactory.class); }
         @Bean AiProviderService providers() { return mock(AiProviderService.class); }
         @Bean SysConfigService configs() { return mock(SysConfigService.class); }
@@ -164,7 +166,7 @@ class McpBusinessDatabaseTest {
         JdbcTemplate jdbc = new JdbcTemplate(dataSource);
         for (Class<?> type : List.of(Drama.class, DramaEpisode.class, DramaScene.class, DramaShotGroup.class,
                 DramaShot.class, ResCharacter.class, ResCharacterLook.class, ResScene.class, ResProp.class,
-                ResKeyframe.class, ResCharacterAlias.class, ResCharacterEvidence.class, ResCharacterResolution.class,
+                ResKeyframe.class, ResVideo.class, ResCharacterAlias.class, ResCharacterEvidence.class, ResCharacterResolution.class,
                 DramaShotVideoTake.class, McpBusinessOperation.class, SysConfig.class, AiSkillFile.class)) {
             var info = TableInfoHelper.getTableInfo(type);
             List<String> columns = new ArrayList<>(); columns.add(info.getKeyColumn() + " BIGINT PRIMARY KEY");
@@ -461,11 +463,11 @@ class McpBusinessDatabaseTest {
     @Test void completeCatalogContainsOnlyBusinessToolsAndWhitelistedSchemas() {
         Set<String> expected = new HashSet<>(Set.of("search_projects", "get_project", "get_project_outline", "list_shots", "get_shot", "search_assets",
                 "get_asset", "list_character_looks", "get_business_options", "batch_read_records", "list_shot_video_versions", "batch_create_records",
-                "append_storyboard", "batch_delete_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version", "prepare_asset_image_upload", "complete_asset_image_upload", "list_skills", "read_skill", "read_skill_file"));
+                "append_storyboard", "batch_delete_records", "get_business_operation", "clone_shot", "set_default_character_look", "reorder_group_shots", "select_shot_video_version", "prepare_asset_image_upload", "complete_asset_image_upload", "prepare_asset_video_upload", "complete_asset_video_upload", "list_skills", "read_skill", "read_skill_file"));
         List<String> singulars = List.of("project", "episode", "scene", "shot_group", "shot", "character", "character_look", "resource_scene", "prop", "keyframe");
         for (String object : singulars) for (String action : List.of("get", "create", "update", "delete")) expected.add(action + "_" + object);
         for (String plural : List.of("projects", "episodes", "scenes", "shot_groups", "shots", "characters", "character_looks", "resource_scenes", "props", "keyframes")) expected.add("batch_update_" + plural);
-        assertEquals(72, expected.size()); assertFalse(expected.contains("batch_update_records"));
+        assertEquals(74, expected.size()); assertFalse(expected.contains("batch_update_records"));
         List<McpTool<?>> all = new ArrayList<>(reads.tools()); all.addAll(tools.tools()); all.addAll(skills.tools());
         assertEquals(expected, all.stream().map(McpTool::name).collect(java.util.stream.Collectors.toSet()));
         for (McpTool<?> tool : all) {
