@@ -57,6 +57,7 @@ import java.util.stream.Collectors;
 public class ResSceneServiceImpl implements ResSceneService {
 
     private final ResSceneMapper sceneMapper;
+    private final com.astra.freyja.service.AssetMediaCleanupService mediaCleanup;
     private final AiProviderService aiProviderService;
     private final AiModelFactory aiModelFactory;
     private final SysConfigService sysConfigService;
@@ -158,7 +159,9 @@ public class ResSceneServiceImpl implements ResSceneService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
+        ResScene existing = sceneMapper.selectById(id);
         sceneMapper.deleteById(id);
+        if (existing != null) mediaCleanup.deleteAfterCommit(existing.getCoverUrl(), existing.getReferenceImageUrl());
     }
 
     @Override

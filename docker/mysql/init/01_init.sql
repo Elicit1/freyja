@@ -1711,3 +1711,31 @@ CREATE TABLE IF NOT EXISTS shot_video_reference_preflight (
  data_json LONGTEXT NOT NULL, created_at DATETIME(3) NOT NULL, expires_at DATETIME(3) NOT NULL,
  KEY ix_video_reference_preflight(shot_id,provider_id,model_code,input_fingerprint,status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Additive and repeatable. Existing image assets and shot references are preserved.
+CREATE TABLE IF NOT EXISTS res_video (
+ id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ drama_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+ shot_id BIGINT UNSIGNED NULL,
+ name VARCHAR(200) NOT NULL,
+ description TEXT NULL,
+ video_url VARCHAR(512) NOT NULL,
+ original_filename VARCHAR(255) NULL,
+ file_size BIGINT NULL,
+ duration DECIMAL(12,3) NULL,
+ width INT NULL,
+ height INT NULL,
+ fps DOUBLE NULL,
+ has_audio TINYINT NULL DEFAULT NULL,
+ source_type VARCHAR(30) NOT NULL DEFAULT 'MANUAL_UPLOAD',
+ sort_order INT NOT NULL DEFAULT 0,
+ status TINYINT NOT NULL DEFAULT 1,
+ create_by BIGINT NULL,
+ create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ update_by BIGINT NULL,
+ update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ deleted TINYINT NOT NULL DEFAULT 0,
+ remark VARCHAR(1000) NULL,
+ UNIQUE KEY uk_res_video_url (video_url),
+ KEY ix_res_video_scope (drama_id, shot_id, status, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='视频素材库，分镜参考视频统一入库';

@@ -54,7 +54,7 @@ class ResCharacterLookServiceTest {
 
     @BeforeEach
     void setUp() {
-        lookService = new ResCharacterLookServiceImpl(lookMapper, characterMapper, dramaMapper, aiModelFactory, sysConfigService);
+        lookService = new ResCharacterLookServiceImpl(mock(AssetMediaCleanupService.class), lookMapper, characterMapper, dramaMapper, aiModelFactory, sysConfigService);
     }
 
     @Test
@@ -63,6 +63,7 @@ class ResCharacterLookServiceTest {
         ResCharacterLookDTO dto = new ResCharacterLookDTO();
         dto.setCharacterId(100L);
         dto.setLookName("日常便服");
+        dto.setDesignDesc("浅色衬衫与深色长裤");
 
         when(lookMapper.selectCount(any(LambdaQueryWrapper.class))).thenReturn(0L);
 
@@ -115,6 +116,7 @@ class ResCharacterLookServiceTest {
         ResCharacterLookDTO dto = new ResCharacterLookDTO();
         dto.setId(10L);
         dto.setCharacterId(200L); // 试图串绑给角色 200
+        dto.setDesignDesc("深色晚礼服");
 
         BizException ex = assertThrows(BizException.class, () -> lookService.update(dto));
         assertEquals(400, ex.getCode());

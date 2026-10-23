@@ -46,23 +46,24 @@
         <div v-if="!appStore.isCollapse" class="sidebar-group-title mt-3">
           制作
         </div>
-        <el-menu-item index="/assets">
-          <el-icon><PictureFilled /></el-icon>
-          <template #title>资产中心</template>
-        </el-menu-item>
+        <el-sub-menu index="/assets">
+          <template #title><el-icon><PictureFilled /></el-icon><span>资产中心</span></template>
+          <el-menu-item index="/assets/characters">角色资产</el-menu-item>
+          <el-menu-item index="/assets/scenes">场景资产</el-menu-item>
+          <el-menu-item index="/assets/props">核心道具</el-menu-item>
+          <el-menu-item index="/assets/keyframes">关键图资产</el-menu-item>
+          <el-menu-item index="/assets/videos">视频素材</el-menu-item>
+        </el-sub-menu>
         <el-sub-menu index="/dubbing">
           <template #title><el-icon><VideoPlay /></el-icon><span>配音中心</span></template>
           <el-menu-item index="/dubbing/characters">角色配音</el-menu-item>
           <el-menu-item index="/dubbing/effects">特效配置</el-menu-item>
         </el-sub-menu>
-        <el-menu-item index="/production/video-upscale">
-          <el-icon><ZoomIn /></el-icon>
-          <template #title>视频超分</template>
-        </el-menu-item>
-        <el-menu-item index="/production/frame-interpolation">
-          <el-icon><VideoPlay /></el-icon>
-          <template #title>视频补帧</template>
-        </el-menu-item>
+        <el-sub-menu index="/production">
+          <template #title><el-icon><VideoCamera /></el-icon><span>视频中心</span></template>
+          <el-menu-item index="/production/video-upscale">视频超分</el-menu-item>
+          <el-menu-item index="/production/frame-interpolation">视频补帧</el-menu-item>
+        </el-sub-menu>
         <el-menu-item index="/render/tasks">
           <el-icon><VideoCamera /></el-icon>
           <template #title>任务中心</template>
@@ -145,7 +146,6 @@ import {
   Odometer,
   Film,
   PictureFilled,
-  ZoomIn,
   VideoPlay,
   VideoCamera,
   Tickets,

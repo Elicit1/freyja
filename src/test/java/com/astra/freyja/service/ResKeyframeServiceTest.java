@@ -38,6 +38,9 @@ class ResKeyframeServiceTest {
     @Mock
     private DramaShotMapper dramaShotMapper;
 
+    @Mock
+    private AssetMediaCleanupService mediaCleanup;
+
     @InjectMocks
     private ResKeyframeServiceImpl resKeyframeService;
 

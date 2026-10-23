@@ -52,6 +52,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class ResCharacterLookServiceImpl implements ResCharacterLookService {
+    private final com.astra.freyja.service.AssetMediaCleanupService mediaCleanup;
 
     private final ResCharacterLookMapper lookMapper;
     private final ResCharacterMapper characterMapper;
@@ -237,6 +238,7 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
         }
 
         lookMapper.deleteById(id);
+        mediaCleanup.deleteAfterCommit(exist.getReferenceImageUrl());
 
         if (Integer.valueOf(1).equals(exist.getIsDefault())) {
             promoteNextDefault(exist.getCharacterId(), exist.getId());

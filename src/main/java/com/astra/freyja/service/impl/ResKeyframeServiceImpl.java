@@ -38,6 +38,7 @@ import java.util.stream.Collectors;
 public class ResKeyframeServiceImpl implements ResKeyframeService {
 
     private final ResKeyframeMapper resKeyframeMapper;
+    private final com.astra.freyja.service.AssetMediaCleanupService mediaCleanup;
     private final DramaMapper dramaMapper;
     private final DramaShotMapper dramaShotMapper;
 
@@ -236,6 +237,7 @@ public class ResKeyframeServiceImpl implements ResKeyframeService {
             throw new BizException("关键帧资产不存在");
         }
         resKeyframeMapper.deleteById(id);
+        mediaCleanup.deleteAfterCommit(existing.getFrameUrl());
         log.info("[ResKeyframeService] 成功逻辑删除关键帧: id={}, name={}", id, existing.getName());
     }
 

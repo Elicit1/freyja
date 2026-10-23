@@ -112,6 +112,7 @@ class McpBusinessDatabaseTest {
         @Bean @Primary @ConfigurationProperties("freyja.mcp")
         McpProperties properties() { McpProperties p = new McpProperties(); p.setWriteEnabled(true); return p; }
         @Bean ObjectMapper objectMapper() { return new ObjectMapper().findAndRegisterModules(); }
+        @Bean com.astra.freyja.service.AssetMediaCleanupService mediaCleanup() { return mock(com.astra.freyja.service.AssetMediaCleanupService.class); }
         @Bean AiModelFactory models() { return mock(AiModelFactory.class); }
         @Bean AiProviderService providers() { return mock(AiProviderService.class); }
         @Bean SysConfigService configs() { return mock(SysConfigService.class); }

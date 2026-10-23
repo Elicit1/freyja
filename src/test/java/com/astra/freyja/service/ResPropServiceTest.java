@@ -28,6 +28,9 @@ class ResPropServiceTest {
     @Mock
     private ResPropMapper resPropMapper;
 
+    @Mock
+    private AssetMediaCleanupService mediaCleanup;
+
     @InjectMocks
     private ResPropServiceImpl propService;
 

@@ -34,6 +34,9 @@ class AssetDualChannelPromptDeriveTest {
     @Mock
     private AiModelFactory aiModelFactory;
 
+    @Mock
+    private AssetMediaCleanupService mediaCleanup;
+
     @InjectMocks
     private ResPropServiceImpl propService;
 

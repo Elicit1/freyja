@@ -30,9 +30,16 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'assets',
         name: 'Assets',
-        component: () => import('@/views/assets/index.vue'),
-        meta: { title: '角色与场景资产' }
+        redirect: to => {
+          const paths: Record<string, string> = { character: 'characters', scene: 'scenes', prop: 'props', keyframe: 'keyframes', video: 'videos' }
+          return { path: `/assets/${paths[String(to.query.assetType || '')] || 'characters'}`, query: to.query }
+        }
       },
+      { path: 'assets/characters', name: 'AssetCharacters', component: () => import('@/views/assets/Characters.vue'), meta: { title: '角色资产' } },
+      { path: 'assets/scenes', name: 'AssetScenes', component: () => import('@/views/assets/Scenes.vue'), meta: { title: '场景资产' } },
+      { path: 'assets/props', name: 'AssetProps', component: () => import('@/views/assets/Props.vue'), meta: { title: '核心道具' } },
+      { path: 'assets/keyframes', name: 'AssetKeyframes', component: () => import('@/views/assets/Keyframes.vue'), meta: { title: '关键图资产' } },
+      { path: 'assets/videos', name: 'AssetVideos', component: () => import('@/views/assets/Videos.vue'), meta: { title: '视频素材' } },
       {
         path: 'production/video-upscale',
         name: 'VideoUpscale',

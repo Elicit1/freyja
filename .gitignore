@@ -65,3 +65,4 @@ front/dist/
 
 /docs/*
 !/docs/reference-video-generation-design.md
+!/docs/asset-center-api.md

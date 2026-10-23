@@ -56,6 +56,7 @@ import java.util.stream.Collectors;
 public class ResPropServiceImpl implements ResPropService {
 
     private final ResPropMapper resPropMapper;
+    private final com.astra.freyja.service.AssetMediaCleanupService mediaCleanup;
     private final AiProviderService aiProviderService;
     private final AiModelFactory aiModelFactory;
     private final SysConfigService sysConfigService;
@@ -151,7 +152,9 @@ public class ResPropServiceImpl implements ResPropService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
+        ResProp existing = resPropMapper.selectById(id);
         resPropMapper.deleteById(id);
+        if (existing != null) mediaCleanup.deleteAfterCommit(existing.getCoverUrl());
     }
 
     @Override

@@ -60,6 +60,7 @@ import java.util.stream.Collectors;
 public class ResCharacterServiceImpl implements ResCharacterService {
 
     private final ResCharacterMapper characterMapper;
+    private final com.astra.freyja.service.AssetMediaCleanupService mediaCleanup;
     private final ResCharacterOutfitMapper outfitMapper;
     private final ResCharacterOutfitService outfitService;
     private final CharacterRegistryService characterRegistryService;
@@ -285,11 +286,16 @@ public class ResCharacterServiceImpl implements ResCharacterService {
 
         if (dubbingService != null) dubbingService.deleteForCharacter(id);
 
+        var images = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterOutfit>()
+                .eq(ResCharacterOutfit::getCharacterId, id)).stream()
+                .map(ResCharacterOutfit::getReferenceImageUrl).toList();
+
         // 删除角色本身
         characterMapper.deleteById(id);
 
         // 级联逻辑删除该角色的所有造型
         outfitMapper.delete(new LambdaQueryWrapper<ResCharacterOutfit>().eq(ResCharacterOutfit::getCharacterId, id));
+        mediaCleanup.deleteAfterCommit(images);
     }
 
     @Override

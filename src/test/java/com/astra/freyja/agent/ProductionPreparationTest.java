@@ -205,14 +205,14 @@ class ProductionPreparationTest {
         assertEquals(false, report.get("complete")); assertEquals(1, ((List<?>)report.get("incompleteTextAssets")).size());
     }
     @Test void createKeyframeWithoutImageSavesTextDraft() {
-        var mapper = mock(ResKeyframeMapper.class); var keyframes = new ResKeyframeServiceImpl(mapper, dramas, shots);
+        var mapper = mock(ResKeyframeMapper.class); var keyframes = new ResKeyframeServiceImpl(mapper, mock(com.astra.freyja.service.AssetMediaCleanupService.class), dramas, shots);
         when(mapper.insert(any(ResKeyframe.class))).thenAnswer(inv -> { ((ResKeyframe)inv.getArgument(0)).setId(9L); return 1; });
         var dto = new ResKeyframeDTO(); dto.setName("开场首帧"); dto.setDescription("小岚站在门前，竖幅中景"); dto.setFrameType("FIRST_FRAME"); dto.setFrameUrl("  ");
         assertEquals(9L, keyframes.create(dto)); var saved = ArgumentCaptor.forClass(ResKeyframe.class); verify(mapper).insert(saved.capture());
         assertNull(saved.getValue().getFrameUrl()); assertEquals("TEXT_DRAFT", saved.getValue().getSourceType());
     }
     @Test void omittedKeyframeUrlKeepsImageAndExplicitClearRemovesIt() {
-        var mapper = mock(ResKeyframeMapper.class); var service = new ResKeyframeServiceImpl(mapper, dramas, shots);
+        var mapper = mock(ResKeyframeMapper.class); var service = new ResKeyframeServiceImpl(mapper, mock(com.astra.freyja.service.AssetMediaCleanupService.class), dramas, shots);
         var old = new ResKeyframe(); old.setId(9L); old.setName("首帧"); old.setFrameUrl("https://example.com/key.png"); old.setFrameType("FIRST_FRAME"); when(mapper.selectById(9L)).thenReturn(old);
         var dto = new ResKeyframeDTO(); dto.setId(9L); dto.setName("更新首帧文字"); dto.setDescription("改写描述"); service.update(dto); assertEquals("https://example.com/key.png", old.getFrameUrl());
         dto.setClearFrameUrl(true); service.update(dto); assertNull(old.getFrameUrl()); verify(mapper).update(isNull(), any(com.baomidou.mybatisplus.core.conditions.Wrapper.class));

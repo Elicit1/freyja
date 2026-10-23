@@ -414,7 +414,7 @@ function handleEdit(scene: ResScene) {
 async function handleDeleteWithConfirm(scene: ResScene) {
   if (!scene.id) return
   try {
-    await ElMessageBox.confirm(`确定要删除场景「${scene.name}」吗？此操作无法撤销。`, '删除确认', {
+    await ElMessageBox.confirm(`确定要删除场景「${scene.name}」吗？未被其他资产、分镜或历史记录引用的关联图片也会删除。`, '删除确认', {
       confirmButtonText: '确定删除',
       cancelButtonText: '取消',
       type: 'warning'

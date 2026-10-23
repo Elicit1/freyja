@@ -489,7 +489,7 @@
                       </el-button>
                       <el-popconfirm
                         v-if="selectedLook.id"
-                        title="确定删除此造型吗？若该造型为默认，将自动将下一套可用造型提升为默认。"
+                        title="删除此造型及未被引用的关联图片？若为默认，将提升下一套可用造型为默认。"
                         @confirm="handleDeleteLook(selectedLook)"
                       >
                         <template #reference>

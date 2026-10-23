@@ -408,7 +408,7 @@ function handleDrawerCancel() {
 async function handleDelete(row: ResKeyframe) {
   try {
     await ElMessageBox.confirm(
-      `确定要删除关键图「${row.name}」吗？删除后将无法恢复。`,
+      `确定要删除关键图「${row.name}」吗？未被其他资产、分镜或历史记录引用的关联图片也会删除。`,
       '删除确认',
       {
         type: 'warning',

@@ -49,6 +49,9 @@ class ResCharacterServiceTest {
     @Mock
     private CharacterRegistryService characterRegistryService;
 
+    @Mock
+    private AssetMediaCleanupService mediaCleanup;
+
     @InjectMocks
     private ResCharacterServiceImpl characterService;
 

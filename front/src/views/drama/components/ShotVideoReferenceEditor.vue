@@ -6,6 +6,7 @@
         <el-upload :show-file-list="false" :before-upload="upload" accept="video/mp4,video/webm,video/quicktime,video/x-matroska" :disabled="disabled || modelValue.length > 0 || uploading">
           <el-button size="small" :loading="uploading" :disabled="disabled || modelValue.length > 0">上传视频</el-button>
         </el-upload>
+        <el-button size="small" :disabled="disabled || modelValue.length > 0" @click="materialPicker?.open(dramaId)">从视频素材库选择</el-button>
         <el-button size="small" :disabled="disabled || modelValue.length > 0" @click="picker?.open(dramaId)">选择分镜 / 历史 Take</el-button>
       </div>
     </div>
@@ -35,13 +36,16 @@
     </div>
     <p v-if="!modelValue.length" class="text-center text-xs text-slate-400 py-3">可上传视频或选用当前短剧已生成的视频版本。</p>
     <ShotVideoPickerDialog ref="picker" @selected="selectSource" />
+    <VideoMaterialPickerDialog ref="materialPicker" @selected="selectMaterial" />
   </section>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch, onBeforeUnmount, type ComponentPublicInstance } from 'vue'
 import { ElMessage } from 'element-plus'
-import { assetApi } from '@/api/res-asset'
+import { videoAssetApi } from '@/api/res-video'
+import type { ResVideo } from '@/types/resource'
+import VideoMaterialPickerDialog from '@/views/assets/components/VideoMaterialPickerDialog.vue'
 import type { VideoProbeInfoVO } from '@/api/videoProcessing'
 import { shotVideoReferenceApi } from '@/api/shot-video-reference'
 import type { ShotRefVideo, ShotVideoModelOption, VideoReferencePreflight } from '@/types/drama'
@@ -55,6 +59,7 @@ const notice = computed(() => {
   return props.option?.reason || (!props.option ? '请选择模型；素材可保存为草稿，视频生成能力须完成验证后启用。' : '')
 })
 const picker = ref<InstanceType<typeof ShotVideoPickerDialog>>()
+const materialPicker = ref<InstanceType<typeof VideoMaterialPickerDialog>>()
 const player = ref<HTMLVideoElement>()
 const sourceUrl = ref(''), metadata = ref<VideoProbeInfoVO>(), probing = ref(false), uploading = ref(false), preparing = ref(false)
 const preflight = ref<VideoReferencePreflight>()
@@ -69,15 +74,23 @@ function selectSource(source: SelectedVideoProcessSource) {
     sourceShotId: String(source.sourceShotId), sourceVideoTakeId: source.sourceType === 'SHOT_VIDEO_TAKE' && source.sourceVideoTakeId ? String(source.sourceVideoTakeId) : undefined,
     startSeconds: 0, includeAudio: false }])
 }
+function selectMaterial(video: ResVideo) {
+  if (props.disabled) return
+  if (video.status !== 1 || String(video.dramaId) !== '0' && String(video.dramaId) !== String(props.dramaId)) {
+    ElMessage.warning('请选择公共库或当前短剧已启用的视频素材'); return
+  }
+  emit('update:modelValue', [{ id: `video_asset_${video.id}`, name: video.name, sourceType: 'DIRECT_URL',
+    sourceVideoUrl: video.videoUrl, startSeconds: 0, includeAudio: false, referenceDescription: video.description?.slice(0, 1000) }])
+}
 async function upload(file: File) {
   if (props.disabled) return false
   if (file.size > 256 * 1024 * 1024) { ElMessage.warning('参考源视频不能超过 256 MB'); return false }
   uploading.value = true
   const shotId = props.shotId
   try {
-    const result = await assetApi.upload(file, 'reference-video')
+    const result = await videoAssetApi.upload(file, props.dramaId, shotId, undefined, 'SHOT_UPLOAD')
     if (!alive || props.disabled || shotId !== props.shotId || props.modelValue.length) return false
-    emit('update:modelValue', [{ id: `video_${crypto.randomUUID()}`, name: file.name, sourceType: 'DIRECT_URL', sourceVideoUrl: result.url, startSeconds: 0, includeAudio: false }])
+    emit('update:modelValue', [{ id: `video_asset_${result.id}`, name: result.name, sourceType: 'DIRECT_URL', sourceVideoUrl: result.videoUrl, startSeconds: 0, includeAudio: false }])
   } catch (error: any) { ElMessage.error(error.message || '上传失败') }
   finally { uploading.value = false }
   return false

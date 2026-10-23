@@ -478,3 +478,37 @@ export interface ResKeyframeOption {
   prompt?: string
 }
 
+export interface ResVideo {
+  id: string
+  dramaId: string
+  dramaTitle?: string
+  shotId?: string
+  shotName?: string
+  name: string
+  description?: string
+  videoUrl: string
+  originalFilename?: string
+  fileSize?: string | number
+  duration?: number
+  width?: number
+  height?: number
+  fps?: number
+  hasAudio?: boolean
+  sourceType: 'MANUAL_UPLOAD' | 'SHOT_UPLOAD'
+  status: number
+  sortOrder: number
+  remark?: string
+  createTime?: string
+  updateTime?: string
+}
+
+export interface ResVideoQuery {
+  current?: number
+  size?: number
+  name?: string
+  dramaId?: string
+  shotId?: string
+  availableDramaId?: string
+  sourceType?: string
+  status?: number
+}

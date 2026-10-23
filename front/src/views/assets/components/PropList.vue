@@ -352,7 +352,7 @@ function handleEdit(prop: ResProp) {
 async function handleDelete(prop: ResProp) {
   if (!prop.id) return
   try {
-    await ElMessageBox.confirm(`确定要删除道具资产「${prop.name}」吗？此操作无法撤销。`, '删除确认', {
+    await ElMessageBox.confirm(`确定要删除道具资产「${prop.name}」吗？未被其他资产、分镜或历史记录引用的关联图片也会删除。`, '删除确认', {
       confirmButtonText: '确定删除',
       cancelButtonText: '取消',
       type: 'warning'
