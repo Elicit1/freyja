@@ -223,4 +223,51 @@ public class VideoProcessingModelResolverTest {
         assertEquals(1, config.getMinClearCacheFrames());
         assertEquals(300, config.getMaxClearCacheFrames());
     }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 4, 16, 64})
+    void selectedBatchSizeReachesGateway(int batchSize) {
+        when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
+
+        var result = resolver.resolve(1L, 102L, null, "FRAME_INTERPOLATION",
+                null, null, null, 24, null, null, batchSize);
+
+        assertEquals(batchSize, result.getExtraBody().get("batch_size"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, 65})
+    void rejectsBatchSizeOutsideModelRange(int batchSize) {
+        when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
+
+        assertThrows(BizException.class, () -> resolver.resolve(1L, 102L, null,
+                "FRAME_INTERPOLATION", null, null, null, 24, null, null, batchSize));
+    }
+
+    @Test
+    void exposesLegacyBatchDefaultAndUsesConfiguredModelRange() throws Exception {
+        when(modelMapper.selectList(any())).thenReturn(List.of(interpolationModel));
+        var legacy = resolver.listModelOptions(1L, "FRAME_INTERPOLATION").get(0).getConfig();
+        assertEquals(32, legacy.getDefaultBatchSize());
+        assertEquals(1, legacy.getMinBatchSize());
+        assertEquals(64, legacy.getMaxBatchSize());
+
+        var json = objectMapper.readTree(interpolationModel.getParamsJson());
+        var config = (com.fasterxml.jackson.databind.node.ObjectNode) json.get("videoProcessing");
+        config.put("defaultBatchSize", 4);
+        config.put("minBatchSize", 2);
+        config.put("maxBatchSize", 8);
+        interpolationModel.setParamsJson(objectMapper.writeValueAsString(json));
+        when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
+
+        var option = resolver.listModelOptions(1L, "FRAME_INTERPOLATION").get(0).getConfig();
+        assertEquals(4, option.getDefaultBatchSize());
+        assertEquals(2, option.getMinBatchSize());
+        assertEquals(8, option.getMaxBatchSize());
+        var resolved = resolver.resolve(1L, 102L, null, "FRAME_INTERPOLATION",
+                null, null, null, 24, null, null, null);
+        assertEquals(4, resolved.getExtraBody().get("batch_size"));
+        assertThrows(BizException.class, () -> resolver.resolve(1L, 102L, null,
+                "FRAME_INTERPOLATION", null, null, null, 24, null, null, 16));
+    }
 }

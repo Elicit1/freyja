@@ -215,6 +215,12 @@ public class AiModelServiceImpl implements AiModelService {
                     }
                 }
             } else if ("FRAME_INTERPOLATION".equalsIgnoreCase(modelType)) {
+                int minBatch = vp.getMinBatchSize() != null ? vp.getMinBatchSize() : VideoProcessingModelParams.MIN_BATCH_SIZE;
+                int maxBatch = vp.getMaxBatchSize() != null ? vp.getMaxBatchSize() : VideoProcessingModelParams.MAX_BATCH_SIZE;
+                int defaultBatch = vp.getDefaultBatchSize() != null ? vp.getDefaultBatchSize() : VideoProcessingModelParams.DEFAULT_BATCH_SIZE;
+                if (minBatch < 1 || maxBatch < minBatch || defaultBatch < minBatch || defaultBatch > maxBatch) {
+                    throw new BizException("补帧批处理数量必须为正整数，且默认值必须介于 minBatchSize 与 maxBatchSize 之间");
+                }
                 if (vp.getAllowedMultipliers() != null && !vp.getAllowedMultipliers().isEmpty() && vp.getDefaultMultiplier() != null) {
                     if (!vp.getAllowedMultipliers().contains(vp.getDefaultMultiplier())) {
                         throw new BizException("videoProcessing.defaultMultiplier 必须包含在 allowedMultipliers 列表中");

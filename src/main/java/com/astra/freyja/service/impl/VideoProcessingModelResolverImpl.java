@@ -183,10 +183,14 @@ public class VideoProcessingModelResolverImpl implements VideoProcessingModelRes
             extraBody.put("frame_rate", targetFps);
             extraBody.put("crf", crf);
             extraBody.put("clear_cache_after_n_frames", clearCacheFrames);
-            Integer batchSize = userBatchSize != null ? userBatchSize : params.getDefaultBatchSize();
-            if (batchSize != null) {
-                extraBody.put("batch_size", batchSize);
+            int batchSize = userBatchSize != null ? userBatchSize
+                    : (params.getDefaultBatchSize() != null ? params.getDefaultBatchSize() : VideoProcessingModelParams.DEFAULT_BATCH_SIZE);
+            int minBatchSize = params.getMinBatchSize() != null ? params.getMinBatchSize() : VideoProcessingModelParams.MIN_BATCH_SIZE;
+            int maxBatchSize = params.getMaxBatchSize() != null ? params.getMaxBatchSize() : VideoProcessingModelParams.MAX_BATCH_SIZE;
+            if (batchSize < minBatchSize || batchSize > maxBatchSize || batchSize < 1) {
+                throw new BizException(400, "批处理数量必须在 " + minBatchSize + "–" + maxBatchSize + " 之间");
             }
+            extraBody.put("batch_size", batchSize);
             extraBody.put("filename_prefix", params.getFilenamePrefix());
         }
 
@@ -241,7 +245,9 @@ public class VideoProcessingModelResolverImpl implements VideoProcessingModelRes
                     .minClearCacheFrames(1)
                     .maxClearCacheFrames(p.getMaxClearCacheFrames() != null ? p.getMaxClearCacheFrames() : 300)
                     .defaultPreserveAudio(p.getDefaultPreserveAudio() != null ? p.getDefaultPreserveAudio() : true)
-                    .defaultBatchSize(p.getDefaultBatchSize())
+                    .defaultBatchSize(p.getDefaultBatchSize() != null ? p.getDefaultBatchSize() : VideoProcessingModelParams.DEFAULT_BATCH_SIZE)
+                    .minBatchSize(p.getMinBatchSize() != null ? p.getMinBatchSize() : VideoProcessingModelParams.MIN_BATCH_SIZE)
+                    .maxBatchSize(p.getMaxBatchSize() != null ? p.getMaxBatchSize() : VideoProcessingModelParams.MAX_BATCH_SIZE)
                     .build();
 
             result.add(VideoProcessingModelOptionVO.builder()

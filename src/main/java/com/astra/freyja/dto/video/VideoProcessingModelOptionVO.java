@@ -54,5 +54,7 @@ public class VideoProcessingModelOptionVO {
         private Integer maxClearCacheFrames;
         private Boolean defaultPreserveAudio;
         private Integer defaultBatchSize;
+        private Integer minBatchSize;
+        private Integer maxBatchSize;
     }
 }

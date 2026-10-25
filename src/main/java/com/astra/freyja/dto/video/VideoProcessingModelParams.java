@@ -10,6 +10,10 @@ import java.util.List;
 @Data
 public class VideoProcessingModelParams {
 
+    public static final int DEFAULT_BATCH_SIZE = 32;
+    public static final int MIN_BATCH_SIZE = 1;
+    public static final int MAX_BATCH_SIZE = 64;
+
     /** 底层工作流/网关加载的引擎模型文件 (如 RealESRGAN_x2plus.pth / rife49.pth) */
     private String engineModel;
 
@@ -46,8 +50,14 @@ public class VideoProcessingModelParams {
     /** 默认是否保留音频 */
     private Boolean defaultPreserveAudio;
 
-    /** 补帧默认批处理大小 (batch_size，若未指定则遵循底层工作流模板默认值) */
+    /** 补帧默认批处理大小，未配置时沿用 RIFE 工作流的 32。 */
     private Integer defaultBatchSize;
+
+    /** 补帧允许的最小批处理数量，默认 1。 */
+    private Integer minBatchSize;
+
+    /** 补帧允许的最大批处理数量，默认 64。 */
+    private Integer maxBatchSize;
 
     /** 产物生成文件名前缀 (如 video_upscale/realesrgan_x2 / video_rife/rife_48fps) */
     private String filenamePrefix;

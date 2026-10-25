@@ -656,6 +656,24 @@
             </el-col>
           </el-row>
 
+          <el-row :gutter="12" v-if="modelForm.modelType === 'FRAME_INTERPOLATION'">
+            <el-col :span="8">
+              <el-form-item label="默认批处理" label-width="90px">
+                <el-input-number v-model="vpForm.defaultBatchSize" :min="vpForm.minBatchSize" :max="vpForm.maxBatchSize" :precision="0" class="!w-full" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="最小批处理" label-width="90px">
+                <el-input-number v-model="vpForm.minBatchSize" :min="1" :max="vpForm.maxBatchSize" :precision="0" class="!w-full" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="8">
+              <el-form-item label="最大批处理" label-width="90px">
+                <el-input-number v-model="vpForm.maxBatchSize" :min="vpForm.minBatchSize" :precision="0" class="!w-full" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+
           <el-form-item label="默认保留音频" label-width="110px">
             <el-switch v-model="vpForm.defaultPreserveAudio" active-text="保留" inactive-text="静音" />
           </el-form-item>
@@ -1038,6 +1056,9 @@ const vpForm = reactive({
   maxCrf: 30,
   defaultClearCacheFrames: 100,
   maxClearCacheFrames: 300,
+  defaultBatchSize: 32,
+  minBatchSize: 1,
+  maxBatchSize: 64,
   defaultPreserveAudio: true
 })
 
@@ -1063,6 +1084,9 @@ const handleModelTypeChange = (type?: string) => {
     vpForm.maxCrf = 28
     vpForm.defaultClearCacheFrames = 100
     vpForm.maxClearCacheFrames = 300
+    vpForm.defaultBatchSize = 32
+    vpForm.minBatchSize = 1
+    vpForm.maxBatchSize = 64
     vpFormAllowedMultipliersStr.value = '2, 4'
   }
 }
@@ -1084,6 +1108,9 @@ function initVpFormFromParamsJson(paramsJson?: string) {
         vpForm.maxCrf = vp.maxCrf ?? 30
         vpForm.defaultClearCacheFrames = vp.defaultClearCacheFrames ?? 100
         vpForm.maxClearCacheFrames = vp.maxClearCacheFrames ?? 300
+        vpForm.defaultBatchSize = vp.defaultBatchSize ?? 32
+        vpForm.minBatchSize = vp.minBatchSize ?? 1
+        vpForm.maxBatchSize = vp.maxBatchSize ?? 64
         vpForm.defaultPreserveAudio = vp.defaultPreserveAudio ?? true
         return
       }
@@ -1206,6 +1233,9 @@ const handleSubmitModel = async () => {
       maxCrf: vpForm.maxCrf,
       defaultClearCacheFrames: modelForm.modelType === 'FRAME_INTERPOLATION' ? vpForm.defaultClearCacheFrames : undefined,
       maxClearCacheFrames: modelForm.modelType === 'FRAME_INTERPOLATION' ? vpForm.maxClearCacheFrames : undefined,
+      defaultBatchSize: modelForm.modelType === 'FRAME_INTERPOLATION' ? vpForm.defaultBatchSize : undefined,
+      minBatchSize: modelForm.modelType === 'FRAME_INTERPOLATION' ? vpForm.minBatchSize : undefined,
+      maxBatchSize: modelForm.modelType === 'FRAME_INTERPOLATION' ? vpForm.maxBatchSize : undefined,
       defaultPreserveAudio: vpForm.defaultPreserveAudio
     }
     modelForm.paramsJson = JSON.stringify(baseObj, null, 2)

@@ -110,6 +110,8 @@ export interface VideoProcessingModelOption {
     maxClearCacheFrames?: number
     defaultPreserveAudio: boolean
     defaultBatchSize?: number
+    minBatchSize?: number
+    maxBatchSize?: number
   }
 }
 

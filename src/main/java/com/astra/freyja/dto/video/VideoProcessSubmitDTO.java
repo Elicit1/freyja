@@ -59,6 +59,6 @@ public class VideoProcessSubmitDTO {
     /** 自动保存为分镜历史 Take 时，是否设为分镜当前主视频 (默认 true) */
     private Boolean setAsCurrent = true;
 
-    /** 补帧批处理大小 (batch_size，可选，若不传则遵循模型配置或底层工作流模板默认值) */
+    /** 补帧批处理大小 (batch_size，可选，未传时使用模型默认配置) */
     private Integer batchSize;
 }

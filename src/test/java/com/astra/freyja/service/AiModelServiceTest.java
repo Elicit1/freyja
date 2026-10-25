@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -76,6 +77,17 @@ class AiModelServiceTest {
                 {"videoProcessing":{"engineModel":"rife49.pth","filenamePrefix":"video_rife/test",
                  "minClearCacheFrames":50,"maxClearCacheFrames":300,"defaultClearCacheFrames":%d}}
                 """.formatted(frames);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0,1,64", "16,1,8", "4,8,2", "4,0,8"})
+    void rejectsInvalidBatchDefaultOrRange(int batch, int min, int max) {
+        String params = """
+                {"videoProcessing":{"engineModel":"rife49.pth","filenamePrefix":"video_rife/test",
+                 "defaultBatchSize":%d,"minBatchSize":%d,"maxBatchSize":%d}}
+                """.formatted(batch, min, max);
+        assertThrows(BizException.class, () -> ReflectionTestUtils.invokeMethod(modelService,
+                "validateVideoProcessing", "FRAME_INTERPOLATION", params));
     }
 
     @Test

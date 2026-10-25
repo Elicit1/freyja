@@ -306,6 +306,20 @@
               </div>
             </el-form-item>
 
+            <el-form-item label="批处理数量 (Batch Size)">
+              <el-slider
+                v-model="formData.batchSize"
+                :min="batchSizeRange.min"
+                :max="batchSizeRange.max"
+                :step="1"
+                show-input
+                :disabled="loadingModels || !selectedModel"
+              />
+              <div class="text-[11px] text-[var(--text-secondary)] mt-1">
+                数值越小，单次计算占用的显存通常越少。高分辨率视频或显存不足时，可尝试 1–4。
+              </div>
+            </el-form-item>
+
             <!-- VRAM Safe Clear Cache Threshold -->
             <el-form-item label="显存安全释放周期 (Clear Cache Frames)">
               <el-input-number
@@ -678,6 +692,7 @@ const formData = reactive({
   targetFps: 48,
   crf: 19,
   clearCacheFrames: 100,
+  batchSize: 32,
   preserveAudio: true,
   autoSaveToShot: true,
   setAsCurrent: true
@@ -708,6 +723,11 @@ const cacheFramesRange = computed(() => {
     max: selectedModel.value?.config?.maxClearCacheFrames ?? 300
   }
 })
+
+const batchSizeRange = computed(() => ({
+  min: selectedModel.value?.config?.minBatchSize ?? 1,
+  max: selectedModel.value?.config?.maxBatchSize ?? 64
+}))
 
 // Submit button disabled check
 const isSubmitDisabled = computed(() => {
@@ -896,6 +916,9 @@ function handleModelChange() {
  * 应用模型中心安全默认配置
  */
 function applyModelDefaults(model: VideoProcessingModelOption) {
+  const batchMin = model.config?.minBatchSize ?? 1
+  const batchMax = model.config?.maxBatchSize ?? 64
+  formData.batchSize = Math.min(batchMax, Math.max(batchMin, model.config?.defaultBatchSize ?? 32))
   if (model.config) {
     if (model.config.defaultMultiplier) {
       formData.multiplier = model.config.defaultMultiplier
@@ -986,6 +1009,11 @@ async function handleSubmit() {
     return
   }
 
+  if (!Number.isInteger(formData.batchSize) || formData.batchSize < batchSizeRange.value.min || formData.batchSize > batchSizeRange.value.max) {
+    ElMessage.warning(`批处理数量必须是 ${batchSizeRange.value.min}–${batchSizeRange.value.max} 之间的整数`)
+    return
+  }
+
   submitting.value = true
   try {
     const payload: VideoProcessSubmitDTO = {
@@ -1001,6 +1029,7 @@ async function handleSubmit() {
       multiplier: formData.multiplier,
       crf: formData.crf,
       clearCacheFrames: formData.clearCacheFrames,
+      batchSize: formData.batchSize,
       preserveAudio: formData.preserveAudio,
       autoSaveToShot: formData.sourceType !== 'DIRECT_URL' ? formData.autoSaveToShot : false,
       setAsCurrent: formData.sourceType !== 'DIRECT_URL' ? formData.setAsCurrent : false
