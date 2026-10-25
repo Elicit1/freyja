@@ -244,7 +244,8 @@ class VideoTransportTests(unittest.IsolatedAsyncioTestCase):
         client.upload_file_to_comfy = AsyncMock(return_value="subfolder/unique.mp4")
         process = MagicMock(returncode=0)
         process.communicate = AsyncMock(return_value=(json.dumps({"streams": [
-            {"codec_type": "video", "width": 384, "height": 256, "nb_read_frames": "96", "r_frame_rate": "24/1"}],
+            {"codec_type": "video", "width": 384, "height": 256, "nb_read_frames": "96", "r_frame_rate": "24/1"},
+            {"codec_type": "audio"}],
             "format": {"duration": "4"}}).encode(), b""))
         try:
             with patch("reference_media.asyncio.create_subprocess_exec", new_callable=AsyncMock, return_value=process):
@@ -252,6 +253,7 @@ class VideoTransportTests(unittest.IsolatedAsyncioTestCase):
                     result = await upload_reference_video(client, ReferenceBinding.model_validate(binding(digest=hashlib.sha256(raw).hexdigest())), model.reference_video, {"archive.test"})
                     self.assertEqual(result["filename"], "subfolder/unique.mp4")
             calls = client.upload_file_to_comfy.await_args_list
+            self.assertEqual(calls[0].args[0], raw)
             self.assertNotEqual(calls[0].args[1], calls[1].args[1])
             self.assertTrue(calls[0].kwargs["preserve_subfolder"])
         finally:

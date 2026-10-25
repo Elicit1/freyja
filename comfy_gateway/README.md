@@ -236,6 +236,14 @@ FaceRefine 两个阶段共享同一组 `<Video N>` 输入及可选原音，不�
 
 ### 长任务断线恢复
 
+#### 无音轨参考视频与 VHS 缓存兼容
+
+部分 VideoHelperSuite 版本会在 ComfyUI 的缓存内存扫描中惰性提取未使用的音频输出。无音轨 MP4 会触发 `Output file does not contain any stream`，异常可能退出整个 `prompt_worker`，留下仍显示运行中的队列项。
+
+网关先校验归档文件摘要与视频元数据，再为没有音轨的上传副本补一条静音 AAC 轨道。视频流直接复制，原归档和输入摘要不变；`includeAudio=false` 仍不连接音频条件。明确要求参考原音但原片无音轨时继续报错，不能用静音替代原音。带音轨的参考片不做兼容转换。
+
+如果工作线程已经退出，需要先更新网关并重启 ComfyUI，清除旧缓存后再重新提交；反复点击取消不能恢复已退出的工作线程。仅重启网关也无法修复 ComfyUI 进程内的旧缓存。
+
 节点 YAML 支持 `ws_ping_interval: 30`、`ws_ping_timeout: 120`、
 `recovery_check_interval: 15` 和 `transfer_timeout_seconds: 900`（单位均为秒）。
 执行预算优先使用请求中的正整数 `execution_timeout_seconds`；省略时沿用模型或服务的 `timeout_seconds`。重连沿用原 promptId 和剩余预算，
