@@ -300,36 +300,12 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
 
     private void executeVideoProcess(Long entityId, String taskId, String operation, String sourceVideoUrl,
                                      AiProvider provider, String modelCode, Map<String, Object> extraBody, long startMs) {
-        boolean isUpscale = "VIDEO_UPSCALE".equals(operation);
         try {
             updateTaskProgress(entityId, taskId, "PROCESSING", 10, "正在连接网关并提交工作流...", null, null);
             // 1. 构造发往 FastAPI /v1/videos/generations 的 Payload
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("model", modelCode);
-            payload.put("prompt", isUpscale ? "video upscale" : "video frame interpolation");
-            payload.put("video_url", sourceVideoUrl);
-            payload.put("response_format", "url");
-            payload.put("task_id", taskId);
-            payload.put("extra_body", extraBody);
-
-            String requestUrl = buildVideoEndpointUrl(provider.getBaseUrl());
-            String apiKey = cryptoUtil.decrypt(provider.getApiKey());
-            int timeoutSec = provider.getTimeout() != null && provider.getTimeout() > 0 ? provider.getTimeout() : 3600;
-            if ("seedvr2-3b-int8-video".equals(modelCode)) {
-                timeoutSec = Math.max(timeoutSec, 7200);
-            }
-
-            log.info("[VideoProcessing] 正在请求网关: url={}, model={}, taskId={}", requestUrl, modelCode, taskId);
+            HttpRequest req = buildVideoProcessRequest(provider, modelCode, operation, sourceVideoUrl, taskId, extraBody);
+            log.info("[VideoProcessing] 正在请求网关: url={}, model={}, taskId={}, timeout={}", req.uri(), modelCode, taskId, req.timeout().orElseThrow());
             updateTaskProgress(entityId, taskId, "PROCESSING", 30, "网关正在调度节点执行...", null, null);
-
-            String jsonBody = objectMapper.writeValueAsString(payload);
-            HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create(requestUrl))
-                    .header("Content-Type", "application/json")
-                    .header("Authorization", "Bearer " + (apiKey != null ? apiKey : ""))
-                    .timeout(Duration.ofSeconds(timeoutSec))
-                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .build();
 
             HttpResponse<String> resp = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofString());
             ensureTaskNotCancelled(entityId);
@@ -431,6 +407,28 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
         } catch (Exception e) {
             handleVideoProcessFailure(entityId, taskId, startMs, e);
         }
+    }
+
+    private HttpRequest buildVideoProcessRequest(AiProvider provider, String modelCode, String operation,
+                                                String sourceVideoUrl, String taskId, Map<String, Object> extraBody)
+            throws java.io.IOException {
+        int timeoutSec = provider.getTimeout() != null && provider.getTimeout() > 0 ? provider.getTimeout() : 3600;
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("model", modelCode);
+        payload.put("prompt", "VIDEO_UPSCALE".equals(operation) ? "video upscale" : "video frame interpolation");
+        payload.put("video_url", sourceVideoUrl);
+        payload.put("response_format", "url");
+        payload.put("task_id", taskId);
+        payload.put("extra_body", extraBody);
+        payload.put("execution_timeout_seconds", timeoutSec);
+        String apiKey = cryptoUtil.decrypt(provider.getApiKey());
+        return HttpRequest.newBuilder()
+                .uri(URI.create(buildVideoEndpointUrl(provider.getBaseUrl())))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + (apiKey != null ? apiKey : ""))
+                .timeout(Duration.ofSeconds(timeoutSec))
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(payload)))
+                .build();
     }
 
     private void handleVideoProcessFailure(Long entityId, String taskId, long startMs, Exception e) {

@@ -450,7 +450,10 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="超时时间 (秒)" prop="timeout">
-              <el-input-number v-model="providerForm.timeout" :min="5" :max="600" class="!w-full" />
+              <div class="w-full">
+                <el-input-number v-model="providerForm.timeout" :min="5" :precision="0" class="!w-full" />
+                <p class="mt-1 text-xs text-[var(--text-muted)]">支持超过600秒，例如3600秒为1小时、7200秒为2小时。超分和补帧按此设置等待执行结果。</p>
+              </div>
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -855,6 +858,7 @@ const providerRules: FormRules = {
     { min: 2, max: 100, message: '长度在 2 到 100 个字符', trigger: 'blur' }
   ],
   providerType: [{ required: true, message: '请选择接入类型', trigger: 'change' }],
+  timeout: [{ type: 'integer', min: 5, message: '请输入不少于5秒的整数', trigger: 'change' }],
   status: [{ required: true, message: '请选择状态', trigger: 'change' }]
 }
 

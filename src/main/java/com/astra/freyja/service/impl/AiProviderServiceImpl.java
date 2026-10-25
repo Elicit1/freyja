@@ -123,7 +123,7 @@ public class AiProviderServiceImpl implements AiProviderService {
         existing.setBaseUrl(dto.getBaseUrl());
         if (dto.getChatCapabilitiesJson() != null)
             existing.setChatCapabilitiesJson(dto.getChatCapabilitiesJson().isBlank() ? "{}" : dto.getChatCapabilitiesJson());
-        existing.setTimeout(dto.getTimeout() == null ? 30 : dto.getTimeout());
+        if (dto.getTimeout() != null) existing.setTimeout(dto.getTimeout());
         existing.setMaxRetries(dto.getMaxRetries() == null ? 3 : dto.getMaxRetries());
         existing.setEnableBreaker(dto.getEnableBreaker() == null ? 1 : dto.getEnableBreaker());
         existing.setBreakerThreshold(dto.getBreakerThreshold() == null ? 10 : dto.getBreakerThreshold());
@@ -178,6 +178,9 @@ public class AiProviderServiceImpl implements AiProviderService {
     }
 
     private void validate(AiProviderDTO dto) {
+        if (dto.getTimeout() != null && dto.getTimeout() < 5) {
+            throw new BizException(400, "超时时间必须是不少于5秒的整数");
+        }
         com.astra.freyja.agent.model.ChatModelCapabilities.validateDefaults(dto.getChatCapabilitiesJson());
         if (StringUtils.isBlank(dto.getProviderName())) {
             throw new BizException("提供商名称不能为空");

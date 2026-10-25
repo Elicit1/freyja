@@ -396,7 +396,7 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     )
 
     # 5. Check model-specific timeout override
-    timeout_override = model_cfg.timeout_seconds or config.server.timeout_seconds
+    timeout_override = request.execution_timeout_seconds or model_cfg.timeout_seconds or config.server.timeout_seconds
 
     # 6. Generate client ID and submit prompt to target machine
     client_id = str(uuid.uuid4())

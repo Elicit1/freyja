@@ -1,7 +1,7 @@
 import re
 import time
 from typing import List, Optional, Dict, Any, Tuple, Literal
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, StrictInt, model_validator
 from reference_prompt import ReferenceBinding, ReferenceType
 
 
@@ -25,6 +25,9 @@ class ImageGenerationRequest(BaseModel):
     references: Optional[List[ReferenceBinding]] = Field(default=None, description="Structured reference bindings for characters, scenes, props, etc.")
     shot_id: Optional[str] = Field(default=None, description="Optional shot identifier for tracking and logging")
     task_id: Optional[str] = Field(default=None, description="Optional render task ID for cancellation and tracking")
+    execution_timeout_seconds: Optional[StrictInt] = Field(
+        default=None, gt=0,
+        description="Per-request execution wait budget in seconds; overrides the model/server default when supplied")
     enable_reference_prompt: bool = Field(default=True, description="Whether to auto-generate reference relation prompt when references are present")
     continuity_prompt: Optional[str] = Field(default=None, description="Optional custom continuity constraints prompt override")
 

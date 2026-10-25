@@ -13,6 +13,9 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -73,6 +76,34 @@ class AiProviderServiceTest {
 
         verify(providerMapper, times(1)).insert(isA(AiProvider.class));
         verify(redisTemplate, times(1)).delete("freyja:ai:provider:enabled");
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1200, 7200, 86400})
+    void longTimeoutsAreSavedExactlyAndPreservedWhenOmitted(int seconds) {
+        var dto = new AiProviderDTO();
+        dto.setProviderCode("local"); dto.setProviderName("本地网关"); dto.setProviderType("OLLAMA");
+        dto.setStatus(1); dto.setTimeout(seconds);
+        providerService.create(dto);
+        var saved = ArgumentCaptor.forClass(AiProvider.class);
+        verify(providerMapper).insert(saved.capture());
+        assertEquals(seconds, saved.getValue().getTimeout());
+        var existing = saved.getValue(); existing.setId(100L);
+        when(providerMapper.selectById(100L)).thenReturn(existing);
+        dto.setId(100L); dto.setTimeout(seconds + 1);
+        providerService.update(dto);
+        assertEquals(seconds + 1, existing.getTimeout());
+        dto.setTimeout(null);
+        providerService.update(dto);
+        assertEquals(seconds + 1, existing.getTimeout());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {-1, 0, 4})
+    void invalidTimeoutIsRejectedBeforeSaving(int seconds) {
+        var dto = new AiProviderDTO(); dto.setTimeout(seconds);
+        assertEquals(400, assertThrows(BizException.class, () -> providerService.create(dto)).getCode());
+        verify(providerMapper, never()).insert(isA(AiProvider.class));
     }
 
     @Test

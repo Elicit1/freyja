@@ -18,6 +18,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -37,6 +40,28 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 @MockitoSettings(strictness = Strictness.LENIENT)
 public class VideoProcessingServiceTest {
+
+    @ParameterizedTest
+    @CsvSource({"realesrgan-x2-video,7200", "seedvr2-3b-int8-video,1200", "rife49-video-48fps,86400"})
+    void configuredTimeoutReachesHttpRequestAndGatewayWithoutModelOverrides(String modelCode, int seconds) throws Exception {
+        var provider = new AiProvider(); provider.setBaseUrl("http://gateway.invalid/v1"); provider.setTimeout(seconds);
+        java.net.http.HttpRequest request = ReflectionTestUtils.invokeMethod(videoProcessingService, "buildVideoProcessRequest",
+                provider, modelCode, "VIDEO_UPSCALE", "https://archive.invalid/input.mp4", "test-task", Map.of());
+        assertNotNull(request);
+        assertEquals(java.time.Duration.ofSeconds(seconds), request.timeout().orElseThrow());
+        var bytes = new java.io.ByteArrayOutputStream();
+        var completed = new java.util.concurrent.CompletableFuture<String>();
+        request.bodyPublisher().orElseThrow().subscribe(new java.util.concurrent.Flow.Subscriber<java.nio.ByteBuffer>() {
+            public void onSubscribe(java.util.concurrent.Flow.Subscription subscription) { subscription.request(Long.MAX_VALUE); }
+            public void onNext(java.nio.ByteBuffer buffer) { var chunk = new byte[buffer.remaining()]; buffer.get(chunk); bytes.writeBytes(chunk); }
+            public void onError(Throwable error) { completed.completeExceptionally(error); }
+            public void onComplete() { completed.complete(bytes.toString(java.nio.charset.StandardCharsets.UTF_8)); }
+        });
+        var payload = objectMapper.readTree(completed.join());
+        assertEquals(seconds, payload.path("execution_timeout_seconds").asInt());
+        assertEquals(modelCode, payload.path("model").asText());
+        assertEquals("test-task", payload.path("task_id").asText());
+    }
 
     @Mock
     private MediaProcessTaskMapper taskMapper;

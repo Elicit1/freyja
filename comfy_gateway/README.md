@@ -238,7 +238,7 @@ FaceRefine 两个阶段共享同一组 `<Video N>` 输入及可选原音，不�
 
 节点 YAML 支持 `ws_ping_interval: 30`、`ws_ping_timeout: 120`、
 `recovery_check_interval: 15` 和 `transfer_timeout_seconds: 900`（单位均为秒）。
-执行预算仍由模型或服务的 `timeout_seconds` 决定；重连沿用原 promptId 和剩余预算，
+执行预算优先使用请求中的正整数 `execution_timeout_seconds`；省略时沿用模型或服务的 `timeout_seconds`。重连沿用原 promptId 和剩余预算，
 不会重新提交工作流。WebSocket 连接失败时退避重连，并查询完成历史兜底。
 仅结构化终态能确认成功或失败；不可达、记录缺失和总时限耗尽均视为结果待核实。
 
@@ -257,6 +257,8 @@ Redis 不可用时降级为内存映射，该情况下进程重启不能恢复�
 后端视频 HTTP 等待默认至少 3600 秒，可由 `freyja.video-http-timeout-seconds` 调整；
 视频传输默认 900 秒，可由 `freyja.video-transfer-timeout-seconds` 调整。
 部署时应让 HTTP 等待预算覆盖上游执行时间、输入上传与结果传输时间。
+
+超分和补帧使用「系统管理 → AI 提供商 → 超时时间（秒）」的配置，并将同一秒数传给网关；不再限制为600秒，也不按模型名称强制覆盖。可填写7200等待2小时。未配置的旧记录按3600秒处理。此设置用于新提交任务；上传、结果下载和连接建立仍有各自的传输超时。更改代码后需要同步更新后端和网关。
 
 - **运行全量离线逻辑测试**:
   ```bash
