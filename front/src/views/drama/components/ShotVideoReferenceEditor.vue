@@ -26,8 +26,8 @@
           </div>
         </template>
         <div v-if="expanded.includes(item.id)" class="space-y-3 bg-white p-3">
-          <p v-if="item.sourceShotId" class="text-xs text-slate-500 break-all">来源分镜 {{ item.sourceShotId }} · {{ item.sourceVideoTakeId ? `Take ${item.sourceVideoTakeId}` : '预检时固定当前 Take' }}</p>
-          <video v-if="sourceInfo[item.id]?.url" :ref="element => setPlayer(item.id, element)" :src="sourceInfo[item.id]?.url" controls preload="metadata" class="w-full h-44 bg-black rounded" @timeupdate="limitPlayback(item)" />
+          <p v-if="item.sourceShotId" class="text-xs text-slate-500 break-all">来源分镜 {{ item.sourceShotId }} · {{ item.sourceVideoTakeId ? `Take ${item.sourceVideoTakeId}` : '提交时固定当前 Take' }}</p>
+          <video v-if="sourceInfo[item.id]?.url" :ref="element => setPlayer(item.id, element)" :src="sourceInfo[item.id]?.url" controls playsinline preload="metadata" class="block w-48 max-w-full h-28 object-contain bg-black rounded" @timeupdate="limitPlayback(item)" />
           <div v-loading="sourceInfo[item.id]?.probing" class="flex flex-wrap gap-4 items-center text-xs">
             <label>起点（秒）<el-input-number :model-value="item.startSeconds ?? 0" :disabled="disabled" :min="0" :step="0.1" :precision="2" size="small" @update:model-value="patch(item.id, { startSeconds: $event ?? undefined })" /></label>
             <label>终点（秒）<el-input-number :model-value="item.endSeconds" :disabled="disabled" :min="0.01" :step="0.1" :precision="2" size="small" placeholder="源片结尾" @update:model-value="patch(item.id, { endSeconds: $event ?? undefined })" /></label>
@@ -38,13 +38,10 @@
           <el-checkbox :model-value="item.includeAudio === true" :disabled="disabled || !option?.referenceVideo.supportsVideoAudio && !item.includeAudio" @update:model-value="patch(item.id, { includeAudio: $event === true })">使用视频原音作为生成参考</el-checkbox>
           <p class="text-xs text-slate-500">{{ purpose === 'draft' || purpose === 'prompt' ? '默认仅参考画面；如需参考原音，请在渲染工坊选择支持该能力的模型后开启。' : '默认仅参考画面。原音不会直接混入结果；开启前需模型支持且源片含音轨。' }}</p>
           <el-input :model-value="item.referenceDescription" :disabled="disabled" type="textarea" :rows="2" maxlength="1000" show-word-limit :placeholder="`明确参考什么，例如：参考 Video ${index + 1} 的推进运镜和起身节奏；人物外观使用 Picture 1。`" @update:model-value="patch(item.id, { referenceDescription: $event })" />
-          <video v-if="preflight?.status === 'READY' && preflight.previewUrls?.[index]" :src="preflight.previewUrls[index]" controls preload="metadata" class="w-full h-44 bg-black rounded" />
         </div>
       </el-collapse-item>
     </el-collapse>
-    <el-button v-if="modelValue.length && purpose !== 'prompt'" size="small" type="primary" plain :disabled="disabled || countLimit != null && modelValue.length > countLimit" :loading="preparing" @click="emit('prepare')">{{ purpose === 'draft' ? '保存并进入渲染工坊' : '保存并预检全部参考片段' }}</el-button>
-    <el-alert v-if="preflight?.status === 'READY'" title="全部片段已准备完成。生成前还会检查模型与视频版本。" type="success" :closable="false" />
-    <el-alert v-if="preflight?.errorMessage" :title="preflight.errorMessage" type="error" :closable="false" />
+    <el-button v-if="modelValue.length && purpose === 'draft'" size="small" type="primary" plain :disabled="disabled || countLimit != null && modelValue.length > countLimit" @click="emit('prepare')">保存并进入渲染工坊</el-button>
     <div v-if="!modelValue.length" class="text-center py-4 text-xs text-gray-400 bg-gray-50 rounded border border-dashed border-gray-200">暂未绑定参考视频，点击上方按钮上传或从视频素材库选取</div>
     <VideoMaterialPickerDialog ref="materialPicker" @selected="selectMaterial" />
   </section>
@@ -58,10 +55,10 @@ import type { ResVideo } from '@/types/resource'
 import VideoMaterialPickerDialog from '@/views/assets/components/VideoMaterialPickerDialog.vue'
 import type { VideoProbeInfoVO } from '@/api/videoProcessing'
 import { shotVideoReferenceApi } from '@/api/shot-video-reference'
-import type { ShotRefVideo, ShotVideoModelOption, VideoReferencePreflight } from '@/types/drama'
+import type { ShotRefVideo, ShotVideoModelOption } from '@/types/drama'
 
 const props = defineProps<{ modelValue: ShotRefVideo[]; shotId?: string; dramaId?: string | number; providerId?: string; modelCode?: string; maxVideos?: number; option?: ShotVideoModelOption; targetDuration?: number; contextFingerprint?: string; purpose?: 'render' | 'draft' | 'prompt'; disabled?: boolean }>()
-const emit = defineEmits<{ (e: 'update:modelValue', value: ShotRefVideo[]): void; (e: 'prepare'): void; (e: 'prepared', value?: VideoReferencePreflight): void }>()
+const emit = defineEmits<{ (e: 'update:modelValue', value: ShotRefVideo[]): void; (e: 'prepare'): void }>()
 const countLimit = computed(() => {
   const values = [props.maxVideos, props.option?.maxVideos, props.option?.referenceVideo.maxVideos].filter((n): n is number => typeof n === 'number' && n >= 0)
   return values.length ? Math.min(...values) : undefined
@@ -77,8 +74,8 @@ const expanded = ref<string[]>([])
 const players = new Map<string, HTMLVideoElement>()
 const sourceInfo = reactive<Record<string, { url: string; metadata?: VideoProbeInfoVO; probing: boolean }>>({})
 const signatures = new Map<string, string>(), probeVersions = new Map<string, number>()
-const uploading = ref(false), preparing = ref(false), preflight = ref<VideoReferencePreflight>()
-let revision = 0, alive = true
+const uploading = ref(false)
+let alive = true
 watch(() => props.shotId, () => {
   expanded.value = []; signatures.clear(); players.clear()
   for (const [id, version] of probeVersions) probeVersions.set(id, version + 1)
@@ -117,7 +114,6 @@ async function upload(file: File) {
   finally { uploading.value = false }
   return false
 }
-watch(() => JSON.stringify([props.shotId, props.modelValue, props.providerId, props.modelCode, props.contextFingerprint]), () => { revision++; preflight.value = undefined; preparing.value = false; emit('prepared', undefined) })
 watch(() => JSON.stringify([props.shotId, props.modelValue.map(item => [item.id, item.sourceType, item.sourceVideoUrl, item.sourceShotId, item.sourceVideoTakeId]), expanded.value]), () => {
   const ids = new Set(props.modelValue.map(item => item.id))
   for (const id of Object.keys(sourceInfo)) if (!ids.has(id)) { delete sourceInfo[id]; signatures.delete(id); probeVersions.set(id, (probeVersions.get(id) || 0) + 1) }
@@ -136,28 +132,11 @@ async function probeSource(item: ShotRefVideo) {
     const result = await shotVideoReferenceApi.probe(props.shotId, item)
     if (!alive || version !== probeVersions.get(item.id)) return
     sourceInfo[item.id] = { url: result.sourceUrl || item.sourceVideoUrl || '', metadata: result, probing: false }
-  } catch (error: any) { if (alive && version === probeVersions.get(item.id)) { sourceInfo[item.id]!.probing = false; ElMessage.warning(error.message || '源视频待服务端预检') } }
+  } catch (error: any) { if (alive && version === probeVersions.get(item.id)) { sourceInfo[item.id]!.probing = false; ElMessage.warning(error.message || '暂时无法读取源视频信息') } }
 }
 function playRange(item: ShotRefVideo) { const player = players.get(item.id); if (player) { player.currentTime = item.startSeconds || 0; void player.play() } }
 function limitPlayback(item: ShotRefVideo) { const player = players.get(item.id); if (item.endSeconds && player && player.currentTime >= item.endSeconds) player.pause() }
-async function prepare() {
-  if (!props.shotId || !props.providerId || !props.modelCode) { ElMessage.warning('请选择提供商与模型'); return }
-  const current = ++revision, shotId = props.shotId
-  preparing.value = true
-  try {
-    let result = await shotVideoReferenceApi.prepare(shotId, props.providerId, props.modelCode)
-    while (result.status === 'PREPARING' && current === revision) {
-      preflight.value = result; await new Promise(resolve => window.setTimeout(resolve, 1200))
-      if (current !== revision) return
-      result = await shotVideoReferenceApi.get(shotId, result.preflightId)
-    }
-    if (current !== revision) return
-    preflight.value = result; emit('prepared', result.status === 'READY' ? result : undefined)
-  } catch (error: any) { if (current === revision) ElMessage.error(error.message || '片段预检失败') }
-  finally { if (current === revision) preparing.value = false }
-}
-onBeforeUnmount(() => { alive = false; revision++; probeVersions.clear() })
-defineExpose({ prepare })
+onBeforeUnmount(() => { alive = false; probeVersions.clear() })
 </script>
 
 <style scoped>

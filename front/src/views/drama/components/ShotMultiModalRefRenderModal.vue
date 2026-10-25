@@ -339,8 +339,7 @@
         </div>
       </div>
 
-      <ShotVideoReferenceEditor ref="videoReferenceEditor" v-model="refVideos" :shot-id="currentShotId ? String(currentShotId) : undefined" :drama-id="dramaId" :provider-id="renderConfig.providerId" :model-code="renderConfig.modelCode" :max-videos="maxRefVideos" :option="videoModelOption" :target-duration="targetDuration" :context-fingerprint="JSON.stringify([refImages, refAudios])" @prepare="prepareVideoReferences" @prepared="videoPreflight = $event" />
-      <el-checkbox v-if="refVideos.length" v-model="videoPromptConfirmed">已检查全部 Video N 引用、参考说明与当前素材一致</el-checkbox>
+      <ShotVideoReferenceEditor v-model="refVideos" :shot-id="currentShotId ? String(currentShotId) : undefined" :drama-id="dramaId" :provider-id="renderConfig.providerId" :model-code="renderConfig.modelCode" :max-videos="maxRefVideos" :option="videoModelOption" :target-duration="targetDuration" />
 
       <!-- 最终生成视频预览区 (若已有产物) -->
       <div v-if="videoUrl" class="p-3 bg-slate-900 rounded-xl border border-slate-800 flex flex-col gap-2">
@@ -361,6 +360,7 @@
 
     <!-- 底部操作栏 -->
     <template #footer>
+      <el-alert v-if="renderBlockReason" :title="renderBlockReason" type="warning" :closable="false" show-icon class="mb-3 text-left" />
       <div class="flex justify-between items-center">
         <div class="text-xs text-gray-500">
           <span>分镜: <strong>#{{ shotNo }} {{ shotName }}</strong></span>
@@ -368,17 +368,17 @@
         </div>
         <div class="flex items-center gap-2.5">
           <el-button @click="visible = false">取消</el-button>
-          <el-button type="primary" plain :loading="savingConfig" @click="handleSaveConfig">
+          <el-button type="primary" plain :loading="savingConfig" @click="handleSaveConfig()">
             💾 仅保存配置
           </el-button>
           <el-button
             type="primary"
-            class="!bg-sky-600 !border-sky-600 hover:!bg-sky-500 !font-bold"
+            class="!font-bold"
             :loading="renderingVideo"
-            :disabled="refVideos.length > 0 && (!videoModelOption?.renderable || videoPreflight?.status !== 'READY' || !videoPromptConfirmed || maxRefVideos != null && refVideos.length > maxRefVideos)"
+            :disabled="!!renderBlockReason"
             @click="handleStartRender"
           >
-            🚀 启动参考模态渲染
+            {{ renderingVideo ? '正在提交，请稍候…' : '🚀 启动参考模态渲染' }}
           </el-button>
         </div>
       </div>
@@ -389,13 +389,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { dramaApi, shotApi } from '@/api/drama'
 import { assetApi } from '@/api/res-asset'
 import { aiProviderApi } from '@/api/ai-provider'
 import AssetMultiSelectDialog, { type AssetSelectItem } from './AssetMultiSelectDialog.vue'
-import type { DramaShot, ShotRefImage, ShotRefAudio, ShotRefVideo, ShotVideoModelOption, VideoReferencePreflight } from '@/types/drama'
+import type { DramaShot, ShotRefImage, ShotRefAudio, ShotRefVideo, ShotVideoModelOption } from '@/types/drama'
 import ShotVideoReferenceEditor from './ShotVideoReferenceEditor.vue'
 import { shotVideoReferenceApi } from '@/api/shot-video-reference'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
@@ -428,14 +428,8 @@ const refImages = ref<ShotRefImage[]>([])
 const refAudios = ref<ShotRefAudio[]>([])
 const refVideos = ref<ShotRefVideo[]>([])
 const targetDuration = ref<number>()
-const videoReferenceEditor = ref<InstanceType<typeof ShotVideoReferenceEditor>>()
-const videoPreflight = ref<VideoReferencePreflight>()
-const videoPromptConfirmed = ref(false)
 const videoModelOptions = ref<ShotVideoModelOption[]>([])
 const videoModelOption = computed(() => videoModelOptions.value.find(model => model.modelCode === renderConfig.modelCode))
-async function prepareVideoReferences() {
-  if (await handleSaveConfig()) await videoReferenceEditor.value?.prepare()
-}
 const audioPickerVisible = ref(false), audioReplaceIndex = ref<number | null>(null)
 const audioCharacters = ref<ResCharacterOption[]>([]), explicitCharacterIds = ref<string[]>([])
 const dubbingCharacters = computed(() => audioCharacters.value.filter(c => String(c.dramaId) === String(dramaId.value) || String(c.dramaId) === '0' && explicitCharacterIds.value.includes(String(c.id))))
@@ -458,8 +452,9 @@ const renderConfig = reactive({
   modelCode: 'minimax-h3-ref2va',
   size: '960x544'
 })
-watch(() => JSON.stringify([refImages.value, refAudios.value, refVideos.value, renderConfig.providerId, renderConfig.modelCode]), () => { videoPromptConfirmed.value = false; videoPreflight.value = undefined })
-watch(prompt, () => { videoPromptConfirmed.value = false })
+let submissionRevision = 0
+watch(visible, value => { if (!value) submissionRevision++ })
+onBeforeUnmount(() => { submissionRevision++ })
 
 function getStandardSizeByRatio(ratio?: string): string {
   return resolveGenerationSize(ratio, 'video')
@@ -473,6 +468,21 @@ const currentModel = computed(() => {
 const maxRefVideos = computed(() => {
   const values = [currentModel.value?.maxVideos, videoModelOption.value?.maxVideos, videoModelOption.value?.referenceVideo.maxVideos].filter((n): n is number => typeof n === 'number' && n >= 0)
   return values.length ? Math.min(...values) : undefined
+})
+
+const renderBlockReason = computed(() => {
+  if (!renderConfig.providerId || !models.value.some(m => m.modelCode === renderConfig.modelCode)) {
+    return '请选择支持参考模态渲染的提供商和视频模型。'
+  }
+  if (!refVideos.value.length) return ''
+  if (!videoModelOption.value) return '尚未取得当前模型的参考视频能力，请重新选择提供商加载配置。'
+  if (!videoModelOption.value.renderable) {
+    return videoModelOption.value.reason || '当前模型参考视频能力未就绪，请检查模型中心及网关配置。'
+  }
+  if (maxRefVideos.value != null && refVideos.value.length > maxRefVideos.value) {
+    return `参考视频超过当前模型上限（${maxRefVideos.value} 段）。`
+  }
+  return ''
 })
 
 const maxRefImages = computed(() => {
@@ -559,14 +569,23 @@ async function handleProviderChange(pid: string) {
     if (revision !== providerLoadRevision || renderConfig.providerId !== String(pid)) return
     models.value = (list || []).filter((m: AiModel) => m.status === 1 && m.modelType === 'TXT2VIDEO_REF')
     renderConfig.modelCode = models.value[0]?.modelCode || ''
-    const options = await shotVideoReferenceApi.options(String(pid)).catch(() => [])
-    if (revision === providerLoadRevision && renderConfig.providerId === String(pid)) videoModelOptions.value = options
+    const options = await shotVideoReferenceApi.options(String(pid))
+    if (revision === providerLoadRevision && renderConfig.providerId === String(pid)) {
+      videoModelOptions.value = options
+      if (refVideos.value.length) {
+        const readyModel = options.find(option => option.renderable
+          && models.value.some(model => model.modelCode === option.modelCode))
+        if (readyModel) renderConfig.modelCode = readyModel.modelCode
+      }
+    }
   } catch (e: any) {
     console.error('加载视频模型列表失败:', e)
+    if (revision === providerLoadRevision) ElMessage.error(e.message || '加载视频模型能力失败，请重试')
   }
 }
 
 async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
+  submissionRevision++
   currentShotId.value = shot.id
   shotSeed.value = shot.seed || ''
   shotNo.value = shot.shotNo || 1
@@ -585,8 +604,6 @@ async function open(shot: DramaShot, dramaAspectRatioParam?: string) {
   refAudios.value = shot.refAudios ? [...shot.refAudios] : []
   refVideos.value = (shot.refVideos || []).map(item => ({ ...item }))
   targetDuration.value = shot.duration
-  videoPreflight.value = undefined
-  videoPromptConfirmed.value = false
 
   // 读取短剧配置并预先解析为 H3 可原样生成的 32 对齐尺寸。
   dramaAspectRatio.value = dramaAspectRatioParam || ''
@@ -707,7 +724,7 @@ function togglePlayAudio(item: ShotRefAudio, id: string | number) {
 }
 
 // 保存配置
-async function handleSaveConfig() {
+async function handleSaveConfig(notify = true) {
   if (!currentShotId.value) return
   savingConfig.value = true
   try {
@@ -720,8 +737,10 @@ async function handleSaveConfig() {
       refAudios: refAudios.value,
       refVideos: refVideos.value
     })
-    ElMessage.success('多模态参考配置保存成功！')
-    emit('success', currentShotId.value)
+    if (notify) {
+      ElMessage.success('多模态参考配置保存成功！')
+      emit('success', currentShotId.value)
+    }
     return true
   } catch (e: any) {
     ElMessage.error(e.message || '保存配置失败')
@@ -733,7 +752,12 @@ async function handleSaveConfig() {
 
 // 启动参考图与音频渲染
 async function handleStartRender() {
+  if (renderingVideo.value) return
   if (!currentShotId.value) return
+  if (renderBlockReason.value) {
+    ElMessage.warning(renderBlockReason.value)
+    return
+  }
   if (!renderConfig.providerId || !models.value.some(m => m.modelCode === renderConfig.modelCode)) {
     ElMessage.warning('请选择支持 TXT2VIDEO_REF 的提供商和视频模型')
     return
@@ -758,22 +782,45 @@ async function handleStartRender() {
     return
   }
 
-  if (refVideos.value.length && (!videoModelOption.value?.renderable || !videoPreflight.value || !videoPromptConfirmed.value || maxRefVideos.value != null && refVideos.value.length > maxRefVideos.value)) {
-    ElMessage.warning('请完成参考视频预检并确认提示词，模型须通过在线验证')
-    return
+  const revision = ++submissionRevision
+  const shotId = currentShotId.value
+  const providerId = renderConfig.providerId
+  const modelCode = renderConfig.modelCode
+  const configuration = () => JSON.stringify([currentShotId.value, renderConfig, prompt.value, negativePrompt.value, refImages.value, refAudios.value, refVideos.value])
+  const submittedConfiguration = configuration()
+  const isCurrent = () => {
+    if (revision !== submissionRevision || !visible.value) return false
+    if (submittedConfiguration !== configuration()) throw new Error('配置已修改，本次提交已取消，请重新提交')
+    return true
   }
-  if (!await handleSaveConfig()) return
   renderingVideo.value = true
   try {
-    await shotApi.submitRender(currentShotId.value, {
-      providerId: renderConfig.providerId ? (renderConfig.providerId as any) : undefined,
-      workflowTemplateId: renderConfig.modelCode,
-      preflightId: refVideos.value.length ? videoPreflight.value?.preflightId : undefined,
+    if (!await handleSaveConfig(false) || !isCurrent()) return
+    let preflightId: string | undefined
+    if (refVideos.value.length) {
+      let prepared = await shotVideoReferenceApi.prepare(String(shotId), providerId, modelCode)
+      const deadline = Date.now() + 6 * 60 * 1000
+      while (prepared.status === 'PREPARING') {
+        if (!isCurrent()) return
+        if (Date.now() >= deadline) throw new Error('参考片段准备超时，请稍后重新提交')
+        await new Promise(resolve => window.setTimeout(resolve, 1200))
+        if (!isCurrent()) return
+        prepared = await shotVideoReferenceApi.get(String(shotId), prepared.preflightId)
+      }
+      if (!isCurrent()) return
+      if (prepared.status !== 'READY') throw new Error(prepared.errorMessage || '参考片段无法处理，请检查视频格式和片段范围')
+      preflightId = prepared.preflightId
+    }
+    if (!isCurrent()) return
+    await shotApi.submitRender(shotId, {
+      providerId,
+      workflowTemplateId: modelCode,
+      preflightId,
       size: sizeValidation.normalized
     })
     ElMessage.success('多模态视频渲染任务已提交！')
-    emit('success', currentShotId.value)
-    visible.value = false
+    emit('success', shotId)
+    if (revision === submissionRevision) visible.value = false
   } catch (e: any) {
     ElMessage.error(e.message || '提交渲染失败')
   } finally {
