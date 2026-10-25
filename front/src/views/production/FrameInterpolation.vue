@@ -312,7 +312,8 @@
                 v-model="formData.clearCacheFrames"
                 :min="cacheFramesRange.min"
                 :max="cacheFramesRange.max"
-                :step="10"
+                :step="1"
+                :precision="0"
                 class="!w-full"
               />
               <div class="text-[11px] text-[var(--text-secondary)] mt-1">
@@ -703,7 +704,7 @@ const crfRange = computed(() => {
 // Clear cache frames range
 const cacheFramesRange = computed(() => {
   return {
-    min: selectedModel.value?.config?.minClearCacheFrames ?? 50,
+    min: 1,
     max: selectedModel.value?.config?.maxClearCacheFrames ?? 300
   }
 })

@@ -644,19 +644,14 @@
           </el-row>
 
           <el-row :gutter="12" v-if="modelForm.modelType === 'FRAME_INTERPOLATION'">
-            <el-col :span="8">
+            <el-col :span="12">
               <el-form-item label="默认显存周期" label-width="90px">
-                <el-input-number v-model="vpForm.defaultClearCacheFrames" :min="10" :max="1000" class="!w-full" />
+                <el-input-number v-model="vpForm.defaultClearCacheFrames" :min="1" :max="1000" :precision="0" class="!w-full" />
               </el-form-item>
             </el-col>
-            <el-col :span="8">
-              <el-form-item label="最小周期" label-width="80px">
-                <el-input-number v-model="vpForm.minClearCacheFrames" :min="10" :max="1000" class="!w-full" />
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
+            <el-col :span="12">
               <el-form-item label="最大周期" label-width="80px">
-                <el-input-number v-model="vpForm.maxClearCacheFrames" :min="10" :max="1000" class="!w-full" />
+                <el-input-number v-model="vpForm.maxClearCacheFrames" :min="1" :max="1000" :precision="0" class="!w-full" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -1042,7 +1037,6 @@ const vpForm = reactive({
   minCrf: 10,
   maxCrf: 30,
   defaultClearCacheFrames: 100,
-  minClearCacheFrames: 50,
   maxClearCacheFrames: 300,
   defaultPreserveAudio: true
 })
@@ -1068,7 +1062,6 @@ const handleModelTypeChange = (type?: string) => {
     vpForm.minCrf = 12
     vpForm.maxCrf = 28
     vpForm.defaultClearCacheFrames = 100
-    vpForm.minClearCacheFrames = 50
     vpForm.maxClearCacheFrames = 300
     vpFormAllowedMultipliersStr.value = '2, 4'
   }
@@ -1090,7 +1083,6 @@ function initVpFormFromParamsJson(paramsJson?: string) {
         vpForm.minCrf = vp.minCrf ?? 10
         vpForm.maxCrf = vp.maxCrf ?? 30
         vpForm.defaultClearCacheFrames = vp.defaultClearCacheFrames ?? 100
-        vpForm.minClearCacheFrames = vp.minClearCacheFrames ?? 50
         vpForm.maxClearCacheFrames = vp.maxClearCacheFrames ?? 300
         vpForm.defaultPreserveAudio = vp.defaultPreserveAudio ?? true
         return
@@ -1213,7 +1205,6 @@ const handleSubmitModel = async () => {
       minCrf: vpForm.minCrf,
       maxCrf: vpForm.maxCrf,
       defaultClearCacheFrames: modelForm.modelType === 'FRAME_INTERPOLATION' ? vpForm.defaultClearCacheFrames : undefined,
-      minClearCacheFrames: modelForm.modelType === 'FRAME_INTERPOLATION' ? vpForm.minClearCacheFrames : undefined,
       maxClearCacheFrames: modelForm.modelType === 'FRAME_INTERPOLATION' ? vpForm.maxClearCacheFrames : undefined,
       defaultPreserveAudio: vpForm.defaultPreserveAudio
     }

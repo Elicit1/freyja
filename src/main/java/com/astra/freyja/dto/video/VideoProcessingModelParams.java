@@ -37,7 +37,7 @@ public class VideoProcessingModelParams {
     /** 补帧默认显存清理间隔帧数 */
     private Integer defaultClearCacheFrames;
 
-    /** 最小允许清理帧数 */
+    /** 兼容旧配置字段，不再作为清理周期下限；周期仅要求正整数。 */
     private Integer minClearCacheFrames;
 
     /** 最大允许清理帧数 */

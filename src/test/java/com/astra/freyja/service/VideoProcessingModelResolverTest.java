@@ -12,6 +12,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
@@ -189,5 +191,36 @@ public class VideoProcessingModelResolverTest {
         assertEquals(2, opt.getConfig().getDefaultScale());
         assertEquals(List.of(2, 4), opt.getConfig().getAllowedScales());
         assertEquals(16, opt.getConfig().getDefaultCrf());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 5, 49})
+    void acceptsPositiveCacheCycleBelowLegacyModelMinimum(int frames) {
+        when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
+
+        var result = resolver.resolve(1L, 102L, null, "FRAME_INTERPOLATION",
+                null, null, null, 24, null, frames);
+
+        assertEquals(frames, result.getClearCacheFrames());
+        assertEquals(frames, result.getExtraBody().get("clear_cache_after_n_frames"));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, -1, 301})
+    void rejectsInvalidCacheCycleWhileKeepingMaximum(int frames) {
+        when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
+
+        assertThrows(BizException.class, () -> resolver.resolve(1L, 102L, null,
+                "FRAME_INTERPOLATION", null, null, null, 24, null, frames));
+    }
+
+    @Test
+    void advertisesPositiveCacheCycleInsteadOfLegacyMinimum() {
+        when(modelMapper.selectList(any())).thenReturn(List.of(interpolationModel));
+
+        var config = resolver.listModelOptions(1L, "FRAME_INTERPOLATION").get(0).getConfig();
+
+        assertEquals(1, config.getMinClearCacheFrames());
+        assertEquals(300, config.getMaxClearCacheFrames());
     }
 }

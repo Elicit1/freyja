@@ -220,14 +220,15 @@ public class AiModelServiceImpl implements AiModelService {
                         throw new BizException("videoProcessing.defaultMultiplier 必须包含在 allowedMultipliers 列表中");
                     }
                 }
-                if (vp.getMinClearCacheFrames() != null && vp.getMaxClearCacheFrames() != null) {
-                    if (vp.getMinClearCacheFrames() > vp.getMaxClearCacheFrames()) {
-                        throw new BizException("videoProcessing.minClearCacheFrames 不能大于 maxClearCacheFrames");
+                if (vp.getMaxClearCacheFrames() != null && vp.getMaxClearCacheFrames() < 1) {
+                    throw new BizException("videoProcessing.maxClearCacheFrames 必须为正整数");
+                }
+                if (vp.getDefaultClearCacheFrames() != null) {
+                    if (vp.getDefaultClearCacheFrames() < 1) {
+                        throw new BizException("videoProcessing.defaultClearCacheFrames 必须为正整数");
                     }
-                    if (vp.getDefaultClearCacheFrames() != null) {
-                        if (vp.getDefaultClearCacheFrames() < vp.getMinClearCacheFrames() || vp.getDefaultClearCacheFrames() > vp.getMaxClearCacheFrames()) {
-                            throw new BizException("videoProcessing.defaultClearCacheFrames 必须介于 minClearCacheFrames 与 maxClearCacheFrames 之间");
-                        }
+                    if (vp.getMaxClearCacheFrames() != null && vp.getDefaultClearCacheFrames() > vp.getMaxClearCacheFrames()) {
+                        throw new BizException("videoProcessing.defaultClearCacheFrames 不能大于 maxClearCacheFrames");
                     }
                 }
             }

@@ -21,6 +21,11 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -31,7 +36,9 @@ import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -137,7 +144,7 @@ public class VideoProcessingServiceTest {
                 minioProperties,
                 cryptoUtil,
                 objectMapper,
-                directExecutor,
+                command -> directExecutor.execute(command),
                 sourceResolver,
                 modelResolver,
                 shotMapper,
@@ -153,6 +160,80 @@ public class VideoProcessingServiceTest {
                     return org.mockito.Mockito.RETURNS_DEFAULTS.answer(invocation);
                 })
         );
+    }
+
+    @ParameterizedTest
+    @CsvSource({"VIDEO_UPSCALE", "FRAME_INTERPOLATION"})
+    void startsOnlyAfterTaskTransactionAndQueueNotificationCommit(String operation) {
+        VideoProcessSubmitDTO dto = stubTransactionalSubmission(operation);
+        Executor executor = mock(Executor.class);
+        directExecutor = executor;
+        AtomicBoolean queueVisible = new AtomicBoolean();
+        when(renderTaskService.createTask(any())).thenAnswer(invocation -> {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    queueVisible.set(true);
+                }
+            });
+            return invocation.getArgument(0);
+        });
+        doAnswer(invocation -> {
+            assertTrue(queueVisible.get(), "排队通知必须先发布，避免覆盖执行中的状态");
+            return null;
+        }).when(executor).execute(any());
+
+        submissionTransaction().executeWithoutResult(status -> {
+            VideoProcessResultVO result = videoProcessingService.submitTask(dto);
+            assertEquals("QUEUED", result.getStatus());
+            verifyNoInteractions(executor);
+            assertFalse(queueVisible.get());
+        });
+
+        verify(executor).execute(any());
+    }
+
+    @Test
+    void rolledBackSubmissionDoesNotStartProcessing() {
+        VideoProcessSubmitDTO dto = stubTransactionalSubmission("FRAME_INTERPOLATION");
+        Executor executor = mock(Executor.class);
+        directExecutor = executor;
+
+        submissionTransaction().executeWithoutResult(status -> {
+            videoProcessingService.submitTask(dto);
+            status.setRollbackOnly();
+        });
+
+        verifyNoInteractions(executor);
+    }
+
+    private TransactionTemplate submissionTransaction() {
+        var source = new DriverManagerDataSource("jdbc:h2:mem:" + UUID.randomUUID(), "sa", "");
+        return new TransactionTemplate(new DataSourceTransactionManager(source));
+    }
+
+    private VideoProcessSubmitDTO stubTransactionalSubmission(String operation) {
+        AiProvider provider = new AiProvider();
+        provider.setId(100L);
+        provider.setProviderName("测试网关");
+        when(aiImageApiService.resolveProvider(any())).thenReturn(provider);
+        AiModel model = new AiModel();
+        model.setId(5001L);
+        model.setProviderId(provider.getId());
+        model.setModelCode("test-video-processing");
+        model.setModelName("测试视频后处理");
+        when(modelResolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+                .thenReturn(ResolvedVideoProcessingModel.builder()
+                        .model(model).modelId(model.getId()).modelCode(model.getModelCode()).modelName(model.getModelName())
+                        .sourceFps(24).targetFps(48).scale(2).multiplier(2).crf(19).clearCacheFrames(100)
+                        .extraBody(Map.of()).build());
+        when(sourceResolver.resolve(any())).thenReturn(ResolvedVideoProcessSource.builder()
+                .sourceType("DIRECT_URL").videoUrl("https://archive.invalid/input.mp4").build());
+        VideoProcessSubmitDTO dto = new VideoProcessSubmitDTO();
+        dto.setOperation(operation);
+        dto.setProviderId(provider.getId());
+        dto.setModelId(model.getId());
+        return dto;
     }
 
     @Test

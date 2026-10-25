@@ -34,7 +34,7 @@
             <el-button size="small" :disabled="!sourceInfo[item.id]?.url" @click="playRange(item)">预览所选范围</el-button>
           </div>
           <p v-if="sourceInfo[item.id]?.metadata" class="text-xs text-slate-500">源视频 {{ sourceInfo[item.id]?.metadata?.duration }} 秒 · {{ sourceInfo[item.id]?.metadata?.width }} × {{ sourceInfo[item.id]?.metadata?.height }} · {{ sourceInfo[item.id]?.metadata?.fps }} FPS · {{ sourceInfo[item.id]?.metadata?.hasAudio ? '有音轨' : '无音轨' }}</p>
-          <p v-if="option?.referenceVideo.maxClipSeconds" class="text-xs text-slate-500">单段上限 {{ option.referenceVideo.maxClipSeconds }} 秒；全部片段总长上限 {{ option.referenceVideo.maxTotalClipSeconds }} 秒。</p>
+          <p v-if="option?.referenceVideo.maxClipSeconds" class="text-xs text-slate-500">单段上限 {{ formatSeconds(option.referenceVideo.maxClipSeconds) }} 秒；全部片段总长上限 {{ formatSeconds(option.referenceVideo.maxTotalClipSeconds) }} 秒。</p>
           <el-checkbox :model-value="item.includeAudio === true" :disabled="disabled || !option?.referenceVideo.supportsVideoAudio && !item.includeAudio" @update:model-value="patch(item.id, { includeAudio: $event === true })">使用视频原音作为生成参考</el-checkbox>
           <p class="text-xs text-slate-500">{{ purpose === 'draft' || purpose === 'prompt' ? '默认仅参考画面；如需参考原音，请在渲染工坊选择支持该能力的模型后开启。' : '默认仅参考画面。原音不会直接混入结果；开启前需模型支持且源片含音轨。' }}</p>
           <el-input :model-value="item.referenceDescription" :disabled="disabled" type="textarea" :rows="2" maxlength="1000" show-word-limit :placeholder="`明确参考什么，例如：参考 Video ${index + 1} 的推进运镜和起身节奏；人物外观使用 Picture 1。`" @update:model-value="patch(item.id, { referenceDescription: $event })" />
@@ -58,6 +58,8 @@ import { shotVideoReferenceApi } from '@/api/shot-video-reference'
 import type { ShotRefVideo, ShotVideoModelOption } from '@/types/drama'
 
 const props = defineProps<{ modelValue: ShotRefVideo[]; shotId?: string; dramaId?: string | number; providerId?: string; modelCode?: string; maxVideos?: number; option?: ShotVideoModelOption; targetDuration?: number; contextFingerprint?: string; purpose?: 'render' | 'draft' | 'prompt'; disabled?: boolean }>()
+const secondsFormatter = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2, useGrouping: false })
+function formatSeconds(value?: number) { return value == null ? '—' : secondsFormatter.format(value) }
 const emit = defineEmits<{ (e: 'update:modelValue', value: ShotRefVideo[]): void; (e: 'prepare'): void }>()
 const countLimit = computed(() => {
   const values = [props.maxVideos, props.option?.maxVideos, props.option?.referenceVideo.maxVideos].filter((n): n is number => typeof n === 'number' && n >= 0)

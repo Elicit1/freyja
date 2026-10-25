@@ -154,13 +154,13 @@ public class VideoProcessingModelResolverImpl implements VideoProcessingModelRes
             }
             checkCrfRange(crf, params);
 
-            if (userClearCacheFrames != null && userClearCacheFrames > 0) {
+            if (userClearCacheFrames != null) {
                 clearCacheFrames = userClearCacheFrames;
             } else if (params.getDefaultClearCacheFrames() != null && params.getDefaultClearCacheFrames() > 0) {
                 clearCacheFrames = params.getDefaultClearCacheFrames();
             }
-            if (params.getMinClearCacheFrames() != null && clearCacheFrames < params.getMinClearCacheFrames()) {
-                throw new BizException(400, "显存清理帧数 " + clearCacheFrames + " 小于模型最小限制 " + params.getMinClearCacheFrames());
+            if (clearCacheFrames < 1) {
+                throw new BizException(400, "显存清理帧数必须为正整数");
             }
             if (params.getMaxClearCacheFrames() != null && clearCacheFrames > params.getMaxClearCacheFrames()) {
                 throw new BizException(400, "显存清理帧数 " + clearCacheFrames + " 超过模型最大限制 " + params.getMaxClearCacheFrames());
@@ -238,7 +238,7 @@ public class VideoProcessingModelResolverImpl implements VideoProcessingModelRes
                     .minCrf(p.getMinCrf() != null ? p.getMinCrf() : 10)
                     .maxCrf(p.getMaxCrf() != null ? p.getMaxCrf() : 30)
                     .defaultClearCacheFrames(p.getDefaultClearCacheFrames() != null ? p.getDefaultClearCacheFrames() : 100)
-                    .minClearCacheFrames(p.getMinClearCacheFrames() != null ? p.getMinClearCacheFrames() : 50)
+                    .minClearCacheFrames(1)
                     .maxClearCacheFrames(p.getMaxClearCacheFrames() != null ? p.getMaxClearCacheFrames() : 300)
                     .defaultPreserveAudio(p.getDefaultPreserveAudio() != null ? p.getDefaultPreserveAudio() : true)
                     .defaultBatchSize(p.getDefaultBatchSize())

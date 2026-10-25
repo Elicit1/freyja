@@ -10,6 +10,9 @@ import com.astra.freyja.service.impl.AiModelServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -50,6 +53,29 @@ class AiModelServiceTest {
     @BeforeEach
     void setUp() {
         lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {1, 5})
+    void cacheDefaultMayBeBelowLegacyModelMinimum(int frames) {
+        String params = cacheCycleConfig(frames);
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(modelService,
+                "validateVideoProcessing", "FRAME_INTERPOLATION", params));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 301})
+    void cacheDefaultStillRequiresPositiveValueWithinMaximum(int frames) {
+        String params = cacheCycleConfig(frames);
+        assertThrows(BizException.class, () -> ReflectionTestUtils.invokeMethod(modelService,
+                "validateVideoProcessing", "FRAME_INTERPOLATION", params));
+    }
+
+    private String cacheCycleConfig(int frames) {
+        return """
+                {"videoProcessing":{"engineModel":"rife49.pth","filenamePrefix":"video_rife/test",
+                 "minClearCacheFrames":50,"maxClearCacheFrames":300,"defaultClearCacheFrames":%d}}
+                """.formatted(frames);
     }
 
     @Test

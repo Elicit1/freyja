@@ -25,6 +25,8 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -249,12 +251,12 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
             log.warn("[VideoProcessing] 联动向 RenderTask 注册失败 (不阻断主业务): {}", e.getMessage());
         }
 
-        // 7. 提交线程池异步执行处理 (只使用已固化的 URL 快照与模型 extraBody)
+        // 7. 提交后再启动，确保任务记录和 RenderTask 的排队通知先对后台线程可见。
         final String finalModelCode = resolvedModel.getModelCode();
         final Map<String, Object> finalExtraBody = new HashMap<>(resolvedModel.getExtraBody());
         finalExtraBody.put("preserve_audio", preserveAudio == 1);
 
-        renderAsyncExecutor.execute(() -> executeVideoProcessAsync(
+        Runnable submitProcessing = () -> renderAsyncExecutor.execute(() -> executeVideoProcessAsync(
                 task.getId(),
                 taskId,
                 op,
@@ -263,6 +265,16 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
                 finalModelCode,
                 finalExtraBody
         ));
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    submitProcessing.run();
+                }
+            });
+        } else {
+            submitProcessing.run();
+        }
 
         VideoProcessResultVO vo = convertToVO(task);
         vo.setSourceDramaTitle(resolvedSource.getDramaTitle());
