@@ -111,7 +111,7 @@
         <el-input
           v-model="prompt"
           type="textarea"
-          :rows="3"
+          :rows="6"
           placeholder="请输入或微调镜头提示词，即使无参考图亦可凭此提示词生成画面..."
         />
         <el-input

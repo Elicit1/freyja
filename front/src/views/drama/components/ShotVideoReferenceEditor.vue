@@ -37,7 +37,6 @@
           <p v-if="option?.referenceVideo.maxClipSeconds" class="text-xs text-slate-500">单段上限 {{ formatSeconds(option.referenceVideo.maxClipSeconds) }} 秒；全部片段总长上限 {{ formatSeconds(option.referenceVideo.maxTotalClipSeconds) }} 秒。</p>
           <el-checkbox :model-value="item.includeAudio === true" :disabled="disabled || !option?.referenceVideo.supportsVideoAudio && !item.includeAudio" @update:model-value="patch(item.id, { includeAudio: $event === true })">使用视频原音作为生成参考</el-checkbox>
           <p class="text-xs text-slate-500">{{ purpose === 'draft' || purpose === 'prompt' ? '默认仅参考画面；如需参考原音，请在渲染工坊选择支持该能力的模型后开启。' : '默认仅参考画面。原音不会直接混入结果；开启前需模型支持且源片含音轨。' }}</p>
-          <el-input :model-value="item.referenceDescription" :disabled="disabled" type="textarea" :rows="2" maxlength="1000" show-word-limit :placeholder="`明确参考什么，例如：参考 Video ${index + 1} 的推进运镜和起身节奏；人物外观使用 Picture 1。`" @update:model-value="patch(item.id, { referenceDescription: $event })" />
         </div>
       </el-collapse-item>
     </el-collapse>
@@ -67,7 +66,7 @@ const countLimit = computed(() => {
 })
 const canAdd = computed(() => !props.disabled && (countLimit.value == null || props.modelValue.length < countLimit.value))
 const notice = computed(() => {
-  if (props.purpose === 'prompt') return '请为各段视频填写参考说明。AI 将结合片段范围和说明生成 <Video N> 引用；当前提示词生成使用文字说明，不会自动识别视频内容。确认采纳时，视频配置与提示词一起保存。'
+  if (props.purpose === 'prompt') return 'AI 将结合所选片段范围生成 <Video N> 引用；当前提示词生成不会自动识别视频内容，可在补充要求中说明参考意图。确认采纳时，视频配置与提示词一起保存。'
   if (props.purpose === 'draft') return ''
   return props.option?.reason || (!props.option ? '请选择模型；素材可保存为草稿，视频生成能力须完成验证后启用。' : '')
 })

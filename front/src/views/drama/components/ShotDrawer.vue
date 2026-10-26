@@ -455,7 +455,7 @@
               v-if="form.generationMode === 'REFERENCE_MODE'"
               v-model="form.prompt"
               type="textarea"
-              :rows="3"
+              :rows="6"
               placeholder="正向画面与运镜动力提示词..."
             />
             <el-input

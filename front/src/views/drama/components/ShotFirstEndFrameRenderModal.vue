@@ -110,7 +110,7 @@
           <el-input
             v-model="prompt"
             type="textarea"
-            :rows="3"
+            :rows="6"
             placeholder="主镜头画面与运镜动力提示词，可直接凭提示词独立生成画面..."
           />
         </div>
