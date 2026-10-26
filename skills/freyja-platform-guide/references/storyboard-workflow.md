@@ -125,3 +125,12 @@ AI 使用 FREYJA 系统开展故事创作与分镜设计时，先完成阶段零
 - **产物状态**：如实区分待制图、已关联素材、提示词就绪、渲染中、已生成、已人工/AI 检查。说明发现的具体问题，不能承诺参考图必然消除漂移。
 
 回读或视频检查发现问题时，只修改证实有问题的部分，使用最新指纹。交付给用户时简述已完成范围、待制作镜头及关键取舍，不把内部技术字段堆到创作者操作流程里。
+
+
+## MCP 小补丁与精简核验
+
+- 单条详情、更新和删除的目标统一使用 `recordId`，`get_asset` 也使用 `recordId`；旧目标参数不再接受。已有记录的 `dramaId` 可省略，服务端按归属授权；新建子记录仍需项目上下文。关系和筛选 ID 保持业务名称。
+- `get_shot` 示例：`{"recordId":"2032095628944588801","fields":["duration","refImages","negativePrompt"]}`。`fields` 仅接受公开顶层字段，始终返回 `id`、`editFingerprint`；省略全量返回，`[]` 仅返回标识和指纹。`batch_read_records` 在每个 item 内指定 `fields`。
+- 修改负向词：`update_shot {"requestId":"unique-patch-001","recordId":"2032095628944588801","expectedFingerprint":"<读取所得64位指纹>","data":{"negativePrompt":"blur"},"fields":["negativePrompt"]}`。`batch_update_shots` 同样仅传变化字段，并在顶层指定回执 `fields`。省略字段保留，不需重传整段 Prompt、导演计划和引用。
+- 数组整体替换，`[]` 清空；人物/道具关联中同身份条目的未提交细节保留。Prompt 内容可用空字符串或 null 清空，其他字段仅在 schema 允许时可传 null；媒体 URL 用空字符串清空，导演计划清空受模式和创作者锁约束。
+- `EDIT_CONFLICT` 返回最新指纹、拟修改字段及其当前公开值，不表示历史变动清单。核验后使用最新指纹和新的 `requestId` 重试。`CREATOR_LOCKED` 直接给出锁定字段及工作台解锁提示。批量失败包含失败项位置和回滚标志；不得绕过创作者锁或静默覆盖并发修改。

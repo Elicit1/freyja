@@ -33,16 +33,17 @@ public class McpReadTools {
     public List<McpTool<?>> tools() {
         return List.of(
                 McpTool.read("search_projects", "分页查找授权项目。keyword 搜索标题，size 最多 50。业务 ID 全部为字符串。", Search.class, this::searchProjects),
-                McpTool.read("get_project", "读取授权项目的业务设定与 editFingerprint。不返回内部 Agent 设置或系统提示词。", Project.class, (c, i) ->
-                        views.project(McpBusinessView.Kind.PROJECT, dramas.selectById(scope.project(c, i.dramaId())))),
+                McpTool.read("get_project", "按 recordId 读取授权项目；dramaId 可省略，fields 可选公开顶层字段，始终返回 id/editFingerprint。不返回内部 Agent 设置或系统提示词。", McpRecordInputs.Get.class, (c, i) -> {
+                    Long owner = scope.project(c, i.recordId());
+                    if (i.dramaId() != null) scope.belongs(owner, scope.project(c, i.dramaId()));
+                    return views.project(McpBusinessView.Kind.PROJECT, dramas.selectById(owner), i.fields());
+                }),
                 McpTool.read("get_project_outline", "分页读取 EPISODE 剧集、SCENE 剧作场次或 SHOT_GROUP 镜头组。场景资产请用 search_assets。", Outline.class, this::outline),
                 McpTool.read("list_shots", "分页读取指定项目的有效分镜，可按 episodeId/sceneId 筛选。详情用 get_shot。", Shots.class, this::shots),
-                McpTool.read("get_shot", "读取项目内完整分镜配置：剧本、对白、提示词、导演计划、参考图音频、关联资产和 editFingerprint。不执行内部 AI。", Shot.class, (c, i) -> {
-                    Long project = scope.project(c, i.dramaId());
-                    return views.project(McpBusinessView.Kind.SHOT, scope.shot(McpScope.id(i.shotId()), project));
-                }),
+                McpTool.read("get_shot", "按 recordId 读取分镜；dramaId 可省略，fields 可选公开顶层字段（始终包含 id/editFingerprint）。完整配置包括：剧本、对白、提示词、导演计划、参考图音频、关联资产和 editFingerprint。不执行内部 AI。", McpRecordInputs.Get.class, (c, i) ->
+                        views.project(McpBusinessView.Kind.SHOT, scope.shot(c, i.recordId(), i.dramaId()), i.fields())),
                 McpTool.read("search_assets", "分页查找 CHARACTER/CHARACTER_LOOK/SCENE/PROP/KEYFRAME。项目库传 dramaId；公共库 publicOnly=true 且省略 dramaId。造型必须传 characterId。", Assets.class, assets::search),
-                McpTool.read("get_asset", "按类型和字符串 assetId 读取资产详情；公共库只读，项目资产须在授权范围。", Asset.class, assets::detail),
+                McpTool.read("get_asset", "按类型和字符串 recordId 读取资产详情；fields 可选公开顶层字段；公共库只读，项目资产须在授权范围。", Asset.class, assets::detail),
                 McpTool.read("list_character_looks", "分页读取人物造型，获取真实 lookId、默认造型、参考图和一致性状态。", CharacterLooks.class, (c, i) -> {
                     var e = assets.resolve(c, AssetType.CHARACTER, i.characterId(), i.dramaId(), false);
                     return assets.search(c, new Assets(AssetType.CHARACTER_LOOK, e.dramaId() == null ? null : e.dramaId().toString(),

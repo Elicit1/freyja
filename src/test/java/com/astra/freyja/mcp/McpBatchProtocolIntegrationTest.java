@@ -59,6 +59,38 @@ class McpBatchProtocolIntegrationTest {
         JsonNode root = json.readTree(response.body()); assertFalse(root.has("error"), response.body()); return root.path("result");
     }
 
+    @Test void compactShotProtocolUsesRecordIdsProjectionsAndStructuredErrors() throws Exception {
+        fixture.shot(80L);
+        JsonNode read = rpc("tools/call", Map.of("name", "get_shot", "arguments", Map.of("recordId", "80", "fields", List.of("negativePrompt"))));
+        assertFalse(read.path("isError").asBoolean(), read.toString());
+        JsonNode before = read.path("structuredContent").path("data");
+        assertEquals(3, before.size()); assertEquals("80", before.path("id").asText());
+        Map<String, Object> patch = Map.of("requestId", "http-negative-patch", "recordId", "80", "expectedFingerprint", before.path("editFingerprint").asText(),
+                "data", Map.of("negativePrompt", "blur"), "fields", List.of("negativePrompt"));
+        JsonNode saved = rpc("tools/call", Map.of("name", "update_shot", "arguments", patch));
+        assertFalse(saved.path("isError").asBoolean(), saved.toString());
+        assertEquals(3, saved.path("structuredContent").path("data").path("data").size());
+        Map<String, Object> retry = new HashMap<>(patch); retry.put("requestId", "http-stale-patch");
+        JsonNode failed = rpc("tools/call", Map.of("name", "update_shot", "arguments", retry));
+        assertTrue(failed.path("isError").asBoolean());
+        assertEquals(failed.path("structuredContent"), json.readTree(failed.path("content").get(0).path("text").asText()));
+        var error = failed.path("structuredContent").path("error");
+        assertEquals(409, error.path("code").asInt()); assertEquals("EDIT_CONFLICT", error.path("reason").asText());
+        assertEquals("blur", error.path("currentValues").path("negativePrompt").asText());
+        assertEquals(1, error.path("currentValues").size()); assertFalse(error.path("latestFingerprint").asText().isBlank());
+        for (var args : List.of(Map.<String, Object>of("shotId", "80"), Map.<String, Object>of("recordId", "80", "fields", List.of("refImages.imageUrl"))))
+            assertTrue(rpc("tools/call", Map.of("name", "get_shot", "arguments", args)).path("isError").asBoolean());
+        assertTrue(rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("dramaId", McpBusinessDatabaseTest.ROOT))).path("isError").asBoolean());
+        assertFalse(rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("recordId", McpBusinessDatabaseTest.ROOT, "fields", List.of("title")))).path("isError").asBoolean());
+        for (var tool : rpc("tools/list", Map.of()).path("tools")) {
+            if (!Set.of("get_shot", "get_project", "update_shot", "batch_update_shots").contains(tool.path("name").asText())) continue;
+            var schema = tool.path("inputSchema");
+            assertTrue(schema.path("properties").has("fields"));
+            assertFalse(json.convertValue(schema.path("required"), List.class).contains("dramaId"));
+            assertFalse(schema.path("properties").has("shotId"));
+        }
+    }
+
     @Test void discoversBusinessCrudToolsAndNoInternalAi() throws Exception {
         JsonNode init = rpc("initialize", Map.of("protocolVersion", "2025-06-18", "capabilities", Map.of(), "clientInfo", Map.of("name", "batch-test", "version", "1")));
         assertFalse(init.path("capabilities").has("prompts"));
@@ -224,16 +256,16 @@ class McpBatchProtocolIntegrationTest {
             assertEquals("string", genre.path("type").asText()); assertEquals(64, genre.path("maxLength").asInt()); assertFalse(genre.has("enum"));
         }
         for (String genre : List.of("都市复仇悬疑", "DOMINANT_CEO")) {
-            JsonNode before = rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("dramaId", McpBusinessDatabaseTest.ROOT))).path("structuredContent").path("data");
+            JsonNode before = rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("recordId", McpBusinessDatabaseTest.ROOT))).path("structuredContent").path("data");
             Map<String, Object> args = Map.of("requestId", "genre-update-" + (genre.equals("DOMINANT_CEO") ? "legacy" : "custom"), "dramaId", McpBusinessDatabaseTest.ROOT,
                     "recordId", McpBusinessDatabaseTest.ROOT, "expectedFingerprint", before.path("editFingerprint").asText(), "data", Map.of("genre", genre));
             JsonNode updated = rpc("tools/call", Map.of("name", "update_project", "arguments", args)); assertFalse(updated.path("isError").asBoolean(), updated.toString());
             assertEquals(genre, fixture.dramas.selectById(McpBusinessDatabaseTest.PROJECT).getGenre());
-            JsonNode read = rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("dramaId", McpBusinessDatabaseTest.ROOT)));
+            JsonNode read = rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("recordId", McpBusinessDatabaseTest.ROOT)));
             assertEquals(genre, read.path("structuredContent").path("data").path("genre").asText());
             assertEquals("9:16", read.path("structuredContent").path("data").path("aspectRatio").asText());
         }
-        JsonNode before = rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("dramaId", McpBusinessDatabaseTest.ROOT))).path("structuredContent").path("data");
+        JsonNode before = rpc("tools/call", Map.of("name", "get_project", "arguments", Map.of("recordId", McpBusinessDatabaseTest.ROOT))).path("structuredContent").path("data");
         JsonNode tooLong = rpc("tools/call", Map.of("name", "update_project", "arguments", Map.of("requestId", "genre-too-long01", "dramaId", McpBusinessDatabaseTest.ROOT,
                 "recordId", McpBusinessDatabaseTest.ROOT, "expectedFingerprint", before.path("editFingerprint").asText(), "data", Map.of("genre", "a".repeat(65)))));
         assertTrue(tooLong.path("isError").asBoolean()); assertEquals("DOMINANT_CEO", fixture.dramas.selectById(McpBusinessDatabaseTest.PROJECT).getGenre());

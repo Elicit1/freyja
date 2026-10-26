@@ -681,14 +681,115 @@ class McpBusinessDatabaseTest {
         Map<String, Object> changed = new LinkedHashMap<>(locked); changed.put("narrativeIntent", "覆盖创作者意图");
         for (Map<String, Object> data : List.of(Map.<String, Object>of("directorPlan", changed), Map.<String, Object>of("directorPlanMode", "AUTO"))) {
             var input = new McpRecordInputs.BatchUpdate("locked-plan-deny", ROOT, List.of(new McpRecordInputs.UpdateItem( "80", views.fingerprint(shots.selectById(80L)), data)));
-            assertEquals(409, assertThrows(BizException.class, () -> call("batch_update_shots", caller, input)).getCode());
+            var error = assertThrows(McpBusinessException.class, () -> call("batch_update_shots", caller, input));
+            assertEquals(409, error.getCode());
+            assertEquals("directorPlan.narrativeIntent", McpBusinessException.error(error).get("lockedField"));
         }
         assertEquals(1, shots.selectById(80L).getDirectorPlanRevision()); assertEquals("MANUAL", shots.selectById(80L).getDirectorPlanMode());
     }
 
+    @Test void negativePromptOnlyPatchPreservesWorkshopCardAndReturnsSelectedFields() {
+        shot(80L);
+        call("update_shot", caller, new McpRecordInputs.Update("patch-card-setup", null, "80", views.fingerprint(shots.selectById(80L)),
+                Map.of("prompt", "完整六段式提示词", "videoPrompt", "视频提示词", "directorPlan", plan(5),
+                        "shotType", "MEDIUM_SHOT", "shotTypeLocked", true,
+                        "refImages", List.of(Map.of("sourceType", "UPLOAD", "imageUrl", "https://media/ref.png", "usageRole", "STYLE")),
+                        "refAudios", List.of(Map.of("audioUrl", "https://media/ref.wav", "referenceType", "partially_copy")))));
+        var before = records.read(caller, McpRecordType.SHOT, "80", null);
+        var input = new McpRecordInputs.Update("patch-negative-only", null, "80", (String) before.get("editFingerprint"),
+                Map.of("negativePrompt", "blur"), List.of("negativePrompt"));
+        var result = map(call("update_shot", caller, input));
+        assertEquals(Set.of("id", "editFingerprint", "negativePrompt"), map(result.get("data")).keySet());
+        assertEquals("blur", map(result.get("data")).get("negativePrompt"));
+        var after = records.read(caller, McpRecordType.SHOT, "80", null);
+        for (String field : List.of("prompt", "videoPrompt", "directorPlan", "directorPlanRevision", "refImages", "refAudios", "refVideos", "shotType", "shotTypeLocked"))
+            assertEquals(before.get(field), after.get(field), field);
+        assertEquals(result, map(call("update_shot", caller, input)));
+        var denied = new McpPrincipal(true, false, false, Set.of(PROJECT + 1));
+        assertEquals(403, assertThrows(BizException.class, () -> call("update_shot", denied, input)).getCode());
+        Map<String, Object> clear = new LinkedHashMap<>(); clear.put("negativePrompt", null); clear.put("refImages", List.of());
+        call("update_shot", caller, new McpRecordInputs.Update("patch-clear-fields", null, "80", (String) after.get("editFingerprint"), clear));
+        assertNull(shots.selectById(80L).getNegativePrompt());
+        assertEquals(List.of(), records.read(caller, McpRecordType.SHOT, "80", null).get("refImages"));
+    }
+
+    @Test void fourShotVerificationAndMixedRecordReadsCanSelectFields() {
+        List<McpBatchInputs.RecordRef> items = new ArrayList<>();
+        for (long id = 80; id < 84; id++) {
+            shot(id);
+            items.add(new McpBatchInputs.RecordRef(McpRecordType.SHOT, Long.toString(id), List.of("duration", "refImages", "negativePrompt")));
+        }
+        items.add(new McpBatchInputs.RecordRef(McpRecordType.EPISODE, "20", List.of("title")));
+        var result = map(call("batch_read_records", caller, new McpBatchInputs.Read(null, items)));
+        List<?> rows = (List<?>) result.get("records");
+        for (int i = 0; i < 4; i++) assertEquals(Set.of("id", "editFingerprint", "duration", "refImages", "negativePrompt"), map(map(rows.get(i)).get("data")).keySet());
+        assertEquals(Set.of("id", "editFingerprint", "title"), map(map(rows.get(4)).get("data")).keySet());
+        assertEquals(Set.of("id", "editFingerprint"), records.read(caller, McpRecordType.SHOT, "80", null, List.of()).keySet());
+        for (String field : List.of("refImages.imageUrl", "latestTaskId", "unknown"))
+            assertEquals(400, assertThrows(BizException.class, () -> records.read(caller, McpRecordType.SHOT, "80", null, List.of(field))).getCode());
+        assertTrue(records.read(caller, McpRecordType.SHOT, "80", null).containsKey("videoPrompt"));
+    }
+
+    @Test void stalePatchHasStructuredCurrentValuesAndBatchFailureNamesItsRecord() {
+        DramaShot original = shot(80L); shot(81L);
+        String stale = views.fingerprint(original);
+        original.setNegativePrompt("creator edit"); shots.updateById(original);
+        var error = assertThrows(McpBusinessException.class, () -> call("update_shot", caller,
+                new McpRecordInputs.Update("conflict-small-patch", null, "80", stale, Map.of("negativePrompt", "agent edit"))));
+        var details = McpBusinessException.error(error);
+        assertEquals(409, error.getCode()); assertEquals("EDIT_CONFLICT", details.get("reason"));
+        assertEquals("80", details.get("recordId"));
+        assertEquals(views.fingerprint(shots.selectById(80L)), details.get("latestFingerprint"));
+        assertEquals(Map.of("negativePrompt", "creator edit"), details.get("currentValues"));
+        var batch = new McpRecordInputs.BatchUpdate("conflict-small-batch", null, List.of(
+                new McpRecordInputs.UpdateItem("81", views.fingerprint(shots.selectById(81L)), Map.of("negativePrompt", "must rollback")),
+                new McpRecordInputs.UpdateItem("80", stale, Map.of("negativePrompt", "agent edit"))), List.of("negativePrompt"));
+        var batchError = assertThrows(McpBusinessException.class, () -> call("batch_update_shots", caller, batch));
+        var batchDetails = McpBusinessException.error(batchError);
+        assertEquals(1, batchDetails.get("itemIndex")); assertEquals("80", batchDetails.get("recordId"));
+        assertEquals(true, batchDetails.get("rolledBack")); assertEquals("EDIT_CONFLICT", batchDetails.get("reason"));
+        assertNull(shots.selectById(81L).getNegativePrompt()); assertEquals(0, count("mcp_business_operation"));
+        var successful = new McpRecordInputs.BatchUpdate("selected-small-batch", null, List.of(
+                new McpRecordInputs.UpdateItem("81", views.fingerprint(shots.selectById(81L)), Map.of("negativePrompt", "saved"))), List.of("negativePrompt"));
+        var selected = (List<?>) map(call("batch_update_shots", caller, successful)).get("records");
+        assertEquals(Set.of("id", "editFingerprint", "negativePrompt"), map(map(selected.getFirst()).get("data")).keySet());
+    }
+
+    @Test void cameraLocksNameExactFieldsAndPreserveEarlierBatchWrites() {
+        DramaShot locked = shot(80L); shot(81L);
+        locked.setShotType("MEDIUM_SHOT"); locked.setShotTypeLocked(true);
+        locked.setCameraMovement("STATIC"); locked.setCameraMovementLocked(true); shots.updateById(locked);
+        for (var change : Map.of("shotType", "CLOSE_UP", "cameraMovement", "PUSH_IN").entrySet()) {
+            var batch = new McpRecordInputs.BatchUpdate("locked-camera-test", null, List.of(
+                    new McpRecordInputs.UpdateItem("81", views.fingerprint(shots.selectById(81L)), Map.of("negativePrompt", "rollback")),
+                    new McpRecordInputs.UpdateItem("80", views.fingerprint(shots.selectById(80L)), Map.of(change.getKey(), change.getValue()))));
+            var error = assertThrows(McpBusinessException.class, () -> call("batch_update_shots", caller, batch));
+            assertEquals(change.getKey(), McpBusinessException.error(error).get("lockedField"));
+            assertEquals(List.of(change.getKey()), McpBusinessException.error(error).get("lockedFields"));
+            assertEquals(1, McpBusinessException.error(error).get("itemIndex"));
+            assertNull(shots.selectById(81L).getNegativePrompt());
+        }
+        assertEquals(0, count("mcp_business_operation"));
+    }
+
+    @Test void inferredScopeStillRejectsForeignRecordsPublicWritesAndMixedProjectBatches() {
+        shot(80L); character(50L, 0L); character(51L, PROJECT + 1);
+        assertEquals("50", records.read(caller, McpRecordType.CHARACTER, "50", null).get("id"));
+        for (String id : List.of("50", "51")) {
+            assertEquals(403, assertThrows(BizException.class, () -> call("update_character", caller,
+                    new McpRecordInputs.Update("inferred-scope-deny", null, id, views.fingerprint(characters.selectById(McpScope.id(id))), Map.of("remark", "denied")))).getCode());
+        }
+        var all = new McpPrincipal(true, true, false, Set.of());
+        assertEquals(403, assertThrows(BizException.class, () -> records.read(all, McpRecordType.SHOT, "80", Long.toString(PROJECT + 1))).getCode());
+        var mixed = new McpRecordInputs.BatchUpdate("inferred-mixed-deny", null, List.of(
+                new McpRecordInputs.UpdateItem("51", views.fingerprint(characters.selectById(51L)), Map.of("remark", "first")),
+                new McpRecordInputs.UpdateItem("50", views.fingerprint(characters.selectById(50L)), Map.of("remark", "second"))));
+        assertThrows(BizException.class, () -> call("batch_update_characters", all, mixed));
+        assertNull(characters.selectById(51L).getRemark());
+    }
+
     Map<String, Object> singleRead(String object, McpPrincipal principal, String project, String id) {
-        Object input = object.equals("project") ? new McpInputs.Project(project) : object.equals("shot") ? new McpInputs.Shot(project, id)
-                : new McpRecordInputs.Get(project, id);
+        Object input = new McpRecordInputs.Get(project, id);
         return map(call("get_" + object, principal, input));
     }
     McpBatchInputs.DeleteItem deleteItem(McpRecordType type, String id) {
@@ -719,19 +820,19 @@ class McpBusinessDatabaseTest {
                 Map.of("characterId", ids.get("character"), "lookName", "Day", "designDesc", "Grey coat")))).get("recordId"));
         for (var entry : ids.entrySet()) {
             String object = entry.getKey(), id = entry.getValue();
-            var before = singleRead(object, creator, project, id);
+            var before = singleRead(object, creator, null, id);
             assertEquals(id, before.get("id"));
-            var update = new McpRecordInputs.Update("single-update-" + object, project, id, (String) before.get("editFingerprint"), Map.of("remark", "Single update"));
+            var update = new McpRecordInputs.Update("single-update-" + object, null, id, (String) before.get("editFingerprint"), Map.of("remark", "Single update"));
             Object updated = call("update_" + object, creator, update);
             assertEquals(map(updated), map(call("update_" + object, creator, update)));
             var after = singleRead(object, creator, project, id); assertEquals("Single update", after.get("remark"));
-            var batch = new McpRecordInputs.BatchUpdate("typed-batch-" + object, project, List.of(new McpRecordInputs.UpdateItem(id, (String) after.get("editFingerprint"), Map.of("remark", "Batch update"))));
+            var batch = new McpRecordInputs.BatchUpdate("typed-batch-" + object, null, List.of(new McpRecordInputs.UpdateItem(id, (String) after.get("editFingerprint"), Map.of("remark", "Batch update"))));
             call("batch_update_" + object + "s", creator, batch);
             assertEquals("Batch update", singleRead(object, creator, project, id).get("remark"));
         }
         for (String object : List.of("keyframe", "prop", "resource_scene", "character_look", "character", "shot", "shot_group", "scene", "episode", "project")) {
             String id = ids.get(object);
-            var delete = new McpRecordInputs.Delete("single-delete-" + object, project, id, (String) singleRead(object, creator, project, id).get("editFingerprint"));
+            var delete = new McpRecordInputs.Delete("single-delete-" + object, null, id, (String) singleRead(object, creator, project, id).get("editFingerprint"));
             var result = map(call("delete_" + object, creator, delete)); assertEquals(true, result.get("deleted"));
             assertEquals(result, map(call("delete_" + object, creator, delete)));
             assertEquals("SUCCEEDED", map(journal.read(creator, delete.requestId())).get("status"));
@@ -743,7 +844,7 @@ class McpBusinessDatabaseTest {
     @Test void batchDeleteChecksAllOriginalVersionsThenDeletesChildrenBeforeParentsAndReplays() {
         shot(80L);
         DramaShotVideoTake take = new DramaShotVideoTake(); take.setId(90L); take.setShotId(80L); takes.insert(take);
-        var input = new McpBatchInputs.Delete("delete-hierarchy-01", ROOT, List.of(deleteItem(McpRecordType.SHOT, "80"),
+        var input = new McpBatchInputs.Delete("delete-hierarchy-01", null, List.of(deleteItem(McpRecordType.SHOT, "80"),
                 deleteItem(McpRecordType.SHOT_GROUP, "40"), deleteItem(McpRecordType.SCENE, "30"),
                 deleteItem(McpRecordType.EPISODE, "20"), deleteItem(McpRecordType.PROJECT, ROOT)));
         Object result = call("batch_delete_records", caller, input);

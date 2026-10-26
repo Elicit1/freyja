@@ -40,7 +40,7 @@ public class McpBusinessTools {
     }
     public List<McpTool<?>> allTools() {
         List<McpTool<?>> tools = new ArrayList<>();
-        tools.add(McpTool.read("batch_read_records", "批量读取业务记录，每次最多 100 项。分镜包含提示词、参考媒体和导演计划数据，不执行内部 AI。非资产记录需 dramaId。", McpBatchInputs.Read.class, this::read));
+        tools.add(McpTool.read("batch_read_records", "批量读取业务记录，每次最多 100 项。分镜包含提示词、参考媒体和导演计划数据，不执行内部 AI。dramaId 可省略并按记录归属授权；每项 fields 可选公开顶层字段，始终返回 id/editFingerprint。", McpBatchInputs.Read.class, this::read));
         tools.add(McpTool.read("list_shot_video_versions", "分页读取分镜已有视频版本，仅返回媒体资产信息，不返回模型、提示词或内部任务。", McpBatchInputs.VideoTakes.class, this::versions));
         {
             tools.add(presignedImageUploads.prepareTool());
@@ -86,8 +86,8 @@ public class McpBusinessTools {
         List<Object> result = new ArrayList<>();
         for (var item : input.items()) {
             if (item == null) throw new BizException(400, "批次项不能为空");
-            try { result.add(Map.of("type", item.type(), "recordId", item.recordId(), "ok", true, "data", records.read(caller, item.type(), item.recordId(), input.dramaId()))); }
-            catch (BizException e) { result.add(Map.of("recordId", item.recordId() == null ? "" : item.recordId(), "ok", false, "error", Map.of("code", e.getCode(), "message", e.getMessage()))); }
+            try { result.add(Map.of("type", item.type(), "recordId", item.recordId(), "ok", true, "data", records.read(caller, item.type(), item.recordId(), input.dramaId(), item.fields()))); }
+            catch (BizException e) { result.add(Map.of("recordId", item.recordId() == null ? "" : item.recordId(), "ok", false, "error", McpBusinessException.error(e))); }
         }
         return Map.of("records", result);
     }
@@ -127,17 +127,23 @@ public class McpBusinessTools {
     }
 
     private Object delete(McpPrincipal caller, McpBatchInputs.Delete input) {
-        write(caller); batch(input.items()); Long project = scope.authorizeProject(caller, input.dramaId());
-        return journal.execute(input.requestId(), "batch_delete_records", input, () -> {
+        write(caller); batch(input.items());
+        if (input.dramaId() != null) scope.authorizeProject(caller, input.dramaId());
+        return journal.execute(input.requestId(), "batch_delete_records", input, caller, () -> {
+            var first = input.items().getFirst();
+            if (first == null || first.type() == null) throw McpBusinessException.batch(0, null, new BizException(400, "删除项不能为空"));
+            Long project;
+            try { project = records.resolveProject(caller, first.type(), first.recordId(), input.dramaId(), true); }
+            catch (BizException e) { throw McpBusinessException.batch(0, first.recordId(), e); }
             mutex(project); Set<String> seen = new HashSet<>(); List<BaseEntity> locked = new ArrayList<>();
             // Validate original fingerprints before business side effects such as default-look promotion or duration recalculation.
             for (int index = 0; index < input.items().size(); index++) {
                 var item = input.items().get(index);
                 try {
                     if (item == null || item.type() == null || !seen.add(item.type() + ":" + item.recordId())) throw new BizException(400, "删除项无效或重复");
-                    BaseEntity current = records.lockScoped(caller, item.type(), item.recordId(), input.dramaId());
-                    fingerprint(current, item.expectedFingerprint()); locked.add(current);
-                } catch (BizException e) { throw itemError(index, e); }
+                    BaseEntity current = records.lockScoped(caller, item.type(), item.recordId(), project.toString());
+                    views.checkFingerprint(item.type().viewKind(), current, item.expectedFingerprint(), Set.of()); locked.add(current);
+                } catch (BizException e) { throw McpBusinessException.batch(index, item == null ? null : item.recordId(), e); }
             }
             List<Object> result = new ArrayList<>();
             for (int index = 0; index < input.items().size(); index++) {
@@ -145,9 +151,9 @@ public class McpBusinessTools {
                 try {
                     records.delete(item.type(), locked.get(index));
                     result.add(Map.of("type", item.type(), "recordId", item.recordId(), "deleted", true));
-                } catch (BizException e) { throw itemError(index, e); }
+                } catch (BizException e) { throw McpBusinessException.batch(index, item == null ? null : item.recordId(), e); }
             }
-            return new McpOperationStore.Outcome(Map.of("requestId", input.requestId(), "dramaId", input.dramaId(), "records", result), project, false);
+            return new McpOperationStore.Outcome(Map.of("requestId", input.requestId(), "dramaId", project.toString(), "records", result), project, false);
         });
     }
 
@@ -167,11 +173,12 @@ public class McpBusinessTools {
     }
     private void mutex(Long project) { if (queries.lockProject(project) == null) throw new BizException(404, "项目不存在"); }
     private void fingerprint(BaseEntity entity, String expected) {
-        if (expected == null || !expected.equals(views.fingerprint(entity))) throw new BizException(409, "EDIT_CONFLICT: 内容已变动，请重新读取后提交");
+        views.checkFingerprint(entity instanceof com.astra.freyja.entity.ResCharacterLook ? McpBusinessView.Kind.CHARACTER_LOOK : McpBusinessView.Kind.SHOT,
+                entity, expected, Set.of());
     }
     private void write(McpPrincipal caller) { if (!caller.write()) throw new BizException(403, "MCP_WRITE_DISABLED"); }
     private void batch(List<?> items) { if (items == null || items.isEmpty() || items.size() > 100) throw new BizException(400, "每批必须包含 1–100 项"); }
-    private BizException itemError(int index, BizException error) { return new BizException(error.getCode(), "BATCH_ROLLED_BACK: items[" + index + "]: " + error.getMessage()); }
+    private BizException itemError(int index, BizException error) { return McpBusinessException.batch(index, null, error); }
 
     private Object cloneShot(McpPrincipal caller, McpBatchInputs.Clone input) {
         write(caller); Long project = scope.project(caller, input.dramaId());

@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -77,8 +78,7 @@ public class McpVoiceTools {
         return journal.execute(input.requestId(), DESIGN_TOOL, input, () -> {
             if (queries.lockProject(project) == null) throw new BizException(404, "项目不存在");
             var current = records.lockScoped(caller, McpRecordType.CHARACTER, input.characterId(), input.dramaId());
-            if (!input.expectedFingerprint().equals(views.fingerprint(current)))
-                throw new BizException(409, "EDIT_CONFLICT: 角色已变动，请重新读取后提交");
+            views.checkFingerprint(McpBusinessView.Kind.CHARACTER, current, input.expectedFingerprint(), Set.of("voiceDesc", "voiceSampleText"));
             CharacterVoiceDesignDTO dto = new CharacterVoiceDesignDTO();
             dto.setCharacterId(character);
             dto.setProviderId(provider);

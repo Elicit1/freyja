@@ -56,13 +56,31 @@ public class McpBusinessRecords {
             var entry = assets.resolve(caller, type.assetType(), recordId, dramaId, write);
             return assets.raw(entry.type(), entry.id());
         }
-        Long project = scope.project(caller, type == McpRecordType.PROJECT ? recordId : dramaId);
+        Long project = resolveProject(caller, type, recordId, dramaId, write);
         if (type == McpRecordType.PROJECT && dramaId != null) scope.belongs(id, McpScope.id(dramaId));
         return switch (type) {
             case PROJECT -> dramas.selectById(project); case EPISODE -> scope.episode(id, project);
             case SCENE -> scope.scene(id, project); case SHOT_GROUP -> scope.group(id, project); case SHOT -> scope.shot(id, project);
             default -> throw new BizException(400, "不支持的业务类型");
         };
+    }
+
+    /** Resolve ownership before authorization; a supplied scope must agree with the stored owner. */
+    public Long resolveProject(McpPrincipal caller, McpRecordType type, String recordId, String dramaId, boolean write) {
+        if (type.assetType() != null) return assets.resolve(caller, type.assetType(), recordId, dramaId, write).dramaId();
+        BaseEntity entity = mapper(type).selectById(McpScope.id(recordId));
+        if (entity == null) throw new BizException(404, "业务记录不存在");
+        Long owner = switch (type) {
+            case PROJECT -> entity.getId();
+            case EPISODE -> ((com.astra.freyja.entity.DramaEpisode) entity).getDramaId();
+            case SCENE -> ((com.astra.freyja.entity.DramaScene) entity).getDramaId();
+            case SHOT_GROUP -> ((com.astra.freyja.entity.DramaShotGroup) entity).getDramaId();
+            case SHOT -> ((com.astra.freyja.entity.DramaShot) entity).getDramaId();
+            default -> throw new BizException(400, "不支持的业务类型");
+        };
+        Long project = scope.project(caller, owner.toString());
+        if (dramaId != null) scope.belongs(project, scope.project(caller, dramaId));
+        return project;
     }
 
     public BaseEntity lock(McpRecordType type, Long id) {
@@ -105,7 +123,11 @@ public class McpBusinessRecords {
     }
 
     public Map<String, Object> read(McpPrincipal caller, McpRecordType type, String id, String project) {
-        return views.project(type.viewKind(), require(caller, type, id, project, false));
+        return read(caller, type, id, project, null);
+    }
+
+    public Map<String, Object> read(McpPrincipal caller, McpRecordType type, String id, String project, List<String> fields) {
+        return views.project(type.viewKind(), require(caller, type, id, project, false), fields);
     }
 
     public Long create(McpPrincipal caller, McpRecordType type, Long project, Map<String, Object> data) {
@@ -300,8 +322,8 @@ public class McpBusinessRecords {
                 if (current instanceof DramaShot existing) {
                     if (!data.containsKey("scriptContent")) shot.setScriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(existing));
                     preserveReferenceDetails(shot, existing, data);
-                    cameraLock(existing.getShotTypeLocked(), existing.getShotType(), shot.getShotTypeLocked(), shot.getShotType());
-                    cameraLock(existing.getCameraMovementLocked(), existing.getCameraMovement(), shot.getCameraMovementLocked(), shot.getCameraMovement());
+                    cameraLock("shotType", existing.getShotTypeLocked(), existing.getShotType(), shot.getShotTypeLocked(), shot.getShotType());
+                    cameraLock("cameraMovement", existing.getCameraMovementLocked(), existing.getCameraMovement(), shot.getCameraMovementLocked(), shot.getCameraMovement());
                 }
                 configureDirectorPlan(shot, (DramaShot) current, data);
                 if (current == null && shot.getPreviewImageUrl() != null && !shot.getPreviewImageUrl().isBlank()) shot.setFirstFrameSourceType("MANUAL_UPLOAD");
@@ -348,10 +370,10 @@ public class McpBusinessRecords {
             if (previous.getLockedFields() != null && !previous.getLockedFields().isEmpty()) {
                 DirectorPlan next = dto.getDirectorPlan();
                 if (next == null || next.getLockedFields() == null || !next.getLockedFields().containsAll(previous.getLockedFields()))
-                    throw new BizException(409, "CREATOR_LOCKED: 不能删除或解除导演计划锁定字段");
+                    throw McpBusinessException.locked(previous.getLockedFields().stream().map(field -> "directorPlan." + field).sorted().toList());
                 Map<?, ?> before = binding.convertValue(previous, Map.class), after = binding.convertValue(next, Map.class);
                 for (String field : previous.getLockedFields()) if (!Objects.equals(before.get(field), after.get(field)))
-                    throw new BizException(409, "CREATOR_LOCKED: 导演计划字段已锁定: " + field);
+                    throw McpBusinessException.locked(List.of("directorPlan." + field));
             }
         }
     }
@@ -364,9 +386,9 @@ public class McpBusinessRecords {
                 .set("first_frame_source_shot_id", null).set("first_frame_source_video_url", null).set("first_frame_source_video_take_id", null);
         if (update.getSqlSet() != null) shots.update(null, update);
     }
-    private void cameraLock(Boolean locked, String oldValue, Boolean newLocked, String newValue) {
+    private void cameraLock(String field, Boolean locked, String oldValue, Boolean newLocked, String newValue) {
         if (Boolean.TRUE.equals(locked) && (!Boolean.TRUE.equals(newLocked) || !Objects.equals(oldValue, newValue)))
-            throw new BizException(409, "CREATOR_LOCKED: 请先在工作台解除创作者锁定");
+            throw McpBusinessException.locked(List.of(field));
     }
 
     private void references(McpPrincipal caller, McpRecordType type, Object dto, Long project, BaseEntity old, Map<String, Object> data) {

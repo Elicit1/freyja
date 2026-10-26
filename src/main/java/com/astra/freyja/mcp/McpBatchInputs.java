@@ -7,7 +7,9 @@ import java.util.Map;
 
 public final class McpBatchInputs {
     private McpBatchInputs() {}
-    public record RecordRef(McpRecordType type, String recordId) {}
+    public record RecordRef(McpRecordType type, String recordId, @ToolParam(required = false) List<String> fields) {
+        public RecordRef(McpRecordType type, String recordId) { this(type, recordId, null); }
+    }
     public record Read(@ToolParam(required = false) String dramaId, List<RecordRef> items) {}
     public record CreateItem(String clientKey, McpRecordType type, Map<String, Object> data) {}
     public record Create(String requestId, @ToolParam(required = false) String dramaId, List<CreateItem> items) {}

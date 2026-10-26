@@ -58,8 +58,8 @@ public class McpAssets {
     }
 
     public Object detail(McpPrincipal caller, McpInputs.Asset input) {
-        Entry e = resolve(caller, input.type(), input.assetId(), input.dramaId(), false);
-        return views.project(McpBusinessView.kind(e.type()), raw(e.type(), e.id()));
+        Entry e = resolve(caller, input.type(), input.recordId(), input.dramaId(), false);
+        return views.project(McpBusinessView.kind(e.type()), raw(e.type(), e.id()), input.fields());
     }
 
     public Object search(McpPrincipal caller, McpInputs.Assets input) {

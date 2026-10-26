@@ -35,8 +35,8 @@ class McpProtocolIntegrationTest {
     static class App {
         @Bean McpReadTools reads() {
             McpReadTools reads = mock(McpReadTools.class);
-            when(reads.tools()).thenReturn(List.of(McpTool.read("get_project", "Test project", McpInputs.Project.class, (caller, input) ->
-                    Map.of("id", McpScope.id(input.dramaId()), "authenticated", caller.allProjects()))));
+            when(reads.tools()).thenReturn(List.of(McpTool.read("get_project", "Test project", McpRecordInputs.Get.class, (caller, input) ->
+                    Map.of("id", McpScope.id(input.recordId()), "authenticated", caller.allProjects()))));
             return reads;
         }
     }
@@ -65,12 +65,12 @@ class McpProtocolIntegrationTest {
         assertEquals(200, response.statusCode(), response.body());
         JsonNode tool = json.readTree(response.body()).path("result").path("tools").get(0);
         assertEquals("get_project", tool.path("name").asText());
-        assertEquals("string", tool.path("inputSchema").path("properties").path("dramaId").path("type").asText());
+        assertEquals("string", tool.path("inputSchema").path("properties").path("recordId").path("type").asText());
         assertTrue(tool.path("annotations").path("readOnlyHint").asBoolean());
     }
 
     @Test void callsToolsWithIdentityAndPreservesProtocolAndBusinessIdTypes() throws Exception {
-        var response = request("{\"jsonrpc\":\"2.0\",\"id\":2032095628944588802,\"method\":\"tools/call\",\"params\":{\"name\":\"get_project\",\"arguments\":{\"dramaId\":\"2032095628944588801\"}}}", "Bearer " + TOKEN, null);
+        var response = request("{\"jsonrpc\":\"2.0\",\"id\":2032095628944588802,\"method\":\"tools/call\",\"params\":{\"name\":\"get_project\",\"arguments\":{\"recordId\":\"2032095628944588801\"}}}", "Bearer " + TOKEN, null);
         assertEquals(200, response.statusCode(), response.body());
         JsonNode root = json.readTree(response.body());
         assertTrue(root.path("id").isNumber(), response.body());
@@ -83,7 +83,7 @@ class McpProtocolIntegrationTest {
     }
 
     @Test void numericBusinessIdsAreRejectedAsToolErrors() throws Exception {
-        var response = request("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\",\"params\":{\"name\":\"get_project\",\"arguments\":{\"dramaId\":2032095628944588801}}}", "Bearer " + TOKEN, null);
+        var response = request("{\"jsonrpc\":\"2.0\",\"id\":10,\"method\":\"tools/call\",\"params\":{\"name\":\"get_project\",\"arguments\":{\"recordId\":2032095628944588801}}}", "Bearer " + TOKEN, null);
         assertEquals(200, response.statusCode(), response.body());
         assertTrue(json.readTree(response.body()).path("result").path("isError").asBoolean(), response.body());
     }

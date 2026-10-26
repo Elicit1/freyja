@@ -20,7 +20,10 @@ public final class McpInputs {
                          @ToolParam(required = false) Boolean publicOnly,
                          @ToolParam(required = false) String characterId, @ToolParam(required = false) String keyword,
                          @ToolParam(required = false) Integer page, @ToolParam(required = false) Integer size) {}
-    public record Asset(AssetType type, String assetId, @ToolParam(required = false) String dramaId) {}
+    public record Asset(AssetType type, String recordId, @ToolParam(required = false) String dramaId,
+                        @ToolParam(required = false) java.util.List<String> fields) {
+        public Asset(AssetType type, String recordId, String dramaId) { this(type, recordId, dramaId, null); }
+    }
     public record CharacterLooks(String characterId, @ToolParam(required = false) String dramaId,
                             @ToolParam(required = false) Integer page, @ToolParam(required = false) Integer size) {}
     public record Options(String dictType) {}

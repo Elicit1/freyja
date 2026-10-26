@@ -79,7 +79,6 @@ class CapabilityCatalogMigrationTest {
     }
 
     private CapabilityCatalogService catalog(boolean old, List<String> modes, boolean directUploads, boolean legacyUploads, boolean voiceTools) {
-        var inventory = mock(McpToolInventory.class);
         McpTool<McpInputs.Empty> tool = new McpTool<>("script_tool", "剧本工具", McpInputs.Empty.class,
                 McpTool.Effect.READ, schema(old, modes), (caller, input) -> Map.of());
         McpTool<McpInputs.Empty> healthy = new McpTool<>("status_tool", "状态工具", McpInputs.Empty.class,
@@ -93,6 +92,11 @@ class CapabilityCatalogMigrationTest {
             tools.add(new McpTool<>(name, "旧图片上传", McpInputs.Empty.class, McpTool.Effect.WRITE,
                     Map.of("type", "object", "properties", Map.of(), "additionalProperties", false), (c, i) -> Map.of()));
         if (voiceTools) tools.addAll(new McpVoiceTools(null, null, null, null, null, null, null, null).tools());
+        return catalog(tools);
+    }
+
+    private CapabilityCatalogService catalog(List<McpTool<?>> tools) {
+        var inventory = mock(McpToolInventory.class);
         when(inventory.registeredHandlers()).thenReturn(tools);
         var handlers = new CapabilityHandlers(provider(inventory), provider(List.<AgentTool<?>>of()), provider(profiles), json, new AgentJson());
         return new CapabilityCatalogService(mapper, source, new TransactionTemplate(new DataSourceTransactionManager(source)),
@@ -103,6 +107,36 @@ class CapabilityCatalogMigrationTest {
         return release.bindings().stream().filter(b -> b.consumer() == Consumer.MCP).findFirst().orElseThrow();
     }
 
+    @SuppressWarnings("unchecked")
+    @Test void shotContractUpgradePublishesRecordIdsFieldsAndOptionalScopeToBothConsumers() {
+        var metadata = new McpSchemaMetadata(json);
+        var schemas = new McpBusinessSchemas(json, metadata);
+        var legacyGet = Map.<String, Object>of("type", "object", "additionalProperties", false,
+                "properties", Map.of("dramaId", Map.of("type", "string"), "shotId", Map.of("type", "string")), "required", List.of("dramaId", "shotId"));
+        Map<String, Object> legacyDelete = new LinkedHashMap<>(schemas.singleDelete());
+        legacyDelete.put("required", List.of("requestId", "dramaId", "recordId", "expectedFingerprint"));
+        var original = catalog(List.of(
+                new McpTool<>("get_shot", "读取镜头", McpInputs.Shot.class, McpTool.Effect.READ, legacyGet, (c, i) -> Map.of()),
+                new McpTool<>("delete_shot", "删除镜头", McpRecordInputs.Delete.class, McpTool.Effect.WRITE, legacyDelete, (c, i) -> Map.of())));
+        original.initialize();
+        var upgraded = catalog(List.of(
+                new McpTool<>("get_shot", "读取镜头", McpRecordInputs.Get.class, McpTool.Effect.READ, schemas.singleGet(McpRecordType.SHOT), (c, i) -> Map.of()),
+                new McpTool<>("delete_shot", "删除镜头", McpRecordInputs.Delete.class, McpTool.Effect.WRITE, schemas.singleDelete(), (c, i) -> Map.of())));
+        upgraded.initialize();
+        var current = upgraded.current();
+        for (var binding : current.bindings()) {
+            var properties = (Map<String, Object>) binding.schema().get("properties");
+            assertFalse(((List<?>) binding.schema().get("required")).contains("dramaId"));
+            assertTrue(properties.containsKey("recordId")); assertFalse(properties.containsKey("shotId"));
+            if (binding.name().equals("get_shot")) assertTrue(properties.containsKey("fields"));
+            if (binding.consumer() == Consumer.INTERNAL_AGENT) assertFalse(properties.containsKey("dramaId"));
+        }
+        var snapshot = upgraded.agentSnapshot(AgentProfileRegistry.ASSISTANT_CODE, List.of("get_shot"));
+        assertTrue(((Map<?, ?>) snapshot.bindings().getFirst().schema().get("properties")).containsKey("fields"));
+        for (var tool : upgraded.mcpTools()) assertTrue(((Map<?, ?>) tool.schema().get("properties")).containsKey("recordId"));
+        assertTrue(((List<?>) upgraded.view().get("issues")).isEmpty());
+    }
+
     @Test void upgradeAddsVoiceToolsOnceAndPreservesExistingBindingsAndDraftRules() {
         var original = catalog(false, List.of("A", "B")); original.initialize();
         Release before = original.current();
@@ -111,7 +145,13 @@ class CapabilityCatalogMigrationTest {
         upgraded.initialize();
         Release after = upgraded.current();
         assertEquals(before.bindings().size() + 4, after.bindings().size());
-        assertTrue(after.bindings().containsAll(before.bindings()));
+        // Publishing the upgraded catalog assigns new version IDs even to unchanged contracts.
+        for (Binding previous : before.bindings()) {
+            Binding current = after.bindings().stream().filter(b -> b.id().equals(previous.id())).findFirst().orElseThrow();
+            assertEquals(new Binding(previous.id(), previous.capabilityId(), current.versionId(), previous.handlerKey(), previous.consumer(),
+                    previous.consumerCode(), previous.name(), previous.description(), previous.schema(), previous.enabled(), previous.required(),
+                    previous.contextMode(), previous.projectRequired(), previous.effect(), previous.recoveryMode()), current);
+        }
         assertTrue(upgraded.mcpTools().stream().map(McpTool::name).toList().containsAll(
                 List.of(McpVoiceTools.MODELS_TOOL, McpVoiceTools.DESIGN_TOOL)));
         Release draft = (Release) upgraded.view().get("draft");

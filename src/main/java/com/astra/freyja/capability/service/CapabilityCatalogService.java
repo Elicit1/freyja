@@ -244,8 +244,19 @@ public class CapabilityCatalogService {
     }
     private Binding migrateBinding(Binding binding, boolean draft) {
         var handler = handlers.require(binding.handlerKey());
+        if (handler.business() != null && binding.projectRequired() != handler.projectRequired()) {
+            String contract = mapper.versionContract(Long.valueOf(binding.versionId()), Long.valueOf(binding.capabilityId()));
+            if (contract == null && draft) contract = mapper.latestContract(Long.valueOf(binding.capabilityId()));
+            if (contract != null) {
+                Map<String, Object> previous = handlers.parse(contract);
+                boolean previouslyRequired = ((List<?>) previous.getOrDefault("required", List.of())).contains("dramaId");
+                if (previouslyRequired == binding.projectRequired()) binding = new Binding(binding.id(), binding.capabilityId(), binding.versionId(),
+                        binding.handlerKey(), binding.consumer(), binding.consumerCode(), binding.name(), binding.description(), binding.schema(),
+                        binding.enabled(), binding.required(), binding.contextMode(), handler.projectRequired(), binding.effect(), binding.recoveryMode());
+            }
+        }
         Map<String, Object> currentSchema = baseline(binding, handler);
-        if (hasRetiredVideoLimit(binding.schema(), currentSchema)) {
+        if (hasRetiredVideoLimit(binding.schema(), currentSchema) || retiredProjectRequirement(binding.schema(), currentSchema)) {
             String contract = mapper.versionContract(Long.valueOf(binding.versionId()), Long.valueOf(binding.capabilityId()));
             if (contract != null) {
                 Map<String, Object> previous = handlers.parse(contract);
@@ -263,6 +274,10 @@ public class CapabilityCatalogService {
             Map<String, Object> migrated = schemas.rebase(binding.name(), previous, binding.schema(), currentSchema);
             return withSchema(binding, migrated);
         }
+    }
+    private boolean retiredProjectRequirement(Map<String, Object> before, Map<String, Object> current) {
+        return before.get("required") instanceof List<?> old && old.contains("dramaId")
+                && current.get("required") instanceof List<?> next && !next.contains("dramaId");
     }
     private boolean hasRetiredVideoLimit(Object before, Object current) {
         if (before instanceof Map<?, ?> old && current instanceof Map<?, ?> next) {

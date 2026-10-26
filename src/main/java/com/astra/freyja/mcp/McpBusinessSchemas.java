@@ -58,7 +58,11 @@ public class McpBusinessSchemas {
                 for (String name : required(type)) if (!IDS.contains(name)) properties.put(name, described(nonblank(), description(type, name)));
                 if (type == McpRecordType.CHARACTER) result.put("anyOf", atLeastOne("name", "canonicalName", "displayName"));
                 if (type == McpRecordType.KEYFRAME) result.put("anyOf", atLeastOne("frameUrl", "description", "prompt"));
-            } else result.put("minProperties", 1);
+            } else {
+                result.put("minProperties", 1);
+                result.put("description", "补丁：仅传变化字段，省略保留。数组整体替换，[] 清空；characterRefs/propRefs 保留同身份项的未提交细节。内容文本用空字符串或 null 清空；其他 null 仅在对应字段 Schema 明确允许时可用。媒体 URL 用空字符串清空，directorPlan 清空受模式和创作者锁约束。");
+                if (type == McpRecordType.SHOT) result.put("examples", List.of(Map.of("negativePrompt", "blur")));
+            }
             return result;
         } catch (Exception e) { throw new IllegalStateException("业务 Schema 生成失败: " + type, e); }
     }
@@ -118,27 +122,33 @@ public class McpBusinessSchemas {
 
     public Map<String, Object> create() { return batchCreate(); }
     public Map<String, Object> singleGet(McpRecordType type) {
-        return object(Map.of("dramaId", identifier(false, false), "recordId", identifier(false, false)),
-                type.assetType() == null ? List.of("dramaId", "recordId") : List.of("recordId"));
+        return object(Map.of("dramaId", identifier(false, false), "recordId", identifier(false, false), "fields", projection(type)), List.of("recordId"));
     }
     public Map<String, Object> singleCreate(McpRecordType type) {
         return object(Map.of("requestId", requestId(), "dramaId", identifier(false, false), "data", data(type, false, true)),
                 type == McpRecordType.PROJECT ? List.of("requestId", "data") : List.of("requestId", "dramaId", "data"));
     }
     public Map<String, Object> singleUpdate(McpRecordType type) {
-        return object(Map.of("requestId", requestId(), "dramaId", identifier(false, false), "recordId", identifier(false, false),
-                "expectedFingerprint", fingerprint(), "data", data(type, false, false)),
-                List.of("requestId", "dramaId", "recordId", "expectedFingerprint", "data"));
+        Map<String, Object> properties = new LinkedHashMap<>(Map.of("requestId", requestId(), "dramaId", identifier(false, false), "recordId", identifier(false, false),
+                "expectedFingerprint", fingerprint(), "data", data(type, false, false)));
+        if (type == McpRecordType.SHOT) properties.put("fields", projection(type));
+        return object(properties, List.of("requestId", "recordId", "expectedFingerprint", "data"));
     }
     public Map<String, Object> singleDelete() {
         return object(Map.of("requestId", requestId(), "dramaId", identifier(false, false), "recordId", identifier(false, false),
-                "expectedFingerprint", fingerprint()), List.of("requestId", "dramaId", "recordId", "expectedFingerprint"));
+                "expectedFingerprint", fingerprint()), List.of("requestId", "recordId", "expectedFingerprint"));
     }
     public Map<String, Object> batchUpdate(McpRecordType type) {
         var item = object(Map.of("recordId", identifier(false, false), "expectedFingerprint", fingerprint(), "data", data(type, false, false)),
                 List.of("recordId", "expectedFingerprint", "data"));
-        return object(Map.of("requestId", requestId(), "dramaId", identifier(false, false),
-                "items", Map.of("type", "array", "minItems", 1, "maxItems", 100, "items", item)), List.of("requestId", "dramaId", "items"));
+        Map<String, Object> properties = new LinkedHashMap<>(Map.of("requestId", requestId(), "dramaId", identifier(false, false),
+                "items", Map.of("type", "array", "minItems", 1, "maxItems", 100, "items", item)));
+        if (type == McpRecordType.SHOT) properties.put("fields", projection(type));
+        return object(properties, List.of("requestId", "items"));
+    }
+    public static Map<String, Object> projection(McpRecordType type) {
+        return Map.of("type", "array", "items", Map.of("type", "string", "enum", new ArrayList<>(McpBusinessView.publicFields(type.viewKind()))),
+                "description", "仅返回所选公开顶层字段；省略返回全量；空数组仅返回 id/editFingerprint。不支持嵌套路径。");
     }
     private static Map<String, Object> requestId() { return Map.of("type", "string", "pattern", "^[A-Za-z0-9_-]{8,80}$"); }
     private static Map<String, Object> fingerprint() { return Map.of("type", "string", "pattern", "^[a-f0-9]{64}$"); }
@@ -150,7 +160,7 @@ public class McpBusinessSchemas {
                 List.of("type", "recordId", "expectedFingerprint"));
         return object(Map.of("requestId", Map.of("type", "string", "pattern", "^[A-Za-z0-9_-]{8,80}$"),
                 "dramaId", identifier(false, false), "items", Map.of("type", "array", "minItems", 1, "maxItems", 100, "items", item)),
-                List.of("requestId", "dramaId", "items"));
+                List.of("requestId", "items"));
     }
     private Map<String, Object> batchCreate() {
         List<Object> alternatives = new ArrayList<>();

@@ -69,6 +69,13 @@ public class McpScope {
             throw new BizException(409, "分镜与镜头组场次不一致");
         return s;
     }
+    public DramaShot shot(McpPrincipal caller, String recordId, String dramaId) {
+        DramaShot value = shots.selectById(id(recordId));
+        if (value == null) throw new BizException(404, "分镜不存在");
+        Long owner = project(caller, value.getDramaId().toString());
+        if (dramaId != null) belongs(owner, project(caller, dramaId));
+        return shot(value.getId(), owner);
+    }
     public static int page(Integer value) {
         if (value != null && (value < 1 || value > 100000)) throw new BizException(400, "page 必须在 1–100000 之间");
         return value == null ? 1 : value;

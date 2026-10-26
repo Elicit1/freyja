@@ -59,7 +59,7 @@ public class McpToolCatalog {
                 return result(Map.of("ok", true, "data", data == null ? Map.of() : json.value(data)), false);
             } catch (BizException e) {
                 log.warn("[MCP] tool={} rejected code={} reason={}", entry.name(), e.getCode(), e.getMessage());
-                return result(Map.of("ok", false, "error", Map.of("code", e.getCode(), "message", e.getMessage())), true);
+                return result(Map.of("ok", false, "error", McpBusinessException.error(e)), true);
             } catch (RuntimeException e) {
                 log.error("[MCP] tool={} failed", entry.name(), e);
                 return result(Map.of("ok", false, "error", Map.of("code", 500, "message", "MCP 工具执行失败，请查看服务端日志")), true);

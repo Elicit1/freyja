@@ -29,25 +29,60 @@ public class McpBusinessView {
     private final McpJson json;
     private final McpSchemaMetadata metadata;
 
-    @SuppressWarnings("unchecked")
+    public static Set<String> publicFields(Kind kind) {
+        Set<String> result = new TreeSet<>(FIELDS.get(kind));
+        result.add("editFingerprint");
+        if (kind == Kind.SHOT) result.addAll(List.of("legacyScriptPending", "refAudiosConfigured", "characterRefs", "propRefs", "refImages", "refAudios", "refVideos", "directorPlan"));
+        return result;
+    }
+
+    public void validateFields(Kind kind, List<String> fields) {
+        if (fields != null && fields.stream().anyMatch(field -> field == null || !publicFields(kind).contains(field)))
+            throw new BizException(400, "fields 只接受公开视图的顶层字段，不支持未知字段或嵌套路径");
+    }
+
+    public Map<String, Object> project(Kind kind, Object entity, List<String> fields) {
+        validateFields(kind, fields);
+        Set<String> selected = fields == null ? null : new HashSet<>(fields);
+        if (selected != null) selected.addAll(List.of("id", "editFingerprint"));
+        return projectSelected(kind, entity, selected);
+    }
+
+    public void checkFingerprint(Kind kind, com.astra.freyja.entity.BaseEntity entity, String expected, Set<String> attempted) {
+        String latest = fingerprint(entity);
+        if (expected != null && expected.equals(latest)) return;
+        Set<String> readable = new HashSet<>(attempted);
+        readable.retainAll(publicFields(kind));
+        Map<String, Object> current = project(kind, entity, new ArrayList<>(readable));
+        current.keySet().retainAll(attempted);
+        throw new McpBusinessException(409, "EDIT_CONFLICT: 内容已变动，请核验当前字段值后使用最新指纹和新的 requestId 重试",
+                Map.of("reason", "EDIT_CONFLICT", "recordId", entity.getId().toString(), "latestFingerprint", latest,
+                        "attemptedFields", new TreeSet<>(attempted), "currentValues", current));
+    }
+
     public Map<String, Object> project(Kind kind, Object entity) {
+        return project(kind, entity, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> projectSelected(Kind kind, Object entity, Set<String> selected) {
         if (entity == null) throw new BizException(404, "业务记录不存在");
         Map<String, Object> source = (Map<String, Object>) json.value(entity);
         Map<String, Object> result = new LinkedHashMap<>();
-        FIELDS.get(kind).forEach(name -> { if (source.containsKey(name)) result.put(name, source.get(name)); });
+        FIELDS.get(kind).forEach(name -> { if (source.containsKey(name) && (selected == null || selected.contains(name))) result.put(name, source.get(name)); });
         if ("0".equals(result.get("dramaId"))) result.put("dramaId", null);
         if (kind == Kind.SHOT) {
             if (entity instanceof com.astra.freyja.entity.DramaShot shot) {
-                result.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(shot));
-                result.put("legacyScriptPending", com.astra.freyja.util.UnifiedShotScript.hasLegacySpeech(shot));
-                result.put("refAudiosConfigured", shot.getRefAudiosJson() != null && !shot.getRefAudiosJson().isBlank());
+                if (selected == null || selected.contains("scriptContent")) result.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(shot));
+                if (selected == null || selected.contains("legacyScriptPending")) result.put("legacyScriptPending", com.astra.freyja.util.UnifiedShotScript.hasLegacySpeech(shot));
+                if (selected == null || selected.contains("refAudiosConfigured")) result.put("refAudiosConfigured", shot.getRefAudiosJson() != null && !shot.getRefAudiosJson().isBlank());
             }
-            result.put("characterRefs", references(source.get("characterRefsJson"), metadata.referenceFields("CHARACTER")));
-            result.put("propRefs", references(source.get("propRefsJson"), metadata.referenceFields("PROP")));
-            result.put("refImages", references(source.get("refImagesJson"), metadata.referenceFields("IMAGE")));
-            result.put("refAudios", references(source.get("refAudiosJson"), metadata.referenceFields("AUDIO")));
-            result.put("refVideos", references(source.get("refVideosJson"), metadata.referenceFields("VIDEO")));
-            result.put("directorPlan", directorPlan(source.get("directorPlanJson")));
+            if (selected == null || selected.contains("characterRefs")) result.put("characterRefs", references(source.get("characterRefsJson"), metadata.referenceFields("CHARACTER")));
+            if (selected == null || selected.contains("propRefs")) result.put("propRefs", references(source.get("propRefsJson"), metadata.referenceFields("PROP")));
+            if (selected == null || selected.contains("refImages")) result.put("refImages", references(source.get("refImagesJson"), metadata.referenceFields("IMAGE")));
+            if (selected == null || selected.contains("refAudios")) result.put("refAudios", references(source.get("refAudiosJson"), metadata.referenceFields("AUDIO")));
+            if (selected == null || selected.contains("refVideos")) result.put("refVideos", references(source.get("refVideosJson"), metadata.referenceFields("VIDEO")));
+            if (selected == null || selected.contains("directorPlan")) result.put("directorPlan", directorPlan(source.get("directorPlanJson")));
         }
         result.put("editFingerprint", fingerprint(entity));
         return result;

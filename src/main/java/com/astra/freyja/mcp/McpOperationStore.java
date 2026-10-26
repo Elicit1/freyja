@@ -26,6 +26,11 @@ public class McpOperationStore {
 
     @Transactional(rollbackFor = Exception.class)
     public Object execute(String key, String tool, Object input, Supplier<Outcome> action) {
+        return execute(key, tool, input, null, action);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Object execute(String key, String tool, Object input, McpPrincipal caller, Supplier<Outcome> action) {
         key(key);
         String hash = hash(tool + "\n" + json.write(canonical(json.value(input))));
         McpBusinessOperation proposed = new McpBusinessOperation(); proposed.setId(IdWorker.getId());
@@ -36,6 +41,7 @@ public class McpOperationStore {
         if (!tool.equals(stored.getToolName()) || !hash.equals(stored.getRequestHash()))
             throw new BizException(409, "REQUEST_ID_REUSED: 同一 requestId 不能用于不同工具或内容");
         if ("SUCCEEDED".equals(stored.getStatus())) {
+            if (caller != null) scope.authorizeProject(caller, stored.getDramaId().toString());
             try { return json.mapper().readValue(stored.getResultJson(), Object.class); }
             catch (Exception e) { throw new BizException(500, "业务请求结果记录无效"); }
         }

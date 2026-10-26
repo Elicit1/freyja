@@ -47,7 +47,7 @@ class McpReadToolsTest {
     }
 
     @Test void scopeRejectsUnauthorizedProjectsBeforeQueryingBusinessServices() {
-        var result = call("get_project", Map.of("dramaId", "2032095628944588802"));
+        var result = call("get_project", Map.of("recordId", "2032095628944588802"));
         assertTrue(result.isError());
         verifyNoInteractions(dramaService);
         verify(dramas, never()).selectById(2032095628944588802L);
@@ -55,10 +55,10 @@ class McpReadToolsTest {
 
     @Test void rejectsCrossProjectShotsAndOrphanedParents() {
         DramaShot shot = new DramaShot(); shot.setId(10L); shot.setDramaId(PROJECT + 1); when(shots.selectById(10L)).thenReturn(shot);
-        assertTrue(call("get_shot", Map.of("dramaId", Long.toString(PROJECT), "shotId", "10")).isError());
+        assertTrue(call("get_shot", Map.of("dramaId", Long.toString(PROJECT), "recordId", "10")).isError());
         verifyNoInteractions(shotService);
         shot.setDramaId(PROJECT); shot.setSceneId(11L);
-        assertTrue(call("get_shot", Map.of("dramaId", Long.toString(PROJECT), "shotId", "10")).isError());
+        assertTrue(call("get_shot", Map.of("dramaId", Long.toString(PROJECT), "recordId", "10")).isError());
     }
 
     @Test void paginationReachesSqlAndDoesNotLoadTheWholeProject() {
@@ -71,8 +71,8 @@ class McpReadToolsTest {
 
     @Test void missingUnknownAndNumericIdArgumentsAreRejected() {
         assertTrue(call("get_project", Map.of()).isError());
-        assertTrue(call("get_project", Map.of("dramaId", PROJECT)).isError());
-        assertTrue(call("get_project", Map.of("dramaId", Long.toString(PROJECT), "sql", "SELECT 1")).isError());
+        assertTrue(call("get_project", Map.of("recordId", PROJECT)).isError());
+        assertTrue(call("get_project", Map.of("recordId", Long.toString(PROJECT), "sql", "SELECT 1")).isError());
         verifyNoInteractions(dramaService);
     }
 
