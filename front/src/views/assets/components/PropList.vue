@@ -3,7 +3,7 @@
     <!-- 列表展示区（未编辑时展示） -->
     <div v-show="!isEditing" class="space-y-4">
       <!-- 筛选搜索栏 -->
-      <div class="studio-card p-4">
+      <div class="production-asset-filters studio-card p-4">
       <el-form :model="queryParams" inline class="flex flex-wrap items-center gap-2 mb-0">
         <el-form-item label="道具名称">
           <el-input
@@ -247,7 +247,7 @@
     </el-card>
 
     <!-- 分页器 -->
-    <div class="flex justify-end pt-2">
+    <div class="production-pagination flex justify-end">
       <el-pagination
         v-model:current-page="queryParams.current"
         v-model:page-size="queryParams.size"

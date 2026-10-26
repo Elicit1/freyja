@@ -70,10 +70,10 @@ import { ElMessage } from 'element-plus'
 import { shotApi } from '@/api/drama'
 import type { DirectorPlan, CameraBeat } from '@/types/drama'
 import { directorPlanLabel, directorPlanOptions } from '@/utils/director-plan-labels'
-const props = defineProps<{ shotId?: string | number; plan?: DirectorPlan | null; mode?: 'AUTO' | 'MANUAL'; revision?: number; duration?: number; shotType?: string; cameraMovement?: string; shotTypeLocked?: boolean; cameraMovementLocked?: boolean; inputsChanged?: boolean; inputHash?: string }>()
+const props = defineProps<{ shotId?: string | number; plan?: DirectorPlan | null; mode?: 'AUTO' | 'MANUAL'; revision?: number; duration?: number; shotType?: string; cameraMovement?: string; shotTypeLocked?: boolean; cameraMovementLocked?: boolean; inputsChanged?: boolean; inputHash?: string; defaultExpanded?: boolean }>()
 const emit = defineEmits<{ saved: [data: { directorPlan?: DirectorPlan; directorPlanMode: 'AUTO' | 'MANUAL'; directorPlanRevision: number; directorPlanInputHash?: string }]; dirty: [value: boolean] }>()
 const contentId = useId()
-const expanded = ref(false)
+const expanded = ref(props.defaultExpanded ?? false)
 const editing = ref(false)
 const saving = ref(false)
 const draft = ref<DirectorPlan>()

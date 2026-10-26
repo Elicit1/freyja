@@ -12,10 +12,10 @@
       >
         <!-- 统一顶部导航顶栏 (Page Header) -->
         <header
-          class="h-14 px-6 bg-[var(--surface)] border-b border-[var(--border-default)] flex items-center justify-between shadow-2xs shrink-0 z-20"
+          class="min-h-14 px-4 py-2 bg-[var(--surface)] border-b border-[var(--border-default)] flex flex-wrap items-center justify-between gap-3 shadow-2xs shrink-0 z-20"
         >
           <!-- 左侧：返回按钮 + 分割线 + 面包屑与标题 -->
-          <div class="flex items-center gap-4 min-w-0">
+          <div class="flex items-center gap-4 min-w-0 max-w-full">
             <el-button
               v-if="showBack"
               type="default"
@@ -29,7 +29,7 @@
             <div v-if="showBack" class="h-4 w-px bg-[var(--border-default)] shrink-0"></div>
 
             <div class="flex items-center gap-3 min-w-0 truncate">
-              <div v-if="breadcrumb" class="text-xs text-[var(--text-muted)] shrink-0">
+              <div v-if="breadcrumb" class="hidden xl:block text-xs text-[var(--text-muted)] shrink-0">
                 {{ breadcrumb }}
                 <span class="mx-1 text-[var(--text-muted)]">/</span>
               </div>
@@ -43,7 +43,7 @@
           </div>
 
           <!-- 右侧：操作区 Slot (保存、取消、刷新等) -->
-          <div class="flex items-center gap-2.5 shrink-0">
+          <div class="flex flex-wrap items-center gap-2 shrink-0 max-w-full">
             <slot name="actions" />
           </div>
         </header>

@@ -2,6 +2,7 @@ import './tokens.css'
 import './themes.css'
 import './element-plus.css'
 import './components.css'
+import './production.css'
 
 export * from './types'
 

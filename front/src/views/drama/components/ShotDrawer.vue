@@ -4,7 +4,8 @@
     scope="workspace"
     breadcrumb="剧作大纲与分镜 / 分镜精细工坊"
     :title="isEdit ? `分镜精细配置 - ${form.shotName || '镜头'}` : insertionAnchor ? `插入分镜（指定镜头${insertionAnchor.position === 'before' ? '前' : '后'}）` : '新增分镜镜头'"
-    max-width="max-w-6xl"
+    max-width="max-w-none"
+    content-class="!p-0 !overflow-hidden"
   >
     <template #badge>
       <StatusPill
@@ -22,42 +23,30 @@
     </template>
 
     <template #actions>
-      <el-button v-if="isEdit" type="danger" plain size="small" @click="handleDelete">
-        删除镜头
-      </el-button>
+      <el-dropdown v-if="isEdit" trigger="click" @command="handleMoreAction">
+        <el-button size="small" aria-label="更多分镜操作">更多操作 <span class="ml-1">⌄</span></el-button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="history">查看渲染历史</el-dropdown-item>
+            <el-dropdown-item command="upscale" :disabled="!form.videoUrl">视频超分</el-dropdown-item>
+            <el-dropdown-item command="interpolation" :disabled="!form.videoUrl">视频插帧</el-dropdown-item>
+            <el-dropdown-item command="delete" divided class="!text-[var(--danger)]">删除镜头</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
       <el-button size="small" @click="visible = false">取消</el-button>
-      <el-button v-if="isEdit" size="small" plain type="primary" @click="historyDrawerVisible = true">
-        🎞️ 查看渲染历史
-      </el-button>
       <el-button type="primary" size="small" :loading="saving" @click="handleSave(false)">
         保存配置
       </el-button>
       <el-button type="success" size="small" :loading="rendering" @click="handleRender">
         <el-icon class="mr-1"><VideoCamera /></el-icon> 提交渲染
       </el-button>
-      <el-button v-if="isEdit" size="small" :disabled="!form.videoUrl" @click="openVideoProcessing('VideoUpscale')">视频超分</el-button>
-      <el-button v-if="isEdit" size="small" :disabled="!form.videoUrl" @click="openVideoProcessing('FrameInterpolation')">视频插帧</el-button>
     </template>
 
-    <div v-loading="loading" class="flex flex-col gap-5 pb-6">
-      <!-- 顶部状态栏与生成模式 -->
-      <div class="studio-card p-4 flex flex-col gap-3">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <span class="text-xs font-bold text-[var(--text-secondary)]">渲染状态:</span>
-            <StatusPill
-              :status="form.renderStatus || 'disabled'"
-              :label="getStatusLabel(form.renderStatus)"
-            />
-            <span v-if="form.renderStatus === 'RENDERING'" class="text-xs text-[var(--brand)] flex items-center gap-1 font-medium">
-              <el-icon class="is-loading"><Loading /></el-icon>
-              <span>{{ form.currentNode || '渲染生成中...' }}</span>
-            </span>
-          </div>
-        </div>
-
+    <div v-loading="loading" class="shot-workspace flex h-full min-h-0 flex-col">
+      <div class="shrink-0 border-b border-[var(--border-default)] bg-[var(--surface)] px-4 py-3">
         <!-- 镜头画面生成模式分类选择 -->
-        <div class="flex items-center justify-between pt-2 border-t border-[var(--border-default)]">
+        <div class="flex flex-wrap items-center justify-between gap-3">
           <div class="flex items-center gap-2">
             <span class="text-xs font-bold text-[var(--text-secondary)]">生成模式:</span>
             <el-radio-group v-model="form.generationMode" size="small">
@@ -103,8 +92,21 @@
         </div>
       </div>
 
-      <!-- 表单主体 -->
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" label-position="top">
+      <el-tabs v-model="activeSection" class="shot-workspace-tabs shrink-0">
+        <el-tab-pane v-for="(section, index) in editorSections" :key="section.name" :name="section.name">
+          <template #label>
+            <span class="flex items-center gap-2">
+              <span class="shot-tab-number">{{ String(index + 1).padStart(2, '0') }}</span>
+              {{ section.label }}
+              <span v-if="section.name === 'assets'" class="shot-tab-count">{{ characterRefs.length + propRefs.length }}</span>
+            </span>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
+      <!-- 各分区保持挂载，切换不会丢失草稿或绕过表单校验。 -->
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" label-position="top"
+        class="shot-workspace-body min-h-0 flex-1 overflow-y-auto p-4">
+        <section v-show="activeSection === 'script'" aria-label="剧本与规格">
         <!-- 基础规格卡片 -->
         <div class="studio-card p-5">
           <h4 class="text-sm font-bold text-[var(--text-primary)] border-b border-[var(--border-default)] pb-2.5 mb-4 flex items-center gap-2">
@@ -190,6 +192,8 @@
 
         </div>
 
+        </section>
+        <section v-show="activeSection === 'assets'" class="shot-assets-grid" aria-label="角色与场景">
         <!-- 角色出场装配卡片 -->
         <div class="studio-card p-5 mt-4">
           <div class="flex items-center justify-between border-b border-[var(--border-default)] pb-2.5 mb-4">
@@ -409,7 +413,9 @@
           </el-form-item>
         </div>
 
-        <DirectorPlanEditor ref="directorEditor" :key="String(form.id || 'new') + ':' + String(visible)" class="mt-4"
+        </section>
+        <section v-show="activeSection === 'direction'" class="shot-direction-grid" aria-label="导演与提示词">
+        <DirectorPlanEditor ref="directorEditor" :key="String(form.id || 'new') + ':' + String(visible)" class="mt-4" default-expanded
           :inputs-changed="basicInputsChanged" :input-hash="form.directorPlanInputHash"
           :shot-id="form.id" :plan="parsedDirectorPlan" :mode="form.directorPlanMode" :revision="form.directorPlanRevision"
           :duration="form.duration" :shot-type="form.shotType" :camera-movement="form.cameraMovement"
@@ -520,6 +526,15 @@
           </el-form-item>
         </div>
 
+        </section>
+        <section v-show="activeSection === 'media'" aria-label="画面与参考">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-semibold">{{ form.generationMode === 'REFERENCE_MODE' ? '多模态参考素材' : '首尾帧画面' }}</h3>
+              <p class="mt-1 text-xs text-[var(--text-muted)]">{{ form.generationMode === 'REFERENCE_MODE' ? '集中管理图片、声音和视频参考。' : '配置首尾帧，或保留空白使用提示词生成。' }}</p>
+            </div>
+            <el-button size="small" @click="activeSection = 'direction'">编辑提示词 →</el-button>
+          </div>
         <!-- 多模态参考素材管理 -->
         <div v-if="form.generationMode === 'REFERENCE_MODE'" class="bg-white border border-sky-200 rounded-xl p-4 shadow-sm mt-4 space-y-4">
           <div class="flex items-center justify-between border-b border-sky-100 pb-2">
@@ -833,7 +848,16 @@
             </div>
           </div>
         </div>
+        </section>
       </el-form>
+      <div class="shot-workspace-footer shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-default)] bg-[var(--surface)] px-4 py-2">
+        <span class="text-xs text-[var(--text-muted)]">{{ currentSectionIndex + 1 }} / {{ editorSections.length }} · {{ editorSections[currentSectionIndex]?.hint }}</span>
+        <div class="flex items-center gap-2">
+          <el-button v-if="currentSectionIndex > 0" size="small" text @click="moveSection(-1)">上一步</el-button>
+          <el-button v-if="currentSectionIndex < editorSections.length - 1" size="small" plain @click="moveSection(1)">下一步：{{ editorSections[currentSectionIndex + 1]?.label }}</el-button>
+          <el-button v-else size="small" type="primary" plain :loading="saving" @click="handleSave(false)">保存配置</el-button>
+        </div>
+      </div>
     </div>
   </FullScreenPage>
 
@@ -922,7 +946,7 @@
 
 <script setup lang="ts">
 import { referenceImageUsageOptions, REFERENCE_AUDIO_TYPE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
-import { ref, reactive, computed, nextTick } from 'vue'
+import { ref, reactive, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import FullScreenPage from '@/components/common/FullScreenPage.vue'
@@ -983,6 +1007,34 @@ function handleDirectorPlanSaved(data: { directorPlan?: DirectorPlan; directorPl
   if (data.directorPlanInputHash) form.directorPlanInputHash = data.directorPlanInputHash
 }
 const visible = ref(false)
+const editorSections = [
+  { name: 'script', label: '剧本与规格', hint: '设定镜头规格、表演动作与剧本' },
+  { name: 'assets', label: '角色与场景', hint: '绑定角色、造型、道具与环境' },
+  { name: 'direction', label: '导演与提示词', hint: '规划镜头语言，生成与调整提示词' },
+  { name: 'media', label: '画面与参考', hint: '检查素材后，点击顶部提交渲染' }
+] as const
+type EditorSection = typeof editorSections[number]['name']
+const activeSection = ref<EditorSection>('script')
+const currentSectionIndex = computed(() => editorSections.findIndex(section => section.name === activeSection.value))
+
+async function resetSectionScroll() {
+  await nextTick()
+  formRef.value?.$el?.scrollTo({ top: 0 })
+}
+
+function moveSection(offset: number) {
+  const section = editorSections[currentSectionIndex.value + offset]
+  if (section) activeSection.value = section.name
+}
+
+watch(activeSection, resetSectionScroll)
+
+function handleMoreAction(command: string) {
+  if (command === 'history') historyDrawerVisible.value = true
+  else if (command === 'upscale') openVideoProcessing('VideoUpscale')
+  else if (command === 'interpolation') openVideoProcessing('FrameInterpolation')
+  else if (command === 'delete') void handleDelete()
+}
 const router = useRouter()
 const isEdit = ref(false)
 const insertionAnchor = ref<{ shotId: string | number; position: 'before' | 'after' }>()
@@ -1602,6 +1654,7 @@ function removeReferenceAudio(index: number) {
 }
 
 function openCreate(dramaId: string | number, episodeId: string | number, sceneId: string | number, nextShotNo = 1, defaultResSceneId?: string | number, defaultGroupId?: string | number, dramaAspectRatio?: string, insertion?: { shotId: string | number; position: 'before' | 'after' }) {
+  activeSection.value = 'script'
   isEdit.value = false
   insertionAnchor.value = insertion
   characterRefs.value = []
@@ -1676,6 +1729,7 @@ function copyToClipboard(text?: string, successMsg = '已复制到剪贴板') {
 }
 
 async function openEdit(id: string | number, dramaId: string | number, dramaAspectRatio?: string) {
+  activeSection.value = 'script'
   isEdit.value = true
   insertionAnchor.value = undefined
   visible.value = true
@@ -1758,20 +1812,28 @@ async function handleRender() {
 }
 
 async function handleSave(closeAfter = false): Promise<boolean> {
-  try { await directorEditor.value?.submit() } catch (e: any) { ElMessage.error(e.message || '保存导演计划失败'); return false }
+  try { await directorEditor.value?.submit() } catch (e: any) { activeSection.value = 'direction'; ElMessage.error(e.message || '保存导演计划失败'); return false }
   if (!formRef.value) return false
   if (characterRefs.value.some(item => !item.characterId || String(item.characterId) === '0')) {
+    activeSection.value = 'assets'
     ElMessage.warning('请先为所有角色卡选择人物，或移除空白角色卡')
     return false
   }
   if (propRefs.value.some(item => !item.propId || String(item.propId) === '0')) {
+    activeSection.value = 'assets'
     ElMessage.warning('请先为所有道具卡选择道具，或移除空白道具卡')
     return false
   }
   try {
     const valid = await formRef.value.validate()
     if (!valid) return false
-  } catch {
+  } catch (invalidFields) {
+    const field = Object.keys(invalidFields || {})[0]
+    if (field) {
+      activeSection.value = ['prompt', 'negativePrompt'].includes(field) ? 'direction' : 'script'
+      await nextTick()
+      formRef.value.scrollToField(field)
+    }
     return false
   }
   saving.value = true
@@ -2190,3 +2252,49 @@ defineExpose({
   visible
 })
 </script>
+
+<style scoped>
+.shot-workspace-tabs {
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.shot-workspace-tabs :deep(.el-tabs__header) { margin: 0; }
+.shot-workspace-tabs :deep(.el-tabs__nav-wrap::after) { display: none; }
+.shot-workspace-tabs :deep(.el-tabs__content) { display: none; }
+.shot-workspace-tabs :deep(.el-tabs__item) { height: 48px; font-size: 13px; }
+
+.shot-tab-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--surface-muted);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.is-active .shot-tab-number { background: var(--brand-soft); color: var(--brand); }
+.shot-tab-count { color: var(--text-muted); font-size: 11px; }
+.shot-workspace-body { scrollbar-gutter: stable; }
+.shot-workspace-body :deep(.el-form-item) { margin-bottom: 14px; }
+.shot-workspace-body :deep(.el-form-item__label) { font-size: 12px; }
+.shot-assets-grid, .shot-direction-grid { display: grid; align-items: start; gap: 16px; }
+.shot-assets-grid > .studio-card, .shot-direction-grid > .studio-card { margin-top: 0; min-width: 0; }
+
+@media (min-width: 1100px) {
+  .shot-assets-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .shot-assets-grid > :last-child { grid-column: 1 / -1; }
+  .shot-direction-grid { grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); }
+}
+
+@media (max-width: 760px) {
+  .shot-workspace-body :deep(.el-col) { flex: 0 0 100%; max-width: 100%; }
+  .shot-workspace-footer > span { display: none; }
+  .shot-workspace-tabs :deep(.el-tabs__item) { padding: 0 12px; }
+}
+</style>

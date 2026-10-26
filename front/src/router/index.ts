@@ -9,11 +9,11 @@ const routes: RouteRecordRaw[] = [
     children: [
       {
         path: 'dubbing/characters', name: 'DubbingCharacters',
-        component: () => import('@/views/dubbing/Characters.vue'), meta: { title: '角色配音' }
+        component: () => import('@/views/dubbing/Characters.vue'), meta: { title: '角色配音', productionWorkspace: true }
       },
       {
         path: 'dubbing/effects', name: 'DubbingEffects',
-        component: () => import('@/views/dubbing/Effects.vue'), meta: { title: '声音特效配置' }
+        component: () => import('@/views/dubbing/Effects.vue'), meta: { title: '声音特效配置', productionWorkspace: true }
       },
       {
         path: 'dashboard',
@@ -35,28 +35,28 @@ const routes: RouteRecordRaw[] = [
           return { path: `/assets/${paths[String(to.query.assetType || '')] || 'characters'}`, query: to.query }
         }
       },
-      { path: 'assets/characters', name: 'AssetCharacters', component: () => import('@/views/assets/Characters.vue'), meta: { title: '角色资产' } },
-      { path: 'assets/scenes', name: 'AssetScenes', component: () => import('@/views/assets/Scenes.vue'), meta: { title: '场景资产' } },
-      { path: 'assets/props', name: 'AssetProps', component: () => import('@/views/assets/Props.vue'), meta: { title: '核心道具' } },
-      { path: 'assets/keyframes', name: 'AssetKeyframes', component: () => import('@/views/assets/Keyframes.vue'), meta: { title: '关键图资产' } },
-      { path: 'assets/videos', name: 'AssetVideos', component: () => import('@/views/assets/Videos.vue'), meta: { title: '视频素材' } },
+      { path: 'assets/characters', name: 'AssetCharacters', component: () => import('@/views/assets/Characters.vue'), meta: { title: '角色资产', productionWorkspace: true } },
+      { path: 'assets/scenes', name: 'AssetScenes', component: () => import('@/views/assets/Scenes.vue'), meta: { title: '场景资产', productionWorkspace: true } },
+      { path: 'assets/props', name: 'AssetProps', component: () => import('@/views/assets/Props.vue'), meta: { title: '核心道具', productionWorkspace: true } },
+      { path: 'assets/keyframes', name: 'AssetKeyframes', component: () => import('@/views/assets/Keyframes.vue'), meta: { title: '关键图资产', productionWorkspace: true } },
+      { path: 'assets/videos', name: 'AssetVideos', component: () => import('@/views/assets/Videos.vue'), meta: { title: '视频素材', productionWorkspace: true } },
       {
         path: 'production/video-upscale',
         name: 'VideoUpscale',
         component: () => import('@/views/production/VideoUpscale.vue'),
-        meta: { title: '视频超分' }
+        meta: { title: '视频超分', productionWorkspace: true }
       },
       {
         path: 'production/frame-interpolation',
         name: 'FrameInterpolation',
         component: () => import('@/views/production/FrameInterpolation.vue'),
-        meta: { title: '视频补帧' }
+        meta: { title: '视频补帧', productionWorkspace: true }
       },
       {
         path: 'render/tasks',
         name: 'RenderTasks',
         component: () => import('@/views/task-center/index.vue'),
-        meta: { title: '任务中心' }
+        meta: { title: '任务中心', productionWorkspace: true }
       },
       {
         path: 'system/dict',

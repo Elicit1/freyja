@@ -1,46 +1,25 @@
 <template>
-  <div class="h-full flex flex-col p-6 space-y-6 overflow-y-auto bg-[var(--app-bg)]">
-    <!-- Header -->
-    <div class="flex items-center justify-between pb-4 border-b border-[var(--border-default)]">
-      <div class="flex items-center gap-3">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md">
-          <el-icon class="text-xl"><ZoomIn /></el-icon>
-        </div>
-        <div>
-          <div class="flex items-center gap-2">
-            <h1 class="text-lg font-bold text-[var(--text-primary)]">视频超分辨率增强 (Video Upscale)</h1>
-            <span
-              v-if="selectedModel"
-              class="px-2 py-0.5 text-xs font-semibold rounded bg-indigo-500/10 text-indigo-500 border border-indigo-500/20"
-            >
-              {{ selectedModel.modelName || selectedModel.modelCode }} ({{ formData.scale }}×)
-            </span>
-          </div>
-          <p class="text-xs text-[var(--text-secondary)] mt-0.5">
-            基于深度学习重建视频细节，按所选模型放大画面，并可保留原片音轨
-          </p>
-        </div>
-      </div>
-      <div class="flex items-center gap-2">
-        <el-button @click="loadHistoryTasks" :loading="loadingHistory" plain size="small">
-          <el-icon class="mr-1"><Refresh /></el-icon> 刷新任务
-        </el-button>
-        <el-button type="primary" plain size="small" @click="historyDrawer = true">
-          <el-icon class="mr-1"><List /></el-icon> 历史超分记录 ({{ totalTasks }})
-        </el-button>
-      </div>
-    </div>
-
+  <ProductionWorkspace title="视频超分" subtitle="选择视频来源、配置增强参数并预览处理结果" :icon="ZoomIn">
+    <template #tag><span v-if="selectedModel" class="studio-badge bg-[var(--brand-soft)] text-[var(--brand)]">{{ selectedModel.modelName || selectedModel.modelCode }} · {{ formData.scale }}×</span></template>
+    <template #actions>
+      <el-button :loading="loadingHistory" @click="loadHistoryTasks" :icon="Refresh">刷新</el-button>
+      <el-button @click="historyDrawer = true" :icon="List">历史记录 ({{ totalTasks }})</el-button>
+      <el-button type="primary" :loading="submitting" :disabled="isSubmitDisabled" :icon="Promotion" @click="handleSubmit">提交超分任务</el-button>
+    </template>
     <!-- Main Workspace Grid -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 items-start">
+    <div class="production-video-grid">
       <!-- Left Column: Source & Parameters (5 cols) -->
-      <div class="lg:col-span-5 space-y-5">
+      <div class="production-video-config">
+        <el-tabs v-model="activeConfigTab" aria-label="视频处理配置">
+          <el-tab-pane name="source" label="01 视频来源" />
+          <el-tab-pane name="parameters" label="02 模型与参数" />
+        </el-tabs>
         <!-- 1. Video Input Card -->
-        <el-card shadow="never" class="!bg-[var(--surface)] !border-[var(--border-default)] !rounded-xl">
+        <el-card v-show="activeConfigTab === 'source'" shadow="never" class="!bg-[var(--surface)] !border-[var(--border-default)] !rounded-xl">
           <template #header>
             <div class="flex items-center justify-between">
               <span class="font-semibold text-sm flex items-center gap-2">
-                <el-icon class="text-indigo-400"><Film /></el-icon> 1. 选择源视频文件
+                <el-icon class="text-[var(--brand)]"><Film /></el-icon> 1. 选择源视频文件
               </span>
               <el-tag v-if="videoProbe" size="small" type="success" effect="plain">
                 {{ videoProbe.width }}×{{ videoProbe.height }} @ {{ videoProbe.fps || 24 }}fps
@@ -63,7 +42,7 @@
               <!-- 已选分镜卡片 -->
               <div
                 v-if="selectedSource"
-                class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-indigo-200/80 dark:border-indigo-900/50 space-y-2.5"
+                class="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-[var(--border-default)] dark:border-indigo-900/50 space-y-2.5"
               >
                 <div class="flex items-start justify-between gap-2">
                   <div class="space-y-1 min-w-0 flex-1">
@@ -73,7 +52,7 @@
                       <span v-if="selectedSource.sceneName"> / {{ selectedSource.sceneName }}</span>
                     </div>
                     <div class="flex items-center gap-2">
-                      <span class="font-mono font-bold text-xs px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                      <span class="font-mono font-bold text-xs px-1.5 py-0.5 rounded bg-[var(--brand-soft)] dark:bg-indigo-950 text-[var(--brand)] dark:text-indigo-300">
                         S{{ selectedSource.shotNo }}
                       </span>
                       <span class="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
@@ -104,7 +83,7 @@
                     </span>
                     <span
                       v-else-if="selectedSource.sourceType === 'SHOT_VIDEO_TAKE'"
-                      class="text-indigo-600 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1"
+                      class="text-[var(--brand)] bg-[var(--brand-soft)] dark:bg-indigo-950/40 border border-[var(--border-default)] dark:border-indigo-800 text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1"
                     >
                       <span>Take #{{ selectedSource.takeNo }}</span>
                     </span>
@@ -116,8 +95,8 @@
                 </div>
 
                 <!-- 🌟 分镜成片回填设置 (选择视频时直接决定) -->
-                <div class="pt-2.5 border-t border-slate-200/80 dark:border-slate-800 space-y-1.5 bg-indigo-50/50 dark:bg-indigo-950/20 -mx-3.5 -mb-3.5 p-3 rounded-b-xl">
-                  <div class="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 flex items-center justify-between">
+                <div class="pt-2.5 border-t border-slate-200/80 dark:border-slate-800 space-y-1.5 bg-[var(--brand-soft)] dark:bg-indigo-950/20 -mx-3.5 -mb-3.5 p-3 rounded-b-xl">
+                  <div class="text-[11px] font-semibold text-[var(--brand)] dark:text-indigo-300 flex items-center justify-between">
                     <span class="flex items-center gap-1.5">🎬 成片回填策略 (选择视频时预设)</span>
                     <el-tag size="small" type="primary" effect="plain" class="!text-[10px]">自动入库</el-tag>
                   </div>
@@ -137,10 +116,10 @@
               <!-- 未选择分镜时引导卡片 -->
               <div
                 v-else
-                class="py-8 px-4 rounded-xl border-2 border-dashed border-[var(--border-default)] hover:border-indigo-400 transition-colors flex flex-col items-center justify-center space-y-2.5 cursor-pointer bg-[var(--surface-muted)]"
+                class="py-8 px-4 rounded-xl border-2 border-dashed border-[var(--border-default)] hover:border-[var(--brand)] transition-colors flex flex-col items-center justify-center space-y-2.5 cursor-pointer bg-[var(--surface-muted)]"
                 @click="openShotPicker"
               >
-                <div class="w-12 h-12 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-500 text-2xl">
+                <div class="w-12 h-12 rounded-full bg-[var(--brand-soft)] flex items-center justify-center text-[var(--brand)] text-2xl">
                   <Film />
                 </div>
                 <div class="text-xs font-semibold text-[var(--text-primary)]">
@@ -166,7 +145,7 @@
                 accept="video/mp4,video/quicktime,video/webm"
               >
                 <div v-if="uploading" class="py-8 flex flex-col items-center justify-center space-y-2">
-                  <el-icon class="text-4xl text-indigo-400 is-loading"><Loading /></el-icon>
+                  <el-icon class="text-4xl text-[var(--brand)] is-loading"><Loading /></el-icon>
                   <div class="text-xs text-[var(--text-secondary)]">正在上传视频至 MinIO 存储...</div>
                 </div>
                 <div v-else-if="formData.sourceVideoUrl" class="py-4 flex flex-col items-center justify-center space-y-2">
@@ -209,13 +188,14 @@
               <div>🔊 音频：<span class="text-[var(--text-primary)]">{{ videoProbe.hasAudio ? '包含 (' + (videoProbe.audioCodec || 'AAC') + ')' : '无音频' }}</span></div>
             </div>
           </div>
+          <template #footer><div class="flex justify-end"><el-button type="primary" plain @click="activeConfigTab = 'parameters'">下一步：模型与参数 →</el-button></div></template>
         </el-card>
 
         <!-- 2. Processing Parameters Card -->
-        <el-card shadow="never" class="!bg-[var(--surface)] !border-[var(--border-default)] !rounded-xl">
+        <el-card v-show="activeConfigTab === 'parameters'" shadow="never" class="!bg-[var(--surface)] !border-[var(--border-default)] !rounded-xl">
           <template #header>
             <span class="font-semibold text-sm flex items-center gap-2">
-              <el-icon class="text-indigo-400"><Setting /></el-icon> 2. 超分辨率模型与参数配置
+              <el-icon class="text-[var(--brand)]"><Setting /></el-icon> 2. 超分辨率模型与参数配置
             </span>
           </template>
 
@@ -297,7 +277,7 @@
               <template #label>
                 <div class="flex items-center justify-between">
                   <span>画质质量参数 (CRF)</span>
-                  <span class="font-mono text-indigo-400">{{ formData.crf }} (推荐 16)</span>
+                  <span class="font-mono text-[var(--brand)]">{{ formData.crf }} (推荐 16)</span>
                 </div>
               </template>
               <el-slider
@@ -320,34 +300,21 @@
               </div>
             </el-form-item>
 
-            <!-- Submit Action -->
-            <div class="pt-2">
-              <el-button
-                type="primary"
-                class="w-full !h-10 !text-sm font-semibold shadow-lg shadow-indigo-500/20"
-                :loading="submitting"
-                :disabled="isSubmitDisabled"
-                @click="handleSubmit"
-              >
-                <el-icon class="mr-1.5"><Promotion /></el-icon>
-                提交超分增强任务 ({{ selectedModel?.modelName || '超分' }})
-              </el-button>
-            </div>
           </el-form>
         </el-card>
       </div>
 
       <!-- Right Column: Live Execution & Player (7 cols) -->
-      <div class="lg:col-span-7 space-y-5">
+      <div class="production-video-preview">
         <!-- Active Task Banner -->
         <el-card
           v-if="currentTask && (currentTask.status === 'QUEUED' || currentTask.status === 'PROCESSING')"
           shadow="never"
-          class="!bg-indigo-950/20 !border-indigo-500/30 !rounded-xl"
+          class="!bg-[var(--brand-soft)] !border-[var(--border-default)] !rounded-xl"
         >
           <div class="flex items-center justify-between mb-3">
             <div class="flex items-center gap-2">
-              <el-icon class="text-indigo-400 is-loading text-base"><Loading /></el-icon>
+              <el-icon class="text-[var(--brand)] is-loading text-base"><Loading /></el-icon>
               <span class="font-bold text-sm text-[var(--text-primary)]">
                 任务正在执行中 ({{ currentTask.taskId }})
               </span>
@@ -376,7 +343,7 @@
           <template #header>
             <div class="flex items-center justify-between">
               <span class="font-semibold text-sm flex items-center gap-2">
-                <el-icon class="text-indigo-400"><VideoCamera /></el-icon> 视听对比与成片预览
+                <el-icon class="text-[var(--brand)]"><VideoCamera /></el-icon> 视听对比与成片预览
               </span>
               <el-radio-group v-model="activeViewMode" size="small">
                 <el-radio-button value="enhanced">✨ 超分高清产物</el-radio-button>
@@ -387,7 +354,7 @@
 
           <div class="space-y-4">
             <!-- Video Display Container -->
-            <div class="w-full aspect-video bg-black/60 rounded-lg overflow-hidden flex items-center justify-center border border-[var(--border-default)] relative group">
+            <div class="production-video-canvas w-full aspect-video rounded-lg overflow-hidden flex items-center justify-center border border-[var(--border-default)] relative group">
               <video
                 v-if="displayVideoUrl"
                 :key="displayVideoUrl"
@@ -397,8 +364,8 @@
                 loop
                 class="w-full h-full object-contain"
               />
-              <div v-else class="text-center text-slate-500 py-12 flex flex-col items-center justify-center">
-                <el-icon class="text-5xl mb-2 text-slate-600"><Film /></el-icon>
+              <div v-else class="text-center text-slate-400 py-12 flex flex-col items-center justify-center">
+                <el-icon class="text-5xl mb-2 text-slate-400"><Film /></el-icon>
                 <p class="text-xs">暂无播放内容，请在左侧选择源视频并启动超分任务</p>
               </div>
 
@@ -508,7 +475,7 @@
           <el-table-column label="源分镜/来源" width="160">
             <template #default="{ row }">
               <div v-if="row.sourceType === 'SHOT_CURRENT' || row.sourceType === 'SHOT_VIDEO_TAKE'" class="space-y-0.5">
-                <div class="flex items-center gap-1 font-mono text-[11px] font-bold text-indigo-600">
+                <div class="flex items-center gap-1 font-mono text-[11px] font-bold text-[var(--brand)]">
                   <span>S{{ row.sourceShotNo }}</span>
                   <span class="font-normal text-slate-700 truncate max-w-[90px]">{{ row.sourceShotName }}</span>
                 </div>
@@ -578,10 +545,11 @@
       ref="shotPickerRef"
       @selected="handleShotVideoSelected"
     />
-  </div>
+  </ProductionWorkspace>
 </template>
 
 <script setup lang="ts">
+import ProductionWorkspace from '@/components/workspace/ProductionWorkspace.vue'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -622,6 +590,7 @@ import ShotVideoPickerDialog, { type SelectedVideoProcessSource } from './compon
 
 // Source Input Modes
 type SourceInputMode = 'SHOT' | 'UPLOAD' | 'URL'
+const activeConfigTab = ref('source')
 const sourceInputMode = ref<SourceInputMode>('SHOT')
 const sourceModeOptions = [
   { label: '🎞️ 从分镜选择', value: 'SHOT' },

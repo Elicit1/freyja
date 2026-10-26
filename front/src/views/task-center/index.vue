@@ -1,6 +1,5 @@
 <template>
-  <div class="h-[calc(100vh-96px)] flex flex-col studio-card overflow-hidden">
-    <WorkspaceHeader
+  <ProductionWorkspace
       title="任务中心"
       subtitle="统一查看 AI 分析、图片视频渲染与视频后处理任务"
       :icon="Operation"
@@ -19,9 +18,9 @@
           <el-icon class="mr-1"><Refresh /></el-icon>刷新
         </el-button>
       </template>
-    </WorkspaceHeader>
 
-    <div class="flex-1 min-h-0 bg-[var(--app-bg)] p-6">
+
+    <div class="h-full min-h-0">
       <div class="h-full studio-card flex flex-col overflow-hidden">
         <div class="px-5 border-b border-[var(--border-default)]">
           <el-tabs v-model="activeTab">
@@ -101,7 +100,7 @@
         <pre class="min-h-32 flex-1 overflow-auto rounded-lg bg-[var(--surface-muted)] p-3 text-xs whitespace-pre-wrap break-all">{{ resultText || inspectorTask.errorMessage || '任务尚未完成' }}</pre>
       </div>
     </el-drawer>
-  </div>
+  </ProductionWorkspace>
 </template>
 
 <script setup lang="ts">
@@ -109,7 +108,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowRight, Finished, Operation, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
+import ProductionWorkspace from '@/components/workspace/ProductionWorkspace.vue'
 import StatusPill from '@/components/status/StatusPill.vue'
 import VideoRenderBatchDrawer from '@/views/drama/components/VideoRenderBatchDrawer.vue'
 import ShotVideoExportDrawer from '@/views/drama/components/ShotVideoExportDrawer.vue'

@@ -1,22 +1,20 @@
 <template>
-  <div class="h-[calc(100vh-96px)] flex flex-col studio-card overflow-hidden">
-    <WorkspaceHeader :title="page.title" :subtitle="page.subtitle" :icon="Collection">
-      <template #tag>
-        <span class="studio-badge bg-[var(--brand-soft)] text-[var(--brand)]">资产中心</span>
-        <span v-if="isShotReturnContext" class="studio-badge bg-amber-50 text-amber-700">保存后返回分镜并绑定</span>
-      </template>
-    </WorkspaceHeader>
-    <div class="flex-1 overflow-y-auto p-6 bg-[var(--app-bg)]">
+  <ProductionWorkspace :title="page.title" :subtitle="page.subtitle" :icon="Collection">
+    <template #tag>
+      <span class="studio-badge bg-[var(--brand-soft)] text-[var(--brand)]">资产中心</span>
+      <span v-if="isShotReturnContext" class="studio-badge bg-amber-50 text-amber-700">保存后返回分镜并绑定</span>
+    </template>
+    <div class="production-asset-list">
       <component :is="listComponent" ref="list" @asset-created="created" @asset-cancelled="returnToShot()" />
     </div>
-  </div>
+  </ProductionWorkspace>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Collection } from '@element-plus/icons-vue'
-import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
+import ProductionWorkspace from '@/components/workspace/ProductionWorkspace.vue'
 
 type Kind = 'character' | 'scene' | 'prop' | 'keyframe' | 'video'
 const props = defineProps<{ kind: Kind; listComponent: Component }>()

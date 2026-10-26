@@ -13,7 +13,7 @@
       </el-header>
 
       <!-- Main Content View -->
-      <el-main class="!p-6 overflow-y-auto flex-1">
+      <el-main class="min-h-0 flex-1" :class="route.meta.productionWorkspace ? '!p-4 !overflow-hidden' : '!p-6 overflow-y-auto'">
         <router-view v-slot="{ Component, route }">
           <transition name="fade-transform" mode="out-in">
             <component :is="Component" :key="route.name === 'Drama' || route.name === 'RenderTasks' || route.name === 'DubbingCharacters' ? route.path : route.fullPath" />
@@ -34,11 +34,13 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { useAppStore } from '@/store/app'
 import Sidebar from './Sidebar.vue'
 import Header from './Header.vue'
 import AgentAvatarWidget from '@/components/agent/AgentAvatarWidget.vue'
 
+const route = useRoute()
 const appStore = useAppStore()
 
 const asideWidth = computed(() => {

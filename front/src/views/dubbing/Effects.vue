@@ -1,7 +1,9 @@
 <template>
-  <div class="effects-page">
-    <header class="page-heading"><div><p class="eyebrow">SOUND EFFECTS</p><h1>特效配置</h1><p>选择语音滤镜、调整参数并自由组合，保存后可在角色配音中使用。</p></div><div><el-button @click="router.push('/dubbing/characters')">角色配音</el-button><el-button type="primary" @click="open()">创建特效</el-button></div></header>
+  <ProductionWorkspace title="声音特效" subtitle="组合语音滤镜、调整参数并试听，保存后用于角色配音" :icon="Headset" body-class="effects-table-body">
+    <template #actions><el-button @click="router.push('/dubbing/characters')">角色配音</el-button><el-button type="primary" @click="open()">创建特效</el-button></template>
+    <template #toolbar>
     <div class="search-bar"><el-input v-model="name" clearable placeholder="按特效名称模糊查询" @keyup.enter="search" /><el-button type="primary" @click="search">查询</el-button><el-button @click="name = ''; search()">重置</el-button></div>
+    </template>
     <el-alert v-if="filters.length && !filters.some(f => f.available)" title="未检测到可用的 FFmpeg 音频滤镜，请检查服务器 FFmpeg 配置。" type="warning" :closable="false" show-icon class="tool-warning" />
     <el-table :data="items" v-loading="loading" class="effect-table">
       <el-table-column prop="name" label="特效名称" min-width="160" />
@@ -9,10 +11,12 @@
       <el-table-column label="处理步骤" min-width="160"><template #default="{ row }"><span>{{ stepLabels(row) }}</span></template></el-table-column>
       <el-table-column label="状态" width="90"><template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '启用' : '停用' }}</el-tag></template></el-table-column>
       <el-table-column prop="version" label="版本" width="70" />
-      <el-table-column label="操作" width="180" fixed="right"><template #default="{ row }"><el-button text type="primary" @click="open(row)">编辑 / 试听</el-button><el-button text :type="row.enabled ? 'warning' : 'success'" @click="toggle(row)">{{ row.enabled ? '停用' : '启用' }}</el-button></template></el-table-column>
+      <el-table-column label="操作" width="220" fixed="right"><template #default="{ row }"><el-button text type="primary" @click="open(row)">编辑 / 试听</el-button><el-button text :type="row.enabled ? 'warning' : 'success'" @click="toggle(row)">{{ row.enabled ? '停用' : '启用' }}</el-button></template></el-table-column>
       <template #empty><el-empty description="暂无匹配的声音特效" /></template>
     </el-table>
+    <template #footer>
     <el-pagination v-model:current-page="current" :total="total" :page-size="10" layout="total, prev, pager, next" @current-change="load" />
+    </template>
     <el-dialog v-model="visible" :title="form.id ? '编辑声音特效' : '创建声音特效'" width="min(1040px, 95vw)" top="4vh" class="effect-config-dialog" destroy-on-close :close-on-click-modal="false" @closed="cleanupPreview">
       <el-form label-position="top" @submit.prevent>
         <div class="name-row"><el-form-item label="特效名称" required><el-input v-model="form.name" maxlength="128" show-word-limit /></el-form-item><el-form-item label="状态"><el-switch v-model="form.enabled" active-text="启用" inactive-text="停用" /></el-form-item></div>
@@ -26,9 +30,11 @@
       <el-alert title="保存模板不会改变已生成配音；配音保留生成时的参数快照。需要时可在配音卡片中应用最新模板并重新处理。" type="info" :closable="false" class="save-hint" />
       <template #footer><el-button @click="visible = false">取消</el-button><el-button type="primary" :loading="saving" @click="save">保存特效</el-button></template>
     </el-dialog>
-  </div>
+  </ProductionWorkspace>
 </template>
 <script setup lang="ts">
+import ProductionWorkspace from '@/components/workspace/ProductionWorkspace.vue'
+import { Headset } from '@element-plus/icons-vue'
 import { ref, reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -55,5 +61,5 @@ onBeforeUnmount(() => { ++queryVersion; cleanupPreview() })
 <style scoped>
 :global(.effect-config-dialog .el-dialog__body){max-height:76vh;overflow:auto}
 
-.effects-page{max-width:1450px;margin:auto}.page-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:26px}.eyebrow{font-size:11px;letter-spacing:.18em;font-weight:700;color:var(--el-color-primary);margin-bottom:6px}h1{font-size:28px;font-weight:700}.page-heading p:not(.eyebrow){font-size:13px;color:var(--el-text-color-secondary);margin-top:8px}.search-bar{display:flex;gap:12px;padding:20px;border:1px solid var(--el-border-color-light);border-radius:14px;background:var(--el-bg-color);margin-bottom:20px}.search-bar>.el-input{max-width:360px}.effect-table{border-radius:14px;border:1px solid var(--el-border-color-light)}.el-pagination{justify-content:end;margin-top:22px}.tool-warning{margin-bottom:18px}.name-row{display:grid;grid-template-columns:1fr 180px;gap:24px}.preview-section{border:1px solid var(--el-border-color-light);border-radius:12px;padding:18px;margin-top:16px}.preview-section h3{font-size:15px;font-weight:600}.preview-section p{font-size:12px;color:var(--el-text-color-secondary);margin:8px 0 14px}.players{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:18px}.players>div{min-width:0}.players label{display:block;font-size:12px;margin-bottom:10px}.players span{font-size:12px;color:var(--el-text-color-secondary)}audio{width:100%;height:38px}.save-hint{margin-top:18px}@media(max-width:700px){.page-heading{align-items:start;flex-direction:column}.name-row,.players{grid-template-columns:1fr}.search-bar{flex-wrap:wrap}.search-bar>.el-input{max-width:none;width:100%}}
+.effects-page{height:100%}.page-heading{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:26px}.eyebrow{font-size:11px;letter-spacing:.18em;font-weight:700;color:var(--el-color-primary);margin-bottom:6px}h1{font-size:28px;font-weight:700}.page-heading p:not(.eyebrow){font-size:13px;color:var(--el-text-color-secondary);margin-top:8px}.search-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.search-bar>.el-input{max-width:360px}.effect-table{flex:1;min-height:0;border-radius:var(--radius-md);border:1px solid var(--border-default)}:deep(.effects-table-body){display:flex;flex-direction:column}.el-pagination{justify-content:end;margin:0}.tool-warning{margin-bottom:18px}.name-row{display:grid;grid-template-columns:1fr 180px;gap:24px}.preview-section{border:1px solid var(--el-border-color-light);border-radius:12px;padding:18px;margin-top:16px}.preview-section h3{font-size:15px;font-weight:600}.preview-section p{font-size:12px;color:var(--el-text-color-secondary);margin:8px 0 14px}.players{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:18px}.players>div{min-width:0}.players label{display:block;font-size:12px;margin-bottom:10px}.players span{font-size:12px;color:var(--el-text-color-secondary)}audio{width:100%;height:38px}.save-hint{margin-top:18px}@media(max-width:700px){.page-heading{align-items:start;flex-direction:column}.name-row,.players{grid-template-columns:1fr}.search-bar{flex-wrap:wrap}.search-bar>.el-input{max-width:none;width:100%}}
 </style>

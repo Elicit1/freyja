@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4">
-    <el-form inline class="studio-card p-4" @submit.prevent="search">
+    <el-form inline class="production-asset-filters studio-card p-4" @submit.prevent="search">
       <el-form-item label="素材名称"><el-input v-model="query.name" placeholder="搜索视频素材" clearable @keyup.enter="search" /></el-form-item>
       <el-form-item v-if="!selection" label="所属库">
         <el-select v-model="query.dramaId" placeholder="全部所属库" clearable filterable class="!w-44" @change="query.shotId = undefined; loadFilterShots()">
@@ -47,7 +47,7 @@
       <el-table-column label="状态" width="80"><template #default="{ row }">{{ row.status === 1 ? '启用' : '停用' }}</template></el-table-column>
       <el-table-column label="操作" width="140" fixed="right"><template #default="{ row }"><el-button v-if="selection" link type="primary" @click="emit('selected', row)">使用此视频</el-button><template v-else><el-button link type="primary" @click="openAsset(row.id)">编辑</el-button><el-button link type="danger" @click="remove(row)">删除</el-button></template></template></el-table-column>
     </el-table>
-    <el-pagination v-model:current-page="query.current" v-model:page-size="query.size" :total="total" :page-sizes="[12, 24, 48]" layout="total, sizes, prev, pager, next" @current-change="load" @size-change="search" />
+    <el-pagination class="production-pagination justify-end" v-model:current-page="query.current" v-model:page-size="query.size" :total="total" :page-sizes="[12, 24, 48]" layout="total, sizes, prev, pager, next" @current-change="load" @size-change="search" />
 
     <el-drawer v-model="editorVisible" :title="editing.id ? '编辑视频素材' : '上传视频素材'" size="640px" destroy-on-close :close-on-click-modal="false" :show-close="!uploading && !saving">
       <el-form label-position="top" :disabled="uploading || saving || editorLoading" v-loading="editorLoading">
