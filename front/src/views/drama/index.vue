@@ -1,225 +1,8 @@
 <template>
-  <div class="h-[calc(100vh-96px)] flex flex-col studio-card overflow-hidden">
-    <!-- ======================================================== -->
-    <!-- 1. 短剧项目卡片画廊视图 (Gallery View) -->
-    <!-- ======================================================== -->
-    <div v-if="viewMode === 'gallery'" class="h-full flex flex-col overflow-hidden bg-[var(--app-bg)]">
-      <!-- 顶部工作区标头 -->
-      <WorkspaceHeader
-        title="短剧项目库"
-        subtitle="管理短剧设定、画幅比例与故事大纲，调度分镜卡片流生产"
-        :icon="Film"
-      >
-        <template #tag>
-          <span class="studio-badge bg-[var(--brand-soft)] text-[var(--brand)] font-mono border border-[var(--brand-soft)]">
-            共 {{ total }} 部
-          </span>
-        </template>
-        <template #actions>
-          <el-button plain @click="videoExportModalRef?.open()">视频打包下载</el-button>
-          <el-button
-            type="warning"
-            plain
-            class="!font-medium"
-            @click="handleOpenDecompose()"
-          >
-            <el-icon class="mr-1"><MagicStick /></el-icon> AI 剧本拆解
-          </el-button>
-          <el-button type="primary" :icon="Plus" class="!shadow-xs" @click="handleCreateDrama">
-            新建短剧
-          </el-button>
-        </template>
-      </WorkspaceHeader>
-
-      <!-- 顶部筛选栏 -->
-      <FilterToolbar
-        v-model="query.title"
-        search-placeholder="搜索短剧名称..."
-        @search="handleSearch"
-        @reset="handleResetQuery"
-      >
-        <template #filters>
-          <GenreInput
-            v-model="query.genre"
-            placeholder="输入或选择题材"
-            :show-suggestions="false"
-            class="!w-48"
-            @change="handleSearch"
-          />
-
-          <DictSelect
-            v-model="query.status"
-            dict-type="drama_status"
-            placeholder="项目状态"
-            clearable
-            class="!w-32"
-            @change="handleSearch"
-          />
-        </template>
-      </FilterToolbar>
-
-      <!-- 卡片列表滚动区域 -->
-      <div class="flex-1 overflow-y-auto p-6 custom-scrollbar" v-loading="loading">
-        <!-- 空状态 -->
-        <WorkspaceEmptyState
-          v-if="!loading && dramaList.length === 0"
-          type="empty"
-          title="暂无短剧项目"
-          description="设定画幅比例、题材类型与故事梗概，开启分镜卡片流与 AI 工业化生产。"
-          action-text="立即创建短剧"
-          @action="handleCreateDrama"
-        />
-
-        <!-- 卡片网格 -->
-        <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-5">
-          <!-- 新建卡片快捷入口 -->
-          <div
-            class="border-2 border-dashed border-[var(--border-default)] hover:border-[var(--brand)] hover:bg-[var(--surface-muted)]/50 rounded-xl min-h-[380px] flex flex-col items-center justify-center p-6 text-[var(--text-muted)] hover:text-[var(--brand)] transition-all cursor-pointer group select-none"
-            @click="handleCreateDrama"
-          >
-            <div class="w-14 h-14 rounded-2xl bg-[var(--surface-muted)] group-hover:bg-[var(--brand-soft)] flex items-center justify-center text-2xl mb-3 transition-colors">
-              <el-icon><Plus /></el-icon>
-            </div>
-            <span class="text-sm font-bold text-[var(--text-primary)] group-hover:text-[var(--brand)]">新建短剧项目</span>
-            <span class="text-[11px] text-[var(--text-muted)] mt-1 text-center">设定题材、画幅与故事梗概</span>
-          </div>
-
-          <!-- 短剧卡片 -->
-          <div
-            v-for="drama in dramaList"
-            :key="String(drama.id)"
-            class="studio-card overflow-hidden transition-all flex flex-col group relative"
-          >
-            <!-- 封面图与顶部标签 (海报 3:4 比例) -->
-            <div
-              class="aspect-[3/4] bg-[var(--surface-muted)] relative overflow-hidden cursor-pointer"
-              @click="enterWorkbench(drama)"
-            >
-              <img
-                v-if="drama.coverUrl"
-                :src="drama.coverUrl"
-                class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                alt="短剧封面"
-              />
-              <div
-                v-else
-                class="w-full h-full flex flex-col items-center justify-center p-4 text-center select-none text-[var(--text-muted)] bg-[var(--surface-muted)] group-hover:text-[var(--brand)] transition-colors"
-              >
-                <el-icon class="text-4xl mb-2 opacity-50"><Film /></el-icon>
-                <span class="text-xs font-bold line-clamp-2 px-2 text-[var(--text-secondary)]">{{ drama.title }}</span>
-              </div>
-
-              <!-- 悬浮阴影遮罩 -->
-              <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/30 pointer-events-none"></div>
-
-              <!-- 顶部左右标签 -->
-              <div class="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
-                <DictTag :dict-type="'drama_genre'" :value="drama.genre" size="small" class="!bg-black/60 !text-white !border-0 backdrop-blur-md" />
-                <DictTag :dict-type="'drama_status'" :value="drama.status" size="small" />
-              </div>
-
-              <!-- 底部左侧：画幅与风格 -->
-              <div class="absolute bottom-2.5 left-2.5 right-2.5 flex items-center justify-between text-[11px] text-white/90 pointer-events-none">
-                <span class="px-2 py-0.5 rounded bg-black/60 backdrop-blur-md font-mono">
-                  {{ drama.aspectRatio || '9:16' }}
-                </span>
-                <span v-if="drama.stylePreset" class="px-2 py-0.5 rounded bg-black/60 backdrop-blur-md truncate max-w-[120px]">
-                  {{ drama.stylePreset }}
-                </span>
-              </div>
-            </div>
-
-            <!-- 卡片主体内容 -->
-            <div class="p-3.5 flex-1 flex flex-col justify-between gap-3 bg-[var(--surface)]">
-              <div>
-                <div class="flex items-center justify-between mb-1">
-                  <h3
-                    class="text-sm font-bold text-[var(--text-primary)] hover:text-[var(--brand)] cursor-pointer truncate flex-1 mr-2 transition-colors"
-                    :title="drama.title"
-                    @click="enterWorkbench(drama)"
-                  >
-                    {{ drama.title }}
-                  </h3>
-                </div>
-
-                <p class="text-xs text-[var(--text-secondary)] line-clamp-2 leading-relaxed min-h-[32px]">
-                  {{ drama.synopsis || '暂无故事梗概，点击进入工作台完善剧本。' }}
-                </p>
-              </div>
-
-              <!-- 生产统计指标条 -->
-              <div class="bg-[var(--surface-muted)] rounded-lg p-2.5 space-y-1.5 border border-[var(--border-default)]">
-                <div class="flex items-center justify-between text-xs text-[var(--text-secondary)]">
-                  <span class="font-mono">集数: <strong class="text-[var(--text-primary)]">{{ drama.episodeCount || 0 }}</strong>/{{ drama.targetEpisodes }}</span>
-                  <span class="font-mono">分镜: <strong class="text-emerald-600">{{ drama.renderedShotCount || 0 }}</strong>/{{ drama.shotCount || 0 }}</span>
-                </div>
-
-                <el-progress
-                  :percentage="drama.progressPercentage || 0"
-                  :stroke-width="5"
-                  :color="customColors"
-                  :show-text="false"
-                />
-              </div>
-
-              <!-- 操作底部栏 -->
-              <div class="pt-2 border-t border-[var(--border-default)] flex items-center justify-between gap-1.5">
-                <el-button
-                  type="primary"
-                  size="small"
-                  class="flex-1 !font-medium"
-                  @click="enterWorkbench(drama)"
-                >
-                  <el-icon class="mr-1"><VideoCamera /></el-icon> 进入工作台
-                </el-button>
-
-                <el-tooltip content="为此短剧 AI 拆解剧本" placement="top">
-                  <el-button
-                    type="warning"
-                    plain
-                    size="small"
-                    class="!px-2"
-                    @click="handleOpenDecompose(drama)"
-                  >
-                    <el-icon><MagicStick /></el-icon>
-                  </el-button>
-                </el-tooltip>
-
-                <el-button
-                  type="default"
-                  size="small"
-                  class="!border-[var(--border-default)] !px-2"
-                  :icon="Edit"
-                  @click="handleEditDrama(drama.id)"
-                />
-
-                <el-button
-                  type="danger"
-                  plain
-                  size="small"
-                  class="!px-2"
-                  :icon="Delete"
-                  @click="handleDeleteDrama(drama)"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 分页控件 -->
-        <div v-if="total > (query.size || 20)" class="mt-8 flex justify-end">
-          <el-pagination
-            v-model:current-page="query.current"
-            v-model:page-size="query.size"
-            :total="total"
-            :page-sizes="[10, 20, 30, 50]"
-            layout="total, sizes, prev, pager, next, jumper"
-            @size-change="loadDramaList"
-            @current-change="loadDramaList"
-          />
-        </div>
-      </div>
-    </div>
+  <div class="h-full min-h-0 flex flex-col overflow-hidden">
+    <DramaLibrary v-if="viewMode === 'gallery'" :items="dramaList" :total="total" :loading="loading" :query="query"
+      @update:query="Object.assign(query, $event)" @search="handleSearch" @reset="handleResetQuery" @load="loadDramaList"
+      @create="handleCreateDrama" @export="videoExportModalRef?.open()" @decompose="handleOpenDecompose" @enter="enterWorkbench" @edit="handleEditDrama" @delete="handleDeleteDrama" />
 
     <!-- ======================================================== -->
     <!-- 2. 短剧工作台模式 (Workbench View: 大纲树 + 分镜工作区) -->
@@ -360,13 +143,9 @@
 import { ref, reactive, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Edit, Delete, ArrowLeft, Film, VideoCamera, MagicStick } from '@element-plus/icons-vue'
-import DictSelect from '@/components/DictSelect.vue'
-import GenreInput from '@/components/GenreInput.vue'
+import { Edit, ArrowLeft, Film, MagicStick } from '@element-plus/icons-vue'
 import DictTag from '@/components/DictTag.vue'
 import WorkspaceHeader from '@/components/workspace/WorkspaceHeader.vue'
-import FilterToolbar from '@/components/workspace/FilterToolbar.vue'
-import WorkspaceEmptyState from '@/components/workspace/WorkspaceEmptyState.vue'
 import { useRenderTaskStore } from '@/store/renderTask'
 import {
   dramaApi,
@@ -387,6 +166,7 @@ import type {
 } from '@/types/drama'
 
 // 子组件引入
+import DramaLibrary from './components/DramaLibrary.vue'
 import OutlineTree from './components/OutlineTree.vue'
 import StoryboardGrid from './components/StoryboardGrid.vue'
 import ShotVideoBatchRenderModal from './components/ShotVideoBatchRenderModal.vue'
@@ -411,7 +191,7 @@ const dramaList = ref<Drama[]>([])
 const total = ref(0)
 const query = reactive<DramaQuery>({
   current: 1,
-  size: 20,
+  size: 12,
   title: '',
   genre: '',
   status: ''

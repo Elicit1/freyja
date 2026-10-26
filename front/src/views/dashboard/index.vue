@@ -1,165 +1,55 @@
 <template>
-  <div class="space-y-6">
-    <!-- 1. 欢迎与主操作控制台 Header -->
-    <div class="studio-card p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
-      <div class="space-y-1">
-        <div class="flex items-center gap-2.5">
-          <h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight">
-            {{ greetingText }}，欢迎回到 Freyja 数字片场
-          </h1>
-          <span class="studio-badge bg-[var(--brand-soft)] text-[var(--brand)] border border-[var(--brand-soft)]">
-            AI 工业化制片
-          </span>
+  <ProductionWorkspace title="工作台概览" :subtitle="greetingText + '，从最近的项目继续创作。'" :icon="Odometer" body-class="overview-body">
+    <template #actions>
+      <el-button :loading="loading" :icon="Refresh" @click="fetchStats">刷新统计</el-button>
+      <el-button type="primary" :icon="Film" @click="router.push('/drama')">短剧项目库</el-button>
+    </template>
+    <div class="overview-metrics" :aria-busy="loading">
+      <MetricCard title="短剧项目" :value="stats.dramaCount" unit="部" :icon="Film" :sub-text="`${stats.episodeCount} 集 · ${stats.sceneCount} 场次大纲`" />
+      <MetricCard title="分镜镜头" :value="stats.shotCount" unit="镜" :icon="VideoCamera" :sub-text="`成片 ${stats.renderedVideoCount} · 首帧 ${stats.renderedImageCount}`" />
+      <MetricCard title="数字资产" :value="stats.totalAssetCount" unit="项" :icon="PictureFilled" :sub-text="`角色 ${stats.characterCount} · 场景 ${stats.sceneAssetCount} · 道具 ${stats.propCount}`" />
+      <MetricCard title="AI 提供商" :value="stats.aiProviderCount" unit="个" :icon="Cpu" :sub-text="`累计 ${stats.aiTaskCount} 次 AI 任务`" />
+    </div>
+    <div class="overview-content">
+      <section class="recent-section">
+        <div class="overview-section-heading"><h2><el-icon><Film /></el-icon> 最近编辑项目</h2><router-link to="/drama">全部项目 <el-icon><ArrowRight /></el-icon></router-link></div>
+        <el-skeleton v-if="loading && !stats.recentDramas.length" :rows="8" animated class="studio-card p-5" />
+        <div v-else-if="stats.recentDramas.length" class="recent-projects">
+          <ProjectCard v-for="drama in stats.recentDramas" :key="String(drama.id)" :drama="drama" @select="handleGoDrama" />
         </div>
-        <p class="text-xs text-[var(--text-secondary)]">
-          继续推进你的短剧剧情策划、角色定妆与并行分镜制作任务
-        </p>
-      </div>
-
-      <div class="flex items-center gap-3 shrink-0">
-        <el-button
-          :loading="loading"
-          class="!border-[var(--border-default)] !text-[var(--text-secondary)] hover:!text-[var(--text-primary)] hover:!border-[var(--border-strong)]"
-          @click="fetchStats"
-        >
-          <el-icon class="mr-1"><Refresh /></el-icon> 刷新统计
-        </el-button>
-
-        <router-link to="/drama">
-          <el-button type="primary" class="!shadow-xs">
-            <el-icon class="mr-1"><Film /></el-icon> 进入分镜工作台
-          </el-button>
-        </router-link>
-      </div>
+        <div v-else class="studio-card overview-empty"><el-icon><Film /></el-icon><h3>你的第一个故事，从这里开始</h3><p>创建短剧项目，整理剧本与角色，再开始分镜制作。</p><el-button type="primary" @click="router.push('/drama')">创建短剧项目</el-button></div>
+      </section>
+      <section><div class="overview-section-heading"><h2><el-icon><VideoCamera /></el-icon> 制作概况</h2></div>
+        <ProductionStatus :ai-ready="stats.aiServiceReady" :ai-provider-count="stats.aiProviderCount" :shot-count="stats.shotCount" :rendered-video-count="stats.renderedVideoCount" :rendered-image-count="stats.renderedImageCount" :tasks="productionTasks" />
+      </section>
     </div>
-
-    <!-- 2. 核心四大指标 (MetricCards) -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" v-loading="loading">
-      <!-- 1. 短剧项目 -->
-      <MetricCard
-        title="短剧项目总数"
-        :value="stats.dramaCount || 0"
-        unit="部"
-        :icon="Film"
-        icon-bg-class="bg-[var(--brand-soft)] text-[var(--brand)]"
-        :sub-text="`共 ${stats.episodeCount || 0} 集 · ${stats.sceneCount || 0} 场次大纲`"
-      />
-
-      <!-- 2. 分镜镜头 -->
-      <MetricCard
-        title="分镜镜头总数"
-        :value="stats.shotCount || 0"
-        unit="镜"
-        :icon="VideoCamera"
-        icon-bg-class="bg-emerald-50 text-emerald-600"
-      >
-        <template #extra>
-          <div class="flex items-center gap-1.5 text-[11px] text-emerald-600">
-            <span>成片视频 {{ stats.renderedVideoCount || 0 }}</span>
-            <span class="text-[var(--border-strong)]">·</span>
-            <span>定妆首帧 {{ stats.renderedImageCount || 0 }}</span>
-          </div>
-        </template>
-      </MetricCard>
-
-      <!-- 3. 数字资产 -->
-      <MetricCard
-        title="数字资产沉淀"
-        :value="stats.totalAssetCount || 0"
-        unit="项"
-        :icon="PictureFilled"
-        icon-bg-class="bg-amber-50 text-amber-600"
-        :sub-text="`角色 ${stats.characterCount || 0} · 场景 ${stats.sceneAssetCount || 0} · 道具 ${stats.propCount || 0}`"
-      />
-
-      <!-- 4. AI 算力与模型 -->
-      <MetricCard
-        title="AI 算力与模型"
-        :value="stats.aiProviderCount || 0"
-        unit="个提供商"
-        :icon="Cpu"
-        icon-bg-class="bg-purple-50 text-purple-600"
-        :sub-text="`累计调度 ${stats.aiTaskCount || 0} 次 AI 智能任务`"
-      />
-    </div>
-
-    <!-- 3. 主工作区布局：最近活跃短剧 (8 cols) + 制作状态集成 (4 cols) -->
-    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-      <!-- Left: 最近活跃短剧 (8 cols) -->
-      <div class="lg:col-span-8 space-y-4">
-        <div class="studio-card p-5">
-          <div class="flex items-center justify-between pb-4 border-b border-[var(--border-default)] mb-4">
-            <div class="flex items-center gap-2">
-              <el-icon class="text-base text-[var(--brand)]"><Film /></el-icon>
-              <h3 class="font-bold text-sm text-[var(--text-primary)]">最近活跃短剧项目</h3>
-            </div>
-            <router-link
-              to="/drama"
-              class="text-xs text-[var(--brand)] hover:underline font-medium flex items-center gap-1"
-            >
-              全部短剧 <el-icon><ArrowRight /></el-icon>
-            </router-link>
-          </div>
-
-          <!-- 短剧列表卡片网格 -->
-          <div
-            v-if="stats.recentDramas && stats.recentDramas.length > 0"
-            class="grid grid-cols-1 sm:grid-cols-2 gap-3.5"
-          >
-            <ProjectCard
-              v-for="drama in stats.recentDramas"
-              :key="String(drama.id)"
-              :drama="drama"
-              @select="handleGoDrama"
-            />
-          </div>
-
-          <!-- 空状态 -->
-          <div v-else class="py-14 text-center text-[var(--text-muted)] space-y-3">
-            <el-icon class="text-4xl text-[var(--text-muted)] block mx-auto"><Film /></el-icon>
-            <p class="text-xs font-medium">暂无活跃短剧记录</p>
-            <router-link to="/drama">
-              <el-button type="primary" size="small">
-                + 新建短剧或 AI 剧本拆解
-              </el-button>
-            </router-link>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right: 片场制作状态看板 (4 cols) -->
-      <div class="lg:col-span-4">
-        <ProductionStatus
-          :ai-ready="stats.aiServiceReady"
-          :ai-provider-count="stats.aiProviderCount"
-          :active-render-count="renderTaskStore.activeCount"
-        />
-      </div>
-    </div>
-  </div>
+    <section class="overview-shortcuts">
+      <router-link v-for="item in shortcuts" :key="item.to" :to="item.to" class="studio-card overview-shortcut"><span class="shortcut-icon"><component :is="item.icon" /></span><span><strong>{{ item.title }}</strong><small>{{ item.description }}</small></span><el-icon><ArrowRight /></el-icon></router-link>
+    </section>
+  </ProductionWorkspace>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import {
-  Refresh,
-  Film,
-  VideoCamera,
-  PictureFilled,
-  Cpu,
-  ArrowRight
-} from '@element-plus/icons-vue'
+import { Refresh, Film, VideoCamera, PictureFilled, Cpu, ArrowRight, Microphone, MagicStick, Odometer } from '@element-plus/icons-vue'
+import ProductionWorkspace from '@/components/workspace/ProductionWorkspace.vue'
 import MetricCard from '@/components/dashboard/MetricCard.vue'
 import ProjectCard from '@/components/dashboard/ProjectCard.vue'
 import ProductionStatus from '@/components/dashboard/ProductionStatus.vue'
-import { useRenderTaskStore } from '@/store/renderTask'
+import { useTaskCenterStore } from '@/store/taskCenter'
 import { getDashboardStats } from '@/api/dashboard'
 import type { DashboardStats } from '@/types/dashboard'
 
 const router = useRouter()
-const renderTaskStore = useRenderTaskStore()
+const taskStore = useTaskCenterStore()
+const productionTasks = computed(() => taskStore.activeTasks.filter(task => task.category === 'RENDER' || task.category === 'MEDIA_PROCESS'))
 const loading = ref(false)
+const shortcuts = [
+  { title: '角色资产', description: '管理人物、造型与视觉参考', icon: PictureFilled, to: '/assets/characters' },
+  { title: '角色配音', description: '设计声线、克隆配音与试听', icon: Microphone, to: '/dubbing/characters' },
+  { title: '视频后期', description: '超分增强与平滑补帧', icon: MagicStick, to: '/production/video-upscale' }
+]
 
 const stats = ref<DashboardStats>({
   dramaCount: 0,
@@ -212,3 +102,28 @@ onMounted(() => {
   fetchStats()
 })
 </script>
+
+<style scoped>
+.overview-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.overview-content { display: grid; grid-template-columns: minmax(0, 1.8fr) minmax(300px, 1fr); gap: 20px; }
+.overview-content > * { min-width: 0; }
+.overview-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 14px; }
+h2 { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 650; }
+h2 .el-icon { color: var(--brand); }
+.overview-section-heading a { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--brand); }
+.recent-projects { display: flex; flex-direction: column; gap: 12px; }
+.overview-empty { padding: 50px 20px; text-align: center; }
+.overview-empty > .el-icon { font-size: 36px; color: var(--brand); margin-bottom: 16px; }
+.overview-empty h3 { font-size: 16px; font-weight: 600; }
+.overview-empty p { font-size: 12px; color: var(--text-muted); margin: 12px 0 20px; }
+.overview-shortcuts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+.overview-shortcut { display: flex; align-items: center; gap: 12px; padding: 14px; }
+.shortcut-icon { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; background: var(--brand-soft); color: var(--brand); flex-shrink: 0; }
+.shortcut-icon > svg { width: 22px; height: 22px; }
+.overview-shortcut > span:nth-child(2) { min-width: 0; }
+.overview-shortcut strong { display: block; font-size: 14px; color: var(--text-primary); }
+.overview-shortcut small { display: block; font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+.overview-shortcut > .el-icon { margin-left: auto; color: var(--brand); }
+@media (max-width: 1200px) { .overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .overview-content { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 800px) { .overview-shortcuts { grid-template-columns: minmax(0, 1fr); } }
+</style>

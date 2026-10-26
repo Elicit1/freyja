@@ -1,5 +1,5 @@
 export interface RecentDramaItem {
-  id: number
+  id: string | number
   title: string
   genre?: string
   coverUrl?: string

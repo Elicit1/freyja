@@ -19,13 +19,13 @@ const routes: RouteRecordRaw[] = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/dashboard/index.vue'),
-        meta: { title: '工作台概览' }
+        meta: { title: '工作台概览', productionWorkspace: true }
       },
       {
         path: 'drama',
         name: 'Drama',
         component: () => import('@/views/drama/index.vue'),
-        meta: { title: '剧作大纲与分镜' }
+        meta: { title: '剧作大纲与分镜', productionWorkspace: true }
       },
       {
         path: 'assets',
