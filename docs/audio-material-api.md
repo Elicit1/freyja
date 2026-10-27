@@ -64,3 +64,29 @@
 音频顺序对应 `<Audio N>`。来源、种类、关系与说明进入 `ReferenceManifest`、AI 提示词生成、Java 的结构化 `references` 和网关的 `ReferenceBinding`；音频继续接入现有 H3 AUDIO 条件输入。完整复用等关系通过 H3 提示词表达，并非后端强行混音。
 
 启动时使用幂等 SQL 自动创建 `res_audio`；独立升级脚本为 `src/main/resources/sql/asset-audio-library.sql`，Docker 首次初始化也包含该表。
+
+## MCP 工具
+
+新增六个工具，进入现有运行时工具目录、读写权限和能力版本管理；已有能力配置升级时补充新工具并保留原开关及草稿。
+
+| 工具 | 参数与行为 |
+| --- | --- |
+| `search_audio_assets` | 传授权 `dramaId`，查询当前项目与公共库，默认仅启用；或 `publicOnly=true` 且省略 `dramaId`。支持 `keyword/audioKind/shotId/status/page/size`，每页最多 50 条 |
+| `get_audio_asset` | `recordId`；可选 `dramaId/fields`，返回公开元数据与 `editFingerprint` |
+| `update_audio_asset` | `requestId/recordId/expectedFingerprint/data`；可选 `dramaId/fields`。补丁仅修改元数据，省略保留、可选文本/语言/分镜关联传 `null` 清空；文件与项目不可替换 |
+| `delete_audio_asset` | `requestId/recordId/expectedFingerprint`；可选 `dramaId`。逻辑删除，保留镜头历史快照 |
+| `prepare_asset_audio_upload` | `requestId/dramaId/fileName/contentType/size/sha256/audioKind/referenceType`；可选 `shotId/referenceDescription/text/language`。申请 15 分钟私有暂存桶直传凭证 |
+| `complete_asset_audio_upload` | 独立 `requestId`、原 `uploadId` 与授权 `dramaId`。固定 ETag 后校验大小、类型、SHA-256、真实音轨及 2～15 秒时长，入库并返回 `audioAssetId/url/reference` |
+
+上传格式及 MIME：MP3=`audio/mpeg`、WAV=`audio/wav`、FLAC=`audio/flac`、M4A=`audio/mp4`、OGG=`audio/ogg`，最大 30 MiB。通过返回的 `uploadUrl/fields` 发送真实 multipart 文件，所有字段保持原样，`file` 最后发送。工具参数不接受本地文件路径或音频 Base64。一次流程对应一个音频；相同上传即使用不同确认请求 ID，也只入库一次。失败、超时可用原确认请求重试；事务回滚保留暂存文件以便恢复。
+
+公共库通过 MCP 只读；上传、编辑、删除均须写权限及所属项目授权。编辑/删除前先读取指纹，冲突后检查当前值并用新请求 ID 重试。所有写请求遵守现有幂等操作日志，确认不自动改写镜头。
+
+镜头引用步骤：
+
+1. 查询 `get_business_options(dictType="audio_asset_kind")` 和 `reference_audio_type`，明确素材种类与 H3 关系。
+2. 搜索并读取现有音频，或完成直传取得真实素材 ID、URL、时长；音乐/音效不要求角色。
+3. 使用 `update_shot` 或 `batch_update_shots` 写入有序 `refAudios`；上传返回的 `reference` 可直接作为一项使用。数组整体替换，先读取并保留已有项，`[]` 明确清空。
+4. 用 `get_shot` 读回核验；总长仍不超过 15 秒。仅在创作者明确要求时复用原声或引入配乐，音乐用途写入 `referenceDescription` 与最终 H3 提示词的 `non_diegetic_music`。MCP 镜头 CRUD 没有 `includeBgm` 字段；该开关仅属于工作台的提示词生成请求。
+
+后端重启后刷新 MCP 工具列表即可发现新增入口；实际发布仍受服务总开关、写权限及各工具开关约束。

@@ -107,6 +107,26 @@ class CapabilityCatalogMigrationTest {
         return release.bindings().stream().filter(b -> b.consumer() == Consumer.MCP).findFirst().orElseThrow();
     }
 
+    @Test void audioToolsAreAddedOnUpgradeWithoutResettingPublishedSwitchesOrDrafts() {
+        var schema = Map.<String, Object>of("type", "object", "properties", Map.of(), "additionalProperties", false);
+        McpTool<McpInputs.Empty> existing = new McpTool<>("status_tool", "状态工具", McpInputs.Empty.class, McpTool.Effect.READ, schema, (c, i) -> Map.of());
+        var original = catalog(List.of(existing)); original.initialize();
+        original.switchMcpTool("status_tool", false);
+        var before = original.current(); String historical = mapper.release(Long.valueOf(before.id())).getPayloadJson();
+        original.save(new Edit(mapper.state().getRevision(), before.bindings(), "待发布说明", "待发布规则"));
+        var tools = new ArrayList<McpTool<?>>(); tools.add(existing);
+        var names = new HashSet<>(McpAudioAssets.TOOL_NAMES);
+        names.add(McpPresignedAudioUploads.PREPARE_TOOL); names.add(McpPresignedAudioUploads.COMPLETE_TOOL);
+        for (String name : names) tools.add(new McpTool<>(name, "音频素材", McpInputs.Empty.class,
+                name.startsWith("search_") || name.startsWith("get_") ? McpTool.Effect.READ : McpTool.Effect.WRITE, schema, (c, i) -> Map.of()));
+        var upgraded = catalog(tools); upgraded.initialize();
+        assertTrue(upgraded.current().bindings().stream().filter(b -> b.consumer() == Consumer.MCP).map(Binding::name).collect(java.util.stream.Collectors.toSet()).containsAll(names));
+        assertFalse(upgraded.current().bindings().stream().filter(b -> b.consumer() == Consumer.MCP && b.name().equals("status_tool")).findFirst().orElseThrow().enabled());
+        var draft = (Release) upgraded.view().get("draft");
+        assertEquals("待发布说明", draft.instructions()); assertEquals("待发布规则", draft.rules());
+        assertEquals(historical, mapper.release(Long.valueOf(before.id())).getPayloadJson());
+    }
+
     @SuppressWarnings("unchecked")
     @Test void shotContractUpgradePublishesRecordIdsFieldsAndOptionalScopeToBothConsumers() {
         var metadata = new McpSchemaMetadata(json);

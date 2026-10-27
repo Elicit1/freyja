@@ -377,7 +377,7 @@
     "directorPlanMode": "可选高级编辑；不使用导演计划时省略，更新时保留已有计划。AUTO 仅重置，不启动 AI。",
     "PROJECT.genre": "题材为最长64字符的自由文本；drama_genre 字典仅提供建议，可使用已有字典值或自定义题材名称（如都市复仇、悬疑轻喜剧）。未收录的题材直接填写清晰名称，无需编造枚举代码。剧集继承项目题材。",
     "PROJECT.aspectRatio": "创建必填；先读取 get_business_options(dictType=drama_aspect_ratio)。用户未指定时请用户选择已有比例，再创建；仅在用户明确交给 AI 决定时优先选启用的16:9，不自行默认9:16或编造比例。修改时省略保留原值。",
-    "SHOT.prompt": "REFERENCE_MODE 使用 prompt + refImages：最终 H3 六段式视频卡片含 subject_definitions、summary、retention_analysis、detailed_description、overall_soundscape、non_diegetic_music。保留音乐段落但明确写 none / no background music，不生成背景音乐或配乐，方便后期剪辑；overall_soundscape 仅保留对白、环境声和必要音效，refAudios 不引入 BGM。先读取 h3-prompt-writing Skill 及 references/ref-en.txt；<Picture N>/<Audio N> 对应媒体数组第 N 项。",
+    "SHOT.prompt": "REFERENCE_MODE 使用 prompt + refImages：最终 H3 六段式视频卡片含 subject_definitions、summary、retention_analysis、detailed_description、overall_soundscape、non_diegetic_music。默认关闭背景配乐，保留音乐段落并明确写 N/A 或 none / no background music；overall_soundscape 保留对白、环境声和必要音效。创作者明确需要配乐时在提示词的non_diegetic_music及参考说明中写明音乐用途与关系；分类本身不代表创作者要求配乐。先读取 h3-prompt-writing Skill 及 references/ref-en.txt；<Picture N>/<Audio N> 对应媒体数组第 N 项。",
     "SHOT.videoPrompt": "FIRST_LAST_FRAME 使用 videoPrompt：最终 H3 三段式视频卡片含 integrated_multimodal_description、overall_soundscape、non_diegetic_music。保留音乐段落但明确写 none / no background music，不生成背景音乐或配乐，方便后期剪辑；overall_soundscape 仅保留对白、环境声和必要音效。先读取 h3-prompt-writing Skill 及 references/base-en.txt；不能仅填写图片提示词后宣称视频卡片完成。",
     "SHOT.firstFramePrompt": "首尾帧模式的图片提示词，可省略；已有图片可直接保存对应 URL。",
     "SHOT.endFramePrompt": "首尾帧模式的图片提示词，可省略；已有图片可直接保存对应 URL。",
@@ -401,7 +401,9 @@
     "IMAGE.characterId": "显式人物弱绑定；CHARACTER_LOOK/CHARACTER_REFERENCE 必填，UPLOAD 可按需关联，画外人物也可绑定。",
     "IMAGE.usageRole": "必填，必须明确选择参考图在本镜头中的用途，仅允许列出的下拉用途值，不得留空或自行创造。身份/造型细分约束填写 referenceRole。KEYFRAME 来源只允许七种关键图用途。",
     "IMAGE.sourceType": "人物身份图用 CHARACTER；人物造型图用 CHARACTER_LOOK（兼容 CHARACTER_REFERENCE，保存为 CHARACTER_REFERENCE）；二者 sourceId 含义不同。",
-    "AUDIO.audioUrl": "必填的实际参考音频 URL，选择配音中心音频时同时提交 audioId 与 characterId。",
+    "AUDIO.audioUrl": "必填的实际参考音频 URL。音频素材库提交 resAudioId；配音中心提交 audioId 与 characterId；两种来源 ID 互斥。",
+    "AUDIO.resAudioId": "音频素材库的真实字符串ID，通过search_audio_assets/get_audio_asset或complete_asset_audio_upload取得；必须来自公共库或当前项目且启用，URL须与归档一致。",
+    "AUDIO.audioKind": "素材种类快照，来自音频素材记录；不是H3参考关系，也不会自动开启配乐。",
     "AUDIO.duration": "可选的真实秒数；已知音频总长不超过15秒，不会猜测时长。",
     "SHOT.refImages": "按提交顺序保存；第1项对应 <Picture 1>。与 prompt 一起更新以保持图号一致，不会根据文字猜测主体绑定。",
     "SHOT.refAudios": "按提交顺序保存；第1项对应 <Audio 1>。只关联已有音频，不生成声音。",
@@ -451,6 +453,10 @@
       }
     },
     "AUDIO": {
+      "audioKind": {
+        "type": ["string", "null"],
+        "x-freyja-options": "audio_asset_kind"
+      },
       "id": {
         "type": "string",
         "pattern": ".*\\S.*",
@@ -652,6 +658,40 @@
       {
         "value": "STYLE",
         "label": "风格"
+      }
+    ],
+    "audio_asset_kind": [
+      {
+        "value": "VOICE",
+        "label": "音色与表达"
+      },
+      {
+        "value": "DIALOGUE",
+        "label": "对白与旁白"
+      },
+      {
+        "value": "LYRICS",
+        "label": "歌词与歌声"
+      },
+      {
+        "value": "MUSIC",
+        "label": "背景音乐"
+      },
+      {
+        "value": "SOUND_EFFECT",
+        "label": "音效与环境声"
+      },
+      {
+        "value": "RHYTHM",
+        "label": "节拍与节奏"
+      },
+      {
+        "value": "CONTINUITY",
+        "label": "声音连续性"
+      },
+      {
+        "value": "FULL_TRACK",
+        "label": "完整音轨"
       }
     ],
     "reference_audio_language": [

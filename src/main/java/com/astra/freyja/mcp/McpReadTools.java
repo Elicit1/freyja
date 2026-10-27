@@ -49,7 +49,7 @@ public class McpReadTools {
                     return assets.search(c, new Assets(AssetType.CHARACTER_LOOK, e.dramaId() == null ? null : e.dramaId().toString(),
                             e.dramaId() == null, i.characterId(), null, i.page(), i.size()));
                 }),
-                new McpTool<>("get_business_options", "按 dictType 读取业务选项。参考图用途查询 reference_image_usage_role；音频参考关系查询 reference_audio_type；其他名称见 dictType 枚举。固定选项与写入 Schema 共用定义；drama_genre 为可自定义题材建议。关联 ID 通过 search/get/list 工具读取真实记录，不得编造。", Options.class, McpTool.Effect.READ, businessOptions.querySchema(), this::options)
+                new McpTool<>("get_business_options", "按 dictType 读取业务选项。参考图用途查询 reference_image_usage_role；音频参考关系查询 reference_audio_type；音频素材种类查询 audio_asset_kind；其他名称见 dictType 枚举。固定选项与写入 Schema 共用定义；drama_genre 为可自定义题材建议。关联 ID 通过 search/get/list 工具读取真实记录，不得编造。", Options.class, McpTool.Effect.READ, businessOptions.querySchema(), this::options)
         );
     }
 

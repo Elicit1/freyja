@@ -12,7 +12,7 @@ import java.util.*;
 @Component
 @RequiredArgsConstructor
 public class McpBusinessView {
-    public enum Kind { PROJECT, EPISODE, SCENE, SHOT_GROUP, SHOT, CHARACTER, CHARACTER_LOOK, RESOURCE_SCENE, PROP, KEYFRAME, VIDEO_TAKE }
+    public enum Kind { PROJECT, EPISODE, SCENE, SHOT_GROUP, SHOT, CHARACTER, CHARACTER_LOOK, RESOURCE_SCENE, PROP, KEYFRAME, VIDEO_TAKE, AUDIO_ASSET }
     private static final Map<Kind, Set<String>> FIELDS = Map.ofEntries(
             Map.entry(Kind.PROJECT, fields("id,title,coverUrl,genre,targetEpisodes,aspectRatio,stylePreset,styleTone,synopsis,status,sortOrder,remark,totalEpisodes,totalScenes,totalShots,renderedShots,progressPercentage")),
             Map.entry(Kind.EPISODE, fields("id,dramaId,episodeNo,title,summary,scriptContent,targetDuration,actualDuration,status,sortOrder,remark")),
@@ -24,6 +24,7 @@ public class McpBusinessView {
             Map.entry(Kind.RESOURCE_SCENE, fields("id,dramaId,name,description,coverUrl,referenceImageUrl,sceneType,timeOfDay,weatherAtmosphere,sortOrder,status,remark,scenePrompt,negativePrompt")),
             Map.entry(Kind.PROP, fields("id,dramaId,name,propType,description,coverUrl,sortOrder,status,remark,propPrompt")),
             Map.entry(Kind.KEYFRAME, fields("id,dramaId,shotId,name,frameType,description,frameUrl,sourceType,aspectRatio,sortOrder,status,remark,prompt,negativePrompt")),
+            Map.entry(Kind.AUDIO_ASSET, fields("id,dramaId,shotId,name,description,audioUrl,originalFilename,fileSize,duration,audioKind,text,language,sourceType,sortOrder,status,remark")),
             Map.entry(Kind.VIDEO_TAKE, fields("id,shotId,takeNo,videoUrl,current,size,duration,firstFrameUrl,endFrameUrl,createTime"))
     );
     private final McpJson json;

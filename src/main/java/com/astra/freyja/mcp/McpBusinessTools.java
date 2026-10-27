@@ -33,6 +33,8 @@ public class McpBusinessTools {
     private final ShotVideoTakeService takes;
     private final McpPresignedImageUploads presignedImageUploads;
     private final McpPresignedVideoUploads presignedVideoUploads;
+    private final McpPresignedAudioUploads presignedAudioUploads;
+    private final McpAudioAssets audioAssets;
 
     public List<McpTool<?>> tools() {
         return allTools().stream().filter(tool -> properties.isWriteEnabled() ||
@@ -60,6 +62,9 @@ public class McpBusinessTools {
             tools.add(write("reorder_group_shots", "按给定完整 shotIds 重排镜头组内分镜，不修改镜头内容。不接受跨组/重复/缺少的分镜。", McpBatchInputs.Reorder.class, null, this::reorder));
             tools.add(write("select_shot_video_version", "将分镜已有视频版本选为当前生效视频，复用历史版本选择和尾帧缓存失效规则；不生成或处理视频。", McpBatchInputs.SelectVideo.class, null, this::selectVersion));
         }
+        tools.add(presignedAudioUploads.prepareTool());
+        tools.add(presignedAudioUploads.completeTool());
+        tools.addAll(audioAssets.tools());
         tools.addAll(recordTools.tools());
         return tools;
     }
