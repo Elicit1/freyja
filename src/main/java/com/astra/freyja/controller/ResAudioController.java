@@ -15,14 +15,9 @@ public class ResAudioController {
     @GetMapping("/page") public R<Page<ResAudioVO>> page(ResAudioQuery query) { return R.ok(service.page(query)); }
     @GetMapping("/{id}") public R<ResAudioVO> get(@PathVariable Long id) { return R.ok(service.getById(id)); }
     @PostMapping("/upload") public R<ResAudioVO> upload(@RequestParam("file") MultipartFile file,
-            @RequestParam(value = "name", required = false) String name,
-            @RequestParam(value = "dramaId", required = false) Long dramaId,
-            @RequestParam(value = "shotId", required = false) Long shotId,
-            @RequestParam(value = "sourceType", defaultValue = "MANUAL_UPLOAD") String sourceType,
-            @RequestParam("audioKind") String audioKind,
-            @RequestParam(value = "text", required = false) String text,
-            @RequestParam(value = "language", required = false) String language) {
-        return R.ok(service.upload(file, name, dramaId, shotId, sourceType, audioKind, text, language));
+            @ModelAttribute ResAudioDTO metadata,
+            @RequestParam(value = "sourceType", defaultValue = "MANUAL_UPLOAD") String sourceType) {
+        return R.ok(service.upload(file, metadata, sourceType));
     }
     @PutMapping public R<Void> update(@RequestBody ResAudioDTO dto) { service.update(dto); return R.ok(); }
     @DeleteMapping("/{id}") public R<Void> delete(@PathVariable Long id) { service.delete(id); return R.ok(); }

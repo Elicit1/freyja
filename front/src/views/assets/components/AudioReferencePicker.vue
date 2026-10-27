@@ -5,7 +5,7 @@
       <el-button @click="voiceVisible = true">从配音中心选择角色声音</el-button>
     </div>
     <el-alert title="音频种类用于整理素材。请为当前镜头明确选择参考关系与用途；一个素材可以承担多个用途。" type="info" :closable="false" class="mb-4" />
-    <p class="text-xs text-[var(--text-muted)] mb-4">如需背景音乐，请同时开启镜头的背景配乐选项；音频参考仍遵循镜头中的配乐设置。</p>
+    <p class="text-xs text-[var(--text-muted)] mb-4">如需使用背景音乐，请在参考说明与镜头提示词中明确音乐用途。</p>
     <div class="max-h-[48vh] overflow-auto">
       <AudioList v-if="modelValue" :key="String(dramaId || '0')" selection :drama-id="dramaId" :shot-id="shotId" @selected="choose" />
     </div>
@@ -16,7 +16,7 @@
         <el-option v-for="character in characters" :key="String(character.id)" :value="String(character.id)" :label="character.name" />
       </el-select>
       <el-select v-model="relation" placeholder="请选择参考关系" class="w-full">
-        <el-option v-for="option in REFERENCE_AUDIO_TYPE_OPTIONS" :key="option.value" :value="option.value" :label="`${option.label} (${option.value})`" />
+        <el-option v-for="option in REFERENCE_AUDIO_TYPE_OPTIONS" :key="option.value" :value="option.value" :label="option.label" />
       </el-select>
       <p class="text-xs text-[var(--text-muted)]">{{ REFERENCE_AUDIO_TYPE_OPTIONS.find(option => option.value === relation)?.description }}</p>
       <el-input v-model="description" type="textarea" :rows="2" maxlength="1000" show-word-limit placeholder="明确参考哪些声音特征、复用哪个时间段或声音层，以及需要衔接的内容" />

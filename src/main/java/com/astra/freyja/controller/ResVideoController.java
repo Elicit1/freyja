@@ -15,11 +15,9 @@ public class ResVideoController {
     @GetMapping("/page") public R<Page<ResVideoVO>> page(ResVideoQuery query) { return R.ok(service.page(query)); }
     @GetMapping("/{id}") public R<ResVideoVO> get(@PathVariable Long id) { return R.ok(service.getById(id)); }
     @PostMapping("/upload") public R<ResVideoVO> upload(@RequestParam("file") MultipartFile file,
-            @RequestParam(value = "name", required = false) String name,
-            @RequestParam(value = "dramaId", required = false) Long dramaId,
-            @RequestParam(value = "shotId", required = false) Long shotId,
+            @ModelAttribute ResVideoDTO metadata,
             @RequestParam(value = "sourceType", defaultValue = "MANUAL_UPLOAD") String sourceType) {
-        return R.ok(service.upload(file, name, dramaId, shotId, sourceType));
+        return R.ok(service.upload(file, metadata, sourceType));
     }
     @PutMapping public R<Void> update(@RequestBody ResVideoDTO dto) { service.update(dto); return R.ok(); }
     @DeleteMapping("/{id}") public R<Void> delete(@PathVariable Long id) { service.delete(id); return R.ok(); }

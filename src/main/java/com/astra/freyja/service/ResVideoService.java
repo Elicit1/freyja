@@ -7,6 +7,7 @@ public interface ResVideoService {
     Page<ResVideoVO> page(ResVideoQuery query);
     ResVideoVO getById(Long id);
     ResVideoVO upload(MultipartFile file, String name, Long dramaId, Long shotId, String sourceType);
+    ResVideoVO upload(MultipartFile file, ResVideoDTO metadata, String sourceType);
     void update(ResVideoDTO dto);
     void delete(Long id);
 }

@@ -50,33 +50,15 @@
     </el-table>
     <el-pagination class="production-pagination justify-end" v-model:current-page="query.current" v-model:page-size="query.size" :total="total" :page-sizes="[12, 24, 48]" layout="total, sizes, prev, pager, next" @current-change="load" @size-change="search" />
 
-    <el-drawer v-model="editorVisible" :title="editing.id ? '编辑音频素材' : '上传音频素材'" size="640px" destroy-on-close :close-on-click-modal="false" :show-close="!uploading && !saving">
-      <el-form label-position="top" :disabled="uploading || saving || editorLoading" v-loading="editorLoading">
-        <el-form-item label="素材名称" required><el-input v-model="editing.name" maxlength="200" placeholder="上传时可留空，使用文件名" /></el-form-item>
-        <div class="grid grid-cols-2 gap-4">
-          <el-form-item label="所属库"><el-select v-model="editing.dramaId" filterable class="w-full" @change="editing.shotId = undefined; loadEditorShots()"><el-option label="全局公共库" value="0" /><el-option v-for="drama in dramas" :key="String(drama.id)" :value="String(drama.id)" :label="drama.title" /></el-select></el-form-item>
-          <el-form-item label="关联分镜"><el-select v-model="editing.shotId" clearable filterable class="w-full" :disabled="!editing.dramaId || editing.dramaId === '0'"><el-option v-for="shot in editorShots" :key="String(shot.id)" :value="String(shot.id)" :label="shot.shotName || `镜 ${shot.shotNo}`" /></el-select></el-form-item>
-        </div>
-        <el-form-item label="音频种类" required><el-select v-model="editing.audioKind" placeholder="请选择种类" class="w-full"><el-option v-for="kind in AUDIO_KIND_OPTIONS" :key="kind.value" :value="kind.value" :label="kind.label" /></el-select></el-form-item>
-        <p class="text-xs text-[var(--text-muted)] mb-4">{{ AUDIO_KIND_OPTIONS.find(kind => kind.value === editing.audioKind)?.description || '种类帮助整理素材；镜头中的参考关系与具体用途需要单独选择。' }}</p>
-        <el-upload v-if="!editing.id" :show-file-list="false" :before-upload="upload" accept=".mp3,.wav,.flac,.m4a,.ogg" :disabled="uploading"><el-button type="primary" :loading="uploading">选择并上传音频</el-button><template #tip><p class="text-xs text-[var(--text-muted)] mt-2">支持 MP3 / WAV / FLAC / M4A / OGG，最大 30 MiB、10 分钟。H3 参考音频单段须为 2～15 秒，上传前请裁好所需片段。上传后即入库，可继续编辑素材信息。</p></template></el-upload>
-        <template v-else><audio :src="editing.audioUrl" controls preload="metadata" class="w-full h-12" @play="onlyPlay" /><p class="text-xs text-[var(--text-muted)] mb-4">{{ editing.originalFilename || editing.name }} · {{ editing.duration ?? '待探测' }} 秒 · {{ audioKindLabel(editing.audioKind) }}</p></template>
-        <el-form-item label="对白 / 歌词 / 转录文本"><el-input v-model="editing.text" type="textarea" :rows="3" maxlength="10000" placeholder="仅填写已知原文；不确定的内容保持为空" /></el-form-item>
-        <el-form-item label="语言"><el-select v-model="editing.language" clearable placeholder="未声明"><el-option v-for="option in REFERENCE_AUDIO_LANGUAGE_OPTIONS" :key="option.value" :value="option.value" :label="option.label" /></el-select></el-form-item>
-        <el-form-item label="素材描述"><el-input v-model="editing.description" type="textarea" :rows="4" maxlength="4000" placeholder="记录声音内容、音乐风格、音效质感、节奏或适用用途" /></el-form-item>
-        <div class="grid grid-cols-2 gap-4"><el-form-item label="排序"><el-input-number v-model="editing.sortOrder" :min="0" :max="9999" /></el-form-item><el-form-item label="状态"><el-radio-group v-model="editing.status"><el-radio :value="1">启用</el-radio><el-radio :value="0">停用</el-radio></el-radio-group></el-form-item></div>
-        <el-form-item label="备注"><el-input v-model="editing.remark" type="textarea" :rows="2" /></el-form-item>
-      </el-form>
-      <template #footer><el-button :disabled="uploading || saving" @click="editorVisible = false">返回列表</el-button><el-button type="primary" :disabled="!editing.id || uploading || editorLoading" :loading="saving" @click="save">保存配置</el-button></template>
-    </el-drawer>
+    <AudioAssetEditorDialog v-model="editorVisible" :dramas="dramas" :asset-id="editingId" :initial-drama-id="initialDramaId" :initial-shot-id="initialShotId" :source-type="selection ? 'SHOT_UPLOAD' : 'MANUAL_UPLOAD'" @saved="saved" @cancelled="emit('asset-cancelled')" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import AudioAssetEditorDialog from './AudioAssetEditorDialog.vue'
 import { AUDIO_KIND_OPTIONS, audioKindLabel } from '@/constants/audioAssetOptions'
-import { REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { audioAssetApi } from '@/api/res-audio'
 import { dramaApi, shotApi } from '@/api/drama'
 import type { DramaOption } from '@/types/drama'
@@ -87,9 +69,9 @@ const query = reactive<ResAudioQuery>({ current: 1, size: 12 })
 const audios = ref<ResAudio[]>([]), total = ref(0), loading = ref(false), view = ref('grid')
 const dramas = ref<DramaOption[]>([])
 type ShotOption = { id: string; shotName?: string; shotNo: number }
-const filterShots = ref<ShotOption[]>([]), editorShots = ref<ShotOption[]>([])
-const editorVisible = ref(false), editing = ref<Partial<ResAudio>>({}), uploading = ref(false), saving = ref(false), editorLoading = ref(false)
-let listVersion = 0, editVersion = 0, alive = true
+const filterShots = ref<ShotOption[]>([])
+const editorVisible = ref(false), editingId = ref<string>(), initialDramaId = ref('0'), initialShotId = ref<string>()
+let listVersion = 0, alive = true
 async function load() {
   const version = ++listVersion; loading.value = true
   try { const result = await audioAssetApi.getPage({ ...query, dramaId: query.dramaId || undefined, shotId: query.shotId || undefined, audioKind: query.audioKind || undefined, sourceType: query.sourceType || undefined, availableDramaId: props.selection ? String(props.dramaId || '0') : undefined, status: props.selection ? 1 : query.status }); if (alive && version === listVersion) { audios.value = result.records; total.value = result.total } }
@@ -99,23 +81,9 @@ async function load() {
 function search() { query.current = 1; void load() }
 function reset() { Object.assign(query, { current: 1, name: undefined, dramaId: undefined, shotId: undefined, sourceType: undefined, audioKind: undefined, status: undefined }); filterShots.value = []; void load() }
 async function loadFilterShots() { const id = query.dramaId; filterShots.value = id && id !== '0' ? await shotApi.getOptionsByDrama(id) : [] }
-async function loadEditorShots() { const id = editing.value.dramaId; const version = editVersion; const options = id && id !== '0' ? await shotApi.getOptionsByDrama(id) : []; if (version === editVersion && id === editing.value.dramaId) editorShots.value = options }
-function handleCreate(dramaId?: string) { editVersion++; editorLoading.value = false; editing.value = { dramaId: dramaId || query.dramaId || '0', shotId: props.selection && props.shotId ? String(props.shotId) : undefined, name: '', audioKind: undefined, status: 1, sortOrder: 0 }; editorShots.value = []; editorVisible.value = true; void loadEditorShots() }
-async function openAsset(id: string) { const version = ++editVersion; editorVisible.value = true; editorLoading.value = true; try { const row = await audioAssetApi.getById(String(id)); if (alive && version === editVersion) { editing.value = row; await loadEditorShots() } } finally { if (version === editVersion) editorLoading.value = false } }
-async function upload(file: File) {
-  if (!editing.value.audioKind) { ElMessage.warning('请先选择音频种类'); return false }
-  if (file.size > 30 * 1024 * 1024) { ElMessage.warning('音频不能超过 30 MiB'); return false }
-  uploading.value = true; const version = editVersion
-  try { const row = await audioAssetApi.upload(file, editing.value.dramaId, editing.value.shotId || undefined, editing.value.name, props.selection ? 'SHOT_UPLOAD' : 'MANUAL_UPLOAD', { ...editing.value, language: editing.value.language || undefined }); if (alive && version === editVersion) { editing.value = { ...editing.value, ...row }; ElMessage.success('音频已入库'); void load() } }
-  finally { uploading.value = false }
-  return false
-}
-async function save() {
-  if (!editing.value.name?.trim()) { ElMessage.warning('请填写素材名称'); return }
-  saving.value = true
-  try { await audioAssetApi.update({ ...editing.value, shotId: editing.value.shotId || undefined, language: editing.value.language || undefined }); editorVisible.value = false; ElMessage.success('保存成功'); emit('asset-created', String(editing.value.id)); await load() }
-  finally { saving.value = false }
-}
+function handleCreate(dramaId?: string) { editingId.value = undefined; initialDramaId.value = dramaId || query.dramaId || '0'; initialShotId.value = props.selection && props.shotId ? String(props.shotId) : undefined; editorVisible.value = true }
+function openAsset(id: string) { editingId.value = String(id); editorVisible.value = true }
+async function saved(asset: ResAudio) { emit('asset-created', String(asset.id)); await load(); if (alive && props.selection && asset.status === 1) emit('selected', asset) }
 async function remove(row: ResAudio) {
   try { await ElMessageBox.confirm(`确定删除音频素材「${row.name}」？未被其他素材、分镜或历史记录引用的音频文件也会删除。`, '删除确认', { type: 'warning' }) }
   catch { return }
@@ -123,6 +91,6 @@ async function remove(row: ResAudio) {
 }
 onMounted(() => { void load(); void dramaApi.getOptions().then(rows => dramas.value = rows) })
 function onlyPlay(event: Event) { document.querySelectorAll<HTMLAudioElement>('audio').forEach(audio => { if (audio !== event.target) audio.pause() }) }
-onBeforeUnmount(() => { alive = false; listVersion++; editVersion++ })
+onBeforeUnmount(() => { alive = false; listVersion++ })
 defineExpose({ handleCreate, openAsset })
 </script>

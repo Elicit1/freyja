@@ -111,6 +111,18 @@ public class ResVideoServiceImpl implements ResVideoService {
         finally { if (temporary != null) try { Files.deleteIfExists(temporary); } catch (Exception ignored) { } }
     }
 
+    /** Workbench confirmation saves the file and all form metadata in one transaction. */
+    @Override @Transactional(rollbackFor = Exception.class)
+    public ResVideoVO upload(MultipartFile file, ResVideoDTO metadata, String sourceType) {
+        if (metadata == null) throw new BizException(400, "请填写素材信息");
+        var material = upload(file, metadata.getName(), metadata.getDramaId(), metadata.getShotId(), sourceType);
+        var details = new ResVideoDTO(); BeanUtils.copyProperties(metadata, details);
+        details.setId(material.getId()); details.setName(material.getName());
+        details.setDramaId(material.getDramaId()); details.setShotId(material.getShotId());
+        update(details);
+        return getById(material.getId());
+    }
+
     @Override @Transactional(rollbackFor = Exception.class)
     public void update(ResVideoDTO dto) {
         ResVideo row = require(dto.getId());

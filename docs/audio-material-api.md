@@ -34,7 +34,7 @@
 | --- | --- | --- |
 | GET | `/res/audio/page` | 分页；`current/size/name/dramaId/shotId/sourceType/audioKind/status` |
 | GET | `/res/audio/{id}` | 素材详情与归属名称 |
-| POST | `/res/audio/upload` | multipart：`file`、必填 `audioKind`；可选 `name/dramaId/shotId/sourceType/text/language` |
+| POST | `/res/audio/upload` | multipart：`file`、必填 `audioKind`；可选 `name/dramaId/shotId/sourceType/text/language/description/sortOrder/status/remark` |
 | PUT | `/res/audio` | 编辑 `id/name/audioKind/dramaId/shotId/description/text/language/sortOrder/status/remark`；文件 URL 不可修改 |
 | DELETE | `/res/audio/{id}` | 逻辑删除；提交后仅清理未被其他素材、镜头或历史快照引用的文件 |
 
@@ -90,3 +90,9 @@
 4. 用 `get_shot` 读回核验；总长仍不超过 15 秒。仅在创作者明确要求时复用原声或引入配乐，音乐用途写入 `referenceDescription` 与最终 H3 提示词的 `non_diegetic_music`。MCP 镜头 CRUD 没有 `includeBgm` 字段；该开关仅属于工作台的提示词生成请求。
 
 后端重启后刷新 MCP 工具列表即可发现新增入口；实际发布仍受服务总开关、写权限及各工具开关约束。
+
+## 工作台上传与编辑交互
+
+音频使用独立的 `AudioAssetEditorDialog.vue`，视频使用独立的 `VideoAssetEditorDialog.vue`，各自维护预览、表单与保存逻辑，仅保持视觉规范一致。两个入口都使用居中弹窗，不再使用素材编辑抽屉。
+
+选文件只创建本地预览；取消不发起上传、不创建素材。确认“上传并保存”时用一次 multipart 请求同时提交文件和元数据，服务端在一个事务中保存；任一表单信息无效则回滚登记并清理未引用文件。上传期间显示实际传输进度，失败后保留文件及已填写内容。已有素材编辑不会替换原始文件。
