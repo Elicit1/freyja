@@ -268,6 +268,8 @@ export interface ShotRefImage {
 export interface ShotRefAudio {
   id?: string
   audioId?: string
+  resAudioId?: string
+  audioKind?: string
   characterId?: string | number
   characterName?: string
   audioUrl: string
@@ -546,6 +548,8 @@ export interface ShotPromptPackageVO {
       audioIndex: number
       referenceId?: string
       audioId?: string
+      resAudioId?: string
+      audioKind?: string
       characterId?: string | number
       characterName?: string
       referenceType: ShotRefAudio['referenceType']

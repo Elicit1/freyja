@@ -16,13 +16,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { Collection } from '@element-plus/icons-vue'
 import ProductionWorkspace from '@/components/workspace/ProductionWorkspace.vue'
 
-type Kind = 'character' | 'scene' | 'prop' | 'keyframe' | 'video'
+type Kind = 'character' | 'scene' | 'prop' | 'keyframe' | 'video' | 'audio'
 const props = defineProps<{ kind: Kind; listComponent: Component }>()
 const pages = {
   character: { title: '角色资产', subtitle: '管理人物身份、造型与设计图' },
   scene: { title: '场景资产', subtitle: '管理场景环境、空间设定与参考图' },
   prop: { title: '核心道具', subtitle: '管理叙事道具与设计图' },
   keyframe: { title: '关键图资产', subtitle: '管理具体帧、构图与分镜规划参考图' },
+  audio: { title: '音频素材', subtitle: '管理对白、音色、歌词、音乐、音效与节奏素材，用于镜头音频参考' },
   video: { title: '视频素材', subtitle: '上传、整理与复用视频；分镜上传的参考视频自动入库' }
 }
 const page = computed(() => pages[props.kind])

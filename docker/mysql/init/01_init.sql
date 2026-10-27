@@ -1739,3 +1739,30 @@ CREATE TABLE IF NOT EXISTS res_video (
  UNIQUE KEY uk_res_video_url (video_url),
  KEY ix_res_video_scope (drama_id, shot_id, status, deleted)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='视频素材库，分镜参考视频统一入库';
+
+-- Additive and repeatable. Existing image assets and shot references are preserved.
+CREATE TABLE IF NOT EXISTS res_audio (
+ id BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+ drama_id BIGINT UNSIGNED NOT NULL DEFAULT 0,
+ shot_id BIGINT UNSIGNED NULL,
+ name VARCHAR(200) NOT NULL,
+ description TEXT NULL,
+ audio_url VARCHAR(512) NOT NULL,
+ original_filename VARCHAR(255) NULL,
+ file_size BIGINT NULL,
+ duration DECIMAL(12,3) NULL,
+ audio_kind VARCHAR(30) NOT NULL,
+ text TEXT NULL,
+ language VARCHAR(10) NULL,
+ source_type VARCHAR(30) NOT NULL DEFAULT 'MANUAL_UPLOAD',
+ sort_order INT NOT NULL DEFAULT 0,
+ status TINYINT NOT NULL DEFAULT 1,
+ create_by BIGINT NULL,
+ create_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ update_by BIGINT NULL,
+ update_time DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ deleted TINYINT NOT NULL DEFAULT 0,
+ remark VARCHAR(1000) NULL,
+ UNIQUE KEY uk_res_audio_url (audio_url),
+ KEY ix_res_audio_scope (drama_id, shot_id, status, deleted)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='音频素材库，分镜参考音频统一入库';

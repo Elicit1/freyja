@@ -2232,6 +2232,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                         .audioIndex(aIdx++)
                         .referenceId(aud.getId())
                         .audioId(aud.getAudioId())
+                        .resAudioId(aud.getResAudioId())
+                        .audioKind(aud.getAudioKind())
                         .characterId(aud.getCharacterId())
                         .characterName(StringUtils.trimToNull(aud.getCharacterName()))
                         .referenceType(aud.getReferenceType())

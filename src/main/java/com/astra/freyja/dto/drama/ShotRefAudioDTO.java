@@ -22,6 +22,9 @@ public class ShotRefAudioDTO {
 
     /** 配音中心音频 ID；直接引用外部音频时可以不填写。 */
     private Long audioId;
+    /** 音频素材库 ID，与配音中心 audioId 分开。 */
+    private Long resAudioId;
+    private String audioKind;
 
     /** 创作者明确关联的角色；配音中心音频必须与其所属角色一致。 */
     private Long characterId;

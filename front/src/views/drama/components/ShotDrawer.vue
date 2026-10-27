@@ -619,13 +619,13 @@
                   :disabled="refAudios.length >= 3"
                   @click="handleOpenCharacterVoicePicker()"
                 >
-                  引入配音中心音频
+                  选择音频素材 / 配音
                 </el-button>
               </div>
             </div>
 
             <div v-if="refAudios.length === 0" class="text-center py-4 text-xs text-gray-400 bg-gray-50 rounded border border-dashed border-gray-200">
-              暂未绑定参考音频，点击上方按钮引入配音中心音频 (上限 3 段，单段 2~15s，总长 ≤ 15s)
+              暂未绑定参考音频，点击上方按钮选择音频素材 / 配音 (上限 3 段，单段 2~15s，总长 ≤ 15s)
             </div>
             <div v-else class="space-y-2">
               <div
@@ -940,7 +940,7 @@
     </div>
   </el-dialog>
 
-  <VoiceAudioPicker v-model="characterVoicePickerVisible" :drama-id="form.dramaId" :characters="dubbingCharacters" :preferred-character-id="characterRefs[0]?.characterId" :selected-audios="refAudios" :replace-index="replacingAudioIndex" @select="selectDubbingAudios" />
+  <VoiceAudioPicker :shot-id="form.id" v-model="characterVoicePickerVisible" :drama-id="form.dramaId" :characters="dubbingCharacters" :preferred-character-id="characterRefs[0]?.characterId" :selected-audios="refAudios" :replace-index="replacingAudioIndex" @select="selectDubbingAudios" />
 
 </template>
 
@@ -954,7 +954,7 @@ import StatusPill from '@/components/status/StatusPill.vue'
 import DictSelect from '@/components/DictSelect.vue'
 import { shotApi, shotGroupApi, episodeApi, dramaApi } from '@/api/drama'
 import { characterApi } from '@/api/res-character'
-import VoiceAudioPicker from '@/views/dubbing/components/VoiceAudioPicker.vue'
+import VoiceAudioPicker from '@/views/assets/components/AudioReferencePicker.vue'
 import { MAX_REF_AUDIOS } from '../composables/useShotReferenceAssets'
 import { sceneApi } from '@/api/res-scene'
 import { resPropApi, type ResPropItem } from '@/api/res-prop'

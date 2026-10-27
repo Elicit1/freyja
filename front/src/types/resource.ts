@@ -512,3 +512,38 @@ export interface ResVideoQuery {
   sourceType?: string
   status?: number
 }
+
+export interface ResAudio {
+  id: string
+  dramaId: string
+  dramaTitle?: string
+  shotId?: string
+  shotName?: string
+  name: string
+  description?: string
+  audioUrl: string
+  originalFilename?: string
+  fileSize?: string | number
+  duration?: number
+  audioKind: string
+  text?: string
+  language?: string
+  sourceType: 'MANUAL_UPLOAD' | 'SHOT_UPLOAD'
+  status: number
+  sortOrder: number
+  remark?: string
+  createTime?: string
+  updateTime?: string
+}
+
+export interface ResAudioQuery {
+  current?: number
+  size?: number
+  name?: string
+  dramaId?: string
+  shotId?: string
+  availableDramaId?: string
+  sourceType?: string
+  audioKind?: string
+  status?: number
+}

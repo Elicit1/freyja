@@ -73,6 +73,9 @@ public class ReferenceManifest {
         private Integer audioIndex;
         private String referenceId;
         private Long audioId;
+        /** 音频素材库 ID，与配音中心 audioId 分开。 */
+        private Long resAudioId;
+        private String audioKind;
         private Long characterId;
         private String characterName;
         private String referenceType; // fully_copy, partially_copy, reference, weak_reference
@@ -139,6 +142,8 @@ public class ReferenceManifest {
                     sb.append(String.format("- %s: %s\n", "创作者提供的源录音文本（仅元数据；是否复用须服从参考关系、参考说明与当前剧本）", aud.getText().trim()));
                 }
                 if (StringUtils.isNotBlank(aud.getReferenceDescription())) sb.append("- 参考说明: ").append(aud.getReferenceDescription()).append("\n");
+                if (aud.getResAudioId() != null) sb.append("- 音频素材 ID: ").append(aud.getResAudioId()).append("\n");
+                if (aud.getAudioKind() != null) sb.append("- 素材种类: ").append(aud.getAudioKind()).append("\n");
                 if (aud.getAudioId() != null) sb.append("- 配音中心音频 ID: ").append(aud.getAudioId()).append("\n");
                 if (aud.getDuration() != null) {
                     sb.append(String.format("- 音频时长: %s 秒\n", aud.getDuration().toPlainString()));

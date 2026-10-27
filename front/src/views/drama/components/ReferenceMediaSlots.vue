@@ -184,7 +184,7 @@
       >
         <div>暂未绑定参考音频（非必填）</div>
         <div class="text-[11px] text-slate-400">
-          点击“选择参考音频”，从当前短剧角色的配音中心选择基础声音或克隆成品。
+          点击“选择参考音频”，从音频素材库选择对白、音乐、音效等素材，或从配音中心选择角色声音。
         </div>
       </div>
 
@@ -387,7 +387,7 @@ import { probeReferenceAudioDuration } from '@/utils/reference-audio'
 import { ElMessage } from 'element-plus'
 import type { ShotRefImage, ShotRefAudio } from '@/types/drama'
 import { keyImageRoleLabel, normalizeKeyImageRole } from '@/constants/keyImageRoles'
-import VoiceAudioPicker from '@/views/dubbing/components/VoiceAudioPicker.vue'
+import VoiceAudioPicker from '@/views/assets/components/AudioReferencePicker.vue'
 import type { CandidateImageItem } from '../composables/useShotReferenceAssets'
 import {
   MAX_REF_IMAGES,
@@ -403,6 +403,7 @@ const props = defineProps<{
   characters: { id: string | number; name: string; dramaId?: string | number }[]
   preferredCharacterId?: string | number
   disabled?: boolean
+  hasVideoReference?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -438,8 +439,8 @@ const validationAlerts = computed(() => {
   if (totalAudioDuration.value > maxTotalAudioDuration) {
     alerts.push(`参考音频总时长 (${totalAudioDuration.value.toFixed(1)}s) 已超过 15 秒上限，请调整选择后渲染。`)
   }
-  if (props.refAudios.length > 0 && props.refImages.length === 0) {
-    alerts.push('注意：已配置参考音频，MiniMax H3 规范要求必须至少配置 1 张参考图。')
+  if (props.refAudios.length > 0 && props.refImages.length === 0 && !props.hasVideoReference) {
+    alerts.push('注意：已配置参考音频，当前参考生成需要至少一张参考图或一段参考视频。')
   }
   return alerts
 })

@@ -21,7 +21,7 @@
           本模式支持多重视觉特征与语音韵律协同驱动。
           <strong>参考图上限 {{ maxRefImages }} 张</strong>（可从场景、人物造型、道具资产库多选选取或自行上传）；
           <strong>参考视频{{ maxRefVideos == null ? '数量以所选模型配置为准' : `上限 ${maxRefVideos} 段` }}</strong>（可上传或选择视频，并分别设置片段范围）；
-          <strong>参考音频上限 {{ maxRefAudios }} 段</strong>（单段2至15秒，总长不超过15秒，从当前短剧角色的配音中心选择）。
+          <strong>参考音频上限 {{ maxRefAudios }} 段</strong>（单段2至15秒，总长不超过15秒，从音频素材库或配音中心选择）。
           参考素材<strong>不强制要求</strong>，亦可仅凭提示词直接渲染。
         </p>
       </div>
@@ -255,7 +255,7 @@
 
         <!-- 空状态 -->
         <div v-if="refAudios.length === 0" class="text-center py-6 text-xs text-gray-400 bg-white border border-dashed border-gray-200 rounded-lg">
-          暂无参考音频，点击上方按钮可从配音中心选择角色参考音频 (可选，非强制)
+          暂无参考音频，点击上方按钮可从音频素材库或配音中心选择参考音频 (可选，非强制)
         </div>
 
         <!-- 音频列表 -->
@@ -384,7 +384,7 @@
       </div>
     </template>
   </el-dialog>
-  <VoiceAudioPicker v-model="audioPickerVisible" :drama-id="dramaId" :characters="dubbingCharacters" :selected-audios="refAudios" :replace-index="audioReplaceIndex" @select="selectAudioReferences" />
+  <VoiceAudioPicker :shot-id="currentShotId" :max-audios="maxRefAudios" v-model="audioPickerVisible" :drama-id="dramaId" :characters="dubbingCharacters" :selected-audios="refAudios" :replace-index="audioReplaceIndex" @select="selectAudioReferences" />
 
 </template>
 
@@ -401,7 +401,7 @@ import { shotVideoReferenceApi } from '@/api/shot-video-reference'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
 import { KEY_IMAGE_ROLE_OPTIONS } from '@/constants/keyImageRoles'
-import VoiceAudioPicker from '@/views/dubbing/components/VoiceAudioPicker.vue'
+import VoiceAudioPicker from '@/views/assets/components/AudioReferencePicker.vue'
 import { characterApi } from '@/api/res-character'
 import type { ResCharacterOption } from '@/types/resource'
 import { REFERENCE_AUDIO_TYPE_OPTIONS } from '@/constants/referenceMediaOptions'

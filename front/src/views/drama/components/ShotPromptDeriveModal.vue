@@ -90,6 +90,7 @@
         <ReferenceMediaSlots
           v-model:ref-images="draft.refImages"
           v-model:ref-audios="draft.refAudios"
+          :has-video-reference="(draft.refVideos?.length || 0) > 0"
           :candidate-images="candidateImages"
           :drama-id="currentShotContext?.dramaId"
           :characters="dubbingCharacters"

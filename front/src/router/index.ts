@@ -40,6 +40,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'assets/props', name: 'AssetProps', component: () => import('@/views/assets/Props.vue'), meta: { title: '核心道具', productionWorkspace: true } },
       { path: 'assets/keyframes', name: 'AssetKeyframes', component: () => import('@/views/assets/Keyframes.vue'), meta: { title: '关键图资产', productionWorkspace: true } },
       { path: 'assets/videos', name: 'AssetVideos', component: () => import('@/views/assets/Videos.vue'), meta: { title: '视频素材', productionWorkspace: true } },
+      { path: 'assets/audios', name: 'AssetAudios', component: () => import('@/views/assets/Audios.vue'), meta: { title: '音频素材', productionWorkspace: true } },
       {
         path: 'production/video-upscale',
         name: 'VideoUpscale',

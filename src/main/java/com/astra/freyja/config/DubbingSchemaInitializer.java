@@ -16,6 +16,7 @@ public class DubbingSchemaInitializer implements ApplicationRunner {
     private final DataSource dataSource;
     @Override public void run(ApplicationArguments args) {
         new ResourceDatabasePopulator(new ClassPathResource("sql/dubbing-center.sql")).execute(dataSource);
+        new ResourceDatabasePopulator(new ClassPathResource("sql/asset-audio-library.sql")).execute(dataSource);
         // MySQL 8 does not support ADD COLUMN IF NOT EXISTS; inspect before the additive upgrade.
         try (var connection = dataSource.getConnection()) {
             try (var columns = connection.getMetaData().getColumns(connection.getCatalog(), null,

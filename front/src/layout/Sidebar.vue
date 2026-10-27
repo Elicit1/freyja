@@ -53,6 +53,7 @@
           <el-menu-item index="/assets/props">核心道具</el-menu-item>
           <el-menu-item index="/assets/keyframes">关键图资产</el-menu-item>
           <el-menu-item index="/assets/videos">视频素材</el-menu-item>
+          <el-menu-item index="/assets/audios">音频素材</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="/dubbing">
           <template #title><el-icon><VideoPlay /></el-icon><span>配音中心</span></template>

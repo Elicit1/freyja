@@ -438,6 +438,12 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 mime = "audio/wav";
             } else if (lower.contains(".mp3")) {
                 mime = "audio/mpeg";
+            } else if (lower.contains(".flac")) {
+                mime = "audio/flac";
+            } else if (lower.contains(".m4a")) {
+                mime = "audio/mp4";
+            } else if (lower.contains(".ogg")) {
+                mime = "audio/ogg";
             }
             String b64 = Base64.getEncoder().encodeToString(bytes);
             log.info("[AiImageApi] 成功将媒体文件转换为 Base64 Data URI (mime={}, size={} KB)",
@@ -666,6 +672,8 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                             binding.put("audioReferenceType", refAudio.getReferenceType());
                             binding.put("referenceDescription", refAudio.getReferenceDescription());
                             binding.put("audioId", refAudio.getAudioId() == null ? null : refAudio.getAudioId().toString());
+                            binding.put("resAudioId", refAudio.getResAudioId() == null ? null : refAudio.getResAudioId().toString());
+                            binding.put("audioKind", refAudio.getAudioKind());
                             binding.put("language", StringUtils.trimToNull(refAudio.getLanguage()));
                             binding.put("referenceAudio", b64Audio);
                             references.add(binding);

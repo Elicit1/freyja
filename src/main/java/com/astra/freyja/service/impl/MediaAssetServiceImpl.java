@@ -126,6 +126,9 @@ public class MediaAssetServiceImpl implements MediaAssetService {
             case "png" -> "image/png";
             case "mp3" -> "audio/mpeg";
             case "wav" -> "audio/wav";
+            case "flac" -> "audio/flac";
+            case "m4a" -> "audio/mp4";
+            case "ogg" -> "audio/ogg";
             default -> "application/octet-stream";
         };
     }

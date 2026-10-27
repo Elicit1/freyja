@@ -14,6 +14,8 @@ public final class ShotAudioReferenceValidator {
     public static final BigDecimal MIN_SECONDS = BigDecimal.valueOf(2);
     public static final BigDecimal MAX_SECONDS = BigDecimal.valueOf(15);
     public static final Set<String> REFERENCE_TYPES = Set.of("fully_copy", "partially_copy", "reference", "weak_reference");
+    /** Platform library categories aligned with the documented H3 audio uses. */
+    public static final Set<String> AUDIO_KINDS = Set.of("VOICE", "DIALOGUE", "LYRICS", "MUSIC", "SOUND_EFFECT", "RHYTHM", "CONTINUITY", "FULL_TRACK");
     public static final Set<String> LANGUAGES = Set.of("zh", "en", "ja", "other");
     private ShotAudioReferenceValidator() {}
 
@@ -27,6 +29,8 @@ public final class ShotAudioReferenceValidator {
             if (audio == null || StringUtils.isBlank(audio.getAudioUrl())) throw new BizException(400, "参考音频 URL 不能为空");
             if (!urls.add(audio.getAudioUrl())) throw new BizException(400, "同一参考音频不能重复占用槽位");
             if (audio.getReferenceType() == null || !REFERENCE_TYPES.contains(audio.getReferenceType())) throw new BizException(400, "refAudios[" + index + "].referenceType 必填，允许值=" + REFERENCE_TYPES);
+            if (audio.getResAudioId() != null && (audio.getResAudioId() <= 0 || audio.getAudioId() != null)) throw new BizException(400, "音频素材来源无效");
+            if (audio.getAudioKind() != null && !AUDIO_KINDS.contains(audio.getAudioKind())) throw new BizException(400, "音频素材种类无效");
             if (audio.getAudioId() != null && (audio.getAudioId() <= 0 || audio.getCharacterId() == null)) throw new BizException(400, "配音中心音频必须填写有效 audioId 和 characterId");
             if (audio.getReferenceDescription() != null && audio.getReferenceDescription().length() > 1000) throw new BizException(400, "参考音频说明不能超过1000字");
             // Unknown metadata stays unknown. Rendering verifies the actual media bytes.

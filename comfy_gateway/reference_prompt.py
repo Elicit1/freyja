@@ -42,6 +42,8 @@ class ReferenceBinding(BaseModel):
     usage_role: Optional[str] = Field(default=None, alias="usageRole", description="Explicit usage role supplied by the system")
     reference_role: Optional[str] = Field(default=None, alias="referenceRole", description="Explicit semantic role supplied by the system")
     audio_id: Optional[str] = Field(default=None, alias="audioId")
+    res_audio_id: Optional[str] = Field(default=None, alias="resAudioId")
+    audio_kind: Optional[str] = Field(default=None, alias="audioKind")
     audio_reference_type: Optional[Literal["fully_copy", "partially_copy", "reference", "weak_reference"]] = Field(default=None, alias="audioReferenceType")
     reference_description: Optional[str] = Field(default=None, alias="referenceDescription", max_length=1000)
 

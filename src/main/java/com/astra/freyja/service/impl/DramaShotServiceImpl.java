@@ -174,7 +174,14 @@ public class DramaShotServiceImpl implements DramaShotService {
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.astra.freyja.service.DubbingService dubbingService;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.astra.freyja.service.ResAudioService resAudioService;
+
     private void validateAudioAssets(Long dramaId,List<ShotRefAudioDTO> references) {
+        if (references != null && references.stream().anyMatch(a -> a.getResAudioId() != null)) {
+            if (resAudioService == null) throw new BizException(503, "音频素材库暂不可用");
+            resAudioService.validateReferences(dramaId, references);
+        }
         if(references==null || references.stream().noneMatch(a -> a.getAudioId()!=null)) return;
         if(dubbingService==null) throw new BizException(503,"配音中心暂不可用");
         dubbingService.validateReferences(dramaId,references);

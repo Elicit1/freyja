@@ -88,7 +88,7 @@ public class McpBusinessSchemas {
         if (!properties.keySet().containsAll(allowed)) throw new IllegalStateException("DTO 缺少媒体引用业务字段: " + kind);
         properties.keySet().retainAll(allowed);
         for (String name : properties.keySet()) {
-            if (IDS.contains(name) || name.equals("sourceId") || name.equals("audioId") || name.equals("sourceShotId") || name.equals("sourceVideoTakeId")) properties.put(name, identifier(refs, !required.contains(name)));
+            if (IDS.contains(name) || name.equals("sourceId") || name.equals("audioId") || name.equals("resAudioId") || name.equals("sourceShotId") || name.equals("sourceVideoTakeId")) properties.put(name, identifier(refs, !required.contains(name)));
             else if (type != ShotRefAudioDTO.class || !name.equals("duration")) properties.put(name, Map.of("type", List.of("string", "null")));
         }
         properties.putAll(metadata.referenceSchemas(kind));
