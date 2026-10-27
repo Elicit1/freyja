@@ -41,7 +41,7 @@ class ConversationDecompositionTest {
         when(stores.getObject()).thenReturn(store);
         jobs = new ProductionJobs(mapper, dramas, mock(DramaShotMapper.class), stores, json,
                 mock(ScriptDecomposeService.class), mock(AiTaskService.class), mock(ProductionAssets.class),
-                mock(AiTaskMapper.class), mock(AgentConfigMapper.class), mock(DramaEpisodeMapper.class), messages);
+                mock(AiTaskMapper.class), mock(DramaEpisodeMapper.class), messages);
         session = new AgentSession(); session.setId(AgentTestSupport.SESSION); session.setActiveRunId(AgentTestSupport.RUN);
         when(store.session(session.getId())).thenReturn(session);
         when(mapper.lockByRunId(AgentTestSupport.RUN)).thenAnswer(call -> saved);

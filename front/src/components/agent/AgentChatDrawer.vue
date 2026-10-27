@@ -7,8 +7,7 @@
         <el-select v-model="sessionId" placeholder="选择历史会话" class="flex-1 min-w-40" :disabled="sending" @change="select">
           <el-option v-for="session in store.sessions" :key="session.id" :label="session.title" :value="session.id" />
         </el-select>
-        <el-button @click="newSessionVisible = true" :disabled="sending || !store.profiles.length">新会话</el-button>
-        <el-button type="primary" plain @click="productionVisible = true" :disabled="sending">小说转视频准备</el-button>
+        <el-button @click="create" :disabled="sending || !store.profiles.length">新会话</el-button>
         <el-button text @click="configure">配置</el-button>
       </div>
       <el-alert v-if="!store.profiles.length" title="请先在 Agent 配置页选择模型并启用助手。" type="info" :closable="false" class="mb-3" />
@@ -43,37 +42,22 @@
     </div>
   </section>
   </Teleport>
-  <ProductionStartDialog v-model="productionVisible" />
-  <el-dialog v-model="newSessionVisible" title="新建 Agent 会话" width="min(480px, calc(100vw - 32px))" append-to-body align-center>
-    <el-form label-position="top">
-      <el-form-item label="绑定项目（可选）"><el-select v-model="dramaId" clearable filterable class="w-full" placeholder="通用会话">
-        <el-option v-for="project in projects" :key="String(project.id)" :label="project.title" :value="String(project.id)" />
-      </el-select></el-form-item>
-    </el-form>
-    <template #footer><el-button @click="newSessionVisible = false">取消</el-button><el-button type="primary" @click="create">创建</el-button></template>
-  </el-dialog>
 </template>
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { dramaApi } from '@/api/drama'
 import { useAgentStore } from '@/store/agent'
 import { agentStatusLabels, isActiveRun } from '@/types/agent'
 import AgentMessageList from './AgentMessageList.vue'
 import AgentRunCard from './AgentRunCard.vue'
 import AgentQuestionCard from './AgentQuestionCard.vue'
-import ProductionStartDialog from './ProductionStartDialog.vue'
 import type { AgentAnswer } from '@/types/agent'
 const store = useAgentStore()
 const router = useRouter()
 const input = ref('')
 const sending = ref(false)
 const replacing = ref(false)
-const newSessionVisible = ref(false)
-const productionVisible = ref(false)
-const dramaId = ref<string>()
-const projects = ref<{ id: string | number; title: string }[]>([])
 const scrollArea = ref<HTMLElement>()
 const historyContent = ref<HTMLElement>()
 const followingLatest = ref(true)
@@ -138,14 +122,18 @@ function keyDown(event: KeyboardEvent) {
   if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) { event.preventDefault(); void send() }
 }
 async function select(id: string) { await store.selectSession(id) }
-async function create() { await store.createSession(dramaId.value); newSessionVisible.value = false }
+async function create() {
+  if (sending.value) return
+  sending.value = true
+  try { await store.createSession() }
+  finally { sending.value = false }
+}
 async function cancel() { await store.cancel(); ElMessage.success('已停止后续操作') }
 function configure() { store.visible = false; void router.push('/system/agent') }
 watch(() => store.messages.length, () => { void scrollToLatest() })
 watch(() => store.streamPreview?.text, () => { void scrollToLatest() })
 watch(() => waitingQuestion.value?.id, async id => { await nextTick(); if (id) scrollArea.value?.querySelector('.question-card')?.scrollIntoView({ block: 'start' }) })
 watch(() => store.focusRunId, async id => { await nextTick(); if (id) document.getElementById(`agent-run-${id}`)?.scrollIntoView({ block: 'center' }) })
-watch(newSessionVisible, async visible => { if (visible) projects.value = await dramaApi.getOptions() })
 </script>
 <style scoped>
 .agent-chat-window { position: fixed; z-index: 1990; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(760px, calc(100vw - 32px)); height: min(840px, calc(100dvh - 48px)); display: flex; flex-direction: column; background: var(--surface-raised); backdrop-filter: blur(20px); border: 1px solid var(--border-default); border-radius: 18px; box-shadow: 0 16px 60px rgba(0,0,0,.18); padding: 16px 20px; }

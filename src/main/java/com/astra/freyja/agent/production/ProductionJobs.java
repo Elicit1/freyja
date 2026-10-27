@@ -5,7 +5,6 @@ import com.astra.freyja.agent.model.AgentProtocol.*;
 import com.astra.freyja.agent.runtime.AgentStore;
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.*;
-import com.astra.freyja.dto.agent.AgentRequests.*;
 import com.astra.freyja.dto.agent.ProductionPreparationDTO.*;
 import com.astra.freyja.dto.script.*;
 import com.astra.freyja.entity.*;
@@ -13,7 +12,6 @@ import com.astra.freyja.service.*;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
 
 @Service @RequiredArgsConstructor
@@ -29,7 +27,6 @@ public class ProductionJobs {
     private final AiTaskService tasks;
     private final ProductionAssets assets;
     private final AiTaskMapper taskMapper;
-    private final AgentConfigMapper configs;
     private final DramaEpisodeMapper episodes;
     private final AgentMessageMapper messages;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -46,26 +43,6 @@ public class ProductionJobs {
         if (input.getPacingPreset() == null || !Set.of("AUTO", "FAST_PACED", "COMPACT", "STANDARD", "CINEMATIC_LONG").contains(input.getPacingPreset())) throw new BizException("节奏不合法");
         if (input.getWorkflow() == null || !Set.of("SCRIPT_DECOMPOSITION", "VIDEO_PREPARATION").contains(input.getWorkflow())) throw new BizException("请选择剧本拆解或完整视频准备流程");
         if (input.getDramaId() != null && dramas.selectById(input.getDramaId()) == null) throw new BizException("项目不存在");
-    }
-    @Transactional public Submission start(Start input) {
-        validate(input);
-        if (configs.lockByCode(PROFILE) == null) throw new BizException("请先配置并启用 FREYJA 助手");
-        var request = new CreateSession(); request.setAgentCode(PROFILE); request.setDramaId(input.getDramaId());
-        request.setTitle(ProductionAssets.text(input.getDramaTitle()) ? input.getDramaTitle() : "小说转视频准备");
-        var session = store().createSession(request, "NORMAL", "production:" + input.getClientRequestId());
-        var old = jobs.selectOne(new LambdaQueryWrapper<AgentPreparationJob>().eq(AgentPreparationJob::getSessionId, session.getId()).orderByAsc(AgentPreparationJob::getId).last("LIMIT 1"));
-        if (old != null) {
-            if (!Objects.equals(json.write(options(old)), json.write(input))) throw new BizException(409, "同一请求标识不能提交不同原文");
-            return new Submission(session.getId(), store().run(old.getRunId()).getObjectiveMessageId(), old.getRunId());
-        }
-        var message = new SendMessage(); message.setClientRequestId(input.getClientRequestId());
-        message.setContent("把已提交的小说/剧本完成视频渲染准备。自动拆解并入库，整理文字资产，为所有新分镜选择模式与参考素材，保存交付报告。\n"
-                + "制作要求：" + Objects.toString(input.getInstruction(), "遵循原文") + "\n画幅：" + input.getAspectRatio());
-        var submitted = store().submit(session.getId(), message, null);
-        var job = new AgentPreparationJob(); job.setRunId(submitted.runId()); job.setSessionId(session.getId());
-        job.setDramaId(input.getDramaId()); job.setStatus("NEW"); job.setSourceText(input.getSourceText());
-        job.setRequestJson(json.write(input)); job.setShotIdsJson("[]"); job.setAssetsJson("[]"); jobs.insert(job);
-        return submitted;
     }
     /** Runs inside the existing fenced tool transaction, including retries after a restart. */
     public ToolResult prepare(ConversationStart input, ToolContext ctx) {

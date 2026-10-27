@@ -84,10 +84,6 @@ export interface AgentStreamEvent {
   sequence: number; type: 'SNAPSHOT' | 'CLOSED'; text: string
 }
 export interface AgentSubmission { sessionId: string; messageId: string; runId: string }
-export interface ProductionStart {
-  clientRequestId: string; dramaId?: string; dramaTitle?: string; chapterTitle?: string; sourceText: string
-  instruction?: string; aspectRatio: string; stylePreset?: string; styleTone?: string; pacingPreset: string
-}
 export interface ProductionShot {
   shotId: string; shotName: string; shotNo: number; generationMode: string; status: string; decisionReason: string; planRevision: number
 }
