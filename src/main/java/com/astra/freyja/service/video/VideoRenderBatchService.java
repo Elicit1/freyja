@@ -62,7 +62,7 @@ public class VideoRenderBatchService {
         for(Item i:original){Candidate c=new Candidate();c.setShotId(i.getShotId());c.setName(i.getName());c.setExecutionOrder(++order);c.setGenerationMode("REF2VA".equals(i.getPhase())?VideoBatchPreparation.REF:VideoBatchPreparation.FL);c.setStatus("READY");
             try{
                 if((lock?shots.lockById(i.getShotId()):shots.selectById(i.getShotId()))==null)throw new BizException(404,"分镜已删除");
-                if(store.occupied(i.getShotId()))throw new BizException(409,"分镜已有活动或待核实任务");
+                if(store.occupied(i.getShotId()))throw new BizException(409,"分镜已有活动任务");
                 Snapshot snap=json.readValue(StringUtils.defaultIfBlank(i.getResolvedJson(),i.getSnapshotJson()),Snapshot.class);preparation.validateRoute(snap);
                 if(requestedSize!=null&&!requestedSize.equals(snap.getRequest().getSize()))throw new BizException(400,"原始快照重试必须保留输出尺寸");
                 // Resolved first/last images are inputs in their own right on original-snapshot retry.
@@ -108,7 +108,7 @@ public class VideoRenderBatchService {
             throw new BizException(400,"请仅提交 preflightId，参考视频快照必须由服务端生成");
         String task=tx.execute(s->{
             store.lockQueue();DramaShot shot=shots.lockById(id);if(shot==null)throw new BizException(404,"分镜不存在");
-            if(store.occupied(id)||renders.selectCount(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getShotId,id).eq(RenderTask::getTaskType,"SHOT_VIDEO").in(RenderTask::getStatus,"QUEUED","RENDERING"))>0)throw new BizException(409,"分镜已有排队、渲染中或待核实任务");
+            if(store.occupied(id)||renders.selectCount(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getShotId,id).eq(RenderTask::getTaskType,"SHOT_VIDEO").in(RenderTask::getStatus,"QUEUED","RENDERING"))>0)throw new BizException(409,"分镜已有排队或渲染中任务");
             DramaShotRenderRequestDTO req=request==null?new DramaShotRenderRequestDTO():request;
             if(shot.getSeed()==null||shot.getSeed()<=0||shot.getSeed()>com.astra.freyja.util.ShotSeedUtil.MAX_SEED){shot.setSeed(com.astra.freyja.util.ShotSeedUtil.next());shots.update(null,new UpdateWrapper<DramaShot>().eq("id",id).set("seed",shot.getSeed()));}
             AiProvider provider=api.resolveProvider(req.getProviderId());String code=api.resolveVideoModelCode(req,provider.getId(),shot.getGenerationMode());
@@ -152,24 +152,28 @@ public class VideoRenderBatchService {
             if("REF2VA".equals(i.getPhase())){b.setRefTotal(b.getRefTotal()+1);if(done)b.setRefProcessed(b.getRefProcessed()+1);}else{b.setFlTotal(b.getFlTotal()+1);if(done)b.setFlProcessed(b.getFlProcessed()+1);}
             switch(i.getStatus()){case "SUCCESS"->b.setSucceeded(b.getSucceeded()+1);case "FAILED"->b.setFailed(b.getFailed()+1);case "CANCELLED"->b.setCancelled(b.getCancelled()+1);default->{}}
             if("UNCONFIRMED".equals(i.getUpstreamStatus())||"FAILED".equals(i.getUpstreamStatus()))b.setUpstreamStatus(i.getUpstreamStatus());
-            if(!done&&b.getCurrentShot()==null){b.setCurrentShot(i.getName());b.setCurrentPhase(i.getPhase());}
+            if(!done&&(b.getCurrentShot()==null||Set.of("DISPATCHING","RENDERING").contains(i.getStatus()))){
+                b.setCurrentShot(i.getName());b.setCurrentPhase(i.getPhase());
+                b.setCurrentStage(StringUtils.defaultIfBlank(i.getStageMessage(),"QUEUED".equals(i.getStatus())?"排队中":"正在处理视频"));
+            }
         }
-        if(b.getCurrentPhase()==null)b.setCurrentPhase("COMPLETED");b.setProgress(b.getTotal()==0?100:(int)(100L*b.getProcessed()/b.getTotal()));return b;
+        if(b.getCurrentPhase()==null){b.setCurrentPhase("COMPLETED");b.setCurrentStage("SUCCESS".equals(b.getStatus())?"已完成":"处理结束");}b.setProgress(b.getTotal()==0?100:(int)(100L*b.getProcessed()/b.getTotal()));return b;
     }
     public TaskCenterItemVO summary(Long id){Batch b=detail(id);return TaskCenterItemVO.builder().sourceType("VIDEO_RENDER_BATCH").taskId(String.valueOf(id)).category("RENDER").taskType("VIDEO_RENDER_BATCH").title(b.getName()).status(b.getStatus()).progress(b.getProgress()).revision(b.getRevision())
-            .currentStage(b.getCurrentPhase()+" · 已处理 "+b.getProcessed()+"/"+b.getTotal()+" · 成功 "+b.getSucceeded()+" / 失败 "+b.getFailed()+" / 取消 "+b.getCancelled()+(b.getCurrentShot()==null?"":" · "+b.getCurrentShot()))
-            .dramaId(String.valueOf(b.getDramaId())).resumeAction("VIDEO_RENDER_BATCH").createdAt(b.getCreatedAt()).finishedAt(b.getFinishedAt()).errorMessage(b.getUpstreamStatus()==null?null:"上游停止待核实").build();}
+            .currentStage(b.getCurrentStage()+" · "+b.getCurrentPhase()+" · 已处理 "+b.getProcessed()+"/"+b.getTotal()+" · 成功 "+b.getSucceeded()+" / 失败 "+b.getFailed()+" / 取消 "+b.getCancelled()+(b.getCurrentShot()==null?"":" · "+b.getCurrentShot()))
+            .dramaId(String.valueOf(b.getDramaId())).resumeAction("VIDEO_RENDER_BATCH").createdAt(b.getCreatedAt()).finishedAt(b.getFinishedAt()).build();}
 
     /** Called only by the dedicated single consumer; database slot covers all application instances. */
     public boolean runNext() {
-        java.util.concurrent.atomic.AtomicReference<Long> recoveredBatch=new java.util.concurrent.atomic.AtomicReference<>();
+        recoverInterruptedTasks();
         Item item=tx.execute(s->{store.lockQueue();String current=store.currentTask();
-            if(current!=null){if(!current.equals(localTask)){Item orphan=store.task(current);if(orphan!=null&&!VideoBatchStore.terminal(orphan.getStatus())&&!"NEEDS_REVIEW".equals(orphan.getStatus())){store.status(current,"NEEDS_REVIEW","工作实例中断，上游结果待核实",null,"UNCONFIRMED");renderTasks.failTask(current,"工作实例中断，上游结果待核实",null);recompute(orphan.getBatchId());recoveredBatch.set(orphan.getBatchId());}}return null;}
+            if(current!=null)return null;
             Item next=store.next();if(next==null)return null;store.claim(next.getTaskId());store.status(next.getTaskId(),"DISPATCHING",null,null,null);localTask=next.getTaskId();return next;});
-        if(item==null){publish(recoveredBatch.get());return false;}boolean submitted=false;
+        if(item==null)return false;boolean submitted=false;
         RenderTaskThreadRegistry.register(item.getTaskId(),Thread.currentThread());
-        VideoExecutionState.begin(item.getTaskId());
+        VideoExecutionState.begin(item.getTaskId(),(stage,message)->updateStage(item,stage,message));
         try {
+            VideoExecutionState.progress("PREPARING","正在准备视频输入");
             if(cancelled(item))return true;
             Snapshot snap=json.readValue(StringUtils.defaultIfBlank(item.getResolvedJson(),item.getSnapshotJson()),Snapshot.class);
             if(item.getRecoveryUrl()==null)preparation.validateRoute(snap);
@@ -179,7 +183,8 @@ public class VideoRenderBatchService {
             }
             Boolean maySubmit=tx.execute(s->{store.lockQueue();if(cancelled(item))return false;store.status(item.getTaskId(),"RENDERING",null,null,null);if(item.getBatchId()!=null)store.batchStatus(item.getBatchId(),"RUNNING",false);return true;});
             if(!Boolean.TRUE.equals(maySubmit))return true;
-            renderTasks.updateProgress(item.getTaskId(),0,"串行渲染中，等待视频生成与归档");shots.markRenderingIfLatest(item.getShotId(),item.getTaskId());publish(item.getBatchId());
+            VideoExecutionState.progress("RENDERING",item.getRecoveryUrl()==null?"正在渲染视频":"正在恢复原视频");
+            shots.markRenderingIfLatest(item.getShotId(),item.getTaskId());
             if(cancelled(item)||Thread.currentThread().isInterrupted())return true;
             submitted=true;
             VideoGenerationResultVO result;
@@ -188,25 +193,70 @@ public class VideoRenderBatchService {
                 result="RESULT_COMMIT".equals(item.getFailurePhase())?VideoGenerationResultVO.builder().videoUrl(item.getRecoveryUrl()).build():api.archiveExistingVideo(item.getShotId(),snap.getShot().getDramaId(),item.getRecoveryUrl());
             }else result=api.generateAndArchiveVideo(item.getShotId(),snap.getShot().getDramaId(),snap.getShot(),snap.getRequest());
             VideoExecutionState.completed(result.getVideoUrl());VideoExecutionState.phase("RESULT_COMMIT");
+            VideoExecutionState.progress("COMMITTING","视频已归档，正在保存结果");
             tx.executeWithoutResult(s->{store.lockQueue();if(cancelled(item))return;
                 RenderTask render=renders.selectOne(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getTaskId,item.getTaskId()));
                 takes.recordGeneratedTake(snap.getShot(),render,snap.getRequest(),result);renderTasks.finishTask(item.getTaskId(),result.getVideoUrl(),result.getLastFrameUrl());
-                store.status(item.getTaskId(),"SUCCESS",null,result.getVideoUrl(),"CONFIRMED");store.releaseShot(item.getTaskId());store.release(item.getTaskId());recompute(item.getBatchId());});
+                store.status(item.getTaskId(),"SUCCESS",null,result.getVideoUrl(),"CONFIRMED");store.releaseShot(item.getTaskId());recompute(item.getBatchId());});
         }catch(Exception e){
             boolean uncertain=submitted&&VideoExecutionState.current().uncertain();
             String failurePhase=VideoExecutionState.current().phase;
             String recoveryUrl=VideoExecutionState.current().recoveryUrl;
+            // Cancellation interrupts blocking HTTP calls; clear the interrupt before DB cleanup.
+            Thread.interrupted();
             tx.executeWithoutResult(s->{store.lockQueue();if(cancelled(item))return;
-                String error=uncertain?"上游结果待核实，队列暂停："+e.getMessage():e.getMessage();
-                store.status(item.getTaskId(),uncertain?"NEEDS_REVIEW":"FAILED",error,null,uncertain?"UNCONFIRMED":"CONFIRMED");renderTasks.failTask(item.getTaskId(),error,null);
+                String error=uncertain?"未取得上游结果，可查询原任务结果或重试；后续任务继续执行："+e.getMessage():e.getMessage();
+                store.status(item.getTaskId(),"FAILED",error,null,uncertain?"UNCONFIRMED":"CONFIRMED");renderTasks.failTask(item.getTaskId(),error,null);
                 store.recovery(item.getTaskId(),failurePhase,recoveryUrl);
                 shots.update(null,new UpdateWrapper<DramaShot>().eq("id",item.getShotId()).eq("latest_task_id",item.getTaskId()).set("render_status","FAILED"));
-                if(!uncertain){store.release(item.getTaskId());store.releaseShot(item.getTaskId());}recompute(item.getBatchId());});
+                store.releaseShot(item.getTaskId());recompute(item.getBatchId());});
             log.warn("视频串行任务结束: task={}, uncertain={}, error={}",item.getTaskId(),uncertain,e.getMessage());
         }finally{
-            RenderTaskThreadRegistry.unregister(item.getTaskId());VideoExecutionState.clear(item.getTaskId());localTask=null;Thread.interrupted();publish(item.getBatchId());
+            RenderTaskThreadRegistry.unregister(item.getTaskId());VideoExecutionState.clear(item.getTaskId());Thread.interrupted();
+            try{tx.executeWithoutResult(s->{store.lockQueue();store.release(item.getTaskId());store.releaseShot(item.getTaskId());localTask=null;});}
+            catch(RuntimeException e){if(item.getTaskId().equals(localTask))localTask=null;throw e;}
+            publish(item.getBatchId());
         }
         return true;
+    }
+
+    private void updateStage(Item item,String stage,String message){
+        Boolean changed=tx.execute(s->{store.lockQueue();if(cancelled(item))throw new java.util.concurrent.CancellationException("视频任务已取消");
+            if(store.progress(item.getTaskId(),stage,message)==0)return false;
+            var state=VideoExecutionState.current();
+            if(state!=null&&state.recoveryUrl!=null)store.recovery(item.getTaskId(),state.phase,state.recoveryUrl);
+            renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",item.getTaskId()).in("status","QUEUED","RENDERING").set("current_node",message).set("status","RENDERING"));
+            store.batchStatus(item.getBatchId(),"RUNNING",false);return true;
+        });
+        if(Boolean.TRUE.equals(changed)){renderTasks.refreshTaskFromDatabase(item.getTaskId());publish(item.getBatchId());}
+    }
+
+    /** Runs only when the existing queue consumer wakes, including application startup. */
+    private void recoverInterruptedTasks(){
+        List<Item> recovered=tx.execute(s->{store.lockQueue();String current=store.currentTask();
+            if(current!=null&&current.equals(localTask))return List.<Item>of();
+            // The coordinator owns the cross-instance execution lock here. A persisted slot
+            // without a local invocation belongs to an interrupted worker, not a running one.
+            List<Item> interrupted=new ArrayList<>(store.pendingReview());
+            if(current!=null){Item orphan=store.task(current);if(orphan!=null&&interrupted.stream().noneMatch(i->current.equals(i.getTaskId())))interrupted.add(orphan);store.release(current);}
+            for(Item orphan:interrupted){
+                if(!VideoBatchStore.terminal(orphan.getStatus())){
+                    String error="任务执行已中断，可查询原任务结果或重试；后续任务继续执行";
+                    store.status(orphan.getTaskId(),"FAILED",error,null,"UNCONFIRMED");renderTasks.failTask(orphan.getTaskId(),error,null);
+                    shots.update(null,new UpdateWrapper<DramaShot>().eq("id",orphan.getShotId()).eq("latest_task_id",orphan.getTaskId()).set("render_status","FAILED"));
+                }
+                store.releaseShot(orphan.getTaskId());recompute(orphan.getBatchId());
+            }
+            return interrupted;
+        });
+        for(Item orphan:recovered){
+            publish(orphan.getBatchId());
+            if(Set.of("CANCELLED","SUCCESS","SKIPPED").contains(orphan.getStatus()))continue;
+            try{
+                if(orphan.getRecoveryUrl()!=null)retryArchive(orphan.getBatchId(),orphan.getTaskId());
+                else recoverResult(orphan.getBatchId(),orphan.getTaskId());
+            }catch(Exception e){log.warn("原视频自动恢复未完成: task={}, error={}",orphan.getTaskId(),e.getMessage());}
+        }
     }
     private boolean cancelled(Item item){Item fresh=store.task(item.getTaskId());return fresh==null||"CANCELLED".equals(fresh.getStatus())||(item.getBatchId()!=null&&store.batch(item.getBatchId()).isCancelRequested());}
     private void applyFrame(Snapshot snap,Item item,boolean first){
@@ -218,24 +268,24 @@ public class VideoRenderBatchService {
     }
     private void recompute(Long id){if(id==null)return;Batch b=detail(id);String status;
         if(b.isCancelRequested())status="CANCELLED";
-        else if(b.getItems().stream().anyMatch(i->"NEEDS_REVIEW".equals(i.getStatus())))status="NEEDS_REVIEW";
         else if(b.getProcessed()==b.getTotal())status=b.getFailed()==0?"SUCCESS":b.getSucceeded()>0?"PARTIAL_FAILED":"FAILED";
         else status="RUNNING";
         store.batchStatus(id,status,Set.of("SUCCESS","PARTIAL_FAILED","FAILED","CANCELLED").contains(status));
     }
     public TaskCancelResultVO cancel(Long batchId){
-        List<Item> affected=tx.execute(s->{store.lockQueue();Batch b=detail(batchId);if(b.isCancelRequested())return cancelLocal(b.getItems());if(b.getProcessed()==b.getTotal())return List.<Item>of();store.requestCancel(batchId);return cancelLocal(b.getItems());});
+        List<Item> affected=tx.execute(s->{store.lockQueue();Batch b=detail(batchId);if(b.isCancelRequested())return cancelLocal(b.getItems());if(b.getProcessed()==b.getTotal()&&b.getUpstreamStatus()==null)return List.<Item>of();store.requestCancel(batchId);return cancelLocal(b.getItems());});
         return finishCancellation(affected,batchId);
     }
     public TaskCancelResultVO cancelByTask(String taskId){Item i=store.task(taskId);if(i==null)throw new BizException(404,"视频任务不存在");if(i.getBatchId()!=null)return cancel(i.getBatchId());
         List<Item> affected=tx.execute(s->{store.lockQueue();return cancelLocal(List.of(store.task(taskId)));});return finishCancellation(affected,null);}
-    private List<Item> cancelLocal(List<Item> items){List<Item> affected=new ArrayList<>();for(Item i:items)if(!VideoBatchStore.terminal(i.getStatus())){
-        String upstream=Set.of("RENDERING","NEEDS_REVIEW").contains(i.getStatus())?"UNCONFIRMED":"CONFIRMED";
+    private List<Item> cancelLocal(List<Item> items){List<Item> affected=new ArrayList<>();for(Item i:items)if(!VideoBatchStore.terminal(i.getStatus())||canRecoverResult(i)){
+        String upstream=Set.of("RENDERING","NEEDS_REVIEW").contains(i.getStatus())||canRecoverResult(i)?"UNCONFIRMED":"CONFIRMED";
         var execution=VideoExecutionState.task(i.getTaskId());if(execution!=null&&Set.of("ARCHIVE","RESULT_COMMIT").contains(execution.phase))upstream="CONFIRMED";
-        store.status(i.getTaskId(),"CANCELLED","用户取消整个任务",null,upstream);
+        if("FAILED".equals(i.getStatus()))store.cancelUnconfirmedFailure(i.getTaskId());
+        else store.status(i.getTaskId(),"CANCELLED","用户取消整个任务",null,upstream);
         renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",i.getTaskId()).in("status","QUEUED","RENDERING","FAILED").set("status","CANCELLED").set("finish_time",LocalDateTime.now()).set("cancel_upstream_status",upstream));
         shots.update(null,new UpdateWrapper<DramaShot>().eq("id",i.getShotId()).eq("latest_task_id",i.getTaskId()).set("render_status","INIT"));
-        i.setUpstreamStatus(upstream);affected.add(i);if("CONFIRMED".equals(upstream)){store.release(i.getTaskId());store.releaseShot(i.getTaskId());}
+        i.setUpstreamStatus(upstream);affected.add(i);releaseIfIdle(i.getTaskId());
     }else if("CANCELLED".equals(i.getStatus())&&"UNCONFIRMED".equals(i.getUpstreamStatus()))affected.add(i);return affected;}
     private TaskCancelResultVO finishCancellation(List<Item> affected,Long batchId){String upstream="CONFIRMED";
         for(Item i:affected){
@@ -244,32 +294,24 @@ public class VideoRenderBatchService {
                 try{var snap=json.readValue(i.getSnapshotJson(),Snapshot.class);var remote=api.cancelRemoteTask(snap.getRequest().getProviderId(),i.getTaskId(),i.getShotId());if(remote!=null&&remote.isSuccess())state="CONFIRMED";}catch(Exception e){log.warn("取消上游视频失败: {}",i.getTaskId());}
                 String finalState=state;tx.executeWithoutResult(s->{store.lockQueue();renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",i.getTaskId()).set("cancel_upstream_status",finalState));
                     // Item is already terminal; update cancellation evidence separately.
-                    store.cancelEvidence(i.getTaskId(),finalState);if("CONFIRMED".equals(finalState)){store.release(i.getTaskId());store.releaseShot(i.getTaskId());}});
+                    store.cancelEvidence(i.getTaskId(),finalState);releaseIfIdle(i.getTaskId());});
                 if(!"CONFIRMED".equals(state))upstream="UNCONFIRMED";
             }
             RenderTaskThreadRegistry.interrupt(i.getTaskId());renderTasks.refreshTaskFromDatabase(i.getTaskId());
         }
         tx.executeWithoutResult(s->{store.lockQueue();recompute(batchId);});publish(batchId);queueChanged();
-        return TaskCancelResultVO.builder().cancelled(true).status("CANCELLED").upstreamStatus(upstream).message("CONFIRMED".equals(upstream)?"已取消；成功视频保留，未执行项不再渲染":"本地已中断；上游停止待核实，后续视频派发已暂停").build();
+        return TaskCancelResultVO.builder().cancelled(true).status("CANCELLED").upstreamStatus(upstream).message("CONFIRMED".equals(upstream)?"已取消；成功视频保留，未执行项不再渲染":"本地已取消，上游未确认停止；后续任务继续执行").build();
     }
+    private void releaseIfIdle(String taskId){if(!taskId.equals(localTask)){store.release(taskId);store.releaseShot(taskId);}}
     private void publish(Long id){if(id!=null)events.publishEvent(new TaskStatusChangedEvent("VIDEO_RENDER_BATCH",String.valueOf(id),"UPDATED"));}
     private void queueChanged(){events.publishEvent(new com.astra.freyja.event.RenderQueueChangedEvent());}
-
-    /** Explicit manual recovery; evidence is retained, never inferred from an expired local timeout. */
-    public void reconcile(Long batchId,String taskId,String evidence) {
-        if(StringUtils.isBlank(evidence)||evidence.length()>2000)throw new BizException(400,"请提供不超过 2000 字的上游停止核实依据");
-        tx.executeWithoutResult(s->{store.lockQueue();Item i=store.task(taskId);
-            if(i==null||!Objects.equals(i.getBatchId(),batchId)||!Set.of("NEEDS_REVIEW","CANCELLED").contains(i.getStatus())||!"UNCONFIRMED".equals(i.getUpstreamStatus()))throw new BizException(409,"项目不是待核实状态");
-            if(taskId.equals(localTask))throw new BizException(409,"本地任务尚未退出，请稍后核实");
-            store.status(taskId,"FAILED","已确认上游停止："+evidence,null,"CONFIRMED");store.cancelEvidence(taskId,"CONFIRMED");
-            store.recordEvidence(taskId,evidence);store.release(taskId);store.releaseShot(taskId);renderTasks.failTask(taskId,"人工核实上游已停止："+evidence,null);recompute(batchId);
-        });publish(batchId);queueChanged();
-    }
 
     public void retryArchive(Long batchId,String taskId){
         tx.executeWithoutResult(s->{store.lockQueue();Batch b=detail(batchId);Item i=store.task(taskId);
             if(b.isCancelRequested()||i==null||!Objects.equals(i.getBatchId(),batchId)||!"FAILED".equals(i.getStatus())||i.getRecoveryUrl()==null)throw new BizException(409,"该项目不可恢复归档");
-            if(store.occupied(i.getShotId()))throw new BizException(409,"分镜已有其他活动任务");
+            if(taskId.equals(localTask))throw new BizException(409,"本地任务正在退出，请稍后重试归档");
+            DramaShot shot=shots.lockById(i.getShotId());
+            if(shot==null||store.occupied(i.getShotId())||(shot.getLatestTaskId()!=null&&!taskId.equals(shot.getLatestTaskId())))throw new BizException(409,"分镜已有更新的任务，不能恢复覆盖原结果");
             store.holdShot(i.getShotId(),taskId);store.retryArchive(taskId);store.batchStatus(batchId,"QUEUED",false);
             renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",taskId).eq("status","FAILED").set("status","QUEUED").set("finish_time",null));
         });renderTasks.refreshTaskFromDatabase(taskId);publish(batchId);queueChanged();
@@ -284,7 +326,7 @@ public class VideoRenderBatchService {
         if ("SUCCESS".equals(original.getStatus())) return new RecoveryResult("SUCCESS", "视频已取回，无需重复操作");
         if (Set.of("QUEUED","DISPATCHING","RENDERING").contains(original.getStatus()) && original.getRecoveryUrl()!=null)
             return new RecoveryResult("QUEUED", "已加入结果归档队列");
-        if (!"NEEDS_REVIEW".equals(original.getStatus())) throw new BizException(409,"该任务不处于待核实状态");
+        if (!canRecoverResult(original)) throw new BizException(409,"该任务没有可查询的上游结果");
         Snapshot snapshot;
         try { snapshot=json.readValue(StringUtils.defaultIfBlank(original.getResolvedJson(),original.getSnapshotJson()),Snapshot.class); }
         catch(Exception e){throw new BizException(500,"无法读取原任务快照");}
@@ -292,23 +334,27 @@ public class VideoRenderBatchService {
         if(remote==null)throw new BizException(502,"未获取到上游任务状态");
         if(!Set.of("SUCCESS","FAILED","CANCELLED").contains(remote.status()))
             return new RecoveryResult(remote.status(),Set.of("RUNNING","QUEUED").contains(remote.status())
-                    ?"原任务仍在上游执行或排队，请稍后再次查询":"上游状态仍不明确，队列继续暂停");
+                    ?"原任务仍在上游执行或排队，请稍后再次查询":"暂未取得原任务结果，后续任务继续执行");
         if("SUCCESS".equals(remote.status())&&StringUtils.isBlank(remote.videoUrl()))
             throw new BizException(502,"上游未返回已完成的视频地址");
         RecoveryResult result=tx.execute(s->{
             store.lockQueue();Item current=store.task(taskId);checkRecoveryTarget(batchId,current);
             if("SUCCESS".equals(current.getStatus()))return new RecoveryResult("SUCCESS","视频已取回");
             if(Set.of("QUEUED","DISPATCHING","RENDERING").contains(current.getStatus())&&current.getRecoveryUrl()!=null)return new RecoveryResult("QUEUED","已加入结果归档队列");
-            if(!"NEEDS_REVIEW".equals(current.getStatus())||!taskId.equals(store.currentTask())||taskId.equals(localTask))
+            if(!canRecoverResult(current)||taskId.equals(localTask))
                 throw new BizException(409,"任务执行状态已变化，请刷新后重试");
             if("SUCCESS".equals(remote.status())){
+                DramaShot shot=shots.lockById(current.getShotId());
+                if(shot==null||store.occupied(current.getShotId())||(shot.getLatestTaskId()!=null&&!taskId.equals(shot.getLatestTaskId())))
+                    throw new BizException(409,"分镜已有更新的任务，不能恢复覆盖原结果");
+                store.holdShot(current.getShotId(),taskId);
                 store.recoverCompleted(taskId,remote.videoUrl());
                 renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",taskId).eq("status","FAILED")
                         .set("status","QUEUED").set("error_message",null).set("error_detail",null).set("finish_time",null));
                 store.release(taskId);store.batchStatus(batchId,"QUEUED",false);
                 return new RecoveryResult("QUEUED","已找到完成的视频，正在取回归档；完成后继续批次");
             }
-            store.status(taskId,"FAILED","上游已明确结束："+remote.status(),null,"CONFIRMED");
+            store.confirmRemoteFailure(taskId,remote.status());
             renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",taskId).eq("status","FAILED")
                     .set("error_message","上游已明确结束："+remote.status()));
             store.release(taskId);store.releaseShot(taskId);recompute(batchId);
@@ -316,6 +362,8 @@ public class VideoRenderBatchService {
         });
         renderTasks.refreshTaskFromDatabase(taskId);publish(batchId);queueChanged();return result;
     }
+
+    private boolean canRecoverResult(Item item){return "NEEDS_REVIEW".equals(item.getStatus())||("FAILED".equals(item.getStatus())&&"UNCONFIRMED".equals(item.getUpstreamStatus()));}
 
     private void checkRecoveryTarget(Long batchId, Item item) {
         if(item==null||!Objects.equals(item.getBatchId(),batchId))throw new BizException(404,"批次任务不存在");

@@ -37,6 +37,7 @@ class VideoRenderBatchTest {
     }
     DramaShotMapper shots;AiImageApiService api;RenderTaskService rendersService;RenderTaskMapper renders;
     VideoBatchStore store;VideoBatchPreparation preparation;VideoRenderBatchService service;VideoBatchFrameService frames;
+    ApplicationEventPublisher events;
     final Map<Long,DramaShot> shotData=new LinkedHashMap<>();final Map<String,RenderTask> renderData=new HashMap<>();
     ObjectMapper json=new ObjectMapper().findAndRegisterModules();JdbcTemplate jdbc;
     @BeforeEach void setup() throws Exception {
@@ -48,7 +49,8 @@ class VideoRenderBatchTest {
         api=mock(AiImageApiService.class);rendersService=mock(RenderTaskService.class);frames=mock(VideoBatchFrameService.class);var takes=mock(ShotVideoTakeService.class);
         store=new VideoBatchStore(jdbc);var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
         preparation=new VideoBatchPreparation(mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,renders,store,json);
-        service=new VideoRenderBatchService(store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,mock(ApplicationEventPublisher.class));
+        events=mock(ApplicationEventPublisher.class);
+        service=new VideoRenderBatchService(store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,events);
         when(dramas.selectById(1L)).thenReturn(new Drama());
         DramaEpisode ep=new DramaEpisode();ep.setId(10L);ep.setDramaId(1L);ep.setTitle("第一集");when(episodes.selectList(any())).thenReturn(List.of(ep));
         DramaScene sc=new DramaScene();sc.setId(20L);sc.setDramaId(1L);sc.setName("场景");when(scenes.selectList(any())).thenReturn(List.of(sc));
@@ -152,17 +154,33 @@ class VideoRenderBatchTest {
         shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);shot(43,VideoBatchPreparation.FL,3);var b=create(request());service.runNext();
         service.cancel(b.getId());service.runNext();Batch cancelled=service.detail(b.getId());assertEquals("CANCELLED",cancelled.getStatus());assertEquals(1,cancelled.getSucceeded());assertEquals(2,cancelled.getCancelled());verify(api,times(1)).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
     }
-    @Test void runningCancellationInterruptsOnlyCurrentAndKeepsGlobalSlotWhenUnconfirmed() throws Exception {
+    @Test void runningCancellationReleasesQueueEvenWhenRemoteStopIsUnconfirmed() throws Exception {
         shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);var b=create(request());CountDownLatch entered=new CountDownLatch(1);
-        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenAnswer(i->{entered.countDown();new CountDownLatch(1).await();return null;});
+        when(api.generateAndArchiveVideo(eq(41L),anyLong(),any(),any())).thenAnswer(i->{entered.countDown();new CountDownLatch(1).await();return null;});
         when(api.cancelRemoteTask(anyLong(),anyString(),anyLong())).thenReturn(RemoteCancelResultVO.builder().success(false).detailStatus("NOT_FOUND").build());
         try(var executor=Executors.newSingleThreadExecutor()){Future<?> running=executor.submit(service::runNext);assertTrue(entered.await(3,TimeUnit.SECONDS));var result=service.cancel(b.getId());running.get(3,TimeUnit.SECONDS);assertEquals("UNCONFIRMED",result.getUpstreamStatus());}
-        assertEquals(2,service.detail(b.getId()).getCancelled());assertNotNull(store.currentTask());service.runNext();verify(api,times(1)).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
-        service.reconcile(b.getId(),store.currentTask(),"Verified stopped in gateway history");assertNull(store.currentTask());
+        assertEquals(2,service.detail(b.getId()).getCancelled());assertNull(store.currentTask());assertFalse(store.occupied(41L));assertFalse(store.occupied(42L));
+        shot(43,VideoBatchPreparation.REF,3);var next=request();next.setShotIds(List.of(43L));Batch other=create(next);
+        assertTrue(service.runNext());assertEquals("SUCCESS",service.detail(other.getId()).getStatus());
+        verify(api,never()).generateAndArchiveVideo(eq(42L),anyLong(),any(),any());
     }
-    @Test void uncertainRemoteFailureStopsFurtherDispatchUntilExplicitReconciliation() {
-        shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);var b=create(request());when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenThrow(new RuntimeException("connection lost"));service.runNext();service.runNext();
-        assertEquals("NEEDS_REVIEW",service.detail(b.getId()).getStatus());assertNotNull(store.currentTask());verify(api,times(1)).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+    @Test void uncertainRemoteFailureIsFailedAndLaterShotsContinueWithoutReview() {
+        shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);var b=create(request());
+        when(api.generateAndArchiveVideo(eq(41L),anyLong(),any(),any())).thenThrow(new RuntimeException("connection lost"));
+        service.runNext();assertNull(store.currentTask());assertFalse(store.occupied(41L));
+        assertEquals("FAILED",store.items(b.getId()).getFirst().getStatus());assertEquals("UNCONFIRMED",store.items(b.getId()).getFirst().getUpstreamStatus());
+        service.runNext();Batch result=service.detail(b.getId());assertEquals("PARTIAL_FAILED",result.getStatus());assertEquals(100,result.getProgress());
+        verify(api,times(2)).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+    }
+
+    @ParameterizedTest @ValueSource(strings={"NEEDS_REVIEW","RENDERING","CANCELLED"})
+    void oldInterruptedSlotsAreReleasedAutomatically(String status) {
+        shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.REF,2);Batch batch=create(request());
+        Item old=batch.getItems().getFirst();store.claim(old.getTaskId());store.status(old.getTaskId(),status,"old worker stopped",null,"UNCONFIRMED");
+        assertTrue(service.runNext());assertNull(store.currentTask());assertFalse(store.occupied(41L));
+        Batch result=service.detail(batch.getId());assertEquals("CANCELLED".equals(status)?"CANCELLED":"FAILED",result.getItems().getFirst().getStatus());
+        assertEquals("SUCCESS",result.getItems().get(1).getStatus());assertEquals(100,result.getProgress());
+        verify(api,never()).generateAndArchiveVideo(eq(41L),anyLong(),any(),any());
     }
 
     @Test void archiveRecoveryNeverCallsVideoGenerationAgain() {
@@ -175,10 +193,55 @@ class VideoRenderBatchTest {
         verify(api,times(1)).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());verify(api).archiveExistingVideo(41L,1L,"http://gateway/result.mp4");
     }
 
+    @Test void transferStagesAreDurableAndPublishedAfterCommit() {
+        shot(41,VideoBatchPreparation.REF,1);Batch batch=create(request());String task=batch.getItems().getFirst().getTaskId();
+        List<String> pushed=new ArrayList<>();
+        doAnswer(call->{
+            assertFalse(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive());
+            pushed.add(service.summary(batch.getId()).getCurrentStage());return null;
+        }).when(events).publishEvent(any(com.astra.freyja.event.TaskStatusChangedEvent.class));
+        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenAnswer(call->{
+            int before=service.detail(batch.getId()).getRevision();
+            VideoExecutionState.completed("http://gateway/original.mp4");
+            VideoExecutionState.progress("DOWNLOADING","渲染已完成，正在下载视频");
+            Item downloading=store.task(task);assertEquals("DOWNLOADING",downloading.getExecutionStage());assertNotNull(downloading.getStageUpdatedAt());
+            assertEquals("http://gateway/original.mp4",downloading.getRecoveryUrl());
+            assertTrue(service.summary(batch.getId()).getCurrentStage().contains("正在下载视频"));
+            assertTrue(service.detail(batch.getId()).getRevision()>before);
+            VideoExecutionState.progress("ARCHIVING","正在归档视频至 MinIO");
+            assertEquals("ARCHIVING",store.task(task).getExecutionStage());
+            assertTrue(service.summary(batch.getId()).getCurrentStage().contains("归档"));
+            return VideoGenerationResultVO.builder().videoUrl("http://minio/result.mp4").build();
+        });
+        service.runNext();assertEquals("SUCCESS",service.detail(batch.getId()).getStatus());
+        assertTrue(pushed.stream().anyMatch(stage->stage.contains("正在下载视频")));
+        assertTrue(pushed.stream().anyMatch(stage->stage.contains("正在归档视频")));
+    }
+
+    @Test void interruptedDownloadRecoversOriginalUrlWithoutGeneratingAgain() {
+        shot(41,VideoBatchPreparation.REF,1);Batch batch=create(request());String task=batch.getItems().getFirst().getTaskId();
+        store.claim(task);store.status(task,"RENDERING",null,null,null);store.recovery(task,"ARCHIVE","http://gateway/original.mp4");
+        store.progress(task,"DOWNLOADING","正在下载视频");
+        when(api.archiveExistingVideo(41L,1L,"http://gateway/original.mp4")).thenReturn(VideoGenerationResultVO.builder().videoUrl("http://minio/recovered.mp4").build());
+        service.runNext();assertEquals("SUCCESS",store.task(task).getStatus());assertNull(store.currentTask());
+        verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+        verify(api).archiveExistingVideo(41L,1L,"http://gateway/original.mp4");
+    }
+
+    @Test void interruptedRenderQueriesOriginalTaskBeforeResuming() {
+        shot(41,VideoBatchPreparation.REF,1);Batch batch=create(request());String task=batch.getItems().getFirst().getTaskId();
+        store.claim(task);store.status(task,"RENDERING",null,null,null);
+        when(api.queryVideoTask(100L,task)).thenReturn(new com.astra.freyja.dto.render.RemoteVideoTaskVO("SUCCESS","http://gateway/original.mp4","original-prompt","default"));
+        when(api.archiveExistingVideo(41L,1L,"http://gateway/original.mp4")).thenReturn(VideoGenerationResultVO.builder().videoUrl("http://minio/recovered.mp4").build());
+        service.runNext();assertEquals("SUCCESS",store.task(task).getStatus());
+        verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+        verify(api,times(1)).queryVideoTask(100L,task);
+    }
+
     @Test void recoveringCompletedUpstreamResultIsIdempotentAndOnlyArchives() {
         shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);Batch batch=create(request());
         when(api.generateAndArchiveVideo(eq(41L),anyLong(),any(),any())).thenThrow(new RuntimeException("connection lost"));
-        service.runNext();String task=store.currentTask();
+        service.runNext();String task=store.items(batch.getId()).getFirst().getTaskId();
         when(api.queryVideoTask(anyLong(),eq(task))).thenReturn(new com.astra.freyja.dto.render.RemoteVideoTaskVO("SUCCESS","http://gateway/task/output","prompt-1","node-1"));
         when(api.archiveExistingVideo(41L,1L,"http://gateway/task/output")).thenReturn(VideoGenerationResultVO.builder().videoUrl("http://minio/recovered.mp4").build());
         assertEquals("QUEUED",service.recoverResult(batch.getId(),task).status());
@@ -194,20 +257,20 @@ class VideoRenderBatchTest {
     }
 
     @ParameterizedTest @ValueSource(strings={"UNKNOWN","RUNNING","QUEUED"})
-    void recoveryDoesNotReleaseSlotWithoutTerminalEvidence(String state) {
+    void queryingUnfinishedRemoteResultDoesNotBlockQueue(String state) {
         shot(41,VideoBatchPreparation.REF,1);Batch batch=create(request());
         when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenThrow(new RuntimeException("connection lost"));
-        service.runNext();String task=store.currentTask();
+        service.runNext();String task=store.items(batch.getId()).getFirst().getTaskId();
         when(api.queryVideoTask(anyLong(),eq(task))).thenReturn(new com.astra.freyja.dto.render.RemoteVideoTaskVO(state,null,"prompt-1","node-1"));
         assertEquals(state,service.recoverResult(batch.getId(),task).status());
-        assertEquals(task,store.currentTask());assertEquals("NEEDS_REVIEW",store.task(task).getStatus());
+        assertNull(store.currentTask());assertFalse(store.occupied(41L));assertEquals("FAILED",store.task(task).getStatus());
         verify(api,never()).archiveExistingVideo(anyLong(),anyLong(),anyString());
     }
 
     @Test void cancellationDuringUpstreamQueryPreventsRecoveryAndResumption() {
-        shot(41,VideoBatchPreparation.REF,1);Batch batch=create(request());
-        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenThrow(new RuntimeException("connection lost"));
-        service.runNext();String task=store.currentTask();
+        shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.REF,2);Batch batch=create(request());
+        when(api.generateAndArchiveVideo(eq(41L),anyLong(),any(),any())).thenThrow(new RuntimeException("connection lost"));
+        service.runNext();String task=store.items(batch.getId()).getFirst().getTaskId();
         when(api.queryVideoTask(anyLong(),eq(task))).thenAnswer(i->{
             service.cancel(batch.getId());
             return new com.astra.freyja.dto.render.RemoteVideoTaskVO("SUCCESS","http://gateway/output","prompt-1","node-1");
@@ -221,12 +284,26 @@ class VideoRenderBatchTest {
     @Test void confirmedUpstreamFailureReleasesQueueWithoutRegeneratingFailedShot() {
         shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);Batch batch=create(request());
         when(api.generateAndArchiveVideo(eq(41L),anyLong(),any(),any())).thenThrow(new RuntimeException("connection lost"));
-        service.runNext();String task=store.currentTask();
+        service.runNext();String task=store.items(batch.getId()).getFirst().getTaskId();
         when(api.queryVideoTask(anyLong(),eq(task))).thenReturn(new com.astra.freyja.dto.render.RemoteVideoTaskVO("FAILED",null,"prompt-1","node-1"));
         assertEquals("FAILED",service.recoverResult(batch.getId(),task).status());
+        assertEquals("CONFIRMED",store.task(task).getUpstreamStatus());
         assertNull(store.currentTask());assertFalse(store.occupied(41L));service.runNext();
         assertEquals("PARTIAL_FAILED",service.detail(batch.getId()).getStatus());
         verify(api,times(1)).generateAndArchiveVideo(eq(41L),anyLong(),any(),any());
+    }
+
+    @Test void recoveringOldResultCannotReplaceANewerShotTask() {
+        DramaShot shot=shot(41,VideoBatchPreparation.REF,1);Batch batch=create(request());
+        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenThrow(new RuntimeException("connection lost"));
+        service.runNext();String oldTask=store.items(batch.getId()).getFirst().getTaskId();
+        when(api.queryVideoTask(anyLong(),eq(oldTask))).thenReturn(new com.astra.freyja.dto.render.RemoteVideoTaskVO("SUCCESS","http://gateway/old.mp4","prompt-1","node-1"));
+        Batch newer=create(request());String newTask=newer.getItems().getFirst().getTaskId();shot.setLatestTaskId(newTask);
+        assertThrows(com.astra.freyja.common.BizException.class,()->service.recoverResult(batch.getId(),oldTask));
+        assertEquals("FAILED",store.task(oldTask).getStatus());assertTrue(store.occupied(41L));
+        store.status(newTask,"SUCCESS",null,"http://minio/new.mp4","CONFIRMED");store.releaseShot(newTask);
+        assertThrows(com.astra.freyja.common.BizException.class,()->service.recoverResult(batch.getId(),oldTask));
+        verify(api,never()).archiveExistingVideo(anyLong(),anyLong(),anyString());
     }
 
     @Test void invalidKeyframeBindingIsBlockedWithoutCreatingTasks() {

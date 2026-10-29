@@ -137,6 +137,8 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
       case 'INITIAL_STATE':
         if (Array.isArray(msg.data)) {
           mergeActive(msg.data)
+          // One history snapshot per connection also recovers completions missed while offline.
+          void refreshHistory()
         }
         break
 
@@ -297,9 +299,18 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
   }
 
   async function refreshHistory(limit = 50) {
+    const before = new Map(recentTasks.value.map(item => [`${item.sourceType}:${item.taskId}`, item]))
     try {
       const result = await taskCenterApi.getHistory(limit)
-      recentTasks.value = (result?.records || []).map(item => ({ ...item, taskId: String(item.taskId) }))
+      const snapshot = new Map((result?.records || []).map(item => [`${item.sourceType}:${item.taskId}`, { ...item, taskId: String(item.taskId) }]))
+      // A live push can arrive while the one-off history request is in flight.
+      for (const item of recentTasks.value) {
+        const key = `${item.sourceType}:${item.taskId}`
+        const stored = snapshot.get(key)
+        if (item !== before.get(key) || (item.revision !== undefined && stored?.revision !== undefined && item.revision > stored.revision)) snapshot.set(key, item)
+      }
+      for (const item of activeTasks.value) snapshot.delete(`${item.sourceType}:${item.taskId}`)
+      recentTasks.value = [...snapshot.values()].sort((a, b) => (b.finishedAt || b.createdAt || '').localeCompare(a.finishedAt || a.createdAt || '')).slice(0, limit)
     } catch (error) {
       console.warn('加载任务历史失败:', error)
     }
@@ -333,7 +344,6 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
     if (initialized.value || typeof window === 'undefined') return
     initialized.value = true
     initWebSocket()
-    void refreshHistory()
     window.addEventListener('pageshow', handlePageShow)
     window.addEventListener('pagehide', handlePageHide)
   }

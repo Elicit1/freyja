@@ -94,6 +94,7 @@ public final class VideoBatchModels {
         private int flProcessed;
         private int progress;
         private String currentPhase;
+        private String currentStage;
         private String currentShot;
         private String upstreamStatus;
     }
@@ -113,6 +114,9 @@ public final class VideoBatchModels {
         private String outputUrl;
         private String upstreamStatus;
         private String failurePhase;
+        private String executionStage;
+        private String stageMessage;
+        private LocalDateTime stageUpdatedAt;
         @JsonIgnore private String recoveryUrl;
         public boolean isArchiveRecoverable(){return recoveryUrl!=null;}
         private LocalDateTime createdAt;

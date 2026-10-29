@@ -724,6 +724,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             String jsonBody = objectMapper.writeValueAsString(payload);
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(requestUrl))
+                    .header("X-Freyja-Deferred-Video", "true")
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + (apiKey != null ? apiKey : ""))
                     .timeout(Duration.ofSeconds(Math.max(videoHttpTimeoutSeconds,
@@ -763,7 +764,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 String targetUrl = resolveRemoteImageUrl(remoteVideoUrl, baseUrl);
                 com.astra.freyja.service.video.VideoExecutionState.completed(targetUrl);
                 log.info("[AiImageApi] 成功获取远程视频 URL，正在下载转存至 MinIO: targetUrl={}", targetUrl);
-                videoBytes = downloadRemoteBytes(targetUrl, videoTransferTimeoutSeconds);
+                videoBytes = downloadVideoResult(targetUrl);
             } else if (firstItem.hasNonNull("b64_json")) {
                 com.astra.freyja.service.video.VideoExecutionState.completed(null);
                 String b64 = firstItem.get("b64_json").asText();
@@ -779,6 +780,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         }
 
         // 5. 上传视频至 MinIO
+        com.astra.freyja.service.video.VideoExecutionState.progress("ARCHIVING","正在归档视频至 MinIO");
         String videoUrl = uploadVideoToMinio(shotId, dramaId, videoBytes);
 
         // 注意：根据按需提取架构设计，视频生成完成时不自动抽取尾帧，只有用户主动引用时才由 ShotFrameContinuityService 按需提取
@@ -823,7 +825,18 @@ public class AiImageApiServiceImpl implements AiImageApiService {
     @Override
     public com.astra.freyja.dto.drama.VideoGenerationResultVO archiveExistingVideo(Long shotId,Long dramaId,String sourceUrl) {
         com.astra.freyja.service.video.VideoExecutionState.completed(sourceUrl);
-        return com.astra.freyja.dto.drama.VideoGenerationResultVO.builder().videoUrl(uploadVideoToMinio(shotId,dramaId,downloadRemoteBytes(sourceUrl,videoTransferTimeoutSeconds))).build();
+        byte[] bytes=downloadVideoResult(sourceUrl);
+        com.astra.freyja.service.video.VideoExecutionState.progress("ARCHIVING","正在归档视频至 MinIO");
+        return com.astra.freyja.dto.drama.VideoGenerationResultVO.builder().videoUrl(uploadVideoToMinio(shotId,dramaId,bytes)).build();
+    }
+
+    private byte[] downloadVideoResult(String url){
+        try{
+            return com.astra.freyja.service.video.VideoResultDownloader.download(HTTP_CLIENT,url,Duration.ofSeconds(videoTransferTimeoutSeconds),
+                    attempt->com.astra.freyja.service.video.VideoExecutionState.progress("DOWNLOADING",
+                            attempt==1?"渲染已完成，正在下载视频":"正在重试下载原视频（"+attempt+"/3）"));
+        }catch(InterruptedException e){Thread.currentThread().interrupt();throw new java.util.concurrent.CancellationException("视频下载已取消");}
+        catch(java.io.IOException e){throw new BizException(502,"原视频下载失败，已尝试 3 次："+e.getMessage());}
     }
 
     @Override

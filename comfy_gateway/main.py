@@ -426,6 +426,18 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
             timeout_override=timeout_override
         )
 
+        # FREYJA can take over result transfer as soon as rendering finishes. Other
+        # OpenAI clients keep the existing eager-download response contract.
+        if (getattr(http_req.state, "defer_video_output", False)
+                and request.task_id and request.response_format == "url"
+                and any(Path(a.get("filename", "")).suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}
+                        for a in output_asset_meta)):
+            completion_state = "SUCCESS"
+            output_url = str(http_req.url_for("get_task_video", task_id=request.task_id))
+            logger.info("Video rendered; handing result transfer to client: task=%s prompt=%s", request.task_id, prompt_id)
+            return ImageGenerationResponse(created=int(time.time()), data=[ImageData(
+                url=output_url, revised_prompt=getattr(request, "_revised_prompt", None))])
+
         # 8. Retrieve output media bytes and prepare OpenAI response
         response_data: List[ImageData] = []
 
@@ -483,6 +495,7 @@ async def generate_videos(request: ImageGenerationRequest, http_req: Request):
     OpenAI-compatible Video Generation Endpoint alias.
     Dispatches to multi-node generation pipeline.
     """
+    http_req.state.defer_video_output = http_req.headers.get("x-freyja-deferred-video") == "true"
     return await generate_images(request, http_req)
 
 

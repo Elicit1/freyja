@@ -21,8 +21,7 @@ public class VideoRenderBatchController {
     @GetMapping("/{id}") public R<Batch> detail(@PathVariable Long id){return R.ok(service.detail(id));}
     @GetMapping("/{id}/items") public R<List<Item>> items(@PathVariable Long id){return R.ok(service.detail(id).getItems());}
     @PostMapping("/{id}/cancel") public R<TaskCancelResultVO> cancel(@PathVariable Long id){return R.ok(service.cancel(id));}
-    public record ReconcileRequest(String taskId,String evidence) {}
-    @PostMapping("/{id}/reconcile") public R<Void> reconcile(@PathVariable Long id,@RequestBody ReconcileRequest req){service.reconcile(id,req.taskId(),req.evidence());return R.ok();}
-    @PostMapping("/{id}/retry-archive") public R<Void> archive(@PathVariable Long id,@RequestBody ReconcileRequest req){service.retryArchive(id,req.taskId());return R.ok();}
-    @PostMapping("/{id}/recover-result") public R<VideoRenderBatchService.RecoveryResult> recover(@PathVariable Long id,@RequestBody ReconcileRequest req){return R.ok(service.recoverResult(id,req.taskId()));}
+    public record TaskRequest(String taskId) {}
+    @PostMapping("/{id}/retry-archive") public R<Void> archive(@PathVariable Long id,@RequestBody TaskRequest req){service.retryArchive(id,req.taskId());return R.ok();}
+    @PostMapping("/{id}/recover-result") public R<VideoRenderBatchService.RecoveryResult> recover(@PathVariable Long id,@RequestBody TaskRequest req){return R.ok(service.recoverResult(id,req.taskId()));}
 }

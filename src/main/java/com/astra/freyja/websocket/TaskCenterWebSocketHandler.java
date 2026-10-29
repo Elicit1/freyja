@@ -64,6 +64,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
+        synchronized (session) {
         sessions.put(session.getId(), session);
         log.info("[TaskCenterWS] 客户端长连接建立成功: sessionId={}, 当前在线数={}", session.getId(), sessions.size());
 
@@ -79,6 +80,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
             sendToSession(session, initMsg);
         } catch (Exception e) {
             log.warn("[TaskCenterWS] 单播初始快照失败: sessionId={}, err={}", session.getId(), e.getMessage());
+        }
         }
     }
 
@@ -167,7 +169,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
     /**
      * 监听全局任务状态变更事件并广播到所有在线会话
      */
-    @EventListener
+    @org.springframework.transaction.event.TransactionalEventListener(fallbackExecution = true)
     public void onTaskStatusChanged(TaskStatusChangedEvent event) {
         if (sessions.isEmpty() || event == null) {
             return;

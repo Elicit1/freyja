@@ -1633,6 +1633,7 @@ CREATE TABLE IF NOT EXISTS video_render_batch_item (
  id BIGINT PRIMARY KEY, batch_id BIGINT NULL, queue_order BIGINT NOT NULL, shot_id BIGINT NOT NULL,
  task_id VARCHAR(100) NOT NULL, name VARCHAR(255) NOT NULL, phase VARCHAR(20) NOT NULL,
  execution_order INT NOT NULL, status VARCHAR(32) NOT NULL,
+ execution_stage VARCHAR(32) NULL, stage_message VARCHAR(255) NULL, stage_updated_at DATETIME(3) NULL,
  snapshot_json LONGTEXT NOT NULL, resolved_json LONGTEXT NULL, error_message TEXT NULL,
  output_url TEXT NULL, upstream_status VARCHAR(32) NULL, failure_phase VARCHAR(32) NULL, recovery_url TEXT NULL,
  created_at DATETIME(3) NOT NULL, finished_at DATETIME(3),

@@ -52,12 +52,21 @@ public class VideoBatchStore {
                 status, error, output, upstream, terminal(status) ? LocalDateTime.now() : null, task);
     }
     public void resolved(String task, String json) { jdbc.update("UPDATE video_render_batch_item SET resolved_json=? WHERE task_id=?", json, task); }
+    public int progress(String task,String stage,String message){
+        return jdbc.update("UPDATE video_render_batch_item SET execution_stage=?,stage_message=?,stage_updated_at=CURRENT_TIMESTAMP WHERE task_id=? AND status IN ('DISPATCHING','RENDERING')",stage,message,task);
+    }
     public void cancelEvidence(String task, String upstream) { jdbc.update("UPDATE video_render_batch_item SET upstream_status=? WHERE task_id=?", upstream, task); }
-    public void recordEvidence(String task, String evidence) { jdbc.update("UPDATE video_render_batch_item SET error_message=? WHERE task_id=?", "上游停止核实："+evidence, task); }
+    public void cancelUnconfirmedFailure(String task) {
+        jdbc.update("UPDATE video_render_batch_item SET status='CANCELLED',error_message='用户取消整个任务',finished_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='FAILED' AND upstream_status='UNCONFIRMED'", task);
+    }
+    public List<Item> pendingReview() { return jdbc.query("SELECT * FROM video_render_batch_item WHERE status='NEEDS_REVIEW'", ITEM); }
+    public void confirmRemoteFailure(String task, String status) {
+        jdbc.update("UPDATE video_render_batch_item SET status='FAILED',upstream_status='CONFIRMED',error_message=?,finished_at=CURRENT_TIMESTAMP WHERE task_id=? AND status IN ('FAILED','NEEDS_REVIEW')", "上游已明确结束："+status, task);
+    }
     public void recovery(String task,String phase,String url){jdbc.update("UPDATE video_render_batch_item SET failure_phase=?,recovery_url=? WHERE task_id=?",phase,url,task);}
     public void retryArchive(String task){jdbc.update("UPDATE video_render_batch_item SET status='QUEUED',finished_at=NULL WHERE task_id=? AND status='FAILED'",task);}
     public void recoverCompleted(String task, String url) {
-        jdbc.update("UPDATE video_render_batch_item SET status='QUEUED',failure_phase='ARCHIVE',recovery_url=?,upstream_status='CONFIRMED',error_message=NULL,finished_at=NULL WHERE task_id=? AND status='NEEDS_REVIEW'", url, task);
+        jdbc.update("UPDATE video_render_batch_item SET status='QUEUED',failure_phase='ARCHIVE',recovery_url=?,upstream_status='CONFIRMED',error_message=NULL,finished_at=NULL WHERE task_id=? AND status IN ('FAILED','NEEDS_REVIEW')", url, task);
     }
     public static boolean terminal(String s) { return List.of("SUCCESS","FAILED","CANCELLED","SKIPPED").contains(s); }
     private static <T> T first(List<T> list) { return list.isEmpty() ? null : list.getFirst(); }
@@ -73,6 +82,8 @@ public class VideoBatchStore {
         i.setShotId(rs.getLong("shot_id")); i.setTaskId(rs.getString("task_id")); i.setName(rs.getString("name")); i.setPhase(rs.getString("phase"));
         i.setExecutionOrder(rs.getInt("execution_order")); i.setStatus(rs.getString("status")); i.setSnapshotJson(rs.getString("snapshot_json"));
         i.setResolvedJson(rs.getString("resolved_json")); i.setErrorMessage(rs.getString("error_message")); i.setOutputUrl(rs.getString("output_url"));
-        i.setUpstreamStatus(rs.getString("upstream_status"));i.setFailurePhase(rs.getString("failure_phase"));i.setRecoveryUrl(rs.getString("recovery_url")); i.setCreatedAt(time(rs,"created_at")); i.setFinishedAt(time(rs,"finished_at")); return i;
+        i.setUpstreamStatus(rs.getString("upstream_status"));i.setFailurePhase(rs.getString("failure_phase"));i.setRecoveryUrl(rs.getString("recovery_url"));
+        i.setExecutionStage(rs.getString("execution_stage"));i.setStageMessage(rs.getString("stage_message"));i.setStageUpdatedAt(time(rs,"stage_updated_at"));
+        i.setCreatedAt(time(rs,"created_at")); i.setFinishedAt(time(rs,"finished_at")); return i;
     };
 }

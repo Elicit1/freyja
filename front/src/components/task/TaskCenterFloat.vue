@@ -220,7 +220,7 @@ function isActive(status: string) {
 }
 
 function statusLabel(status: string) {
-  return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', WAITING_TASK: '子任务执行中', BLOCKED: '需要调整摘要配置', WAITING_USER: '等待回答', CANCELLING: '正在取消', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', PARTIAL_FAILED: '部分失败', NEEDS_REVIEW: '上游待核实', FAILED: '失败', CANCELLED: '已取消', CANCEL_UNCONFIRMED: '请求已中断（上游未确认）' } as Record<string, string>)[status] || status
+  return ({ QUEUED: '排队中', PENDING: '等待中', RUNNING: '运行中', RETRYING: '重试中', WAITING_TASK: '子任务执行中', BLOCKED: '需要调整摘要配置', WAITING_USER: '等待回答', CANCELLING: '正在取消', SUCCESS: '已完成', PARTIAL_SUCCESS: '部分完成', PARTIAL_FAILED: '部分失败', NEEDS_REVIEW: '已中断', FAILED: '失败', CANCELLED: '已取消', CANCEL_UNCONFIRMED: '请求已中断（上游未确认）' } as Record<string, string>)[status] || status
 }
 
 function statusTone(status: string): 'success' | 'warning' | 'danger' | 'processing' | 'pending' | 'disabled' {

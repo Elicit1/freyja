@@ -102,7 +102,7 @@ public class VideoBatchPreparation {
             c.setContext("剧集 "+s.getEpisodeId()+" / 场景 "+s.getSceneId());c.setGenerationMode(s.getGenerationMode());c.setStatus("READY");
             try {
                 if(store.occupied(s.getId()) || renders.selectCount(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getShotId,s.getId()).eq(RenderTask::getTaskType,"SHOT_VIDEO").in(RenderTask::getStatus,"QUEUED","RENDERING"))>0) {
-                    c.setStatus("SKIPPED");c.setReason("已有排队、渲染中或待核实任务");
+                    c.setStatus("SKIPPED");c.setReason("已有排队或渲染中任务");
                 } else if("SKIP".equals(req.getExistingVideoPolicy())&&StringUtils.isNotBlank(s.getVideoUrl())) {
                     c.setStatus("SKIPPED");c.setReason("已有当前视频");
                 } else {

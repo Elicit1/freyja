@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS video_render_batch_item (
  execution_order INT NOT NULL, status VARCHAR(32) NOT NULL,
  snapshot_json LONGTEXT NOT NULL, resolved_json LONGTEXT NULL, error_message TEXT NULL,
  output_url TEXT NULL, upstream_status VARCHAR(32) NULL, failure_phase VARCHAR(32) NULL, recovery_url TEXT NULL,
+ execution_stage VARCHAR(32) NULL, stage_message VARCHAR(255) NULL, stage_updated_at DATETIME(3) NULL,
  created_at DATETIME(3) NOT NULL, finished_at DATETIME(3),
  UNIQUE KEY uk_video_item_task(task_id), UNIQUE KEY uk_video_batch_shot(batch_id,shot_id),
  KEY ix_video_queue(status,queue_order,execution_order), KEY ix_video_items(batch_id,execution_order)
