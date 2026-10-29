@@ -1,6 +1,6 @@
 # 系统预置 Skills
 
-本目录包含从本地 FREYJA 已发布版本导出的 ZIP，以及仓库维护的 `freyja-platform-guide` 平台使用技能、`minimax-h3-camera` 运镜与拆镜技能、`freyja-music-video` 音乐画面制作技能、`mimo-speech-synthesis` 语音技能和 `story-writing` 故事创作与自审技能。包内包含完整 `SKILL.md` 和所需参考文件。导出脚本使用只读 API，不修改系统中的版本、开关或配置。
+本目录包含从本地 FREYJA 已发布版本导出的 ZIP，以及仓库维护的 `freyja-platform-guide` 平台使用技能、`minimax-h3-camera` 运镜与拆镜技能、`freyja-music-video` 音乐画面制作技能、`freyja-dance-director` 舞蹈编舞技能、`mimo-speech-synthesis` 语音技能和 `story-writing` 故事创作与自审技能。包内包含完整 `SKILL.md` 和所需参考文件。导出脚本使用只读 API，不修改系统中的版本、开关或配置。
 
 | Skill | 本地来源版本 | 文件数 | 职责 |
 | --- | --- | --- | --- |
@@ -11,6 +11,7 @@
 | `h3-prompt-writing` | 2 | 4 | H3 首尾帧三段式、参考模式六段式提示词与音画结构 |
 | `minimax-h3-camera` | 仓库源文件 | 6 | 从 Seedance 运镜方法本地化的 H3 摄影、机位、起落幅、合理拆镜与连续性指导；含上游 MIT 许可 |
 | `freyja-music-video` | 仓库源文件 | 4 | 根据原曲/台词建立音乐时间表与分镜，核对 H3 帧数档位、音轨复制、对嘴、拼接与后期能力，验收实际音画同步 |
+| `freyja-dance-director` | 仓库源文件 | 10 | 根据音频、歌词语义与舞种自主穿插歌词动作和舞种动作，设计速度起伏、手势/视线/表情、空间路线与动态支撑，检查重复及表演交接，自主选择转场并复核无依据重复；包含人声关联指导、音频辅助分析脚本与方法来源 |
 | `mimo-speech-synthesis` | 仓库源文件 | 2 | MiMo 请求 JSON、音色设计与克隆、风格标签与局部音频标签 |
 | `freyja-platform-guide` | 仓库源文件 | 7 | 故事自审入口、平台概念、叙事层级、参考图组合、首尾帧/参考模式、表情剧本、声音空间、运镜/音乐画面 Skill 读取与制作验收 |
 | `story-writing` | 仓库源文件 | 3 | 人物动机、剧情因果、信息揭示、铺垫回收与写入前举证自审、修稿复查 |
@@ -57,5 +58,7 @@ python scripts/package_repository_skills.py --check story-writing freyja-platfor
 此命令读取清单标为 `repository:skills/<name>` 的源目录，更新相应 ZIP 和哈希，不修改源文件、不访问服务。Markdown、文本、YAML 与 JSON 换行统一为 LF，避免 Windows/Linux 检出方式改变包哈希。上面的服务器导出命令会按服务器发布目录重建整个清单；尚未上线的新技能不要通过服务器导出来打包，否则可能丢失其清单条目。
 
 `freyja-music-video` 的维护源在同名目录，变更后运行 `python scripts/package_repository_skills.py freyja-music-video freyja-platform-guide`，再加 `--check` 校验。已有部署先上传/启用音乐画面 Skill，再上传引用它的 guide，并通过固定版本预览、包下载和 MCP 正文/参考读取验证。它提供音乐驱动画面的制作方法，不新增音乐上传、自动踩点、精确裁剪或混音接口。
+
+`freyja-dance-director` 的维护源在同名目录，正文元数据版本为 `1.9.0`。变更后运行 `python scripts/package_repository_skills.py freyja-dance-director`，再运行 `python scripts/package_repository_skills.py --check freyja-dance-director` 核验包与清单。已有部署在 `/system/skills` 导入 `freyja-dance-director.zip` 并切换生效后，通过 MCP 读回正文及 `references/choreography.md`、`references/lyrics-to-movement.md`、`references/worked-example.md` 核对；平台发布序号与正文元数据版本分别管理，修改仓库或重启不会覆盖已有有效发布版本。AI 自主决定歌词动作与舞种动作穿插的位置、时长与频率，不设固定比例或交替周期；转场依据动作、音乐与构图自主选择，连看全段调整无依据重复，保留视觉母题与一镜到底，不设固定轮换；速度组织直接落在动作句中，保留有意等速，修正通篇等时到位或同一慢起慢收的文本。歌词关联支持先做语义编舞、再核对真实人声时间，手势/视线/表情按主要短句规划并跨镜接续。不新增自动转写、逐字对齐或逐关节/面部控制接口。方法来源及适配边界见 [编舞参考来源](freyja-dance-director/references/sources.md)，文字与包校验通过不等于视频动作已验证。
 
 新部署同步包后重启可自动导入；已有部署需导入 `story-writing.zip`，合并更新当前平台指南及能力规则后发布。仓库平台指南可能早于线上自定义版本，**不要直接用旧包覆盖线上新版**。逐步升级、可直接合并的规则及行为验收用例见 [故事 Skill 接入与验收](../docs/story-writing-skill.md)。

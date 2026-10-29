@@ -3,6 +3,67 @@
   "source": "FREYJA published system Skills and repository-authored Skills",
   "skills": [
     {
+      "name": "freyja-dance-director",
+      "displayName": "舞蹈编排与镜头设计",
+      "description": "在 FREYJA 中根据音频、歌词语义与人声韵律编舞，设计动作速度起伏、连续衔接、手势、视线、表情与队形，安排自然转场，并编写符合当前模型规范的分镜和视频提示词。适用于音乐编舞、角色跳舞、舞蹈 MV 和音频驱动表演；单纯作曲、配音或视频拼接使用对应专门 Skill。",
+      "source": "repository:skills/freyja-dance-director",
+      "sourceRevision": null,
+      "package": "freyja-dance-director.zip",
+      "sha256": "8342749e27f4faae1406ae0c304bd37947419ac0b414318cdf7368ec45d9de65",
+      "files": [
+        {
+          "path": "SKILL.md",
+          "sha256": "956b3f4b55fbed548eefb33a6b0e68f2239e2945bcb0a5bff50f5f005253bfac",
+          "size": 18999
+        },
+        {
+          "path": "references/choreography-methods.md",
+          "sha256": "beb2412d94bbf20d6a1cd39537d4c00d01b1fd0430dec0db582de5429c656f23",
+          "size": 7767
+        },
+        {
+          "path": "references/choreography.md",
+          "sha256": "7733af9e2994d8238383887416ba196ae44078e692a94e96888d33165e86b0f6",
+          "size": 21922
+        },
+        {
+          "path": "references/freyja-shot-prompts.md",
+          "sha256": "c531a18915dea2f7b7264c39b39552afe539b47723f9e9d2c89065a554e56ce0",
+          "size": 15831
+        },
+        {
+          "path": "references/lyrics-to-movement.md",
+          "sha256": "69e48efb176de183848e8f8b0e651e19641c5c0fc09df254766f87df75ef39ec",
+          "size": 11269
+        },
+        {
+          "path": "references/music-and-style.md",
+          "sha256": "fdc057349bffa5d3d0145a4eb3a121e5753c4d55830aaaa2e0e3e14289bf26ab",
+          "size": 7034
+        },
+        {
+          "path": "references/natural-transitions.md",
+          "sha256": "869f91b934fc7a9c3c7248288db9a76d435e61a6637e46b43a365ec3e4b24fb0",
+          "size": 10048
+        },
+        {
+          "path": "references/sources.md",
+          "sha256": "48cf7d67fe77218ade44834a919f112b46a914f1318335539ba3f7df5c5bcec5",
+          "size": 2592
+        },
+        {
+          "path": "references/worked-example.md",
+          "sha256": "266efe83c6b28cd318c5f4913aeccae4151e02b5d1cbf60d49f12cfa63dbacdd",
+          "size": 24523
+        },
+        {
+          "path": "scripts/analyze_audio.py",
+          "sha256": "7fe5443592c1d190dab848ffd360f270d718a9e15e72ec79000c021989b1d383",
+          "size": 15719
+        }
+      ]
+    },
+    {
       "name": "freyja-music-video",
       "displayName": "音乐驱动画面制作",
       "description": "在 FREYJA 中根据给定音乐、歌曲或带台词音频规划并制作画面。用于音乐段落与分镜对应、节奏和运镜设计、H3 帧数与音频时长核对、音轨复制与对嘴验收；不用于单独作曲或普通角色音色设计。",
