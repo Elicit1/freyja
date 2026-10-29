@@ -36,7 +36,7 @@ public class DecomposedSceneVO {
     @JsonPropertyDescription("场景中文背景与空间视觉细节描述 (原著视觉源，如: 极简主义黑白冷色调，巨大的落地窗外是暴雨中的摩天大楼)")
     private String description;
     /**
-     * 场景生图提示词，剧本拆解阶段不生成
+     * 场景生图提示词，可由 Planner 与中文场景设定同时生成，场景图片可后续补充
      */
     private String scenePrompt;
 

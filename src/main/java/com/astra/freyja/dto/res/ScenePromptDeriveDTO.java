@@ -10,6 +10,9 @@ import java.util.List;
 @Data
 public class ScenePromptDeriveDTO {
 
+    /** Design Chinese scene facts as well as image prompts, without needing an image. */
+    private Boolean designDescription;
+
     /** 场景ID (可选，若传入且其它属性为空则自动从数据库读取) */
     private Long sceneId;
 

@@ -31,6 +31,7 @@ public class VideoBatchPreparation {
     private final AiModelMapper models;
     private final AiProviderMapper providers;
     private final ResKeyframeMapper keyframes;
+    private final ResSceneMapper sceneAssets;
     private final RenderTaskMapper renders;
     private final VideoBatchStore store;
     private final ObjectMapper json;
@@ -155,6 +156,7 @@ public class VideoBatchPreparation {
         if(shot.getSeed()==null||shot.getSeed()<=0||shot.getSeed()>ShotSeedUtil.MAX_SEED) throw new BizException(400,"请先配置有效的镜头种子");
         if(shot.getDuration()==null||shot.getDuration().signum()<=0||shot.getDuration().doubleValue()>15) throw new BizException(400,"镜头时长应在 0～15 秒内");
         var images=KeyImageReferenceValidator.parseAndValidate(shot.getRefImagesJson(),json,id->{var k=keyframes.selectById(id);return k==null?null:k.getFrameType();});
+        images=SceneImageReferenceResolver.resolve(images,shot.getDramaId(),sceneAssets::selectById,true);
         List<ShotRefAudioDTO> audios=readAudios(shot.getRefAudiosJson());ShotAudioReferenceValidator.validate(audios);
         var videos=com.astra.freyja.util.ShotVideoReferenceValidator.parse(shot.getRefVideosJson(),json);
         if(!videos.isEmpty()&&!REF.equals(shot.getGenerationMode()))throw new BizException(400,"参考视频只适用于参考生成模式，请切换模式或清空视频草稿");
@@ -174,7 +176,7 @@ public class VideoBatchPreparation {
                 if(capabilities.has("maxDuration")&&shot.getDuration().doubleValue()>capabilities.path("maxDuration").asDouble())throw new BizException(400,"镜头时长超过模型上限");
             }catch(BizException e){throw e;}catch(Exception e){throw new BizException(400,"模型视频能力配置无效");}
         }
-        Snapshot snap=new Snapshot();snap.setShot(copy(shot));snap.setAspectRatio(ratio);snap.setModelFingerprint(fingerprint(model,provider));
+        Snapshot snap=new Snapshot();snap.setShot(copy(shot));snap.getShot().setRefImagesJson(VideoReferenceSnapshotJson.write(images,json));snap.setAspectRatio(ratio);snap.setModelFingerprint(fingerprint(model,provider));
         DramaShotRenderRequestDTO dto=new DramaShotRenderRequestDTO();dto.setProviderId(provider.getId());dto.setWorkflowTemplateId(model.getModelCode());dto.setSize(size);dto.setPrompt(prompt);dto.setSeed(shot.getSeed());
         if(!videos.isEmpty()) {
             var prepared=videoReferences.forSubmission(shot,model,supplied==null?null:supplied.getPreflightId());

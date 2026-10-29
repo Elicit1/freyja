@@ -67,6 +67,7 @@ front/dist/
 !/docs/reference-video-generation-design.md
 !/docs/asset-center-api.md
 !/docs/audio-material-api.md
+!/docs/scene-reference-workflow.md
 
 outputs/
 

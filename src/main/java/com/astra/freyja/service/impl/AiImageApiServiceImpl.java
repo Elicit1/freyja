@@ -521,6 +521,12 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         }
         List<ShotRefImageDTO> validatedRefImages = KeyImageReferenceValidator.parseAndValidate(
                 shot.getRefImagesJson(), objectMapper, this::keyImageAssetType);
+        // Execution consumes only the submission snapshot; never re-resolve mutable asset links here.
+        for (int i = 0; i < validatedRefImages.size(); i++) {
+            ShotRefImageDTO image = validatedRefImages.get(i);
+            if (image == null || StringUtils.isBlank(image.getImageUrl()) || "ASSET_LINK".equals(image.getBindingMode()))
+                throw new BizException(409, "Picture " + (i + 1) + " 缺少已冻结的图片输入，请重新提交渲染");
+        }
         boolean hasVideoReferences = !com.astra.freyja.util.ShotVideoReferenceValidator.parse(shot.getRefVideosJson(), objectMapper).isEmpty();
         if (hasVideoReferences && (dto == null || dto.getResolvedRefVideos() == null || dto.getResolvedRefVideos().isEmpty()))
             throw new BizException(409, "REFERENCE_VIDEO_PREFLIGHT_REQUIRED: 参考视频必须先完成服务端预检");

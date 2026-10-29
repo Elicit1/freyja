@@ -179,6 +179,7 @@ public class ResSceneServiceImpl implements ResSceneService {
             vo.setId(s.getId());
             vo.setDramaId(s.getDramaId());
             vo.setName(s.getName());
+            vo.setDescription(s.getDescription());
             vo.setCoverUrl(s.getCoverUrl());
             vo.setSceneType(s.getSceneType());
             vo.setTimeOfDay(s.getTimeOfDay());
@@ -263,6 +264,7 @@ public class ResSceneServiceImpl implements ResSceneService {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
             StringBuilder sb = new StringBuilder();
             sb.append(StringUtils.defaultString(templateVersion)).append("|");
+            sb.append(Boolean.TRUE.equals(dto.getDesignDescription()) ? "DESIGN" : "PROMPT").append("|");
             sb.append(dto.getSceneId() != null ? dto.getSceneId() : "").append("|");
             sb.append(StringUtils.defaultString(dto.getName())).append("|");
             sb.append(StringUtils.defaultString(dto.getSceneType())).append("|");
@@ -313,7 +315,14 @@ public class ResSceneServiceImpl implements ResSceneService {
                 : systemPrompt;
 
         StringBuilder userPrompt = new StringBuilder();
-        userPrompt.append("请根据以下场景设定，输出一套高精度英文场景生图 Prompt：\n");
+        if (Boolean.TRUE.equals(dto.getDesignDescription())) {
+            systemPrompt += "\n本次为场景文字设计任务：必须返回非空中文 description，并同时生成与其一致的英文 scenePrompt 和 negativePrompt。"
+                    + "中文设定应明确空间布局、门窗方位、固定陈设、材质、色彩与光线；保留已有原文事实及创作者约束，"
+                    + "仅补充合理的环境设计，不加入人物、动作、运镜或新增剧情。不需要图片，不得声称已经观察过图片。";
+            userPrompt.append("请依据以下原文/设定设计可供多个分镜复用的中文场景文字与配套生图词：\n");
+        } else {
+            userPrompt.append("请根据以下场景设定，输出一套高精度英文场景生图 Prompt，description 返回 null：\n");
+        }
         if (StringUtils.isNotBlank(dto.getStylePreset()) || StringUtils.isNotBlank(dto.getVisualStyle()) || StringUtils.isNotBlank(dto.getStyleTone())) {
             userPrompt.append("★【核心艺术画风与导演视觉基调 (最高优先级，必须以此风格为媒介统领全局)】:\n");
             if (StringUtils.isNotBlank(dto.getStylePreset()) || StringUtils.isNotBlank(dto.getVisualStyle())) {
@@ -380,6 +389,7 @@ public class ResSceneServiceImpl implements ResSceneService {
         // 构建指纹比对上下文
         ScenePromptDeriveDTO contextDto = new ScenePromptDeriveDTO();
         contextDto.setSceneId(request.getSceneId());
+        contextDto.setDesignDescription(request.getDesignDescription());
         contextDto.setDramaId(request.getDramaId());
         contextDto.setName(request.getName());
         contextDto.setSceneType(request.getSceneType());
@@ -403,7 +413,17 @@ public class ResSceneServiceImpl implements ResSceneService {
         // 使用通用 JsonExtractionUtil 解析
         ScenePromptDeriveVO parsedVo = JsonExtractionUtil.cleanAndParseJson(request.getRawResponse(), ScenePromptDeriveVO.class);
 
-        return validateAndNormalizeScenePrompt(parsedVo, fingerprintMatched);
+        return validateSceneResult(parsedVo, fingerprintMatched, request.getDesignDescription());
+    }
+
+    private ScenePromptValidationResult validateSceneResult(ScenePromptDeriveVO vo, Boolean matched, Boolean design) {
+        ScenePromptValidationResult result = validateAndNormalizeScenePrompt(vo, matched);
+        if (vo != null) {
+            if (Boolean.TRUE.equals(design) && StringUtils.isBlank(vo.getDescription()))
+                result.getErrors().add("场景文字设计必须返回中文 description");
+            if (!Boolean.TRUE.equals(design)) vo.setDescription(null);
+        }
+        return result;
     }
 
     public ScenePromptValidationResult validateAndNormalizeScenePrompt(ScenePromptDeriveVO vo, Boolean fingerprintMatched) {
@@ -422,6 +442,8 @@ public class ResSceneServiceImpl implements ResSceneService {
         if (fingerprintMatched != null && !fingerprintMatched) {
             warnings.add("当前场景上下文指纹与导出时不一致，场景基础设定可能在复制期间被修改");
         }
+
+        if (StringUtils.isNotBlank(vo.getDescription())) vo.setDescription(vo.getDescription().trim());
 
         // 规范化与字段检查
         if (StringUtils.isBlank(vo.getScenePrompt())) {
@@ -453,7 +475,7 @@ public class ResSceneServiceImpl implements ResSceneService {
                 ScenePromptDeriveVO vo = JsonExtractionUtil.cleanAndParseJson(raw, ScenePromptDeriveVO.class);
                 if (vo == null) vo = JsonExtractionUtil.cleanAndParseJson(JsonRepairUtil.repair(raw), ScenePromptDeriveVO.class);
                 if (vo != null) {
-                    ScenePromptValidationResult validation = validateAndNormalizeScenePrompt(vo, true);
+                    ScenePromptValidationResult validation = validateSceneResult(vo, true, dto.getDesignDescription());
                     if (validation.hasErrors()) throw new BizException(String.join("; ", validation.getErrors()));
                     return validation.getResult();
                 }
@@ -507,7 +529,7 @@ public class ResSceneServiceImpl implements ResSceneService {
                     vo = JsonExtractionUtil.cleanAndParseJson(repaired, ScenePromptDeriveVO.class);
                 }
 
-                ScenePromptValidationResult validationResult = validateAndNormalizeScenePrompt(vo, true);
+                ScenePromptValidationResult validationResult = validateSceneResult(vo, true, dto.getDesignDescription());
 
                 if (validationResult.hasErrors()) {
                     sseBridge.sendError(String.join("; ", validationResult.getErrors()));

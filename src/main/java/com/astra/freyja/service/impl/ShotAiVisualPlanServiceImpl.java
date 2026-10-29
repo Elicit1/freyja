@@ -745,6 +745,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         if (scene == null) return data;
         data.put("id", scene.getId());
         data.put("name", scene.getName());
+        data.put("description", scene.getDescription());
+        data.put("sceneType", scene.getSceneType());
         data.put("scenePrompt", scene.getScenePrompt());
         data.put("timeOfDay", scene.getTimeOfDay());
         data.put("weatherAtmosphere", scene.getWeatherAtmosphere());
@@ -1064,6 +1066,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             if (manifest != null) {
                 sb.append(manifest.toPromptContext());
             }
+            sb.append("|scene-context=").append(buildVisualAssetContext(dto, manifest));
             sb.append("|video-references=").append(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(dto.getRefVideos()));
             byte[] hash = md.digest(sb.toString().getBytes(StandardCharsets.UTF_8));
             StringBuilder hex = new StringBuilder();
@@ -1919,12 +1922,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     }
 
     private String buildEnvironmentSceneContext(ResScene scene) {
-        StringBuilder sb = new StringBuilder("\n【绑定环境场景资产】:\n");
-        sb.append("- 场景名称: ").append(scene.getName()).append("\n");
-        if (StringUtils.isNotBlank(scene.getScenePrompt())) {
-            sb.append("- 场景生图Prompt: ").append(scene.getScenePrompt()).append("\n");
-        }
-        return sb.toString();
+        return "\n【绑定环境场景资产】:\n" + com.astra.freyja.util.SceneImageReferenceResolver.sceneContext(scene);
     }
 
     private String buildCharacterContext(ShotPromptDeriveDTO dto, ReferenceManifest manifest) {
@@ -2089,12 +2087,18 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         List<ReferenceManifest.AudioManifestItem> audios = new ArrayList<>();
         com.fasterxml.jackson.databind.ObjectMapper jacksonMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
-        List<ShotRefImageDTO> refImgs = resolveRefImages(dto);
+        Long referenceDramaId = dto.getDramaId();
+        if (referenceDramaId == null && dto.getShotId() != null) {
+            DramaShot sourceShot = shotMapper.selectById(dto.getShotId());
+            if (sourceShot != null) referenceDramaId = sourceShot.getDramaId();
+        }
+        List<ShotRefImageDTO> refImgs = com.astra.freyja.util.SceneImageReferenceResolver.resolve(
+                resolveRefImages(dto), referenceDramaId, resSceneMapper::selectById, false);
 
         if (refImgs != null) {
             int pIdx = 1;
             for (ShotRefImageDTO img : refImgs) {
-                if (img == null || StringUtils.isBlank(img.getImageUrl())) {
+                if (img == null || StringUtils.isBlank(img.getImageUrl()) && !"ASSET_LINK".equals(img.getBindingMode())) {
                     continue;
                 }
 
@@ -2167,23 +2171,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 } else if ("SCENE".equalsIgnoreCase(sType) && img.getSourceId() != null && img.getSourceId() > 0) {
                     ResScene sc = resSceneMapper.selectById(img.getSourceId());
                     if (sc != null) {
-                        StringBuilder dsb = new StringBuilder();
-                        if (StringUtils.isNotBlank(sc.getScenePrompt())) {
-                            dsb.append(sc.getScenePrompt().trim());
-                        } else if (StringUtils.isNotBlank(sc.getDescription())) {
-                            dsb.append(sc.getDescription().trim());
-                        } else if (StringUtils.isNotBlank(sc.getName())) {
-                            dsb.append(sc.getName().trim());
-                        }
-                        if (StringUtils.isNotBlank(sc.getTimeOfDay())) {
-                            if (dsb.length() > 0) dsb.append(", time of day: ");
-                            dsb.append(sc.getTimeOfDay());
-                        }
-                        if (StringUtils.isNotBlank(sc.getWeatherAtmosphere())) {
-                            if (dsb.length() > 0) dsb.append(", atmosphere: ");
-                            dsb.append(sc.getWeatherAtmosphere());
-                        }
-                        desc = dsb.toString();
+                        desc = com.astra.freyja.util.SceneImageReferenceResolver.sceneContext(sc);
                     }
                 } else if ("PROP".equalsIgnoreCase(sType) && img.getSourceId() != null && img.getSourceId() > 0) {
                     ResProp pr = propMapper.selectById(img.getSourceId());
@@ -2211,6 +2199,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                         .referenceId(img.getId())
                         .sourceType(sType)
                         .sourceId(img.getSourceId())
+                        .bindingMode(img.getBindingMode()).sourceSlot(img.getSourceSlot())
                         .characterId(img.getCharacterId() != null ? img.getCharacterId()
                                 : "CHARACTER".equals(sType) ? img.getSourceId() : null)
                         .lookId(img.getLookId())

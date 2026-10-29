@@ -29,6 +29,13 @@ public final class ShotImageReferenceValidator {
         requireChoice(image.getSourceType(), SOURCE_TYPES, path + ".sourceType");
         validateUsageRole(image.getUsageRole(), path + ".usageRole");
         requireChoice(image.getReferenceRole(), REFERENCE_ROLES, path + ".referenceRole");
+        requireChoice(image.getBindingMode(), Set.of("ASSET_LINK", "SNAPSHOT"), path + ".bindingMode");
+        if ("ASSET_LINK".equals(image.getBindingMode())) {
+            if (!"SCENE".equals(image.getSourceType()) || image.getSourceId() == null || image.getSourceId() <= 0)
+                throw new BizException(400, path + " 动态引用必须指定场景资产 ID");
+            if (!Set.of("SCENE_REFERENCE", "SCENE_COVER").contains(Objects.toString(image.getSourceSlot(), "")))
+                throw new BizException(400, path + ".sourceSlot 必须明确选择空间参考图或封面");
+        }
         if ("NON_SUBJECT".equals(image.getUsageRole()) && !Set.of("CHARACTER", "CHARACTER_LOOK", "CHARACTER_REFERENCE", "UPLOAD").contains(image.getSourceType()))
             throw new BizException(400, path + ".usageRole 的 NON_SUBJECT 仅用于人物或上传参考图");
         if ("KEYFRAME".equals(image.getSourceType()) && image.getUsageRole() != null

@@ -40,6 +40,9 @@ public class DramaShotFirstFrameDTO {
     /** 参考图 URL 列表 (可选，用于图生图或多参考图控制) */
     private List<String> referenceImageUrls;
 
+    /** Ordered asset references; resolved and frozen by the server before dispatch. */
+    private List<ShotRefImageDTO> refImages;
+
     /** 业务渲染任务唯一标识 (用于网关关联与精准取消) */
     private String taskId;
 

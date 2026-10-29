@@ -1289,4 +1289,29 @@ class ShotPromptDeriveH3Test {
         ShotPromptPackageVO fallback = service.buildPromptPackage(dto);
         assertTrue(fallback.getUserPrompt().contains("这是旧的画面描述，不应覆盖 Prompt"));
     }
+
+    @Test void scenePlaceholderKeepsPictureIndexAndPromptFingerprintAcrossImageUpdates() {
+        ResScene scene = new ResScene();
+        scene.setId(500L); scene.setDramaId(10L); scene.setStatus(1);
+        scene.setName("办公室"); scene.setDescription("北侧落地窗，中央木桌");
+        when(resSceneMapper.selectById(500L)).thenReturn(scene);
+        var linked = ShotRefImageDTO.builder().id("scene-slot").sourceType("SCENE").sourceId(500L)
+                .bindingMode("ASSET_LINK").sourceSlot("SCENE_REFERENCE").usageRole("SCENE").name("办公室").build();
+        var uploaded = ShotRefImageDTO.builder().id("upload-slot").sourceType("UPLOAD").usageRole("STYLE")
+                .imageUrl("http://minio/style.png").name("画风").build();
+        var dto = ShotPromptDeriveDTO.builder().dramaId(10L).resSceneId(500L).generationMode("REFERENCE_MODE")
+                .scriptContent("人物进入办公室").refImages(List.of(linked, uploaded)).build();
+        var before = service.buildPromptPackage(dto);
+        var manifest = service.buildReferenceManifest(dto);
+        assertEquals(2, manifest.getPictures().size());
+        assertEquals("scene-slot", manifest.getPictures().getFirst().getReferenceId());
+        assertEquals(2, manifest.getPictures().get(1).getPictureIndex());
+        assertTrue(before.getCombinedPrompt().contains("北侧落地窗"));
+        scene.setReferenceImageUrl("http://minio/office-v1.png");
+        assertEquals(before.getContextFingerprint(), service.buildPromptPackage(dto).getContextFingerprint());
+        scene.setReferenceImageUrl("http://minio/office-v2.png");
+        assertEquals(before.getContextFingerprint(), service.buildPromptPackage(dto).getContextFingerprint());
+        scene.setDescription("南侧落地窗，中央木桌");
+        assertNotEquals(before.getContextFingerprint(), service.buildPromptPackage(dto).getContextFingerprint());
+    }
 }

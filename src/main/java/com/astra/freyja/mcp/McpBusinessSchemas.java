@@ -45,7 +45,7 @@ public class McpBusinessSchemas {
                 if (metadata.fieldSchema(type, field) != null) schema = metadata.fieldSchema(type, field);
                 if (field.equals("characterRefs")) schema = array(30, nested(CharacterShotRefDTO.class, references, List.of("characterId")));
                 if (field.equals("propRefs")) schema = array(30, nested(PropShotRefDTO.class, references, List.of("propId")));
-                if (field.equals("refImages")) schema = array(9, nested(ShotRefImageDTO.class, references, List.of("sourceType", "imageUrl", "usageRole")));
+                if (field.equals("refImages")) schema = array(9, nested(ShotRefImageDTO.class, references, List.of("sourceType", "usageRole")));
                 if (field.equals("refAudios")) schema = array(3, nested(ShotRefAudioDTO.class, references, List.of("audioUrl", "referenceType")));
                 if (field.equals("refVideos")) schema = Map.of("type", "array", "items", nested(ShotRefVideoDTO.class, references, List.of("id", "sourceType")), "description", "有序参考视频；引用数量在预检与渲染时根据所选模型 maxVideos 配置校验");
                 if (field.equals("directorPlan")) schema = directorPlan();

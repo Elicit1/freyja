@@ -169,7 +169,7 @@
             >
               <div class="h-24 bg-slate-900 overflow-hidden flex items-center justify-center relative">
                 <el-image
-                  :src="img.imageUrl"
+                  v-if="img.imageUrl" :src="img.imageUrl"
                   fit="cover"
                   class="w-full h-full cursor-pointer"
                   :preview-src-list="refImages.map(x => x.imageUrl)"
@@ -190,7 +190,7 @@
                 </button>
               </div>
               <div class="p-1 text-[11px] text-gray-700 truncate" :title="img.name">
-                {{ img.name }}
+                {{ img.name }}{{ !img.imageUrl ? ' · 待补图' : '' }}
               </div>
             </div>
           </div>
@@ -306,14 +306,14 @@
               class="relative group rounded-md overflow-hidden border border-purple-200 aspect-square bg-slate-900"
             >
               <el-image
-                :src="img.imageUrl"
+                v-if="img.imageUrl" :src="img.imageUrl"
                 fit="cover"
                 class="w-full h-full cursor-pointer"
                 :preview-src-list="refImages.map(x => x.imageUrl)"
                 preview-teleported
               />
               <div class="absolute bottom-0 inset-x-0 bg-black/60 text-[9px] text-white px-1 py-0.5 truncate text-center font-mono">
-                {{ img.name }}
+                {{ img.name }}{{ !img.imageUrl ? ' · 待补图' : '' }}
               </div>
             </div>
           </div>
@@ -396,6 +396,7 @@ import { ElMessage, type UploadRequestOptions } from 'element-plus'
 import { shotApi, dramaApi } from '@/api/drama'
 import { aiProviderApi } from '@/api/ai-provider'
 import { assetApi } from '@/api/res-asset'
+import type { ShotRefImage } from '@/types/drama'
 import type { AiModel, AiProviderVO } from '@/types/ai-provider'
 import AssetMultiSelectDialog, { type AssetSelectItem } from './AssetMultiSelectDialog.vue'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
@@ -450,6 +451,9 @@ export interface ShotRefImageItem {
   characterId?: string | number
   lookId?: string | number
   referenceRole?: string
+  usageRole?: string
+  bindingMode?: 'ASSET_LINK' | 'SNAPSHOT'
+  sourceSlot?: 'SCENE_REFERENCE' | 'SCENE_COVER'
 }
 
 const refImages = ref<ShotRefImageItem[]>([])
@@ -557,6 +561,9 @@ function handleAssetConfirm(items: AssetSelectItem[]) {
         imageUrl: item.imageUrl,
         sourceType: item.sourceType,
         sourceId: item.sourceId,
+        bindingMode: item.bindingMode,
+        sourceSlot: item.sourceSlot,
+        usageRole: item.usageRole,
         characterId: item.characterId,
         lookId: item.lookId,
         referenceRole: item.referenceRole
@@ -687,15 +694,24 @@ async function open(params: ShotImageGenerateOpenParams) {
     form.size = '720x1280'
   }
 
-  // 默认推荐参考图初始化
-  if (params.frameType === 'LAST_FRAME' && params.firstFrameUrl) {
+  // Start with the shot's ordered asset slots so prompts and pictures share the same numbering.
+  try {
+    const shot = await shotApi.getById(params.shotId)
+    refImages.value = (shot.refImages || []).map((image, index) => ({ ...image, id: image.id || `saved_${index}` }))
+  } catch (error: any) {
+    ElMessage.error(error?.message || '读取分镜参考配置失败')
+    return
+  }
+
+  // 默认推荐参考图初始化（已有编排时保留原顺序）
+  if (!refImages.value.length && params.frameType === 'LAST_FRAME' && params.firstFrameUrl) {
     refImages.value.push({
       id: `init_first_${Date.now()}`,
       name: '本镜首帧图',
       imageUrl: params.firstFrameUrl,
       sourceType: 'FIRST_FRAME'
     })
-  } else if (params.slotOriginUrl) {
+  } else if (!refImages.value.length && params.slotOriginUrl) {
     refImages.value.push({
       id: `init_origin_${Date.now()}`,
       name: '槽位原图',
@@ -753,6 +769,9 @@ async function handleGenerate() {
   if (!form.providerId || !models.value.some(m => m.modelCode === form.modelCode)) {
     return ElMessage.warning('请选择供应商和生图模型')
   }
+  if (refImages.value.length > 0 && !isImg2imgSupported.value) {
+    return ElMessage.warning('已有参考槽位，请选择支持参考图的模型，或明确移除参考图后生成')
+  }
   const sizeValidation = validateGenerationSize(form.size, 'image')
   if (!sizeValidation.valid) {
     return ElMessage.warning(sizeValidation.message)
@@ -775,7 +794,14 @@ async function handleGenerate() {
       negativePrompt: form.negativePrompt?.trim(),
       size: sizeValidation.normalized,
       seed: form.seed,
-      referenceImageUrls: refImageUrls,
+      // Scene links are resolved by the server immediately before queuing.
+      referenceImageUrls: [],
+      refImages: refImageUrls ? refImages.value.map(image => ({
+        ...image,
+        sourceType: ['SCENE', 'CHARACTER_REFERENCE', 'CHARACTER', 'PROP', 'KEYFRAME', 'UPLOAD'].includes(image.sourceType)
+          ? image.sourceType : 'UPLOAD',
+        usageRole: image.usageRole || (image.sourceType === 'SCENE' ? 'SCENE' : image.sourceType === 'PROP' ? 'PROP' : 'SUBJECT')
+      } as ShotRefImage)) : [],
       frameType: currentFrameType.value
     })
 

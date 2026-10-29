@@ -238,6 +238,7 @@ export interface ResScene {
 }
 
 export interface ScenePromptDeriveDTO {
+  designDescription?: boolean
   sceneId?: string | number
   dramaId?: string | number
   name?: string
@@ -255,11 +256,13 @@ export interface ScenePromptDeriveDTO {
 }
 
 export interface ScenePromptDeriveVO {
+  description?: string
   scenePrompt?: string
   negativePrompt?: string
 }
 
 export interface ScenePromptParseRequestDTO {
+  designDescription?: boolean
   sceneId?: string | number
   dramaId?: string | number
   name?: string

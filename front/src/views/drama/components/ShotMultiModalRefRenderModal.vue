@@ -660,6 +660,8 @@ function handleAssetConfirm(items: AssetSelectItem[]) {
       imageUrl: item.imageUrl,
       sourceType: item.sourceType,
       sourceId: item.sourceId,
+      bindingMode: item.bindingMode,
+      sourceSlot: item.sourceSlot,
       characterId: item.characterId,
       lookId: item.lookId,
       referenceRole: item.referenceRole,

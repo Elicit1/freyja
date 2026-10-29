@@ -14,6 +14,8 @@ public class ResSceneOptionVO {
 
     private String name;
 
+    private String description;
+
     private String coverUrl;
 
     private String sceneType;

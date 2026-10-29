@@ -130,4 +130,27 @@ class AssetDualChannelPromptDeriveTest {
         assertNotNull(validationResult.getResult().getScenePrompt());
         assertTrue(validationResult.getResult().getScenePrompt().contains("grand ancient chinese"));
     }
+
+    @Test void sceneDesignIsPreviewedParsedAndValidatedInBothModes() {
+        when(sysConfigService.getConfigValue(eq("ai.prompt.scene_prompt_enrich_system"), anyString()))
+                .thenReturn("Scene System Prompt");
+        ScenePromptDeriveDTO design = new ScenePromptDeriveDTO();
+        design.setName("办公室");
+        design.setDesignDescription(true);
+        var pkg = sceneService.buildPromptPackage(design);
+        assertTrue(pkg.getSystemPrompt().contains("必须返回非空中文 description"));
+        var req = ScenePromptParseRequestDTO.builder().name("办公室").designDescription(true)
+                .contextFingerprint(pkg.getContextFingerprint())
+                .rawResponse("{\"description\":\"北侧落地窗，中央木桌\",\"scenePrompt\":\"office with northern windows\"}").build();
+        var valid = sceneService.parseAndValidateDerivedPrompt(req);
+        assertFalse(valid.hasErrors());
+        assertTrue(valid.getFingerprintMatched());
+        assertEquals("北侧落地窗，中央木桌", valid.getResult().getDescription());
+        req.setRawResponse("{\"scenePrompt\":\"office\"}");
+        assertTrue(sceneService.parseAndValidateDerivedPrompt(req).hasErrors());
+        req.setDesignDescription(false);
+        assertFalse(sceneService.parseAndValidateDerivedPrompt(req).getFingerprintMatched());
+        req.setRawResponse("{\"description\":\"must not overwrite existing facts\",\"scenePrompt\":\"office\"}");
+        assertNull(sceneService.parseAndValidateDerivedPrompt(req).getResult().getDescription());
+    }
 }

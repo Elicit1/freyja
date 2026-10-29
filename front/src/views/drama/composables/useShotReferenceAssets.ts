@@ -1,4 +1,5 @@
 import { ref, computed, type Ref } from 'vue'
+import { referenceImageKey, sceneImageCandidates } from '@/utils/scene-image-reference'
 import type { CharacterShotRefInfo, PropShotRefInfo, ShotRefImage, ShotRefAudio, ShotRefVideo } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
 import { REFERENCE_AUDIO_TYPE_OPTIONS } from '@/constants/referenceMediaOptions'
@@ -15,6 +16,8 @@ export interface ShotPromptDraft {
 }
 
 export interface CandidateImageItem {
+  bindingMode?: 'ASSET_LINK' | 'SNAPSHOT'
+  sourceSlot?: 'SCENE_REFERENCE' | 'SCENE_COVER'
   id: string
   name: string
   imageUrl: string
@@ -52,13 +55,13 @@ export function useShotReferenceAssets(
     const seen = new Set<string>()
 
     const pushImage = (item: CandidateImageItem) => {
-      const key = `${item.imageUrl}|${item.sourceType}|${item.sourceId || ''}`
+      const key = referenceImageKey(item)
       if (seen.has(key)) return
       seen.add(key)
 
       // 检查是否已被占用
       const occIdx = draft.value.refImages.findIndex(
-        img => img.imageUrl === item.imageUrl && img.sourceType === item.sourceType && String(img.sourceId || '') === String(item.sourceId || '')
+        img => referenceImageKey(img) === referenceImageKey(item)
       )
       list.push({
         ...item,
@@ -120,36 +123,7 @@ export function useShotReferenceAssets(
     // B. 选中的环境场景 (空间参考图优先、场景封面)
     if (draft.value.resSceneId) {
       const sc = options.sceneOptions.value.find(s => String(s.id) === String(draft.value.resSceneId))
-      if (sc) {
-        // 空间参考图优先
-        if (sc.referenceImageUrl) {
-          pushImage({
-            id: `cand_scene_ref_${sc.id}`,
-            name: `${sc.name} (空间参考图)`,
-            imageUrl: sc.referenceImageUrl,
-            sourceType: 'SCENE',
-            sourceId: String(sc.id),
-            usageRole: 'SCENE',
-            tag: '空间参考图',
-            assetName: sc.name,
-            assetType: 'SCENE'
-          })
-        }
-        // 场景封面
-        if (sc.coverUrl && sc.coverUrl !== sc.referenceImageUrl) {
-          pushImage({
-            id: `cand_scene_cover_${sc.id}`,
-            name: `${sc.name} (场景封面)`,
-            imageUrl: sc.coverUrl,
-            sourceType: 'SCENE',
-            sourceId: String(sc.id),
-            usageRole: 'SCENE',
-            tag: '场景封面',
-            assetName: sc.name,
-            assetType: 'SCENE'
-          })
-        }
-      }
+      if (sc) sceneImageCandidates(sc).forEach(pushImage)
     }
 
     // B2. 选中的关键图参考 (与环境场景互斥)
@@ -259,7 +233,7 @@ export function useShotReferenceAssets(
     if (draft.value.refImages.length >= MAX_REF_IMAGES) return false
     // 去重检查
     const exists = draft.value.refImages.some(
-      img => img.imageUrl === cand.imageUrl && img.sourceType === cand.sourceType && String(img.sourceId || '') === String(cand.sourceId || '')
+      img => referenceImageKey(img) === referenceImageKey(cand)
     )
     if (exists) return false
 
@@ -269,6 +243,8 @@ export function useShotReferenceAssets(
       imageUrl: cand.imageUrl,
       sourceType: cand.sourceType,
       sourceId: cand.sourceId,
+      bindingMode: cand.bindingMode,
+      sourceSlot: cand.sourceSlot,
       characterId: cand.characterId,
       lookId: cand.lookId,
       referenceRole: cand.referenceRole,
@@ -285,6 +261,8 @@ export function useShotReferenceAssets(
       imageUrl: cand.imageUrl,
       sourceType: cand.sourceType,
       sourceId: cand.sourceId,
+      bindingMode: cand.bindingMode,
+      sourceSlot: cand.sourceSlot,
       characterId: cand.characterId,
       lookId: cand.lookId,
       referenceRole: cand.referenceRole,
@@ -324,10 +302,11 @@ export function useShotReferenceAssets(
 
   function computeDraftFingerprint(): string {
     const chars = draft.value.characterRefs.map(c => `${c.characterId}:${c.lookId || ''}`).sort().join(';')
-    const scene = String(draft.value.resSceneId || '')
+    const selectedScene = options.sceneOptions.value.find(s => String(s.id) === String(draft.value.resSceneId))
+    const scene = JSON.stringify([draft.value.resSceneId, selectedScene?.description, selectedScene?.scenePrompt, selectedScene?.sceneType, selectedScene?.timeOfDay, selectedScene?.weatherAtmosphere])
     const keyframe = String(draft.value.resKeyframeId || '')
     const props = draft.value.propRefs.map(p => String(p.propId || '')).sort().join(';')
-    const imgs = draft.value.refImages.map(i => `${i.imageUrl}|${i.usageRole || ''}`).join(';')
+    const imgs = draft.value.refImages.map(i => `${referenceImageKey(i)}|${i.usageRole || ''}`).join(';')
     const auds = draft.value.refAudios.map(a => `${a.audioUrl}|${a.referenceType || ''}|${a.referenceDescription || ''}|${a.audioId || ''}|${a.characterId || ''}|${a.language || ''}`).join(';')
     const videos = JSON.stringify((draft.value.refVideos || []).map(video => [
       video.id, video.sourceType, video.sourceVideoUrl, video.sourceShotId, video.sourceVideoTakeId,

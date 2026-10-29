@@ -74,4 +74,11 @@ class AssetMediaCleanupServiceTest {
         assertDoesNotThrow(() -> broken.deleteAfterCommit(url));
         verifyNoInteractions(minio);
     }
+
+    @Test void queuedVideoSnapshotRetainsOldSceneImage() throws Exception {
+        jdbc.execute("CREATE TABLE video_render_batch_item (id BIGINT, snapshot_json CLOB)");
+        jdbc.update("INSERT INTO video_render_batch_item VALUES (1,?)", "{\"imageUrl\":\"" + url + "\"}");
+        cleanup.deleteUnreferencedNow(url);
+        verifyNoInteractions(minio);
+    }
 }

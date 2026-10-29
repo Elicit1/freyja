@@ -62,6 +62,8 @@ public class ReferenceManifest {
         private String referenceRole; // IDENTITY / LOOK / COMBINED, independent of visibility
         private String description; // 完整的原著/资产文字描述 (外貌、场景、道具材质等)
         private String imageUrl;
+        private String bindingMode;
+        private String sourceSlot;
     }
 
     @Data
@@ -105,6 +107,10 @@ public class ReferenceManifest {
                 sb.append(String.format("- 实体类型: %s\n", pic.getSourceType()));
                 sb.append(String.format("- 实体名称: %s\n", StringUtils.defaultString(pic.getEntityName(), "未命名")));
                 sb.append(String.format("- 建议角色定位: %s\n", StringUtils.defaultString(pic.getUsageRole(), "IDENTITY")));
+                if ("ASSET_LINK".equals(pic.getBindingMode())) {
+                    sb.append("- 场景资产引用: ").append(pic.getSourceId()).append(" / ").append(pic.getSourceSlot()).append("\n");
+                    sb.append("- 此槽位按文字设定预留，渲染前必须补齐对应图片；提示词 AI 看不到图片，不得描述为已观察到的图片内容。\n");
+                }
                 if (pic.getCharacterId() != null) {
                     sb.append("- 关联人物 ID: ").append(pic.getCharacterId()).append("\n");
                 }

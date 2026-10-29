@@ -254,6 +254,8 @@ export interface PropShotRefInfo {
 }
 
 export interface ShotRefImage {
+  bindingMode?: 'ASSET_LINK' | 'SNAPSHOT'
+  sourceSlot?: 'SCENE_REFERENCE' | 'SCENE_COVER'
   id?: string
   sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP' | 'KEYFRAME' | 'UPLOAD'
   sourceId?: string | number
@@ -632,6 +634,7 @@ export interface DramaShotFirstFrame {
   customPrompt?: string
   negativePrompt?: string
   referenceImageUrls?: string[]
+  refImages?: ShotRefImage[]
   frameType?: 'FIRST_FRAME' | 'LAST_FRAME'
 }
 

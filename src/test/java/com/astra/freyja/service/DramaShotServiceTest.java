@@ -716,4 +716,41 @@ class DramaShotServiceTest {
         );
         assertTrue(ex.getMessage().contains("镜头时长最长不得超过 15 秒"));
     }
+
+    @Test void firstFrameFreezesSceneImageBeforeDispatchAndRecordsItsSnapshot() throws Exception {
+        DramaShot shot = new DramaShot(); shot.setId(1000L); shot.setDramaId(1L); shot.setFirstFramePrompt("office");
+        var scene = new com.astra.freyja.entity.ResScene();
+        scene.setId(2032095628944588801L); scene.setDramaId(1L); scene.setStatus(1);
+        scene.setReferenceImageUrl("http://minio/office-v1.png");
+        when(resSceneMapper.selectById(scene.getId())).thenReturn(scene);
+        shot.setRefImagesJson(objectMapper.writeValueAsString(List.of(ShotRefImageDTO.builder()
+                .id("stable-slot").name("办公室").sourceType("SCENE").sourceId(scene.getId()).usageRole("SCENE")
+                .bindingMode("ASSET_LINK").sourceSlot("SCENE_REFERENCE").build())));
+        when(shotMapper.selectById(1000L)).thenReturn(shot);
+        when(aiImageApiService.generateAndArchiveImage(eq(1000L),eq(1L),eq("office"),any())).thenAnswer(call -> {
+            scene.setReferenceImageUrl("http://minio/office-v2.png");
+            DramaShotFirstFrameDTO frozen=call.getArgument(3);
+            assertEquals(List.of("http://minio/office-v1.png"),frozen.getReferenceImageUrls());
+            assertEquals("SNAPSHOT",frozen.getRefImages().getFirst().getBindingMode());
+            return "http://minio/result.png";
+        });
+        DramaShotFirstFrameDTO request=new DramaShotFirstFrameDTO(); request.setSize("1024x1024");
+        shotService.generateFirstFrame(1000L,request);
+        var task=ArgumentCaptor.forClass(com.astra.freyja.dto.render.RenderTaskVO.class);
+        verify(renderTaskService).createTask(task.capture());
+        assertTrue(task.getValue().getRequestSnapshotJson().contains("office-v1.png"));
+        assertTrue(task.getValue().getRequestSnapshotJson().contains("\"sourceId\":\"2032095628944588801\""));
+        assertTrue(shot.getRefImagesJson().contains("ASSET_LINK"));
+    }
+
+    @Test void missingLinkedSceneImageDoesNotCreateAFrameTask() throws Exception {
+        DramaShot shot=new DramaShot(); shot.setId(1000L);shot.setDramaId(1L);shot.setFirstFramePrompt("office");
+        var scene=new com.astra.freyja.entity.ResScene();scene.setId(500L);scene.setDramaId(1L);scene.setStatus(1);
+        when(resSceneMapper.selectById(500L)).thenReturn(scene);when(shotMapper.selectById(1000L)).thenReturn(shot);
+        shot.setRefImagesJson(objectMapper.writeValueAsString(List.of(ShotRefImageDTO.builder().id("scene-slot")
+                .sourceType("SCENE").sourceId(500L).usageRole("SCENE").bindingMode("ASSET_LINK").sourceSlot("SCENE_REFERENCE").build())));
+        assertTrue(assertThrows(BizException.class,()->shotService.generateFirstFrame(1000L,new DramaShotFirstFrameDTO()))
+                .getMessage().contains("Picture 1"));
+        verifyNoInteractions(aiImageApiService,renderTaskService);
+    }
 }

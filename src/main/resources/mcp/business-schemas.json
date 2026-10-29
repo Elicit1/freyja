@@ -226,6 +226,8 @@
       "lookId",
       "name",
       "imageUrl",
+      "bindingMode",
+      "sourceSlot",
       "usageRole",
       "referenceRole"
     ],
@@ -396,7 +398,9 @@
     "CHARACTER.referenceImageUrl": "人物/造型设定图 URL；生成图片前先读 character-sheet-design Skill，遵循用户的三视图/头身分区/细节/透明或白底要求，上传后填写返回 URL。已有图片可直接关联。",
     "CHARACTER_LOOK.referenceImageUrl": "人物/造型设定图 URL；生成图片前先读 character-sheet-design Skill，遵循用户的三视图/头身分区/细节/透明或白底要求，上传后填写返回 URL。已有图片可直接关联。",
     "CHARACTER.appearancePrompt": "可选的稳定身份外貌 Prompt；设定图版式和导出要求按 character-sheet-design Skill 写入图片生成指令，不混入稳定身份描述。",
-    "IMAGE.imageUrl": "必填的已有参考图 URL；服务端不抓取外部 URL、不调用内部生图。",
+    "IMAGE.imageUrl": "固定参考图必填已有 URL；ASSET_LINK 场景槽位允许省略或为空，由服务端按资产位置解析，缺图时仅允许保存和编写提示词。",
+    "IMAGE.bindingMode": "ASSET_LINK 跟随场景资产图片位置更新；SNAPSHOT 或省略保持固定图片 URL。仅 SCENE 支持动态引用。",
+    "IMAGE.sourceSlot": "ASSET_LINK 必填：SCENE_REFERENCE 空间参考图，SCENE_COVER 场景封面；不会猜测或回退到另一张图。",
     "IMAGE.sourceId": "除 UPLOAD 外必填；CHARACTER 为人物 ID，CHARACTER_LOOK/CHARACTER_REFERENCE 为造型 ID并补齐 lookId；SCENE/PROP/KEYFRAME 为对应资产 ID。UPLOAD 省略。",
     "IMAGE.characterId": "显式人物弱绑定；CHARACTER_LOOK/CHARACTER_REFERENCE 必填，UPLOAD 可按需关联，画外人物也可绑定。",
     "IMAGE.usageRole": "必填，必须明确选择参考图在本镜头中的用途，仅允许列出的下拉用途值，不得留空或自行创造。身份/造型细分约束填写 referenceRole。KEYFRAME 来源只允许七种关键图用途。",
@@ -436,10 +440,9 @@
         "type": "string",
         "x-freyja-options": "reference_image_source_type"
       },
-      "imageUrl": {
-        "type": "string",
-        "pattern": ".*\\S.*"
-      },
+      "imageUrl": { "type": ["string", "null"] },
+      "bindingMode": { "type": ["string", "null"], "enum": ["ASSET_LINK", "SNAPSHOT", null] },
+      "sourceSlot": { "type": ["string", "null"], "enum": ["SCENE_REFERENCE", "SCENE_COVER", null] },
       "referenceRole": {
         "type": [
           "string",

@@ -42,7 +42,12 @@ public class McpBusinessInputValidator {
                     item.get("usageRole") instanceof String role ? role : null, "data." + path + ".usageRole");
             if (!image && !(item.get("referenceType") instanceof String type && com.astra.freyja.util.ShotAudioReferenceValidator.REFERENCE_TYPES.contains(type))) throw new BizException(400, path + ".referenceType 必须为 H3 四种参考关系之一");
             String urlField = image ? "imageUrl" : "audioUrl";
-            if (!(item.get(urlField) instanceof String url) || url.isBlank()) throw new BizException(400, path + "." + urlField + " 必填");
+            boolean sceneLink = image && "ASSET_LINK".equals(item.get("bindingMode"));
+            if (sceneLink && (!"SCENE".equals(source)
+                    || !Set.of("SCENE_REFERENCE", "SCENE_COVER").contains(Objects.toString(item.get("sourceSlot"), ""))))
+                throw new BizException(400, path + " 动态图片引用必须指定 SCENE 来源及明确的 sourceSlot");
+            if (!sceneLink && (!(item.get(urlField) instanceof String url) || url.isBlank()))
+                throw new BizException(400, path + "." + urlField + " 必填");
             if (image && !"UPLOAD".equals(source) && item.get("sourceId") == null)
                 throw new BizException(400, path + ".sourceId 必填；造型图传造型 ID，人物图传人物 ID");
             if (image && "UPLOAD".equals(source) && item.get("sourceId") != null)

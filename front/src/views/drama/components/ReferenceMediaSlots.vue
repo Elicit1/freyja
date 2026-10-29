@@ -52,12 +52,13 @@
           <!-- 图片预览与 Picture 标签 -->
           <div class="h-24 bg-slate-900 relative flex items-center justify-center overflow-hidden">
             <el-image
-              :src="img.imageUrl"
+              v-if="img.imageUrl" :src="img.imageUrl"
               fit="cover"
               class="w-full h-full cursor-pointer"
               :preview-src-list="[img.imageUrl]"
               preview-teleported
             />
+            <span v-if="!img.imageUrl" class="absolute inset-0 flex items-center justify-center text-xs text-amber-700">待补场景图</span>
             <!-- 槽位角标 Picture N -->
             <span class="absolute top-1 left-1 bg-sky-600/90 text-white font-mono text-[10px] font-bold px-1.5 py-0.5 rounded shadow-xs">
               &lt;Picture {{ idx + 1 }}&gt;
@@ -102,6 +103,16 @@
               </el-select>
             </div>
 
+            <div v-if="img.sourceType === 'SCENE' && img.sourceId" class="mt-1">
+              <span v-if="img.bindingMode === 'ASSET_LINK'" class="text-[10px] text-sky-700">跟随场景{{ img.sourceSlot === 'SCENE_REFERENCE' ? '空间图' : '封面' }}更新</span>
+              <el-dropdown v-else :disabled="disabled" @command="(slot: 'SCENE_REFERENCE' | 'SCENE_COVER') => migrateSceneSlot(idx, slot)">
+                <el-button size="small" link type="primary">固定图片 · 改为跟随场景</el-button>
+                <template #dropdown><el-dropdown-menu>
+                  <el-dropdown-item command="SCENE_REFERENCE">跟随空间参考图</el-dropdown-item>
+                  <el-dropdown-item command="SCENE_COVER">跟随封面图</el-dropdown-item>
+                </el-dropdown-menu></template>
+              </el-dropdown>
+            </div>
             <p v-if="img.usageRole === 'NON_SUBJECT'" class="text-[10px] text-amber-700">
               仅作人物设定参考，不据此安排人物出镜。更改用途后请重新生成提示词。
             </p>
@@ -351,7 +362,8 @@
             @click="handleSelectCandidateImage(cand)"
           >
             <div class="h-24 bg-slate-100 rounded overflow-hidden flex items-center justify-center relative">
-              <el-image :src="cand.imageUrl" fit="cover" class="w-full h-full" />
+              <span v-if="!cand.imageUrl" class="text-xs text-amber-700">待补图，可先挂载</span>
+              <el-image v-else :src="cand.imageUrl" fit="cover" class="w-full h-full" />
               <span class="absolute bottom-1 right-1 px-1 py-0.2 rounded text-[9px] font-medium bg-black/70 text-white">
                 {{ cand.tag }}
               </span>
@@ -383,6 +395,7 @@
 <script setup lang="ts">
 import { referenceImageUsageOptions, REFERENCE_AUDIO_TYPE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
+import { linkSceneSlot } from '@/utils/scene-image-reference'
 import { probeReferenceAudioDuration } from '@/utils/reference-audio'
 import { ElMessage } from 'element-plus'
 import type { ShotRefImage, ShotRefAudio } from '@/types/drama'
@@ -480,6 +493,8 @@ function createRefImage(cand: CandidateImageItem): ShotRefImage {
     imageUrl: cand.imageUrl,
     sourceType: cand.sourceType,
     sourceId: cand.sourceId,
+    bindingMode: cand.bindingMode,
+    sourceSlot: cand.sourceSlot,
     characterId: cand.characterId,
     lookId: cand.lookId,
     referenceRole: cand.referenceRole,
@@ -533,6 +548,16 @@ function handleMoveImage(fromIdx: number, toIdx: number) {
   const next = [...props.refImages]
   const [moved] = next.splice(fromIdx, 1)
   next.splice(toIdx, 0, moved)
+  emit('update:refImages', next)
+  emit('change')
+}
+
+function migrateSceneSlot(index: number, slot: 'SCENE_REFERENCE' | 'SCENE_COVER') {
+  const next = [...props.refImages]
+  if (!next[index]) return
+  next[index] = linkSceneSlot(next[index]!, slot)
+  const candidate = props.candidateImages.find(c => c.sourceType === 'SCENE' && String(c.sourceId) === String(next[index]!.sourceId) && c.sourceSlot === slot)
+  if (candidate) next[index]!.imageUrl = candidate.imageUrl
   emit('update:refImages', next)
   emit('change')
 }

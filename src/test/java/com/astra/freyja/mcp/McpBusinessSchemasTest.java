@@ -189,4 +189,17 @@ class McpBusinessSchemasTest {
         }
         assertThrows(BizException.class, () -> options.list("ai_provider_type"));
     }
+
+    @Test void sceneAssetLinksAllowMissingPicturesButRequireAnExplicitSlot() {
+        var image = new HashMap<String, Object>(Map.of("sourceType", "SCENE", "sourceId", "2032095628944588801",
+                "usageRole", "SCENE", "bindingMode", "ASSET_LINK", "sourceSlot", "SCENE_REFERENCE"));
+        assertDoesNotThrow(() -> validator.validate(McpRecordType.SHOT, Map.of("refImages", List.of(image)), false, false));
+        image.remove("sourceSlot");
+        assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT, Map.of("refImages", List.of(image)), false, false));
+        image.put("sourceSlot", "SCENE_REFERENCE"); image.put("sourceType", "UPLOAD");
+        assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT, Map.of("refImages", List.of(image)), false, false));
+        image.put("sourceType", "SCENE"); image.put("bindingMode", "SNAPSHOT");
+        assertThrows(BizException.class, () -> validator.validate(McpRecordType.SHOT, Map.of("refImages", List.of(image)), false, false));
+        assertTrue(metadata.referenceFields("IMAGE").containsAll(Set.of("bindingMode", "sourceSlot")));
+    }
 }

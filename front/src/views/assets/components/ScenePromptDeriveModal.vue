@@ -361,6 +361,10 @@
         </div>
 
         <div class="space-y-3 bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs">
+          <div v-if="currentContext.designDescription">
+            <label class="mb-1 block text-xs font-semibold text-slate-700">中文场景文字设定（可编辑后采纳）</label>
+            <el-input v-model="previewResult.description" type="textarea" :rows="6" />
+          </div>
           <div>
             <div class="flex items-center justify-between mb-1">
               <label class="text-xs font-semibold text-slate-700">🏛️ 场景生图 Prompt (scenePrompt)</label>
@@ -490,7 +494,7 @@ const validationInfo = ref<{
 const providers = ref<AiProviderVO[]>([])
 const models = ref<AiModel[]>([])
 
-const currentContext = reactive<Partial<ResScene>>({})
+const currentContext = reactive<Partial<ResScene> & { designDescription?: boolean }>({})
 const previewResult = ref<ScenePromptDeriveVO | null>(null)
 const streamConsoleRef = ref<HTMLPreElement | null>(null)
 
@@ -498,12 +502,14 @@ let timer: ReturnType<typeof setInterval> | null = null
 let abortController: AbortController | null = null
 
 const modalTitle = computed(() => {
+  if (currentContext.designDescription) return 'AI 设计场景文字与配套生图词'
   return executionMode.value === 'API'
     ? '⚡ AI 依据场景设定智能生成 Prompt (API 模式)'
     : '📋 外部 AI 手工生成场景专属 Prompt (零 API 费用)'
 })
 
-function open(scene: Partial<ResScene>) {
+function open(scene: Partial<ResScene> & { designDescription?: boolean }) {
+  currentContext.designDescription = false
   Object.assign(currentContext, scene)
   stylePreset.value = ''
   styleTone.value = ''
@@ -574,6 +580,7 @@ function onStyleParamsChange() {
 
 function buildDerivePayload(): ScenePromptDeriveDTO {
   return {
+    designDescription: currentContext.designDescription,
     sceneId: currentContext.id,
     dramaId: currentContext.dramaId,
     name: currentContext.name,
@@ -618,6 +625,7 @@ async function handleParseManualResponse() {
 
   try {
     const request: ScenePromptParseRequestDTO = {
+      designDescription: currentContext.designDescription,
       sceneId: currentContext.id,
       dramaId: currentContext.dramaId,
       name: currentContext.name,
@@ -659,7 +667,7 @@ async function handleParseManualResponse() {
 }
 
 function handleViewJsonExample() {
-  const example = `{
+  const example = `{${currentContext.designDescription ? '\n  "description": "殿堂沿中轴展开，九根雕花红柱分列两侧，西侧高窗透入夕阳，青石地面映出暖金色光带。",' : ''}
   "scenePrompt": "cinematic wide shot of a grand imperial throne room at dusk, towering carved red pillars, golden dragon motifs, shafts of warm sunset light streaming through high lattice windows, dust motes dancing in air, high depth of field, photorealistic, 8k resolution",
   "negativePrompt": "human, person, crowd, characters, blurry, distorted architecture, modern elements, low quality"
 }`

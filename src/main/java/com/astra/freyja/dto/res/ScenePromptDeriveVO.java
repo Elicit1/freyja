@@ -15,6 +15,9 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class ScenePromptDeriveVO {
 
+    @JsonPropertyDescription("仅在场景文字设计任务中返回中文场景设定：空间布局、门窗关系、固定陈设、材质、色彩及光线。尊重原文与创作者约束，不包含人物动作、镜头运动或新增剧情；普通提示词衍生返回 null")
+    private String description;
+
     @JsonPropertyDescription("场景核心空间环境、氛围与光影质感一体化专属英文Prompt (仅描述空间格局、墙面地表顶棚材质、固定陈设及契合画风的光影质感，如 2D anime classroom, warm golden sunset casting long shadows across wooden desks)")
     private String scenePrompt;
 

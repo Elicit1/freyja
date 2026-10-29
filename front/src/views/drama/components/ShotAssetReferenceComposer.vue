@@ -260,8 +260,8 @@
                 </el-button>
               </div>
             </div>
-            <div class="text-[11px] text-slate-600 line-clamp-1" :title="currentScene.scenePrompt || currentScene.description || '无详细描述'">
-              {{ currentScene.scenePrompt || currentScene.description || '无详细提示词描述' }}
+            <div class="text-[11px] text-slate-600 line-clamp-1" :title="currentScene.description || currentScene.scenePrompt || '无详细描述'">
+              {{ currentScene.description || currentScene.scenePrompt || '无详细提示词描述' }}
             </div>
           </div>
         </div>

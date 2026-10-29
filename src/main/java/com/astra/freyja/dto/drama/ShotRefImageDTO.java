@@ -36,6 +36,12 @@ public class ShotRefImageDTO {
     /** 图片 URL (MinIO URL) */
     private String imageUrl;
 
+    /** ASSET_LINK follows the selected asset slot; absent/SNAPSHOT preserves a fixed URL. */
+    private String bindingMode;
+
+    /** Explicit scene image slot: SCENE_REFERENCE / SCENE_COVER. */
+    private String sourceSlot;
+
     /**
      * 参考图角色定位 (MiniMax H3 / 视觉映射):
      * 保存时必填，必须精确匹配用途下拉选项，不接受自由文本或默认推断。

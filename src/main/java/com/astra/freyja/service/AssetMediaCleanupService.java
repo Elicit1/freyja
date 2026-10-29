@@ -26,7 +26,7 @@ public class AssetMediaCleanupService {
     private static final List<String> TABLES = List.of("res_character", "res_character_look", "res_scene",
             "res_prop", "res_keyframe", "res_video", "res_audio", "character_voice_audio", "drama", "drama_shot", "drama_shot_video_take",
             "render_task", "media_process_task", "shot_video_reference_preflight", "ai_task",
-            "shot_production_plan", "agent_preparation_job", "agent_step");
+            "shot_production_plan", "agent_preparation_job", "agent_step", "video_render_batch_item");
 
     public void deleteAfterCommit(String... urls) { deleteAfterCommit(Arrays.asList(urls)); }
 

@@ -38,6 +38,7 @@ class VideoRenderBatchTest {
     DramaShotMapper shots;AiImageApiService api;RenderTaskService rendersService;RenderTaskMapper renders;
     VideoBatchStore store;VideoBatchPreparation preparation;VideoRenderBatchService service;VideoBatchFrameService frames;
     ApplicationEventPublisher events;
+    ResSceneMapper sceneAssets;
     final Map<Long,DramaShot> shotData=new LinkedHashMap<>();final Map<String,RenderTask> renderData=new HashMap<>();
     ObjectMapper json=new ObjectMapper().findAndRegisterModules();JdbcTemplate jdbc;
     @BeforeEach void setup() throws Exception {
@@ -48,7 +49,7 @@ class VideoRenderBatchTest {
         var models=mock(AiModelMapper.class);var providers=mock(AiProviderMapper.class);var keyframes=mock(ResKeyframeMapper.class);renders=mock(RenderTaskMapper.class);
         api=mock(AiImageApiService.class);rendersService=mock(RenderTaskService.class);frames=mock(VideoBatchFrameService.class);var takes=mock(ShotVideoTakeService.class);
         store=new VideoBatchStore(jdbc);var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
-        preparation=new VideoBatchPreparation(mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,renders,store,json);
+        preparation=new VideoBatchPreparation(mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,(sceneAssets=mock(ResSceneMapper.class)),renders,store,json);
         events=mock(ApplicationEventPublisher.class);
         service=new VideoRenderBatchService(store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,events);
         when(dramas.selectById(1L)).thenReturn(new Drama());
@@ -422,5 +423,34 @@ class VideoRenderBatchTest {
         var all=new VideoRenderBatchRequest.Scope();all.setType("ALL");selection.setInclude(List.of(all));selection.setExcludeShotIds(List.of());
         assertEquals(3,service.preview(req).getAccepted());
         assertEquals(1,service.tree(1L).size());assertEquals(3,service.tree(1L).getFirst().getChildren().getFirst().getChildren().getFirst().getChildren().size());
+    }
+
+    @Test void sceneImageIsRequiredAndFrozenAtSubmissionForQueuedVideo() throws Exception {
+        var shot = shot(41,VideoBatchPreparation.REF,1);
+        var scene = new ResScene(); scene.setId(500L); scene.setDramaId(1L); scene.setStatus(1);
+        when(sceneAssets.selectById(500L)).thenReturn(scene);
+        shot.setRefImagesJson(json.writeValueAsString(List.of(ShotRefImageDTO.builder()
+                .id("scene-slot").name("办公室").sourceType("SCENE").sourceId(500L).usageRole("SCENE")
+                .bindingMode("ASSET_LINK").sourceSlot("SCENE_REFERENCE").build())));
+        var req=request();
+        var blocked=service.preview(req);
+        assertEquals(1,blocked.getBlocked());
+        assertTrue(blocked.getItems().getFirst().getReason().contains("Picture 1"));
+        scene.setReferenceImageUrl("http://minio/office-v1.png");
+        var preview=service.preview(req); assertEquals(1,preview.getAccepted());
+        req.setExpectedPreviewHash(preview.getPreviewHash());
+        scene.setReferenceImageUrl("http://minio/office-v2.png");
+        assertThrows(com.astra.freyja.common.BizException.class,()->service.create(req));
+        var batch=create(req);
+        scene.setReferenceImageUrl("http://minio/office-v3.png");
+        service.runNext();
+        var call=mockingDetails(api).getInvocations().stream()
+                .filter(i->i.getMethod().getName().equals("generateAndArchiveVideo")).findFirst().orElseThrow();
+        DramaShot frozen=call.getArgument(2);
+        assertTrue(frozen.getRefImagesJson().contains("office-v2.png"));
+        assertTrue(frozen.getRefImagesJson().contains("SNAPSHOT"));
+        assertFalse(frozen.getRefImagesJson().contains("office-v3.png"));
+        assertTrue(shot.getRefImagesJson().contains("ASSET_LINK"));
+        assertEquals("SUCCESS",service.detail(batch.getId()).getStatus());
     }
 }

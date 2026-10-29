@@ -385,6 +385,10 @@
                 :value="String(s.id)"
               />
             </el-select>
+            <div v-if="selectedDrawerScene" class="mt-2 w-full text-xs text-slate-500">
+              <p class="whitespace-pre-wrap">{{ selectedDrawerScene.description || selectedDrawerScene.scenePrompt || '尚未填写场景文字设定' }}</p>
+              <el-button class="mt-1" size="small" type="primary" link @click="mountSelectedScene">挂载场景参考槽位（可稍后补图）</el-button>
+            </div>
           </el-form-item>
           <el-form-item v-else label="关键图参考资产">
             <el-select
@@ -574,7 +578,8 @@
                 class="border border-slate-200 rounded-lg overflow-hidden bg-white relative group flex flex-col shadow-xs"
               >
                 <div class="h-20 bg-slate-900 relative">
-                  <el-image :src="img.imageUrl" fit="cover" class="w-full h-full" />
+                  <span v-if="!img.imageUrl" class="absolute inset-0 flex items-center justify-center text-xs text-amber-600">待补场景图</span>
+                  <el-image v-else :src="img.imageUrl" fit="cover" class="w-full h-full" />
                   <span class="absolute top-1 left-1 bg-black/75 text-white font-mono text-[9px] px-1 py-0.5 rounded">
                     Picture {{ idx + 1 }}
                   </span>
@@ -924,7 +929,8 @@
           @click="handleConfirmSelectDrawerAsset(item)"
         >
           <div class="w-full h-24 bg-slate-100 rounded overflow-hidden flex items-center justify-center relative">
-            <el-image :src="item.imageUrl" fit="cover" class="w-full h-full" />
+            <span v-if="!item.imageUrl" class="text-xs text-amber-700">待补图，可先挂载</span>
+            <el-image v-else :src="item.imageUrl" fit="cover" class="w-full h-full" />
             <span
               v-if="item.tag"
               class="absolute bottom-1 right-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-black/70 text-white"
@@ -945,6 +951,7 @@
 </template>
 
 <script setup lang="ts">
+import { sceneImageCandidates } from '@/utils/scene-image-reference'
 import { referenceImageUsageOptions, REFERENCE_AUDIO_TYPE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { ref, reactive, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -1070,6 +1077,18 @@ const creatingTailKeyframe = ref(false)
 
 const characterOptions = ref<ResCharacterOption[]>([])
 const sceneOptions = ref<ResSceneOption[]>([])
+const selectedDrawerScene = computed(() => sceneOptions.value.find(scene => String(scene.id) === String(form.resSceneId)))
+function mountSelectedScene() {
+  if (!selectedDrawerScene.value) return
+  const candidate = sceneImageCandidates(selectedDrawerScene.value)[0]
+  if (!candidate) return
+  if (refImages.value.some(image => image.bindingMode === 'ASSET_LINK' && String(image.sourceId) === String(candidate.sourceId) && image.sourceSlot === candidate.sourceSlot)) {
+    ElMessage.info('场景已挂载到参考槽位')
+    return
+  }
+  handleConfirmSelectDrawerAsset(candidate)
+}
+
 const propOptions = ref<ResPropItem[]>([])
 const keyframeOptions = ref<ResKeyframeOption[]>([])
 const groupOptions = ref<DramaShotGroup[]>([])
@@ -1392,7 +1411,7 @@ async function handleUploadEndFrame(file: File) {
 // 资产选取器 (用于 REFERENCE_MODE)
 const drawerAssetPickerVisible = ref(false)
 const drawerAssetPickerTitle = ref('')
-const drawerAssetPickerList = ref<Array<{ name: string; imageUrl: string; sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP' | 'KEYFRAME'; sourceId: string | number; characterId?: string | number; lookId?: string | number; referenceRole?: string; usageRole?: string; tag?: string }>>([])
+const drawerAssetPickerList = ref<Array<{ name: string; imageUrl: string; sourceType: 'SCENE' | 'CHARACTER_REFERENCE' | 'CHARACTER' | 'PROP' | 'KEYFRAME'; sourceId: string | number; characterId?: string | number; lookId?: string | number; referenceRole?: string; usageRole?: string; tag?: string; bindingMode?: 'ASSET_LINK' | 'SNAPSHOT'; sourceSlot?: 'SCENE_REFERENCE' | 'SCENE_COVER' }>>([])
 
 async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | 'keyframe') {
   if (refImages.value.length >= 9) {
@@ -1405,14 +1424,7 @@ async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | '
     try {
       const list = await sceneApi.getOptions(form.dramaId)
       const items: any[] = []
-      for (const s of list || []) {
-        if (s.referenceImageUrl) {
-          items.push({ name: `${s.name} (空间参考图)`, imageUrl: s.referenceImageUrl, sourceType: 'SCENE', sourceId: s.id, tag: '空间参考' })
-        }
-        if (s.coverUrl && s.coverUrl !== s.referenceImageUrl) {
-          items.push({ name: `${s.name} (封面图)`, imageUrl: s.coverUrl, sourceType: 'SCENE', sourceId: s.id, tag: '场景图' })
-        }
-      }
+      for (const scene of list || []) items.push(...sceneImageCandidates(scene))
       drawerAssetPickerList.value = items
     } catch (e) {}
   } else if (type === 'keyframe') {
@@ -1497,6 +1509,8 @@ function handleConfirmSelectDrawerAsset(item: any) {
     imageUrl: item.imageUrl,
     sourceType: item.sourceType,
     sourceId: item.sourceId,
+    bindingMode: item.bindingMode,
+    sourceSlot: item.sourceSlot,
     characterId: item.characterId,
     lookId: item.lookId,
     referenceRole: item.referenceRole,

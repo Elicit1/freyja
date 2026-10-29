@@ -71,8 +71,9 @@
           >
             <!-- 缩略图容器 -->
             <div class="h-32 bg-slate-900 overflow-hidden flex items-center justify-center relative">
+              <span v-if="!item.imageUrl" class="text-xs text-amber-700">待补图，可先挂载</span>
               <el-image
-                :src="item.imageUrl"
+                v-if="item.imageUrl" :src="item.imageUrl"
                 fit="cover"
                 loading="lazy"
                 class="w-full h-full pointer-events-none"
@@ -148,10 +149,13 @@ import { ref, computed } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { sceneApi } from '@/api/res-scene'
+import { sceneImageCandidates } from '@/utils/scene-image-reference'
 import { characterApi } from '@/api/res-character'
 import { propApi } from '@/api/res-prop'
 
 export interface AssetSelectItem {
+  bindingMode?: 'ASSET_LINK' | 'SNAPSHOT'
+  sourceSlot?: 'SCENE_REFERENCE' | 'SCENE_COVER'
   uniqueKey: string
   name: string
   subTitle?: string
@@ -233,7 +237,7 @@ function isSelected(item: AssetSelectItem) {
 }
 
 function isAlreadyAdded(item: AssetSelectItem) {
-  return alreadySelectedUrls.value.includes(item.imageUrl)
+  return !!item.imageUrl && alreadySelectedUrls.value.includes(item.imageUrl)
 }
 
 function isItemDisabled(item: AssetSelectItem) {
@@ -273,18 +277,7 @@ async function loadAssets(dramaId?: string | number) {
     ])
 
     // 1. 场景
-    for (const s of sceneList || []) {
-      if (s.coverUrl) {
-        items.push({
-          uniqueKey: `SCENE_${s.id}`,
-          name: s.name,
-          subTitle: '场景主视觉封面',
-          imageUrl: s.coverUrl,
-          sourceType: 'SCENE',
-          sourceId: s.id
-        })
-      }
-    }
+    for (const scene of sceneList || []) items.push(...sceneImageCandidates(scene))
 
     // 2. 人物与造型
     for (const ch of charList || []) {

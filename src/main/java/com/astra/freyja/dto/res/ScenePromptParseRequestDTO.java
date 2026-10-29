@@ -18,6 +18,8 @@ import java.util.List;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ScenePromptParseRequestDTO {
 
+    private Boolean designDescription;
+
     /** 场景ID (可选) */
     private Long sceneId;
 

@@ -59,6 +59,10 @@
             </el-form-item>
           </div>
 
+          <div class="mb-3 flex items-center justify-between gap-3 text-xs text-slate-500">
+            <span>先设计文字并保存即可挂载分镜，场景图片可以稍后补充。</span>
+            <el-button size="small" type="primary" plain @click="handleDerivePrompts(true)">AI 设计场景文字</el-button>
+          </div>
           <el-form-item label="场景描述" prop="description">
             <el-input
               v-model="formData.description"
@@ -137,7 +141,7 @@
               type="primary"
               plain
               class="font-medium hover:scale-[1.02] transition-transform"
-              @click="handleDerivePrompts"
+              @click="handleDerivePrompts()"
             >
               ⚡ AI一键生成场景提示词
             </el-button>
@@ -337,7 +341,7 @@ const formRules: FormRules = {
   name: [{ required: true, message: '请输入场景名称', trigger: 'blur' }]
 }
 
-function handleDerivePrompts() {
+function handleDerivePrompts(designDescription = false) {
   if (!formData.name && !formData.description) {
     return ElMessage.warning('请先填写场景名称或中文场景描述')
   }
@@ -349,10 +353,11 @@ function handleDerivePrompts() {
     running: false
   }
   promptPanels.value.push(panel)
-  void nextTick(() => promptPanelRefs.value[panel.key]?.open({ ...formData }))
+  void nextTick(() => promptPanelRefs.value[panel.key]?.open({ ...formData, designDescription }))
 }
 
 function applyScenePrompts(res: ScenePromptDeriveVO) {
+  if (res.description) { formData.description = res.description; activeTab.value = 'basic' }
   if (res.scenePrompt) formData.scenePrompt = res.scenePrompt
   if (res.negativePrompt) formData.negativePrompt = res.negativePrompt
 }
@@ -371,7 +376,7 @@ async function handleApplyDerivedPromptsForPanel(panel: PromptPanelSession, res:
     return
   }
   try {
-    await sceneApi.update({ id: panel.targetId, scenePrompt: res.scenePrompt, negativePrompt: res.negativePrompt })
+    await sceneApi.update({ id: panel.targetId, description: res.description, scenePrompt: res.scenePrompt, negativePrompt: res.negativePrompt })
     emit('success', panel.targetId)
     ElMessage.success('场景提示词已保存到对应场景')
   } catch (error: any) {

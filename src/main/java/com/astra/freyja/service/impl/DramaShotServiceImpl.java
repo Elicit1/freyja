@@ -213,6 +213,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
 
         validateAudioAssets(scene.getDramaId(),dto.getRefAudios());
+        com.astra.freyja.util.SceneImageReferenceResolver.resolve(dto.getRefImages(), scene.getDramaId(), resSceneMapper::selectById, false);
         List<DramaShot> insertionShots = null;
         int insertionIndex = -1;
         Long anchorId = dto.getInsertBeforeShotId() != null ? dto.getInsertBeforeShotId() : dto.getInsertAfterShotId();
@@ -414,6 +415,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
 
         validateAudioAssets(existing.getDramaId(),dto.getRefAudios());
+        com.astra.freyja.util.SceneImageReferenceResolver.resolve(dto.getRefImages(), existing.getDramaId(), resSceneMapper::selectById, false);
         DramaShot shot = new DramaShot();
         BeanUtils.copyProperties(dto, shot, "directorPlan", "directorPlanMode");
         shot.setScriptContent(dto.getScriptContent() != null ? dto.getScriptContent() : com.astra.freyja.util.UnifiedShotScript.fromShot(existing));
@@ -798,6 +800,19 @@ public class DramaShotServiceImpl implements DramaShotService {
             dto = new DramaShotFirstFrameDTO();
         }
         dto.setFrameType(frameRole.name());
+        // Resolve before creating/queuing the task, never inside the dispatch wait.
+        List<ShotRefImageDTO> configuredImages = parseRefImages(shot.getRefImagesJson());
+        if (dto.getRefImages() != null) {
+            com.astra.freyja.util.ShotImageReferenceValidator.validate(dto.getRefImages());
+            KeyImageReferenceValidator.validate(dto.getRefImages(), this::keyImageAssetType);
+        }
+        if (dto.getRefImages() != null || dto.getReferenceImageUrls() == null) {
+            List<ShotRefImageDTO> frozen = com.astra.freyja.util.SceneImageReferenceResolver.resolve(
+                    dto.getRefImages() != null ? dto.getRefImages() : configuredImages,
+                    shot.getDramaId(), resSceneMapper::selectById, true);
+            dto.setRefImages(frozen);
+            dto.setReferenceImageUrls(frozen.stream().map(ShotRefImageDTO::getImageUrl).toList());
+        }
 
         // 尝试获取短剧配置中的画幅比例 / 尺寸
         if (StringUtils.isBlank(dto.getSize())) {
@@ -845,6 +860,12 @@ public class DramaShotServiceImpl implements DramaShotService {
                 .progress(0)
                 .currentNode("等待前序渲染任务完成")
                 .build();
+        try {
+            rTask.setReferenceImages(objectMapper.writeValueAsString(dto.getReferenceImageUrls()));
+            rTask.setRequestSnapshotJson(com.astra.freyja.util.VideoReferenceSnapshotJson.write(dto, objectMapper));
+        } catch (Exception e) {
+            throw new BizException(400, "无法保存首尾帧生图参考快照");
+        }
         renderTaskService.createTask(rTask);
 
         com.astra.freyja.service.RenderTaskThreadRegistry.register(taskId, Thread.currentThread());
@@ -1086,7 +1107,8 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
 
         // 3. 补充多模态参考图与参考音频列表
-        vo.setRefImages(parseRefImages(shot.getRefImagesJson()));
+        vo.setRefImages(com.astra.freyja.util.SceneImageReferenceResolver.preview(
+                parseRefImages(shot.getRefImagesJson()), shot.getDramaId(), resSceneMapper::selectById));
         vo.setRefAudios(parseRefAudios(shot.getRefAudiosJson()));
         vo.setRefVideos(com.astra.freyja.util.ShotVideoReferenceValidator.parse(shot.getRefVideosJson(), objectMapper));
         if (StringUtils.isBlank(vo.getGenerationMode())) {
