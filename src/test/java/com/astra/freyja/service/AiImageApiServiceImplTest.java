@@ -123,6 +123,8 @@ class AiImageApiServiceImplTest {
 
         DramaShot shot = new DramaShot();
         shot.setPrompt("cinematic shot");
+        shot.setGenerationMode("FIRST_LAST_FRAME"); shot.setVideoPrompt(RenderInputFixtures.FL);
+        shot.setPreviewImageUrl("data:image/png;base64,aW1hZ2U=");shot.setEndFrameImageUrl("data:image/png;base64,aW1hZ2U=");
         shot.setSeed(1234L);
         // Stored legacy TTS audio must not leak into a new video request.
         shot.setAudioUrl("https://unreachable.example.invalid/legacy.mp3");
@@ -149,7 +151,7 @@ class AiImageApiServiceImplTest {
         AiProvider provider = new AiProvider(); provider.setId(5L); provider.setStatus(1);
         provider.setBaseUrl("https://gateway.example.test/v1");
         when(providerMapper.selectById(5L)).thenReturn(provider);
-        DramaShot shot = new DramaShot(); shot.setGenerationMode("REFERENCE_MODE"); shot.setPrompt("video");
+        DramaShot shot = new DramaShot(); shot.setGenerationMode("REFERENCE_MODE"); shot.setPrompt(RenderInputFixtures.reference("<Audio 1>"));
         shot.setRefAudiosJson("audio-json");
         var audio = com.astra.freyja.dto.drama.ShotRefAudioDTO.builder().referenceType("reference")
                 .audioUrl("data:audio/wav;base64,YXVkaW8=").duration(java.math.BigDecimal.valueOf(3)).build();
@@ -175,7 +177,7 @@ class AiImageApiServiceImplTest {
                 .sourceType("CHARACTER_REFERENCE").sourceId(301L).characterId(201L).lookId(301L)
                 .name("林默造型").usageRole("NON_SUBJECT").referenceRole("COMBINED").imageUrl(dataUri).build();
         DramaShot shot = new DramaShot(); shot.setGenerationMode("REFERENCE_MODE");
-        shot.setPrompt("First-person view from Lin Mo, looking toward the doorway.");
+        shot.setPrompt(RenderInputFixtures.reference("<Picture 1> <Audio 1>"));
         shot.setRefImagesJson("stored-reference-json");
         when(objectMapper.readValue(eq(shot.getRefImagesJson()),
                 org.mockito.ArgumentMatchers.<TypeReference<List<ShotRefImageDTO>>>any())).thenReturn(List.of(reference));

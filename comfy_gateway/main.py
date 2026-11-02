@@ -20,6 +20,7 @@ import aiofiles
 from config import get_config, get_base_dir, GatewayConfig, NodeConfig
 from video_reference import require_verified, workflow_revision
 from reference_media import upload_reference_video
+from render_input_validation import validate_transport
 from schemas import (
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -256,6 +257,7 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
             f"{[{'id': r.reference_id, 'type': r.reference_type.value, 'entity': r.entity_name} for r in request.references]}"
         )
 
+    validate_transport(request)
     # 1. Resolve target model configuration
     video_references = request.get_all_ref_videos()
     model_cfg = config.get_exact_model(request.model, request.node_id) if video_references else config.get_model(request.model)

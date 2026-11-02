@@ -411,12 +411,28 @@ export const shotApi = {
     })
   },
 
-  submitRender(id: string | number, data?: DramaShotRenderRequest) {
-    return request<ComfyRenderTaskVO>({
+  precheckRender(id: string | number, data?: DramaShotRenderRequest) {
+    return request<import('./render-validation').RenderValidationReport>({
+      url: `/drama/shot/${id}/render-precheck`, method: 'post', data: data || {}
+    })
+  },
+
+  async submitRender(id: string | number, data?: DramaShotRenderRequest) {
+    const { showRenderValidation } = await import('./render-validation')
+    try {
+      const report = await shotApi.precheckRender(id, data)
+      if (!report.submissionReady) {
+        throw Object.assign(new Error('渲染检查未通过，请修正提示词与素材后重新提交'), { data: report })
+      }
+      return await request<ComfyRenderTaskVO>({
       url: `/drama/shot/${id}/render`,
       method: 'post',
-      data: data || {}
-    })
+      data: { ...data, expectedRenderFingerprint: report.inputFingerprint }
+      })
+    } catch (error: any) {
+      if (error.data?.issues) await showRenderValidation(error.data).catch(() => {})
+      throw error
+    }
   },
 
   getVideoTakes(shotId: string | number, params?: { current?: number; size?: number; status?: string }) {

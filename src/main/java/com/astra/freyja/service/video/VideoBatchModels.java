@@ -30,6 +30,7 @@ public final class VideoBatchModels {
         private String aspectRatio;
         private FramePlan firstFramePlan;
         private FramePlan lastFramePlan;
+        private RenderValidationReport validation;
     }
 
     @Data
@@ -44,6 +45,7 @@ public final class VideoBatchModels {
         private String lastFrameSource;
         private String size;
         private int executionOrder;
+        private RenderValidationReport validation;
         @JsonIgnore private Snapshot snapshot;
     }
 

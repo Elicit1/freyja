@@ -16,6 +16,7 @@ from reference_prompt import ReferenceBinding
 from schemas import ImageGenerationRequest
 from video_reference import ReferenceVideoCapability, workflow_revision, require_verified
 from workflow_engine import WorkflowEngine
+from test_render_input_validation import bind_contract
 
 
 BASE = Path(__file__).resolve().parent
@@ -48,10 +49,10 @@ def binding(audio=False, digest="a" * 64):
 
 
 def request(model, audio=False, **extra):
-    return ImageGenerationRequest(model=model.model_name, size="960x544", prompt="Reference <Video 1>",
+    return bind_contract(ImageGenerationRequest(model=model.model_name, size="960x544", prompt="Reference <Video 1>",
                                   references=[binding(audio)], node_id=model.node_id,
                                   prompt_format="MINIMAX_H3_REF2VA_VIDEO_V1",
-                                  reference_video_revision=model.reference_video.verified_revision, **extra)
+                                  reference_video_revision=model.reference_video.verified_revision, **extra))
 
 
 class VideoReferenceAssemblyTests(unittest.TestCase):
@@ -77,6 +78,9 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
                 req = request(model)
                 req.references = [ReferenceBinding.model_validate(ref) for ref in refs]
                 req.prompt = "Reference <Video 1>, <Video 2>, <Video 3> and Picture 1"
+                req.references.extend([ReferenceBinding.model_validate({"referenceId":"portrait", "referenceType":"UPLOAD", "referenceImages":["portrait-source.png"]}),
+                                       ReferenceBinding.model_validate({"referenceId":"voice", "referenceType":"REFERENCE_AUDIO", "referenceAudio":"voice-source.wav"})])
+                bind_contract(req)
                 engine = WorkflowEngine(config)
                 graph = engine.assemble_workflow(req, uploaded_ref_images=["portrait.png"],
                     uploaded_ref_audios=["voice.wav"], uploaded_ref_videos=[{
@@ -100,7 +104,7 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
                     self.assertEqual(graph[cond]["inputs"]["ref_video_audios.ref_video_audio_1"], ["136_ref_vid_1", 2])
                 if face:
                     self.assertEqual(graph["162"]["inputs"]["steps"], engine.get_template(model)["162"]["inputs"]["steps"])
-                    self.assertEqual(graph["158"]["inputs"]["ref_audios.ref_audio_0"], ["121", 0])
+                    self.assertEqual(graph["158"]["inputs"]["ref_audios.ref_audio_0"], ["136_ref_aud_0", 0])
                 empty = engine.assemble_workflow(ImageGenerationRequest(model=name, size="960x544", prompt="text only"))
                 self.assertFalse(any(node["class_type"] == "VHS_LoadVideo" for node in empty.values()))
                 for cond in (("136", "158") if face else ("136",)):
@@ -136,6 +140,7 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
         refs = [binding(), {**binding(True), "referenceId": "video2", "referenceVideo": "https://archive.test/second.mp4"}]
         req = ImageGenerationRequest(model=model.model_name, size="960x544", prompt="Reference <Video 1> and <Video 2>", references=refs,
                                      prompt_format="MINIMAX_H3_REF2VA_VIDEO_V1", reference_video_revision=model.reference_video.verified_revision)
+        bind_contract(req)
         uploaded = [{"reference_id": "video1", "filename": "one.mp4", "include_audio": False}, {"reference_id": "video2", "filename": "two.mp4", "include_audio": True}]
         graph = WorkflowEngine(config).assemble_workflow(req, uploaded_ref_videos=uploaded)
         self.assertEqual(graph["136"]["inputs"]["ref_videos.ref_video_1"], ["136_ref_vid_1", 0])

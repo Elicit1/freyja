@@ -38,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -108,6 +109,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", modelCode);
         payload.put("prompt", prompt);
+
         payload.put("n", 1);
         String size = (dto != null && StringUtils.isNotBlank(dto.getSize())) ? dto.getSize() : "1024x1024";
         payload.put("size", size);
@@ -554,6 +556,16 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         }
         payload.put("prompt", prompt);
 
+        var inputSnapshot = new com.astra.freyja.service.video.VideoBatchModels.Snapshot();
+        inputSnapshot.setShot(shot);
+        var inputRequest = new com.astra.freyja.dto.drama.DramaShotRenderRequestDTO();
+        inputRequest.setPrompt(prompt);
+        if (dto != null) inputRequest.setResolvedRefVideos(dto.getResolvedRefVideos());
+        inputSnapshot.setRequest(inputRequest);
+        var inputReport = com.astra.freyja.service.video.RenderInputResolver.inspect(inputSnapshot, true, objectMapper);
+        if (!inputReport.isDispatchReady()) throw new com.astra.freyja.service.video.RenderValidationException(inputReport);
+        Map<String, String> transportByLabel = new LinkedHashMap<>();
+
         if (StringUtils.isNotBlank(shot.getNegativePrompt())) {
             payload.put("negative_prompt", shot.getNegativePrompt().trim());
         }
@@ -578,13 +590,15 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         payload.put("response_format", "url");
 
         // 首尾帧 Base64 转换
-        if (!hasVideoReferences && StringUtils.isNotBlank(shot.getPreviewImageUrl())) {
+        if ("FIRST_LAST_FRAME".equals(shot.getGenerationMode()) && StringUtils.isNotBlank(shot.getPreviewImageUrl())) {
             String firstFrameB64 = prepareMediaAsBase64(shot.getPreviewImageUrl(), "image/png");
             payload.put("first_frame", firstFrameB64);
+            transportByLabel.put("<Picture 1>", firstFrameB64);
         }
-        if (!hasVideoReferences && StringUtils.isNotBlank(shot.getEndFrameImageUrl())) {
+        if ("FIRST_LAST_FRAME".equals(shot.getGenerationMode()) && StringUtils.isNotBlank(shot.getEndFrameImageUrl())) {
             String lastFrameB64 = prepareMediaAsBase64(shot.getEndFrameImageUrl(), "image/png");
             payload.put("last_frame", lastFrameB64);
+            transportByLabel.put("<Picture 2>", lastFrameB64);
         }
 
         // 解析并组装 references 绑定 (人物造型、场景、道具等)
@@ -602,6 +616,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             payload.put("prompt_format", promptFormat);
             payload.put("reference_video_revision", dto.getReferenceVideoRevision());
             payload.put("node_id", dto.getReferenceVideoNodeId());
+            int videoIndex = 0, pairedAudioIndex = 0;
             for (var video : dto.getResolvedRefVideos()) {
                 Map<String,Object> binding = new HashMap<>();
                 binding.put("referenceId", video.getId()); binding.put("referenceType", "REFERENCE_VIDEO");
@@ -609,14 +624,18 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 binding.put("referenceVideo", referenceVideoMediaService.transportUrl(video.getObjectPath()));
                 binding.put("contentSha256", video.getContentSha256()); binding.put("includeAudio", video.getIncludeAudio());
                 binding.put("referenceDescription", video.getReferenceDescription()); references.add(binding);
+                String transport = (String) binding.get("referenceVideo");
+                transportByLabel.put("<Video " + (++videoIndex) + ">", transport);
+                if (Boolean.TRUE.equals(video.getIncludeAudio())) transportByLabel.put("<Audio " + (++pairedAudioIndex) + ">", transport);
             }
         }
 
         // a. 处理参考图列表 (refImagesJson)
-        if (StringUtils.isNotBlank(shot.getRefImagesJson())) {
+        if ("REFERENCE_MODE".equals(shot.getGenerationMode()) && StringUtils.isNotBlank(shot.getRefImagesJson())) {
             try {
                 List<ShotRefImageDTO> refImgList = validatedRefImages;
                 if (refImgList != null) {
+                    int pictureIndex = 0;
                     for (ShotRefImageDTO refImg : refImgList) {
                         if (StringUtils.isNotBlank(refImg.getImageUrl())) {
                             String b64Img = prepareMediaAsBase64(refImg.getImageUrl(), "image/png");
@@ -636,6 +655,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                             binding.put("referenceRole", refImg.getReferenceRole());
                             binding.put("referenceImages", List.of(b64Img));
                             references.add(binding);
+                            transportByLabel.put("<Picture " + (++pictureIndex) + ">", b64Img);
                         }
                     }
                 }
@@ -647,7 +667,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         }
 
         // b. 处理参考音频列表 (refAudiosJson, 最多3段按顺序透传)
-        if (StringUtils.isNotBlank(shot.getRefAudiosJson())) {
+        if ("REFERENCE_MODE".equals(shot.getGenerationMode()) && StringUtils.isNotBlank(shot.getRefAudiosJson())) {
             try {
                 List<com.astra.freyja.dto.drama.ShotRefAudioDTO> refAudioList = objectMapper.readValue(
                         shot.getRefAudiosJson(), new com.fasterxml.jackson.core.type.TypeReference<List<com.astra.freyja.dto.drama.ShotRefAudioDTO>>() {});
@@ -659,6 +679,8 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                         throw new BizException(400, "参考音频超过所选视频模型的能力上限，请重新选择素材或模型");
                     }
                     java.math.BigDecimal actualTotal = java.math.BigDecimal.ZERO;
+                    int audioIndex = dto == null || dto.getResolvedRefVideos() == null ? 0
+                            : (int) dto.getResolvedRefVideos().stream().filter(v -> Boolean.TRUE.equals(v.getIncludeAudio())).count();
                     for (com.astra.freyja.dto.drama.ShotRefAudioDTO refAudio : refAudioList) {
                         if (StringUtils.isNotBlank(refAudio.getAudioUrl())) {
                             String b64Audio = prepareMediaAsBase64(refAudio.getAudioUrl(), "audio/wav");
@@ -683,6 +705,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                             binding.put("language", StringUtils.trimToNull(refAudio.getLanguage()));
                             binding.put("referenceAudio", b64Audio);
                             references.add(binding);
+                            transportByLabel.put("<Audio " + (++audioIndex) + ">", b64Audio);
                         }
                     }
                 }
@@ -718,6 +741,19 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             extraBody.put("enable_reference_prompt", true);
         }
         payload.put("extra_body", extraBody);
+
+        List<Map<String, Object>> contractSlots = new ArrayList<>();
+        for (var slot : inputReport.getSlots()) {
+            String transport = transportByLabel.get(slot.label());
+            if (StringUtils.isBlank(transport)) throw new BizException(422, "素材载荷缺少 " + slot.label());
+            Map<String, Object> contractSlot = new LinkedHashMap<>();
+            contractSlot.put("label", slot.label()); contractSlot.put("kind", slot.kind()); contractSlot.put("role", slot.role());
+            contractSlot.put("referenceId", slot.referenceId());
+            contractSlot.put("mediaHash", com.astra.freyja.service.video.VideoBatchPreparation.hash(transport));
+            contractSlots.add(contractSlot);
+        }
+        payload.put("render_input_contract", Map.of("version", inputReport.getRulesVersion(), "slots", contractSlots,
+                "promptHash", com.astra.freyja.service.video.VideoBatchPreparation.hash(prompt)));
 
         // 4. 调用网关 API
         String requestUrl = buildVideoEndpointUrl(baseUrl);

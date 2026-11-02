@@ -68,7 +68,7 @@ class VideoRenderBatchTest {
         when(frames.extract(anyLong(),anyString(),any(),anyString())).thenAnswer(i->"http://minio/frame/"+i.getArgument(0)+"/"+i.getArgument(3)+".jpg");
     }
     private AiModel model(long id,String code,String type){AiModel m=new AiModel();m.setId(id);m.setProviderId(100L);m.setStatus(1);m.setModelCode(code);m.setModelType(type);return m;}
-    private DramaShot shot(long id,String mode,int order){DramaShot s=new DramaShot();s.setId(id);s.setDramaId(1L);s.setEpisodeId(10L);s.setSceneId(20L);s.setShotGroupId(30L);s.setShotNo(order);s.setSortOrder(order);s.setShotName("镜头"+order);s.setGenerationMode(mode);s.setSeed(123L);s.setDuration(BigDecimal.valueOf(3));s.setPrompt("A saved cinematic prompt");s.setVideoPrompt("A saved motion prompt");shotData.put(id,s);return s;}
+    private DramaShot shot(long id,String mode,int order){DramaShot s=new DramaShot();s.setId(id);s.setDramaId(1L);s.setEpisodeId(10L);s.setSceneId(20L);s.setShotGroupId(30L);s.setShotNo(order);s.setSortOrder(order);s.setShotName("镜头"+order);s.setGenerationMode(mode);s.setSeed(123L);s.setDuration(BigDecimal.valueOf(3));s.setPrompt(RenderInputFixtures.reference(""));s.setVideoPrompt(RenderInputFixtures.FL);if(VideoBatchPreparation.FL.equals(mode)){s.setPreviewImageUrl("http://configured/first.png");s.setEndFrameImageUrl("http://configured/last.png");}shotData.put(id,s);return s;}
     private VideoRenderBatchRequest request(){var req=new VideoRenderBatchRequest();req.setDramaId(1L);req.setClientRequestId(UUID.randomUUID().toString());req.setShotIds(new ArrayList<>(shotData.keySet()));req.setAspectRatio("16:9");req.setExistingVideoPolicy("CREATE_NEW_TAKE");
         var r=new VideoRenderBatchRequest.ModeConfig();r.setProviderId(100L);r.setModelId(101L);var f=new VideoRenderBatchRequest.ModeConfig();f.setProviderId(100L);f.setModelId(102L);f.setAutoUseNextVideoHeadAsLastFrame(true);req.setModeConfigs(Map.of(VideoBatchPreparation.REF,r,VideoBatchPreparation.FL,f));return req;}
     private Batch create(VideoRenderBatchRequest req){req.setExpectedPreviewHash(service.preview(req).getPreviewHash());return service.create(req);}
@@ -130,20 +130,20 @@ class VideoRenderBatchTest {
     }
 
     @Test void phasesAreSerialAndNeighborFramesKeepNarrativeRoles() {
-        shot(41,VideoBatchPreparation.FL,1);shot(42,VideoBatchPreparation.REF,2);shot(43,VideoBatchPreparation.FL,3);shot(44,VideoBatchPreparation.FL,4);
+        shot(41,VideoBatchPreparation.FL,1).setEndFrameImageUrl(null);shot(42,VideoBatchPreparation.REF,2);shot(43,VideoBatchPreparation.FL,3).setPreviewImageUrl(null);shot(44,VideoBatchPreparation.FL,4);
         var b=create(request());assertEquals(List.of(42L,41L,43L,44L),b.getItems().stream().map(Item::getShotId).toList());
         for(int n=0;n<4;n++)service.runNext();
         var order=mockingDetails(api).getInvocations().stream().filter(i->i.getMethod().getName().equals("generateAndArchiveVideo")).map(i->(Long)i.getArgument(0)).toList();assertEquals(List.of(42L,41L,43L,44L),order);
         var calls=mockingDetails(api).getInvocations().stream().filter(i->i.getMethod().getName().equals("generateAndArchiveVideo")).toList();
-        DramaShot first=calls.get(1).getArgument(2);assertNull(first.getPreviewImageUrl());assertEquals("http://minio/frame/42/FIRST.jpg",first.getEndFrameImageUrl());
-        DramaShot third=calls.get(2).getArgument(2);assertEquals("http://minio/frame/42/LAST.jpg",third.getPreviewImageUrl());assertNull(third.getEndFrameImageUrl());
+        DramaShot first=calls.get(1).getArgument(2);assertEquals("http://configured/first.png",first.getPreviewImageUrl());assertEquals("http://minio/frame/42/FIRST.jpg",first.getEndFrameImageUrl());
+        DramaShot third=calls.get(2).getArgument(2);assertEquals("http://minio/frame/42/LAST.jpg",third.getPreviewImageUrl());assertEquals("http://configured/last.png",third.getEndFrameImageUrl());
         assertEquals("SUCCESS",service.detail(b.getId()).getStatus());assertEquals(100,service.detail(b.getId()).getProgress());
     }
     @Test void inputSnapshotsAndSwitchesSurviveLaterEditing() {
         var s=shot(41,VideoBatchPreparation.FL,1);s.setPreviewImageUrl("http://manual/first.png");s.setEndFrameImageUrl("http://manual/last.png");var req=request();req.getModeConfigs().get(VideoBatchPreparation.FL).setAutoUsePreviousVideoTailAsFirstFrame(false);req.getModeConfigs().get(VideoBatchPreparation.FL).setAutoUseNextVideoHeadAsLastFrame(false);create(req);
         s.setVideoPrompt("Changed while queued");s.setSeed(999L);s.setPreviewImageUrl("http://later/image.png");service.runNext();
         var invocation=mockingDetails(api).getInvocations().stream().filter(i->i.getMethod().getName().equals("generateAndArchiveVideo")).findFirst().orElseThrow();
-        DramaShot snapshot=invocation.getArgument(2);DramaShotRenderRequestDTO dto=invocation.getArgument(3);assertEquals("http://manual/first.png",snapshot.getPreviewImageUrl());assertEquals("http://manual/last.png",snapshot.getEndFrameImageUrl());assertEquals("A saved motion prompt",dto.getPrompt());assertEquals(123L,dto.getSeed());
+        DramaShot snapshot=invocation.getArgument(2);DramaShotRenderRequestDTO dto=invocation.getArgument(3);assertEquals("http://manual/first.png",snapshot.getPreviewImageUrl());assertEquals("http://manual/last.png",snapshot.getEndFrameImageUrl());assertEquals(RenderInputFixtures.FL,dto.getPrompt());assertEquals(123L,dto.getSeed());
         verifyNoInteractions(frames);
     }
     @Test void duplicateRequestReturnsSameBatchAndStalePreviewRollsBack() {
@@ -349,15 +349,17 @@ class VideoRenderBatchTest {
 
     @ParameterizedTest
     @CsvSource({"false,false","false,true","true,false","true,true"})
-    void twoFrameSwitchesAreIndependentWithoutConfiguredImages(boolean previous,boolean next) {
+    void twoFrameSwitchesAreIndependentAndMissingFramesNeedAnEnabledSource(boolean previous,boolean next) {
         shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);shot(43,VideoBatchPreparation.REF,3);
+        if(previous)shotData.get(42L).setPreviewImageUrl(null);
+        if(next)shotData.get(42L).setEndFrameImageUrl(null);
         var req=request();var cfg=req.getModeConfigs().get(VideoBatchPreparation.FL);
         cfg.setAutoUsePreviousVideoTailAsFirstFrame(previous);cfg.setAutoUseNextVideoHeadAsLastFrame(next);
         create(req);for(int n=0;n<3;n++)service.runNext();
         var call=mockingDetails(api).getInvocations().stream().filter(i->i.getMethod().getName().equals("generateAndArchiveVideo")&&Long.valueOf(42).equals(i.getArgument(0))).findFirst().orElseThrow();
         DramaShot current=call.getArgument(2);
-        assertEquals(previous?"http://minio/frame/41/LAST.jpg":null,current.getPreviewImageUrl());
-        assertEquals(next?"http://minio/frame/43/FIRST.jpg":null,current.getEndFrameImageUrl());
+        assertEquals(previous?"http://minio/frame/41/LAST.jpg":"http://configured/first.png",current.getPreviewImageUrl());
+        assertEquals(next?"http://minio/frame/43/FIRST.jpg":"http://configured/last.png",current.getEndFrameImageUrl());
         verify(frames,times((previous?1:0)+(next?1:0))).extract(anyLong(),anyString(),any(),anyString());
     }
 
@@ -427,6 +429,7 @@ class VideoRenderBatchTest {
 
     @Test void sceneImageIsRequiredAndFrozenAtSubmissionForQueuedVideo() throws Exception {
         var shot = shot(41,VideoBatchPreparation.REF,1);
+        shot.setPrompt(RenderInputFixtures.reference("<Picture 1>"));
         var scene = new ResScene(); scene.setId(500L); scene.setDramaId(1L); scene.setStatus(1);
         when(sceneAssets.selectById(500L)).thenReturn(scene);
         shot.setRefImagesJson(json.writeValueAsString(List.of(ShotRefImageDTO.builder()
@@ -452,5 +455,74 @@ class VideoRenderBatchTest {
         assertFalse(frozen.getRefImagesJson().contains("office-v3.png"));
         assertTrue(shot.getRefImagesJson().contains("ASSET_LINK"));
         assertEquals("SUCCESS",service.detail(batch.getId()).getStatus());
+    }
+
+    private DramaShotRenderRequestDTO singleRequest() {
+        AiProvider provider=new AiProvider();provider.setId(100L);when(api.resolveProvider(100L)).thenReturn(provider);
+        when(api.resolveVideoModelCode(any(),eq(100L),eq(VideoBatchPreparation.REF))).thenReturn("ref");
+        var request=new DramaShotRenderRequestDTO();request.setProviderId(100L);request.setWorkflowTemplateId("ref");return request;
+    }
+
+    @Test void singleOverrideMissingReferencesIsRejectedWithoutSeedPromptOrTaskWrites() {
+        var shot=shot(41,VideoBatchPreparation.REF,1);shot.setSeed(null);
+        var request=singleRequest();request.setPrompt(RenderInputFixtures.reference("<Picture 1> <Picture 2> <Picture 3>"));
+        var error=assertThrows(RenderValidationException.class,()->service.enqueueSingle(41L,request));
+        assertEquals(422,error.getCode());assertEquals(3,error.getReport().getIssues().size());assertNull(shot.getSeed());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM video_render_batch",Integer.class));assertFalse(store.occupied(41L));
+        verify(shots,never()).update(isNull(),any());verifyNoInteractions(rendersService);
+        verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+    }
+
+    @Test void batchDoesNotSilentlySubmitReadyShotsAlongsideBlockedShots() {
+        shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.REF,2).setPrompt(RenderInputFixtures.reference("<Picture 2>"));
+        var req=request();var preview=service.preview(req);
+        assertEquals(1,preview.getAccepted());assertEquals(1,preview.getBlocked());
+        assertNotNull(preview.getItems().get(1).getValidation());req.setExpectedPreviewHash(preview.getPreviewHash());
+        assertEquals(422,assertThrows(com.astra.freyja.common.BizException.class,()->service.create(req)).getCode());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM video_render_batch_item",Integer.class));verifyNoInteractions(rendersService);
+        req.setShotIds(List.of(41L));var batch=create(req);service.runNext();assertEquals("SUCCESS",service.detail(batch.getId()).getStatus());
+        verify(api,times(1)).generateAndArchiveVideo(eq(41L),anyLong(),any(),any());
+    }
+
+    @Test void precheckIsReadonlyAndChangedBindingsInvalidateSingleSubmission() throws Exception {
+        var shot=shot(41,VideoBatchPreparation.REF,1);
+        shot.setRefImagesJson(json.writeValueAsString(List.of(ShotRefImageDTO.builder().id("one").sourceType("UPLOAD").imageUrl("http://minio/one.png").build())));
+        shot.setPrompt(RenderInputFixtures.reference("<Picture 1>"));var req=singleRequest();
+        var report=service.precheckSingle(41L,req);assertTrue(report.isSubmissionReady());verifyNoInteractions(rendersService);
+        req.setExpectedRenderFingerprint(report.getInputFingerprint());
+        shot.setRefImagesJson(shot.getRefImagesJson().replace("one.png","two.png"));
+        assertEquals(409,assertThrows(com.astra.freyja.common.BizException.class,()->service.enqueueSingle(41L,req)).getCode());
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM video_render_batch",Integer.class));verifyNoInteractions(rendersService);
+    }
+
+    @Test void queuedLegacyAndOriginalSnapshotRetryCannotBypassValidation() throws Exception {
+        shot(41,VideoBatchPreparation.REF,1);var batch=create(request());var item=batch.getItems().getFirst();
+        var snap=json.readValue(item.getSnapshotJson(),Snapshot.class);
+        snap.getRequest().setPrompt(RenderInputFixtures.reference("<Picture 99>"));store.resolved(item.getTaskId(),preparation.write(snap));
+        service.runNext();assertEquals("FAILED",store.task(item.getTaskId()).getStatus());
+        assertEquals("CONFIRMED",store.task(item.getTaskId()).getUpstreamStatus());assertFalse(store.occupied(41L));
+        verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+        var retry=request();retry.setRetryOfBatchId(batch.getId());retry.setInputSource("ORIGINAL_SNAPSHOT");
+        var preview=service.preview(retry);assertEquals(1,preview.getBlocked());
+        assertEquals("REFERENCE_NOT_ATTACHED",preview.getItems().getFirst().getValidation().getIssues().getFirst().code());
+    }
+
+    @Test void failedDependencyStopsOnlyItsDependentBeforeGatewayCall() {
+        shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2).setPreviewImageUrl(null);
+        shot(43,VideoBatchPreparation.REF,3);
+        var req=request();req.getModeConfigs().get(VideoBatchPreparation.FL).setAutoUsePreviousVideoTailAsFirstFrame(true);
+        var batch=create(req);
+        when(api.generateAndArchiveVideo(eq(41L),anyLong(),any(),any())).thenThrow(new com.astra.freyja.common.BizException(422,"upstream rejected"));
+        for(int i=0;i<3;i++)service.runNext();
+        assertEquals("PARTIAL_FAILED",service.detail(batch.getId()).getStatus());
+        verify(api,never()).generateAndArchiveVideo(eq(42L),anyLong(),any(),any());
+        verify(api,times(1)).generateAndArchiveVideo(eq(43L),anyLong(),any(),any());
+    }
+
+    @Test void unresolvedFramesBlockBatchAdmission() {
+        shot(41,VideoBatchPreparation.FL,1).setEndFrameImageUrl(null);
+        var preview=service.preview(request());assertEquals(1,preview.getBlocked());
+        assertTrue(preview.getItems().getFirst().getValidation().getIssues().stream().anyMatch(i->"MEDIA_SOURCE_MISSING".equals(i.code())));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM video_render_batch",Integer.class));verifyNoInteractions(rendersService);
     }
 }

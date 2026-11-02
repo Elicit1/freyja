@@ -10,7 +10,7 @@ export interface VideoBatchRequest {
   retryOfBatchId?: string; inputSource?: 'ORIGINAL_SNAPSHOT' | 'CURRENT_SHOT'
 }
 export interface BatchSelectionNode { key: string; id: string; label: string; type: string; children: BatchSelectionNode[] }
-export interface BatchCandidate { shotId: string; name: string; context: string; generationMode: VideoMode; status: string; reason?: string; firstFrameSource?: string; lastFrameSource?: string; size?: string; executionOrder: number }
+export interface BatchCandidate { shotId: string; name: string; context: string; generationMode: VideoMode; status: string; reason?: string; firstFrameSource?: string; lastFrameSource?: string; size?: string; executionOrder: number; validation?: import('./render-validation').RenderValidationReport }
 export interface BatchPreview { shotIds: string[]; items: BatchCandidate[]; previewHash: string; accepted: number; blocked: number; skipped: number; duration: number }
 export interface VideoBatchItem { id: string; batchId?: string; shotId: string; taskId: string; name: string; phase: string; status: string; errorMessage?: string; outputUrl?: string; upstreamStatus?: string; archiveRecoverable?: boolean; failurePhase?: string; executionStage?: string; stageMessage?: string; stageUpdatedAt?: string }
 export interface VideoBatch {

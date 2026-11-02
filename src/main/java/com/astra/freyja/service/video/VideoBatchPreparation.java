@@ -110,13 +110,13 @@ public class VideoBatchPreparation {
                     Snapshot snap=prepare(s,req.getModeConfigs()==null?null:req.getModeConfigs().get(s.getGenerationMode()),batchSize,req.getAspectRatio(),null);
                     c.setSnapshot(snap);c.setSize(snap.getRequest().getSize());
                 }
-            } catch(BizException e) {c.setStatus("BLOCKED");c.setReason(e.getMessage());}
+            } catch(BizException e) {c.setStatus("BLOCKED");c.setReason(e.getMessage());if(e instanceof RenderValidationException validation)c.setValidation(validation.getReport());}
             candidates.add(c);
         }
         // Stable partition: narrative order remains unchanged within each phase.
         candidates.sort(Comparator.comparingInt(c->REF.equals(c.getGenerationMode())?0:1));
         Map<Long,Candidate> accepted=candidates.stream().filter(c->"READY".equals(c.getStatus())).collect(Collectors.toMap(Candidate::getShotId,Function.identity()));
-        int order=0; double duration=0;
+        int order=0;
         for(var c:candidates) c.setExecutionOrder(++order);
         for(var c:candidates) if(c.getSnapshot()!=null) {
             var s=c.getSnapshot().getShot();var cfg=req.getModeConfigs().get(s.getGenerationMode());
@@ -128,10 +128,25 @@ public class VideoBatchPreparation {
                 c.getSnapshot().setLastFramePlan(plan(s.getEndFrameImageUrl(),cfg.isAutoUseNextVideoHeadAsLastFrame(),next,accepted,c.getExecutionOrder(),"FIRST"));
             }
             c.setFirstFrameSource(label(c.getSnapshot().getFirstFramePlan()));c.setLastFrameSource(label(c.getSnapshot().getLastFramePlan()));
-            duration+=s.getDuration()==null?0:s.getDuration().doubleValue();
+            var validation=inspect(c.getSnapshot(),false);c.setValidation(validation);
+            if(!validation.isSubmissionReady()){c.setStatus("BLOCKED");c.setReason(new RenderValidationException(validation).getMessage());}
         }
+        // A blocked predecessor cannot provide a planned frame to an otherwise ready successor.
+        boolean changed;
+        do {
+            changed=false;
+            for(var c:candidates) if("READY".equals(c.getStatus())&&c.getSnapshot()!=null) {
+                for(var frame:Arrays.asList(c.getSnapshot().getFirstFramePlan(),c.getSnapshot().getLastFramePlan())) {
+                    if(frame!=null&&"PRIOR_BATCH_RESULT".equals(frame.getType())&&candidates.stream().anyMatch(source->Objects.equals(source.getShotId(),frame.getSourceShotId())&&!"READY".equals(source.getStatus()))) {
+                        c.setStatus("BLOCKED");c.setReason("依赖的邻镜未通过检查，请修复或重新选择输入来源");
+                        c.getValidation().getIssues().add(new RenderValidationReport.Issue("FRAME_DEPENDENCY_BLOCKED",c.getShotId(),null,"frames",null,c.getReason(),"修复邻镜后重新检查"));
+                        c.getValidation().setSubmissionReady(false);c.getValidation().setDispatchReady(false);changed=true;break;
+                    }
+                }
+            }
+        } while(changed);
         Preview p=new Preview();p.setShotIds(all.stream().map(DramaShot::getId).filter(selected::contains).toList());p.setItems(candidates);
-        p.setAccepted(accepted.size());p.setSkipped((int)candidates.stream().filter(c->"SKIPPED".equals(c.getStatus())).count());p.setBlocked(candidates.size()-p.getAccepted()-p.getSkipped());p.setDuration(duration);
+        p.setAccepted((int)candidates.stream().filter(c->"READY".equals(c.getStatus())).count());p.setSkipped((int)candidates.stream().filter(c->"SKIPPED".equals(c.getStatus())).count());p.setBlocked(candidates.size()-p.getAccepted()-p.getSkipped());p.setDuration(candidates.stream().filter(c->"READY".equals(c.getStatus())).mapToDouble(c->c.getSnapshot().getShot().getDuration().doubleValue()).sum());
         // Hash full internal snapshots too; @JsonIgnore keeps them out of the public preview.
         p.setPreviewHash(hash(write(List.of(req.getAspectRatio(),batchSize,req.getExistingVideoPolicy(),req.getModeConfigs()==null?Map.of():new TreeMap<>(req.getModeConfigs()),candidates,candidates.stream().map(c->c.getSnapshot()==null?c.getReason():write(c.getSnapshot())).toList()))));
         return p;
@@ -176,7 +191,7 @@ public class VideoBatchPreparation {
                 if(capabilities.has("maxDuration")&&shot.getDuration().doubleValue()>capabilities.path("maxDuration").asDouble())throw new BizException(400,"镜头时长超过模型上限");
             }catch(BizException e){throw e;}catch(Exception e){throw new BizException(400,"模型视频能力配置无效");}
         }
-        Snapshot snap=new Snapshot();snap.setShot(copy(shot));snap.getShot().setRefImagesJson(VideoReferenceSnapshotJson.write(images,json));snap.setAspectRatio(ratio);snap.setModelFingerprint(fingerprint(model,provider));
+        Snapshot snap=new Snapshot();snap.setShot(copy(shot));snap.getShot().setRefImagesJson(VideoReferenceSnapshotJson.write(images,json));snap.getShot().setRefAudiosJson(VideoReferenceSnapshotJson.write(audios,json));snap.setAspectRatio(ratio);snap.setModelFingerprint(fingerprint(model,provider));
         DramaShotRenderRequestDTO dto=new DramaShotRenderRequestDTO();dto.setProviderId(provider.getId());dto.setWorkflowTemplateId(model.getModelCode());dto.setSize(size);dto.setPrompt(prompt);dto.setSeed(shot.getSeed());
         if(!videos.isEmpty()) {
             var prepared=videoReferences.forSubmission(shot,model,supplied==null?null:supplied.getPreflightId());
@@ -184,6 +199,13 @@ public class VideoBatchPreparation {
             dto.setReferenceVideoRevision(prepared.getModel().getWorkflowRevision());dto.setReferenceVideoNodeId(prepared.getModel().getNodeId());
         }
         snap.setRequest(dto);return snap;
+    }
+    public RenderValidationReport inspect(Snapshot snap,boolean dispatch) {
+        var report=RenderInputResolver.inspect(snap,dispatch,json);snap.setValidation(report);return report;
+    }
+    public void requireValid(Snapshot snap,boolean dispatch) {
+        var report=inspect(snap,dispatch);
+        if(!report.isSubmissionReady() || dispatch&&!report.isDispatchReady())throw new RenderValidationException(report);
     }
     public void validateRoute(Snapshot snap) {
         var p=providers.selectById(snap.getRequest().getProviderId());

@@ -64,7 +64,7 @@ async function retry() {
     const options = batch.value.options
     const req: VideoBatchRequest = { ...options, name: `${batch.value.name} · 重试`, retryOfBatchId: batchId, inputSource: retrySource.value, clientRequestId: crypto.randomUUID(), existingVideoPolicy: 'CREATE_NEW_TAKE', shotIds: batch.value.items.filter(i => i.status === 'FAILED' && !i.archiveRecoverable).map(i => String(i.shotId)), expectedPreviewHash: undefined }
     const preview = await videoBatchApi.preview(req)
-    if (!preview.accepted) { ElMessage.warning('没有可重试项，请检查模型和分镜配置'); return }
+    if (!preview.accepted || preview.blocked) { ElMessage.warning(preview.items.filter(i => i.status === 'BLOCKED').map(i => `${i.name}：${i.reason}`).join('；') || '没有可重试项，请检查模型和分镜配置'); return }
     await ElMessageBox.confirm(`可提交 ${preview.accepted} 镜，跳过或不可用 ${preview.skipped + preview.blocked} 镜。将创建新的渲染批次。`, '重试检查')
     const created = await videoBatchApi.create({ ...req, expectedPreviewHash: preview.previewHash }); await open(String(created.id))
   } catch (e: any) { if (e !== 'cancel' && e !== 'close') ElMessage.error(e.message || '重试失败') } finally { retrying.value = false }

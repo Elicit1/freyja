@@ -73,6 +73,8 @@ public class ReferenceManifest {
     public static class AudioManifestItem {
         /** 1-based index (e.g. 1 -> Audio 1) */
         private Integer audioIndex;
+        /** Non-null only for an explicitly enabled source video's own soundtrack. */
+        private Integer sourceVideoIndex;
         private String referenceId;
         private Long audioId;
         /** 音频素材库 ID，与配音中心 audioId 分开。 */
@@ -141,7 +143,9 @@ public class ReferenceManifest {
                 sb.append(String.format("Audio %d:\n", aud.getAudioIndex()));
                 sb.append(String.format("- 标签引用: <Audio %d>\n", aud.getAudioIndex()));
                 sb.append(String.format("- 对应说话人/实体: %s\n", StringUtils.defaultString(aud.getCharacterName(), "环境音/未指定")));
-                sb.append(String.format("- H3 音频参考关系: %s\n", aud.getReferenceType()));
+                if (aud.getSourceVideoIndex() != null) {
+                    sb.append("- 来源: <Video ").append(aud.getSourceVideoIndex()).append("> 的附带原音，已由创作者开启。用途依该视频参考说明，不属于独立音色参考，不得猜测音色、台词或复用关系。\n");
+                } else sb.append(String.format("- H3 音频参考关系: %s\n", aud.getReferenceType()));
                 sb.append(String.format("- 发音语言: %s\n", StringUtils.defaultIfBlank(aud.getLanguage(), "未指定，不得由服务端猜测")));
                 if (aud.getCharacterId() != null) sb.append("- 明确绑定的角色 ID: ").append(aud.getCharacterId()).append("\n");
                 if (StringUtils.isNotBlank(aud.getText())) {

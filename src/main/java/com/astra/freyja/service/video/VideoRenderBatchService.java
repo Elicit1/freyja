@@ -67,8 +67,13 @@ public class VideoRenderBatchService {
                 if(requestedSize!=null&&!requestedSize.equals(snap.getRequest().getSize()))throw new BizException(400,"原始快照重试必须保留输出尺寸");
                 // Resolved first/last images are inputs in their own right on original-snapshot retry.
                 if(StringUtils.isNotBlank(i.getResolvedJson())){snap.setFirstFramePlan(null);snap.setLastFramePlan(null);}
+                for(var frame:Arrays.asList(snap.getFirstFramePlan(),snap.getLastFramePlan()))if(frame!=null&&"PRIOR_BATCH_RESULT".equals(frame.getType())){
+                    var dependency=store.task(frame.getSourceTaskId());
+                    if(dependency==null||!"SUCCESS".equals(dependency.getStatus()))throw new BizException(422,"原始快照依赖的邻镜尚未成功，请修复来源或改用当前分镜重试");
+                }
+                preparation.requireValid(snap,false);c.setValidation(snap.getValidation());
                 c.setSnapshot(snap);c.setSize(snap.getRequest().getSize());c.setFirstFrameSource("原始执行快照");c.setLastFrameSource("原始执行快照");
-            }catch(Exception e){c.setStatus("BLOCKED");c.setReason(e.getMessage());}
+            }catch(Exception e){c.setStatus("BLOCKED");c.setReason(e.getMessage());if(e instanceof RenderValidationException validation)c.setValidation(validation.getReport());}
             candidates.add(c);
         }
         Preview p=new Preview();p.setShotIds(original.stream().map(Item::getShotId).toList());p.setItems(candidates);p.setAccepted((int)candidates.stream().filter(c->"READY".equals(c.getStatus())).count());p.setBlocked(candidates.size()-p.getAccepted());
@@ -82,6 +87,7 @@ public class VideoRenderBatchService {
             if(old!=null){if(!old.getRequestHash().equals(hash))throw new BizException(409,"同一请求标识的内容不一致");return old.getId();}
             Preview p=preparePreview(req,true);
             if(!Objects.equals(req.getExpectedPreviewHash(),p.getPreviewHash()))throw new BizException(409,"预检结果已变化，请重新检查后提交");
+            if(p.getBlocked()>0)throw new BizException(422,"存在未通过预检的分镜，请修复或明确排除后重新检查");
             if(p.getAccepted()==0)throw new BizException(400,"没有可提交的分镜");
             Batch b=new Batch();b.setId(IdWorker.getId());b.setDramaId(req.getDramaId());b.setName(StringUtils.abbreviate(StringUtils.defaultIfBlank(req.getName(),"批量视频渲染"),200));
             b.setRequestId(req.getClientRequestId());b.setRequestHash(hash);b.setOptionsJson(preparation.write(req));b.setCreatedAt(LocalDateTime.now());store.insert(b);
@@ -103,6 +109,29 @@ public class VideoRenderBatchService {
     private String requestHash(VideoRenderBatchRequest r) {
         return VideoBatchPreparation.hash(preparation.write(Arrays.asList(r.getDramaId(),r.getName(),r.getShotIds()==null?null:r.getShotIds().stream().sorted().toList(),r.getSelection(),r.getAspectRatio(),r.getSize(),r.getExistingVideoPolicy(),r.getModeConfigs()==null?Map.of():new TreeMap<>(r.getModeConfigs()),r.getRetryOfBatchId(),r.getInputSource())));
     }
+    public RenderValidationReport precheckSingle(Long id,DramaShotRenderRequestDTO request) {
+        var shot=shots.selectById(id);if(shot==null)throw new BizException(404,"分镜不存在");
+        shot=preparation.copy(shot);
+        if(shot.getSeed()==null||shot.getSeed()<=0||shot.getSeed()>com.astra.freyja.util.ShotSeedUtil.MAX_SEED)shot.setSeed(1L);
+        var req=request==null?new DramaShotRenderRequestDTO():request;
+        if(req.getResolvedRefVideos()!=null||req.getReferenceVideoRevision()!=null||req.getReferenceVideoNodeId()!=null)throw new BizException(400,"素材快照必须由服务端生成");
+        var provider=api.resolveProvider(req.getProviderId());
+        String code=api.resolveVideoModelCode(req,provider.getId(),shot.getGenerationMode());
+        var model=models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId,provider.getId()).eq(AiModel::getModelCode,code).last("LIMIT 1"));
+        if(model==null)throw new BizException(400,"视频模型不存在");
+        var cfg=new VideoRenderBatchRequest.ModeConfig();cfg.setProviderId(provider.getId());cfg.setModelId(model.getId());
+        var snap=preparation.prepare(shot,cfg,StringUtils.defaultIfBlank(req.getSize(),"544x960"),null,req);
+        singleFrameFallback(snap,shot,id);
+        return preparation.inspect(snap,false);
+    }
+    private void singleFrameFallback(Snapshot snap,DramaShot shot,Long id) {
+        if(VideoBatchPreparation.FL.equals(shot.getGenerationMode())&&StringUtils.isBlank(shot.getPreviewImageUrl())&&shot.getShotGroupId()!=null){
+            var siblings=shots.selectList(new LambdaQueryWrapper<DramaShot>().eq(DramaShot::getShotGroupId,shot.getShotGroupId())).stream().sorted(VideoBatchPreparation.shotOrder()).toList();
+            for(int n=1;n<siblings.size();n++)if(siblings.get(n).getId().equals(id)&&StringUtils.isNotBlank(siblings.get(n-1).getVideoUrl())){
+                var prev=siblings.get(n-1);FramePlan plan=new FramePlan();plan.setType("EXISTING_VIDEO");plan.setFrameType("LAST");plan.setSourceShotId(prev.getId());plan.setVideoUrl(prev.getVideoUrl());plan.setTakeId(prev.getCurrentVideoTakeId());snap.setFirstFramePlan(plan);
+            }
+        }
+    }
     public ComfyRenderTaskVO enqueueSingle(Long id,DramaShotRenderRequestDTO request) {
         if(request!=null&&(request.getResolvedRefVideos()!=null||request.getReferenceVideoRevision()!=null||request.getReferenceVideoNodeId()!=null))
             throw new BizException(400,"请仅提交 preflightId，参考视频快照必须由服务端生成");
@@ -110,20 +139,20 @@ public class VideoRenderBatchService {
             store.lockQueue();DramaShot shot=shots.lockById(id);if(shot==null)throw new BizException(404,"分镜不存在");
             if(store.occupied(id)||renders.selectCount(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getShotId,id).eq(RenderTask::getTaskType,"SHOT_VIDEO").in(RenderTask::getStatus,"QUEUED","RENDERING"))>0)throw new BizException(409,"分镜已有排队或渲染中任务");
             DramaShotRenderRequestDTO req=request==null?new DramaShotRenderRequestDTO():request;
-            if(shot.getSeed()==null||shot.getSeed()<=0||shot.getSeed()>com.astra.freyja.util.ShotSeedUtil.MAX_SEED){shot.setSeed(com.astra.freyja.util.ShotSeedUtil.next());shots.update(null,new UpdateWrapper<DramaShot>().eq("id",id).set("seed",shot.getSeed()));}
+            shot=preparation.copy(shot);
+            boolean newSeed=shot.getSeed()==null||shot.getSeed()<=0||shot.getSeed()>com.astra.freyja.util.ShotSeedUtil.MAX_SEED;
+            if(newSeed)shot.setSeed(com.astra.freyja.util.ShotSeedUtil.next());
             AiProvider provider=api.resolveProvider(req.getProviderId());String code=api.resolveVideoModelCode(req,provider.getId(),shot.getGenerationMode());
             AiModel model=models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId,provider.getId()).eq(AiModel::getModelCode,code).last("LIMIT 1"));
             if(model==null)throw new BizException(400,"视频模型不存在");
             var cfg=new VideoRenderBatchRequest.ModeConfig();cfg.setProviderId(provider.getId());cfg.setModelId(model.getId());
             Snapshot snap=preparation.prepare(shot,cfg,StringUtils.defaultIfBlank(req.getSize(),"544x960"),null,req);
-            if(StringUtils.isNotBlank(req.getPrompt()))shots.update(null,new UpdateWrapper<DramaShot>().eq("id",id).set(VideoBatchPreparation.REF.equals(shot.getGenerationMode())?"prompt":"video_prompt",snap.getRequest().getPrompt()));
             // Single renders use the same fallback without creating implicit generation dependencies.
-            if(VideoBatchPreparation.FL.equals(shot.getGenerationMode())&&StringUtils.isBlank(shot.getPreviewImageUrl())&&shot.getShotGroupId()!=null){
-                var siblings=shots.selectList(new LambdaQueryWrapper<DramaShot>().eq(DramaShot::getShotGroupId,shot.getShotGroupId())).stream().sorted(VideoBatchPreparation.shotOrder()).toList();
-                for(int n=1;n<siblings.size();n++)if(siblings.get(n).getId().equals(id)&&StringUtils.isNotBlank(siblings.get(n-1).getVideoUrl())){
-                    var prev=siblings.get(n-1);FramePlan plan=new FramePlan();plan.setType("EXISTING_VIDEO");plan.setFrameType("LAST");plan.setSourceShotId(prev.getId());plan.setVideoUrl(prev.getVideoUrl());plan.setTakeId(prev.getCurrentVideoTakeId());snap.setFirstFramePlan(plan);
-                }
-            }
+            singleFrameFallback(snap,shot,id);
+            preparation.requireValid(snap,false);
+            if(req.getExpectedRenderFingerprint()!=null&&!req.getExpectedRenderFingerprint().equals(snap.getValidation().getInputFingerprint()))throw new BizException(409,"渲染输入已变化，请重新检查后提交");
+            if(newSeed)shots.update(null,new UpdateWrapper<DramaShot>().eq("id",id).set("seed",shot.getSeed()));
+            if(StringUtils.isNotBlank(req.getPrompt()))shots.update(null,new UpdateWrapper<DramaShot>().eq("id",id).set(VideoBatchPreparation.REF.equals(shot.getGenerationMode())?"prompt":"video_prompt",snap.getRequest().getPrompt()));
             Batch b=new Batch();b.setId(IdWorker.getId());b.setDramaId(shot.getDramaId());b.setName("单镜视频 · S"+shot.getShotNo());b.setRequestId("single_"+b.getId());b.setRequestHash(VideoBatchPreparation.hash(preparation.write(snap)));b.setCreatedAt(LocalDateTime.now());
             var options=new VideoRenderBatchRequest();options.setDramaId(shot.getDramaId());options.setShotIds(List.of(id));options.setExistingVideoPolicy("CREATE_NEW_TAKE");options.setModeConfigs(Map.of(shot.getGenerationMode(),cfg));
             options.setSize(snap.getRequest().getSize());options.setAspectRatio(VideoBatchPreparation.SIZES.entrySet().stream().filter(e->e.getValue().equals(snap.getRequest().getSize())).map(Map.Entry::getKey).findFirst().orElse(null));b.setOptionsJson(preparation.write(options));store.insert(b);
@@ -179,6 +208,9 @@ public class VideoRenderBatchService {
             if(item.getRecoveryUrl()==null)preparation.validateRoute(snap);
             if(item.getRecoveryUrl()==null&&StringUtils.isBlank(item.getResolvedJson())){
                 applyFrame(snap,item,true);applyFrame(snap,item,false);
+            }
+            if(item.getRecoveryUrl()==null){
+                preparation.requireValid(snap,true);
                 tx.executeWithoutResult(s->{store.lockQueue();if(!cancelled(item))store.resolved(item.getTaskId(),preparation.write(snap));});
             }
             Boolean maySubmit=tx.execute(s->{store.lockQueue();if(cancelled(item))return false;store.status(item.getTaskId(),"RENDERING",null,null,null);if(item.getBatchId()!=null)store.batchStatus(item.getBatchId(),"RUNNING",false);return true;});
@@ -200,7 +232,7 @@ public class VideoRenderBatchService {
                 store.status(item.getTaskId(),"SUCCESS",null,result.getVideoUrl(),"CONFIRMED");store.releaseShot(item.getTaskId());recompute(item.getBatchId());});
         }catch(Exception e){
             boolean uncertain=submitted&&VideoExecutionState.current().uncertain();
-            String failurePhase=VideoExecutionState.current().phase;
+            String failurePhase=e instanceof RenderValidationException?"INPUT_VALIDATION":VideoExecutionState.current().phase;
             String recoveryUrl=VideoExecutionState.current().recoveryUrl;
             // Cancellation interrupts blocking HTTP calls; clear the interrupt before DB cleanup.
             Thread.interrupted();
@@ -262,7 +294,7 @@ public class VideoRenderBatchService {
     private void applyFrame(Snapshot snap,Item item,boolean first){
         FramePlan plan=first?snap.getFirstFramePlan():snap.getLastFramePlan();if(plan==null||"CONFIGURED".equals(plan.getType()))return;
         String url=plan.getVideoUrl();Long takeId=plan.getTakeId();
-        if("PRIOR_BATCH_RESULT".equals(plan.getType())){Item source=store.task(plan.getSourceTaskId());if(source==null||!VideoBatchStore.terminal(source.getStatus()))throw new BizException(409,"来源视频尚未结束");if("SUCCESS".equals(source.getStatus())){url=source.getOutputUrl();takeId=null;}}
+        if("PRIOR_BATCH_RESULT".equals(plan.getType())){Item source=store.task(plan.getSourceTaskId());if(source==null||!"SUCCESS".equals(source.getStatus())||StringUtils.isBlank(source.getOutputUrl()))throw new BizException(422,"来源视频未成功生成，停止依赖镜头渲染，请修复输入后重新提交");url=source.getOutputUrl();takeId=null;}
         String image=null;if(!"NONE".equals(plan.getType())&&StringUtils.isNotBlank(url))image=frames.extract(plan.getSourceShotId(),url,takeId,plan.getFrameType());
         plan.setVideoUrl(url);plan.setTakeId(takeId);if(first)snap.getShot().setPreviewImageUrl(image);else snap.getShot().setEndFrameImageUrl(image);
     }

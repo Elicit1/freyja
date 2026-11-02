@@ -38,6 +38,20 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class ShotPromptDeriveH3Test {
+    @Test void pairedVideoAudioAndStandaloneVoiceShareTheRuntimeNumbering() {
+        var video=new com.astra.freyja.dto.drama.ShotRefVideoDTO();video.setId("video1");video.setName("参考片段");
+        video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("http://minio/clip.mp4");video.setIncludeAudio(true);
+        video.setReferenceDescription("按片段参考说明使用原音");
+        var dto=ShotPromptDeriveDTO.builder().generationMode("REFERENCE_MODE")
+                .refImages(List.of()).refVideos(List.of(video)).refAudios(List.of(ShotRefAudioDTO.builder()
+                        .id("voice").audioUrl("http://minio/voice.wav").referenceType("reference").duration(BigDecimal.valueOf(3)).build())).build();
+        var manifest=service.buildReferenceManifest(dto);
+        assertEquals(2,manifest.getAudios().size());assertEquals(1,manifest.getAudios().getFirst().getAudioIndex());
+        assertEquals(1,manifest.getAudios().getFirst().getSourceVideoIndex());
+        assertEquals(2,manifest.getAudios().get(1).getAudioIndex());assertEquals("voice",manifest.getAudios().get(1).getReferenceId());
+        assertTrue(manifest.toPromptContext().contains("<Video 1> 的附带原音"));
+        assertFalse(manifest.toPromptContext().contains("H3 音频参考关系: null"));
+    }
     @Test void publicRulesAreExportedAndFingerprintPinsTheirVersion() {
         var catalog = org.mockito.Mockito.mock(com.astra.freyja.capability.service.CapabilityCatalogService.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service, "capabilityCatalog", catalog);

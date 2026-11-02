@@ -13,6 +13,14 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(com.astra.freyja.service.video.RenderValidationException.class)
+    public ResponseEntity<R<com.astra.freyja.service.video.RenderValidationReport>> handleRenderValidation(
+            com.astra.freyja.service.video.RenderValidationException e) {
+        R<com.astra.freyja.service.video.RenderValidationReport> result = R.fail(e.getCode(), e.getMessage());
+        result.setData(e.getReport());
+        return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(result);
+    }
+
     @ExceptionHandler(BizException.class)
     public ResponseEntity<R<Void>> handleBizException(BizException e) {
         log.warn("业务异常: {}", e.getMessage());

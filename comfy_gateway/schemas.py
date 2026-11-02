@@ -45,6 +45,7 @@ class ImageGenerationRequest(BaseModel):
     # Prompt Format Specification
     prompt_format: Optional[str] = Field(default=None, description="Prompt format specification (e.g. 'MINIMAX_H3_REF2VA_V1', 'MINIMAX_H3_FL2VA_V1')")
     reference_video_revision: Optional[str] = None
+    render_input_contract: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="after")
     def populate_video_and_ref_fields(self) -> "ImageGenerationRequest":
@@ -240,6 +241,12 @@ class ImageGenerationRequest(BaseModel):
 
     def get_all_ref_images(self) -> List[str]:
         """Return non-empty list of reference image paths/URLs"""
+        if self.render_input_contract:
+            if self.prompt_format == "MINIMAX_H3_FL2VA_V1":
+                return [s for s in (self.first_frame, self.last_frame) if s]
+            return [img for b in (self.references or [])
+                    if b.reference_type not in (ReferenceType.FIRST_FRAME, ReferenceType.LAST_FRAME)
+                    for img in (b.images or []) if img]
         images = []
         if self.ref_images:
             images.extend([img.strip() for img in self.ref_images if isinstance(img, str) and img.strip()])
@@ -259,6 +266,9 @@ class ImageGenerationRequest(BaseModel):
 
     def get_all_ref_audios(self) -> List[str]:
         """Return all non-empty reference audios; validation enforces the MiniMax H3 limit."""
+        if self.render_input_contract:
+            return [b.audio_url for b in (self.references or [])
+                    if b.reference_type == ReferenceType.REFERENCE_AUDIO and b.audio_url]
         audios: List[str] = []
         if self.references:
             for b in self.references:

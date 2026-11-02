@@ -34,7 +34,7 @@ class VideoTaskQueryTest {
                 mock(VideoFrameExtractService.class),mock(RenderDispatchCoordinator.class),mock(ReferenceVideoMediaService.class)));
         AiProvider provider=new AiProvider();provider.setId(9L);provider.setBaseUrl(base+"/v1");
         doReturn(provider).when(service).resolveProvider(9L);doReturn("test-video").when(service).resolveVideoModelCode(any(),eq(9L),any());
-        var shot=new com.astra.freyja.entity.DramaShot();shot.setGenerationMode("REFERENCE_MODE");shot.setPrompt("saved video prompt");
+        var shot=new com.astra.freyja.entity.DramaShot();shot.setGenerationMode("REFERENCE_MODE");shot.setPrompt(RenderInputFixtures.reference(""));
         var request=new com.astra.freyja.dto.drama.DramaShotRenderRequestDTO();request.setProviderId(9L);request.setTaskId(task);
         com.astra.freyja.service.video.VideoExecutionState.begin(task,(stage,message)->stages.add(stage));
         try{

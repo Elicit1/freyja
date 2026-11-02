@@ -639,6 +639,7 @@ export interface DramaShotFirstFrame {
 }
 
 export interface DramaShotRenderRequest {
+  expectedRenderFingerprint?: string
   preflightId?: string
   providerId?: number | string
   workflowTemplateId?: string

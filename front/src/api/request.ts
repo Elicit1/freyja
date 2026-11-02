@@ -39,8 +39,8 @@ service.interceptors.response.use(
 
     // 业务错误提示
     const errorMsg = res.msg || '业务处理失败'
-    ElMessage.error(errorMsg)
-    return Promise.reject(new Error(errorMsg))
+    if (!(res.code === 422 && res.data?.issues)) ElMessage.error(errorMsg)
+    return Promise.reject(Object.assign(new Error(errorMsg), { code: res.code, data: res.data }))
   },
   (error) => {
     console.error('Response network error:', error)

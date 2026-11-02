@@ -1349,7 +1349,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                     errors.add("speechLines 引用了未选择的音色参考 Audio " + index);
                 } else {
                     var audio = audios.get(index - 1);
-                    if (!com.astra.freyja.util.ShotAudioReferenceValidator.REFERENCE_TYPES.contains(audio.getReferenceType())) {
+                    if (audio.getSourceVideoIndex() == null && !com.astra.freyja.util.ShotAudioReferenceValidator.REFERENCE_TYPES.contains(audio.getReferenceType())) {
                         errors.add("speechLines 引用音频缺少有效的 H3 参考关系");
                     }
                     if (audio.getCharacterId() != null && !java.util.Objects.equals(audio.getCharacterId(), line.getCharacterId())) {
@@ -2212,9 +2212,17 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             }
         }
 
+        // H3 emits video soundtracks before standalone audio; these share one Audio namespace.
+        if (dto.getRefVideos() != null) for (int i=0;i<dto.getRefVideos().size();i++) {
+            var video=dto.getRefVideos().get(i);
+            if (Boolean.TRUE.equals(video.getIncludeAudio())) audios.add(ReferenceManifest.AudioManifestItem.builder()
+                    .audioIndex(audios.size()+1).sourceVideoIndex(i+1)
+                    .referenceId(video.getId()).characterName("视频原音：" + StringUtils.defaultString(video.getName()))
+                    .referenceDescription(video.getReferenceDescription()).build());
+        }
         List<ShotRefAudioDTO> refAuds = resolveRefAudios(dto);
         if (refAuds != null) {
-            int aIdx = 1;
+            int aIdx = audios.size()+1;
             for (ShotRefAudioDTO aud : refAuds) {
 
                 audios.add(ReferenceManifest.AudioManifestItem.builder()

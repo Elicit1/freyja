@@ -29,19 +29,27 @@
             <el-checkbox v-model="configs.FIRST_LAST_FRAME.autoUseNextVideoHeadAsLastFrame">自动使用下一镜视频首帧作为尾帧</el-checkbox>
           </div>
         </div>
-        <el-alert type="info" :closable="false" title="先 REF2VA，后 FL2VA；始终逐个渲染。已配置首尾帧优先，缺少可用邻镜视频时不传对应帧。" />
+        <el-alert type="info" :closable="false" title="先参考模式，后首尾帧模式；始终逐个渲染。提示词和实际素材须匹配，首尾帧须有有效来源。请修复或明确排除未通过检查的镜头。" />
         <el-table :data="preview?.items || []" height="240" empty-text="选择分镜和模型后，点击检查" size="small">
           <el-table-column prop="executionOrder" label="顺序" width="55" /><el-table-column prop="name" label="镜头" min-width="130" />
           <el-table-column label="模式" width="85"><template #default="{ row }">{{ row.generationMode === 'REFERENCE_MODE' ? 'REF2VA' : 'FL2VA' }}</template></el-table-column>
           <el-table-column prop="firstFrameSource" label="首帧来源" min-width="125" /><el-table-column prop="lastFrameSource" label="尾帧来源" min-width="125" />
-          <el-table-column prop="size" label="实际尺寸" width="100" /><el-table-column label="检查结果" min-width="150"><template #default="{ row }"><span :class="row.status === 'READY' ? 'text-emerald-600' : 'text-amber-600'">{{ row.reason || '可提交' }}</span></template></el-table-column>
+          <el-table-column prop="size" label="实际尺寸" width="100" />
+          <el-table-column label="检查结果" min-width="230"><template #default="{ row }">
+            <div :class="row.status === 'READY' ? 'text-emerald-600' : 'text-amber-600'">{{ row.reason || (row.validation?.dispatchReady === false ? '可入队，等待邻镜素材就绪' : '检查通过') }}</div>
+            <div v-for="(issue, i) in row.validation?.issues || []" :key="i" class="mt-1 text-xs">
+              {{ issue.line ? `第 ${issue.line} 行：` : '' }}{{ issue.message }}<div class="text-[var(--text-secondary)]">{{ issue.suggestion }}</div>
+            </div>
+            <div v-if="row.validation?.slots.length" class="text-xs text-[var(--text-secondary)]">本次槽位：{{ row.validation.slots.map((s: any) => s.label).join('、') }}</div>
+            <el-button v-if="row.status === 'BLOCKED'" link type="primary" :disabled="checking || submitting" @click="excludeAndCheck(row.shotId)">排除此镜并重新检查</el-button>
+          </template></el-table-column>
         </el-table>
       </section>
     </div>
     <template #footer>
       <div class="flex items-center justify-between gap-4">
         <div class="text-sm text-[var(--text-secondary)]">已选 {{ selectedIds.length }} 镜<span v-if="preview"> · 可提交 {{ preview.accepted }} · 待补充 {{ preview.blocked }} · 跳过 {{ preview.skipped }} · 输出总时长 {{ preview.duration }} 秒</span></div>
-        <div><el-button @click="visible = false">关闭</el-button><el-button :loading="checking" :disabled="!selectedIds.length || submitting" @click="check">检查</el-button><el-button type="primary" :loading="submitting" :disabled="!preview?.accepted" @click="submit">提交可用的 {{ preview?.accepted || 0 }} 镜</el-button></div>
+        <div><el-button @click="visible = false">关闭</el-button><el-button :loading="checking" :disabled="!selectedIds.length || submitting" @click="check">检查</el-button><el-button type="primary" :loading="submitting" :disabled="!preview?.accepted || !!preview?.blocked || checking" @click="submit">提交已通过检查的 {{ preview?.accepted || 0 }} 镜</el-button></div>
       </div>
     </template>
   </el-dialog>
@@ -86,6 +94,11 @@ function filterNode(value: string, data: Record<string, any>) { return !value ||
 function selectionChanged() { selectedIds.value = (tree.value?.getCheckedNodes(false, false) || []).filter(n => n.type === 'SHOT').map(n => String(n.id)); invalidate() }
 function selectAll() { const keys: string[] = []; const visit = (list: BatchSelectionNode[]) => list.forEach(n => { if (n.type === 'SHOT') keys.push(n.key); visit(n.children) }); visit(nodes.value); tree.value?.setCheckedKeys(keys); selectionChanged() }
 function clearSelection() { tree.value?.setCheckedKeys([]); selectionChanged() }
+async function excludeAndCheck(id: string) {
+  tree.value?.setChecked(`SHOT:${id}`, false, false)
+  selectionChanged()
+  if (selectedIds.value.length) await check()
+}
 async function loadModels(mode: VideoMode) {
   configs[mode].modelId = undefined; modelLists[mode] = []; const provider = configs[mode].providerId
   if (!provider) return
@@ -110,7 +123,7 @@ async function check() {
   catch (e: any) { ElMessage.error(e.message || '检查失败') } finally { checking.value = false }
 }
 async function submit() {
-  if (!pendingRequest || !preview.value?.accepted) return
+  if (!pendingRequest || !preview.value?.accepted || preview.value.blocked || checking.value) return
   submitting.value = true
   try { const batch = await videoBatchApi.create(pendingRequest); visible.value = false; ElMessage.success('已加入串行渲染队列'); await router.push({ path: '/render/tasks', query: { taskSource: 'VIDEO_RENDER_BATCH', taskId: String(batch.id) } }) }
   catch (e: any) { ElMessage.error(e.message || '提交失败，请检查后重试') } finally { submitting.value = false }

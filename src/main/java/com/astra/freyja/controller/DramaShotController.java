@@ -63,6 +63,13 @@ public class DramaShotController {
     private final ShotAiVisualPlanService shotAiVisualPlanService;
     private final ShotFrameContinuityService continuityService;
     private final com.astra.freyja.service.ShotVideoTakeService shotVideoTakeService;
+    private final com.astra.freyja.service.video.VideoRenderBatchService videoRenderBatches;
+
+    @PostMapping("/{id}/render-precheck")
+    public R<com.astra.freyja.service.video.RenderValidationReport> precheckRender(@PathVariable Long id,
+            @RequestBody(required=false) DramaShotRenderRequestDTO request) {
+        return R.ok(videoRenderBatches.precheckSingle(id,request));
+    }
     private final AiTaskService aiTaskService;
 
     @GetMapping("/list/{sceneId}")

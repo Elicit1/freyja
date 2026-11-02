@@ -31,6 +31,8 @@ public class DramaShotRenderRequestDTO {
     private String size;
     /** Prepared reference-video inputs; clients only submit preflightId. */
     private String preflightId;
+    /** Optional optimistic check of the most recent render-input precheck. */
+    private String expectedRenderFingerprint;
     private java.util.List<ResolvedShotVideoReference> resolvedRefVideos;
     private String referenceVideoRevision;
     private String referenceVideoNodeId;

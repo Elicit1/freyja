@@ -68,6 +68,7 @@ front/dist/
 !/docs/asset-center-api.md
 !/docs/audio-material-api.md
 !/docs/scene-reference-workflow.md
+!/docs/render-input-validation.md
 
 outputs/
 
