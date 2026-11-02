@@ -12,6 +12,11 @@ import java.util.*;
 @Component
 @RequiredArgsConstructor
 public class McpRecordTools {
+    private static final String SHOT_RENDER_VALIDATION_NOTE = "渲染前（含批量提交）会强制校验最终提示词与实际挂载素材是否匹配，失败不会渲染；保存草稿不代表已通过预检。"
+            + "修改 prompt/videoPrompt 或参考清单时，必须按最终有序素材同步 <Picture N>/<Audio N>/<Video N> 标签，编号从 1 开始；不得引用未挂载素材，每个挂载槽位都须被正式引用，重复引用不增加素材数量。"
+            + "Picture 按 refImages 顺序；Audio 先按 refVideos 顺序为 includeAudio=true 的视频原音编号，再接 refAudios；Video 按 refVideos 顺序。"
+            + "FIRST_LAST_FRAME 的 Picture 1/2 对应首帧/尾帧，均须有有效来源，不挂载额外 refImages/refAudios。"
+            + "按 generationMode 写入正确提示词字段，并保留完整有序、非空的三段式/六段式结构；若使用 <Subject N>，须在 subject_definitions 正式定义。修改后读回核对引用和素材，勿用自然语言‘三张图’代替正式标签。";
     private final McpBusinessRecords records;
     private final McpBusinessSchemas schemas;
     private final McpBusinessInputValidator inputValidator;
@@ -63,11 +68,12 @@ public class McpRecordTools {
             result.add(new McpTool<>(binding.tool(Operation.CREATE), "单条创建" + binding.label() + "；仅接受该对象业务字段，requestId 幂等，不调用内部 AI。",
                     McpRecordInputs.Create.class, McpTool.Effect.WRITE, schemas.singleCreate(binding.type()), (c, i) -> create(binding, c, i)).validated(args -> validate(binding.type(), args.get("data"), true)));
             result.add(new McpTool<>(binding.tool(Operation.UPDATE), "单条补丁修改" + binding.label() + "；data 仅传变更字段，省略字段保留，需当前 expectedFingerprint 和稳定 requestId。dramaId 可省略。"
-                            + (binding.type() == McpRecordType.SHOT ? "不需重传 Prompt、引用或导演计划；只改负向词示例 data={\"negativePrompt\":\"blur\"}。fields 仅控制返回字段。" : ""),
+                            + (binding.type() == McpRecordType.SHOT ? "不需重传 Prompt、引用或导演计划；只改负向词示例 data={\"negativePrompt\":\"blur\"}。fields 仅控制返回字段。" + SHOT_RENDER_VALIDATION_NOTE : ""),
                     McpRecordInputs.Update.class, McpTool.Effect.WRITE, schemas.singleUpdate(binding.type()), (c, i) -> update(binding, c, i)).validated(args -> validate(binding.type(), args.get("data"), false)));
             result.add(new McpTool<>(binding.tool(Operation.DELETE), "单条逻辑删除" + binding.label() + "；需 expectedFingerprint，先删除子记录并解除引用，不删除媒体文件，requestId 幂等。",
                     McpRecordInputs.Delete.class, McpTool.Effect.WRITE, schemas.singleDelete(), (c, i) -> delete(binding, c, i)));
-            result.add(new McpTool<>(binding.batchTool(), "事务批量修改" + binding.label() + "，每次 1–100 项；只接受该对象的字段，无 type 参数。每项 data 仅传变更字段，省略保留；需 expectedFingerprint，任一失败全批回滚，requestId 幂等。dramaId 可省略；仅分镜支持回执 fields。",
+            result.add(new McpTool<>(binding.batchTool(), "事务批量修改" + binding.label() + "，每次 1–100 项；只接受该对象的字段，无 type 参数。每项 data 仅传变更字段，省略保留；需 expectedFingerprint，任一失败全批回滚，requestId 幂等。dramaId 可省略；仅分镜支持回执 fields。"
+                            + (binding.type() == McpRecordType.SHOT ? SHOT_RENDER_VALIDATION_NOTE : ""),
                     McpRecordInputs.BatchUpdate.class, McpTool.Effect.WRITE, schemas.batchUpdate(binding.type()), (c, i) -> batchUpdate(binding, c, i)).validated(args -> validateBatch(binding.type(), args)));
         }
         return result;
