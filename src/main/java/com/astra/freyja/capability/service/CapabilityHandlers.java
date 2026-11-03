@@ -21,7 +21,6 @@ public class CapabilityHandlers {
                           Effect effect, RecoveryMode recoveryMode, boolean projectRequired) {}
     private final ObjectProvider<McpToolInventory> business;
     private final ObjectProvider<List<AgentTool<?>>> nativeTools;
-    private final ObjectProvider<AgentProfileRegistry> profiles;
     private final McpJson json;
     private final com.astra.freyja.agent.model.AgentJson agentJson;
     private volatile Map<String, Handler> handlers;
@@ -36,19 +35,25 @@ public class CapabilityHandlers {
                 String key = Consumer.MCP.name() + ":" + tool.name();
                 var schema = schema(tool);
                 boolean project = ((List<?>) schema.getOrDefault("required", List.of())).contains("dramaId");
-                entries.put(key, new Handler(key, tool, null, schema, Effect.valueOf(tool.effect().name()),
+                register(entries, new Handler(key, tool, null, schema, Effect.valueOf(tool.effect().name()),
                         tool.effect() == McpTool.Effect.WRITE ? RecoveryMode.TRANSACTIONAL : RecoveryMode.REPLAY_SAFE, project));
             }
             for (AgentTool<?> tool : nativeTools.getObject()) {
                 String key = Consumer.INTERNAL_AGENT.name() + ":" + tool.name();
                 var schema = parse(tool.descriptor().inputSchema());
                 stringIds(schema);
-                entries.put(key, new Handler(key, null, tool, schema,
+                register(entries, new Handler(key, null, tool, schema,
                         tool.effect(), tool.recoveryMode(), tool.projectRequired()));
             }
             handlers = Collections.unmodifiableMap(entries);
             return handlers;
         }
+    }
+    private void register(Map<String, Handler> entries, Handler handler) {
+        if (entries.putIfAbsent(handler.key(), handler) != null)
+            throw new IllegalStateException("重复能力处理器: " + handler.key());
+        if (handler.effect() == Effect.WRITE && handler.recoveryMode() == RecoveryMode.REPLAY_SAFE)
+            throw new IllegalStateException("写能力必须声明事务或查询恢复: " + handler.key());
     }
     @SuppressWarnings("unchecked") private void stringIds(Object value) {
         if (value instanceof Map<?, ?> map) {
@@ -66,7 +71,6 @@ public class CapabilityHandlers {
     }
     public List<Binding> initialBindings() {
         List<Binding> result = new ArrayList<>();
-        var profile = profiles.getObject().require(AgentProfileRegistry.ASSISTANT_CODE);
         Set<String> nativeNames = new HashSet<>();
         all().values().stream().filter(h -> h.nativeTool() != null).forEach(h -> nativeNames.add(h.nativeTool().name()));
         for (Handler handler : all().values()) {
@@ -76,14 +80,14 @@ public class CapabilityHandlers {
                 result.add(binding(capabilityId, versionId, handler, Consumer.MCP, "freyja", tool.name(), tool.description(), handler.schema(), ContextMode.EXPLICIT, false));
                 if (!nativeNames.contains(tool.name())) {
                     Map<String, Object> adapted = internalSchema(handler.schema());
-                    result.add(binding(capabilityId, versionId, handler, Consumer.INTERNAL_AGENT, profile.code(), tool.name(),
+                    result.add(binding(capabilityId, versionId, handler, Consumer.INTERNAL_AGENT, AgentProfileRegistry.ASSISTANT_CODE, tool.name(),
                             tool.description() + " 当前项目与请求幂等标识由服务端注入，无需重复提交。", adapted,
                             tool.name().equals("create_project") ? ContextMode.UNBOUND_PROJECT : ContextMode.SESSION_PROJECT, false));
                 }
             } else {
                 var tool = handler.nativeTool();
-                result.add(binding(capabilityId, versionId, handler, Consumer.INTERNAL_AGENT, profile.code(), tool.name(), tool.description(),
-                        handler.schema(), ContextMode.AGENT_RUNTIME, profile.requiredTools().contains(tool.name())));
+                result.add(binding(capabilityId, versionId, handler, Consumer.INTERNAL_AGENT, AgentProfileRegistry.ASSISTANT_CODE, tool.name(), tool.description(),
+                        handler.schema(), ContextMode.AGENT_RUNTIME, tool.requiredByDefault()));
             }
         }
         return result;

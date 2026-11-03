@@ -66,7 +66,7 @@ public class AgentRuntime {
                         var input = context.build(store.run(id), owner, epoch);
                         var session = store.session(run.getSessionId());
                         List<String> allowed = snapshot.config().getTools().getNames().stream()
-                                .filter(n -> !registry.require(n).projectRequired() || session.getDramaId() != null).toList();
+                                .filter(n -> !registry.require(n, snapshot).projectRequired() || session.getDramaId() != null).toList();
                         long remaining = budget.getExecutionTimeoutSeconds() * 1000L - store.run(id).getExecutionMillis()
                                 - unrecordedElapsed(id, recordedBefore, start);
                         if ("STREAM".equals(snapshot.config().getModel().getOutputMode())) {

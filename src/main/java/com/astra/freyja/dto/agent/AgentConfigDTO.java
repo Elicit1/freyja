@@ -37,8 +37,7 @@ public class AgentConfigDTO {
         private String systemPrompt = "你是 FREYJA 创作助手。根据用户目标读取项目事实，使用工具完成工作。需要补充信息时明确说明，使用中文回答。";
     }
     @Data public static class Tools {
-        private List<String> names = new ArrayList<>(List.of("get_project_overview", "list_project_assets",
-                "get_shot_detail", "save_session_note", "list_session_notes", "load_skill", "read_skill_file"));
+        private List<String> names = new ArrayList<>();
     }
     @Data public static class Skills {
         private List<String> names = new ArrayList<>();

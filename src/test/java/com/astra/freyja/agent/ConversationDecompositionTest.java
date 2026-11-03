@@ -145,6 +145,6 @@ class ConversationDecompositionTest {
         var tool = org.springframework.test.util.ReflectionTestUtils.invokeMethod(config, "prepareScriptDecomposition");
         var typed = (com.astra.freyja.agent.tool.AgentTool<?>) tool;
         assertEquals(Effect.WRITE, typed.effect()); assertEquals(RecoveryMode.TRANSACTIONAL, typed.recoveryMode());
-        assertFalse(typed.projectRequired()); assertTrue(profile().requiredTools().contains(typed.name()));
+        assertFalse(typed.projectRequired()); assertTrue(typed.requiredByDefault());
     }
 }

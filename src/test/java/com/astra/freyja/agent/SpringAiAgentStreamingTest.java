@@ -42,7 +42,7 @@ class SpringAiAgentStreamingTest {
             public Class<SpringAiAgentModelGatewayTest.ShotInput> inputType() { return SpringAiAgentModelGatewayTest.ShotInput.class; }
             public ToolResult execute(SpringAiAgentModelGatewayTest.ShotInput input, ToolContext context) { fail("Streaming must not execute tools"); return null; }
         };
-        return new SpringAiAgentModelGateway(factory, models, providers, new AgentToolRegistry(List.of(tool)), executor);
+        return new SpringAiAgentModelGateway(factory, models, providers, AgentTestSupport.registry(List.of(tool)), executor);
     }
     private static String chunk(String delta, String finish) {
         return "data: {\"id\":\"stream-test\",\"object\":\"chat.completion.chunk\",\"created\":1730000000,\"model\":\"test-model\",\"choices\":[{\"index\":0,\"delta\":"

@@ -5,7 +5,6 @@ import org.springframework.beans.factory.ObjectProvider;
 import com.astra.freyja.dao.AgentPreparationJobMapper;
 import com.astra.freyja.agent.production.ProductionPlans;
 import com.astra.freyja.dto.agent.AgentConfigDTO;
-import java.util.List;
 
 @Component
 public class CoreAssistantProfile extends ProductionPreparationProfile {
@@ -38,11 +37,5 @@ public class CoreAssistantProfile extends ProductionPreparationProfile {
                 不调用生图或视频渲染。
                 不展示内部推理过程，回复结果、操作摘要和必要的简要依据。
                 """ + super.fixedInstructions();
-    }
-    public List<String> allowedTools() {
-        var names = new java.util.ArrayList<>(super.allowedTools()); names.add("request_user_input"); names.add("update_task_plan"); return List.copyOf(names);
-    }
-    @Override public List<String> requiredTools() {
-        var names = new java.util.ArrayList<>(super.requiredTools()); names.add("request_user_input"); names.add("update_task_plan"); return List.copyOf(names);
     }
 }

@@ -28,6 +28,7 @@ public class ProductionTools {
         public Effect effect() { return write ? Effect.WRITE : Effect.READ; }
         public RecoveryMode recoveryMode() { return write ? RecoveryMode.TRANSACTIONAL : RecoveryMode.REPLAY_SAFE; }
         public boolean projectRequired() { return project; }
+        public boolean requiredByDefault() { return true; }
     }
     @Bean AgentTool<ConversationStart> prepareScriptDecomposition() {
         return new Tool<>("prepare_script_decomposition", "在当前聊天任务保存用户已提供的拆解原文和要求，不新建会话。缺原文时先用 request_user_input 提问。sourceMessageId 可引用当前会话中整条原文用户消息，避免复写长文；消息包含额外指令时用 sourceText 提供准确原文，两者只选一个。自动沿用绑定项目，无绑定时须确认新建项目；不能切换项目。workflow=SCRIPT_DECOMPOSITION 仅拆解入库（默认），用户明确要求完整视频准备时才用 VIDEO_PREPARATION。画幅先明确选择启用比例，已有项目继承其比例；用户明确委托AI选择时优先启用16:9。节奏默认AUTO；其余字段可省略，已知要求无需重复询问。保存后调用 start_script_decomposition。", ConversationStart.class, true, false) {
@@ -47,6 +48,7 @@ public class ProductionTools {
     }
     @Bean AgentTool<ProductionTaskRecovery.SegmentRetry> retryDecompositionSegment() {
         return new Tool<>("retry_decomposition_segment", "对部分失败拆解的一个FAILED段落重试；segmentId取自拆解结果。instruction可补充已有要求。不重拆已成功段落，不入库，不重复创建子任务。", ProductionTaskRecovery.SegmentRetry.class, true, false) {
+            public boolean requiredByDefault() { return false; }
             public ToolResult execute(ProductionTaskRecovery.SegmentRetry i, ToolContext c) { return recovery.retry(i, c, null); }
             public ToolResult reconcile(ProductionTaskRecovery.SegmentRetry i, ToolContext c, WaitHandle w) { return recovery.retry(i, c, w); }
         };
@@ -84,6 +86,7 @@ public class ProductionTools {
     }
     @Bean AgentTool<Empty> getPreparationReport() {
         return new Tool<>("get_preparation_report", "读取当前制作任务已保存的交付报告。", Empty.class, false, false) {
+            public boolean requiredByDefault() { return false; }
             public ToolResult execute(Empty i, ToolContext c) { return ToolResult.success(jobs.report(c.runId())); }
         };
     }

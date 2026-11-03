@@ -79,18 +79,16 @@ class CapabilityCatalogIntegrationTest {
         McpTool<McpInputs.Empty> writeOnlyRead = new McpTool<>("operation_result", "读取写入结果", McpInputs.Empty.class, McpTool.Effect.READ,
                 Map.of("type", "object", "properties", Map.of(), "additionalProperties", false), (c, i) -> Map.of("status", "ok"));
         when(inventory.registeredHandlers()).thenReturn(List.of(read, write, writeOnlyRead.requiringWritePermission()));
-        var profile = mock(AgentProfile.class); when(profile.code()).thenReturn("core-assistant"); when(profile.requiredTools()).thenReturn(List.of("request_user_input"));
-        var profiles = new AgentProfileRegistry(List.of(profile));
         AgentTool<McpInputs.Empty> rulesProbe = new AgentTool<>() {
             public String name() { return "rules_probe"; }
             public String description() { return "返回当前规则用于测试"; }
             public Class<McpInputs.Empty> inputType() { return McpInputs.Empty.class; }
             public ToolResult execute(McpInputs.Empty input, ToolContext context) { return ToolResult.success(CapabilityRuleContext.current()); }
         };
-        handlers = new CapabilityHandlers(provider(inventory), provider(List.of(new RequestUserInputTool(), rulesProbe)), provider(profiles), json, new AgentJson());
+        handlers = new CapabilityHandlers(provider(inventory), provider(List.of(new RequestUserInputTool(), rulesProbe)), json, new AgentJson());
         control = mock(McpRuntimeControl.class); var settings = new McpRuntimeSettings(); settings.setEnabled(true); settings.setWriteEnabled(true);
         when(control.current()).thenReturn(settings); when(control.toolEnabled(any(), any())).thenReturn(true);
-        catalog = new CapabilityCatalogService(mapper, source, transactions, handlers, new CapabilitySchemaPolicy(), json, provider(redis), provider(control), provider(profiles));
+        catalog = new CapabilityCatalogService(mapper, source, transactions, handlers, new CapabilitySchemaPolicy(), json, provider(redis), provider(control));
         catalog.initialize();
     }
     @AfterEach void close() { if (connection != null) connection.destroy(); }
@@ -161,7 +159,7 @@ class CapabilityCatalogIntegrationTest {
         var initial = catalog.current(); var pinned = catalog.agentSnapshot("core-assistant", List.of("get_shot"));
         var internal = binding(initial, Consumer.INTERNAL_AGENT, "get_shot");
         var active = editBinding(initial, internal.id(), b -> renamed(b, "inspect_shot", true));
-        var second = new CapabilityCatalogService(mapper, source, transactions, handlers, new CapabilitySchemaPolicy(), json, provider(redis), provider(control), provider(null));
+        var second = new CapabilityCatalogService(mapper, source, transactions, handlers, new CapabilitySchemaPolicy(), json, provider(redis), provider(control));
         second.initialize(); assertEquals(active.id(), second.current().id());
         assertEquals("get_shot", pinned.bindings().getFirst().name()); assertEquals(initial.id(), pinned.releaseId());
         assertNotNull(catalog.agentTool(pinned.bindings().getFirst()).execute(Map.of("shotId", "8"), context(pinned, "NORMAL")).data());
@@ -171,7 +169,7 @@ class CapabilityCatalogIntegrationTest {
     @Test void cacheFailureFallsBackToMysqlSnapshotsAreImmutableAndPublicationConflicts() {
         var initial = catalog.current(); assertThrows(UnsupportedOperationException.class, () -> initial.bindings().getFirst().schema().put("type", "number"));
         var broken = mock(StringRedisTemplate.class); when(broken.opsForValue()).thenThrow(new org.springframework.data.redis.RedisConnectionFailureException("测试连接故障"));
-        var second = new CapabilityCatalogService(mapper, source, transactions, handlers, new CapabilitySchemaPolicy(), json, provider(broken), provider(control), provider(null));
+        var second = new CapabilityCatalogService(mapper, source, transactions, handlers, new CapabilitySchemaPolicy(), json, provider(broken), provider(control));
         second.initialize(); assertEquals(initial.id(), second.current().id());
         assertEquals(409, assertThrows(BizException.class, () -> catalog.publish(new Publish(-1L, "过期发布"))).getCode());
         catalog.refresh(); assertNotNull(redis.opsForValue().get("freyja:capability:v1:release:" + initial.id()));

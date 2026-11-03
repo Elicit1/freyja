@@ -11,6 +11,8 @@ public interface AgentTool<I> {
     default Effect effect() { return Effect.READ; }
     default RecoveryMode recoveryMode() { return RecoveryMode.REPLAY_SAFE; }
     default boolean projectRequired() { return false; }
+    /** Used only when the capability platform first imports this handler. Published bindings own the policy. */
+    default boolean requiredByDefault() { return false; }
     ToolResult execute(I input, ToolContext context);
     default ToolResult reconcile(I input, ToolContext context, WaitHandle handle) {
         if (recoveryMode() == RecoveryMode.REPLAY_SAFE) return execute(input, context);

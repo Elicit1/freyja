@@ -1,7 +1,6 @@
 package com.astra.freyja.capability.service;
 
 import com.astra.freyja.agent.model.AgentProtocol.*;
-import com.astra.freyja.agent.profile.AgentProfileRegistry;
 import com.astra.freyja.agent.tool.AgentTool;
 import com.astra.freyja.capability.model.CapabilityModels.*;
 import com.astra.freyja.capability.model.CapabilityRow;
@@ -52,7 +51,6 @@ public class CapabilityCatalogService {
     private final McpJson json;
     private final ObjectProvider<StringRedisTemplate> redis;
     private final ObjectProvider<McpRuntimeControl> mcpControls;
-    private final ObjectProvider<AgentProfileRegistry> profiles;
     private final Map<String, Release> local = new java.util.concurrent.ConcurrentHashMap<>();
     private final String instanceId = UUID.randomUUID().toString();
     private volatile boolean initialized;
@@ -377,11 +375,15 @@ public class CapabilityCatalogService {
     }
     public List<String> allowedNames(String code) { return bindings(current(), Consumer.INTERNAL_AGENT, code).stream().map(Binding::name).toList(); }
     public List<String> requiredNames(String code) { return bindings(current(), Consumer.INTERNAL_AGENT, code).stream().filter(Binding::required).map(Binding::name).toList(); }
-    public AgentSnapshot agentSnapshot(String code, List<String> names) {
+    public AgentSnapshot agentSnapshot(String code) {
         Release release = current();
-        List<Binding> all = bindings(release, Consumer.INTERNAL_AGENT, code);
+        return new AgentSnapshot(release.id(), bindings(release, Consumer.INTERNAL_AGENT, code));
+    }
+    public AgentSnapshot agentSnapshot(String code, List<String> names) {
+        AgentSnapshot available = agentSnapshot(code);
+        List<Binding> all = available.bindings();
         if (!all.stream().map(Binding::name).toList().containsAll(names)) throw new BizException(403, "Agent配置包含未授权能力");
-        return new AgentSnapshot(release.id(), all.stream().filter(b -> names.contains(b.name())).toList());
+        return new AgentSnapshot(available.releaseId(), all.stream().filter(b -> names.contains(b.name())).toList());
     }
     public List<McpTool<?>> mcpTools() {
         return mcpTools(current());

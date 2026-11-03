@@ -1,7 +1,6 @@
 package com.astra.freyja.capability;
 
 import com.astra.freyja.agent.model.AgentJson;
-import com.astra.freyja.agent.profile.AgentProfile;
 import com.astra.freyja.agent.profile.AgentProfileRegistry;
 import com.astra.freyja.agent.tool.AgentTool;
 import com.astra.freyja.capability.model.CapabilityModels.*;
@@ -30,7 +29,6 @@ class CapabilityCatalogMigrationTest {
     private DriverManagerDataSource source;
     private CapabilityMapper mapper;
     private final McpJson json = new McpJson();
-    private AgentProfileRegistry profiles;
     private McpRuntimeControl control;
 
     @SuppressWarnings("unchecked")
@@ -50,10 +48,6 @@ class CapabilityCatalogMigrationTest {
         factory.setConfiguration(configuration);
         factory.setMapperLocations(new PathMatchingResourcePatternResolver().getResources("classpath:/mapper/capability/*.xml"));
         mapper = new SqlSessionTemplate(factory.getObject()).getMapper(CapabilityMapper.class);
-        var profile = mock(AgentProfile.class);
-        when(profile.code()).thenReturn(AgentProfileRegistry.ASSISTANT_CODE);
-        when(profile.requiredTools()).thenReturn(List.of());
-        profiles = new AgentProfileRegistry(List.of(profile));
         control = mock(McpRuntimeControl.class);
         when(control.current()).thenReturn(new McpRuntimeSettings());
     }
@@ -98,9 +92,9 @@ class CapabilityCatalogMigrationTest {
     private CapabilityCatalogService catalog(List<McpTool<?>> tools) {
         var inventory = mock(McpToolInventory.class);
         when(inventory.registeredHandlers()).thenReturn(tools);
-        var handlers = new CapabilityHandlers(provider(inventory), provider(List.<AgentTool<?>>of()), provider(profiles), json, new AgentJson());
+        var handlers = new CapabilityHandlers(provider(inventory), provider(List.<AgentTool<?>>of()), json, new AgentJson());
         return new CapabilityCatalogService(mapper, source, new TransactionTemplate(new DataSourceTransactionManager(source)),
-                handlers, new CapabilitySchemaPolicy(), json, provider(null), provider(control), provider(profiles));
+                handlers, new CapabilitySchemaPolicy(), json, provider(null), provider(control));
     }
 
     private Binding external(Release release) {

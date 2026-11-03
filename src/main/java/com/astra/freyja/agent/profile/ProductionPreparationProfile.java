@@ -4,7 +4,6 @@ import com.astra.freyja.agent.production.*;
 import com.astra.freyja.agent.model.AgentProtocol.*;
 import com.astra.freyja.dto.agent.AgentConfigDTO;
 import lombok.RequiredArgsConstructor;
-import java.util.*;
 
 /** Shared production capabilities; only CoreAssistantProfile is registered as an assistant. */
 @RequiredArgsConstructor
@@ -13,12 +12,6 @@ public class ProductionPreparationProfile implements AgentProfile {
     private final org.springframework.beans.factory.ObjectProvider<ProductionPlans> plans;
     public String code() { return ProductionJobs.PROFILE; }
     public int version() { return 1; }
-    public List<String> allowedTools() {
-        return List.of("prepare_script_decomposition", "start_script_decomposition", "retry_decomposition_segment", "commit_decomposition", "list_preparation_shots", "get_reference_candidates",
-                "ensure_text_assets", "save_shot_production_plans", "prepare_shot_prompts", "inspect_preparation", "get_preparation_report",
-                "get_project", "get_shot", "search_assets", "list_character_looks", "get_business_options", "save_session_note", "list_session_notes", "load_skill", "read_skill_file");
-    }
-    public List<String> requiredTools() { return List.of("prepare_script_decomposition", "start_script_decomposition", "commit_decomposition", "list_preparation_shots", "get_reference_candidates", "ensure_text_assets", "save_shot_production_plans", "prepare_shot_prompts", "inspect_preparation"); }
     public AgentConfigDTO defaults() {
         var c = AgentProfile.super.defaults(); c.setDisplayName("分镜制作准备"); c.setDescription("自动拆解小说、整理文字资产、选择分镜模式与参考素材，交付缺图清单");
         c.getRuntime().setMaxModelTurns(60); c.getRuntime().setMaxToolCalls(150); c.getRuntime().setExecutionTimeoutSeconds(1800);

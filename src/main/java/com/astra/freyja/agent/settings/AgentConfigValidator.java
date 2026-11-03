@@ -4,6 +4,8 @@ import com.astra.freyja.agent.model.AgentJson;
 import com.astra.freyja.agent.profile.AgentProfile;
 import com.astra.freyja.agent.profile.AgentProfileRegistry;
 import com.astra.freyja.agent.tool.AgentToolRegistry;
+import com.astra.freyja.capability.model.CapabilityModels.Binding;
+import com.astra.freyja.capability.model.BuiltinCapability;
 import com.astra.freyja.dao.AiModelMapper;
 import com.astra.freyja.dao.AiProviderMapper;
 import com.astra.freyja.dto.agent.AgentConfigDTO;
@@ -47,21 +49,25 @@ public class AgentConfigValidator {
         }
         text(errors, "instructions.systemPrompt", config.getInstructions().getSystemPrompt(), 30000);
         List<String> names = config.getTools().getNames();
-        if (names == null || names.stream().anyMatch(n -> n == null || !tools.allowedNames(profile.code(), profile.allowedTools()).contains(n))) {
-            errors.add(issue("tools.names", "UNKNOWN_TOOL", "只能选择模板已注册的工具"));
+        var available = tools.available(profile.code());
+        var allowed = available.bindings().stream().map(Binding::name).collect(java.util.stream.Collectors.toSet());
+        if (names == null || names.stream().anyMatch(n -> n == null || !allowed.contains(n))) {
+            errors.add(issue("tools.names", "UNKNOWN_TOOL", "只能选择能力平台已发布且启用的工具"));
         } else {
-            if (!names.containsAll(tools.requiredNames(profile.code(), profile.requiredTools())) || Set.copyOf(names).size() != names.size())
+            if (!names.containsAll(available.bindings().stream().filter(Binding::required).map(Binding::name).toList()) || Set.copyOf(names).size() != names.size())
                 errors.add(issue("tools.names", "INVALID_TOOLS", "必需工具不可移除，工具不能重复"));
-            for (String name : names) tools.require(name);
         }
         List<String> selectedSkills = config.getSkills().getNames();
-        Set<String> available = skills.getEnabledCatalog().stream().map(s -> s.getName()).collect(java.util.stream.Collectors.toSet());
-        if (selectedSkills == null || selectedSkills.stream().anyMatch(n -> n == null || !available.contains(n))
+        Set<String> availableSkills = skills.getEnabledCatalog().stream().map(s -> s.getName()).collect(java.util.stream.Collectors.toSet());
+        if (selectedSkills == null || selectedSkills.stream().anyMatch(n -> n == null || !availableSkills.contains(n))
                 || Set.copyOf(selectedSkills).size() != selectedSkills.size())
             errors.add(issue("skills.names", "INVALID_SKILL", "Skill 必须来自启用的版本目录且不能重复"));
-        if (selectedSkills != null && !selectedSkills.isEmpty() && config.getSkills().isDynamicLoading()
-                && (names == null || !names.containsAll(List.of("load_skill", "read_skill_file"))))
-            errors.add(issue("skills.dynamicLoading", "MISSING_TOOLS", "按需加载 Skill 需要启用两个 Skill 工具"));
+        if (selectedSkills != null && !selectedSkills.isEmpty() && config.getSkills().isDynamicLoading()) {
+            var selectedHandlers = available.bindings().stream().filter(b -> names != null && names.contains(b.name()))
+                    .map(Binding::handlerKey).collect(java.util.stream.Collectors.toSet());
+            if (!selectedHandlers.containsAll(List.of(BuiltinCapability.LOAD_SKILL.handlerKey(), BuiltinCapability.READ_SKILL_FILE.handlerKey())))
+                errors.add(issue("skills.dynamicLoading", "MISSING_TOOLS", "按需加载 Skill 需要启用两个 Skill 工具"));
+        }
         var model = config.getModel();
         AiModel selected = null;
         if (!Set.of("STREAM", "COMPLETE").contains(java.util.Objects.toString(model.getOutputMode(), "")))

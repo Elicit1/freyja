@@ -5,6 +5,7 @@ import com.astra.freyja.agent.profile.*;
 import com.astra.freyja.agent.settings.*;
 import com.astra.freyja.agent.tool.*;
 import com.astra.freyja.common.BizException;
+import com.astra.freyja.capability.model.CapabilityModels.*;
 import com.astra.freyja.dao.*;
 import com.astra.freyja.dto.agent.AgentConfigDTO;
 import com.astra.freyja.entity.*;
@@ -30,19 +31,32 @@ class AgentConfigServiceTest {
     AgentConfigService service;
     AgentConfigDTO config;
     AiModel model;
+    com.astra.freyja.capability.service.CapabilityCatalogService capabilities;
+    List<String> platformNames = List.of("get_project", "get_shot", "search_assets", "ensure_text_assets", "prepare_shot_prompts",
+            "start_script_decomposition", "inspect_preparation", "prepare_script_decomposition", "save_session_note",
+            "list_session_notes", "load_skill", "read_skill_file", "request_user_input", "update_task_plan");
+    Binding renamed(Binding b, String name) {
+        return new Binding(b.id(), b.capabilityId(), b.versionId(), b.handlerKey(), b.consumer(), b.consumerCode(), name,
+                b.description(), b.schema(), b.enabled(), b.required(), b.contextMode(), b.projectRequired(), b.effect(), b.recoveryMode());
+    }
     @BeforeEach void setup() {
         AgentTestSupport.metadata();
         CoreAssistantProfile profile = AgentTestSupport.profile();
         var profiles = new AgentProfileRegistry(List.of(profile));
         List<AgentTool<?>> entries = new ArrayList<>();
-        for (String name : profile.allowedTools()) {
+        for (String name : platformNames) {
             AgentTool<?> tool = mock(AgentTool.class);
             when(tool.name()).thenReturn(name); when(tool.version()).thenReturn(1);
             when(tool.effect()).thenReturn("save_session_note".equals(name) ? com.astra.freyja.agent.model.AgentProtocol.Effect.WRITE : com.astra.freyja.agent.model.AgentProtocol.Effect.READ);
             when(tool.recoveryMode()).thenReturn("save_session_note".equals(name) ? com.astra.freyja.agent.model.AgentProtocol.RecoveryMode.TRANSACTIONAL : com.astra.freyja.agent.model.AgentProtocol.RecoveryMode.REPLAY_SAFE);
+            when(tool.requiredByDefault()).thenReturn(List.of("prepare_script_decomposition", "request_user_input", "update_task_plan").contains(name));
+            var descriptor = new com.astra.freyja.agent.model.AgentProtocol.ToolDescriptor(name, 1, name,
+                    tool.effect(), tool.recoveryMode(), false, "{}");
+            when(tool.descriptor()).thenReturn(descriptor);
             entries.add(tool);
         }
-        var tools = new AgentToolRegistry(entries);
+        capabilities = AgentTestSupport.capabilities(entries);
+        var tools = new AgentToolRegistry(capabilities);
         when(skills.getEnabledCatalog()).thenReturn(List.of());
         AiProvider provider = new AiProvider(); provider.setStatus(1);
         when(providers.selectById(anyLong())).thenReturn(provider);
@@ -53,7 +67,7 @@ class AgentConfigServiceTest {
         var manager = mock(PlatformTransactionManager.class);
         when(manager.getTransaction(any())).thenAnswer(call -> new SimpleTransactionStatus());
         service = new AgentConfigService(mapper, models, providers, profiles, tools, skills, validator, json, new TransactionTemplate(manager));
-        config = AgentTestSupport.snapshot(profile.allowedTools(), "NORMAL").config();
+        config = AgentTestSupport.snapshot(platformNames, "NORMAL").config();
     }
     @Test void activeRunUsesDetachedConfigurationAndNoCredentials() {
         var snapshot = service.snapshot("core-assistant", config, "NORMAL");
@@ -62,6 +76,72 @@ class AgentConfigServiceTest {
         assertEquals(0.4, snapshot.pinnedModel().getTemperature());
         assertFalse(json.write(snapshot).contains("do-not-copy"));
         assertTrue(snapshot.pinnedModel().getParamsJson().contains("42"));
+    }
+    @Test void initializationAndResetDefaultsUsePublishedNamesWithoutProfileLists() {
+        var published = capabilities.agentSnapshot("core-assistant");
+        var bindings = published.bindings().stream().filter(b -> !b.name().equals("get_shot"))
+                .map(b -> b.name().equals("get_project") ? renamed(b, "published_project_lookup") : b).toList();
+        when(capabilities.agentSnapshot("core-assistant")).thenReturn(new AgentSnapshot("1", bindings));
+        var expected = bindings.stream().map(Binding::name).toList();
+        var initialized = service.get("core-assistant");
+        assertEquals(expected, initialized.getTools().getNames());
+        var inserted = org.mockito.ArgumentCaptor.forClass(AgentConfig.class);
+        verify(mapper).insert(inserted.capture());
+        assertEquals(expected, json.read(inserted.getValue().getToolPolicyJson(), AgentConfigDTO.Tools.class).getNames());
+        var reset = (AgentConfigDTO) service.catalog("core-assistant").get("defaults");
+        assertEquals(expected, reset.getTools().getNames());
+        config.getTools().setNames(expected);
+        assertTrue(validator.validate("core-assistant", config, true).valid());
+        config.getTools().setNames(platformNames);
+        assertTrue(validator.validate("core-assistant", config, true).errors().stream().anyMatch(e -> "UNKNOWN_TOOL".equals(e.code())));
+    }
+    @Test void existingSelectionFollowsPlatformRequiredFlagsAndRevocations() {
+        config.getTools().setNames(List.of("get_project", "get_shot", "retired_tool"));
+        var stored = stored(config, 1); when(mapper.selectOne(any())).thenReturn(stored);
+        var published = capabilities.agentSnapshot("core-assistant");
+        var bindings = published.bindings().stream().filter(b -> !b.name().equals("get_project"))
+                .map(b -> new Binding(b.id(), b.capabilityId(), b.versionId(), b.handlerKey(), b.consumer(), b.consumerCode(), b.name(),
+                        b.description(), b.schema(), b.enabled(), b.name().equals("search_assets"), b.contextMode(), b.projectRequired(), b.effect(), b.recoveryMode())).toList();
+        when(capabilities.agentSnapshot("core-assistant")).thenReturn(new AgentSnapshot("1", bindings));
+        var result = service.get("core-assistant");
+        assertEquals(List.of("get_shot", "search_assets"), result.getTools().getNames());
+        assertEquals(config.getModel(), result.getModel());
+        assertEquals(config.getAvatar(), result.getAvatar());
+        assertTrue(validator.validate("core-assistant", result, true).valid());
+    }
+    @Test void snapshotsPinPlatformReleaseVersionsAndReadOnlyPolicy() {
+        var release = capabilities.release("1");
+        when(capabilities.release("1")).thenReturn(new Release("1", 42, release.bindings(), release.instructions(), "发布时规则"));
+        var snapshot = service.snapshot("core-assistant", config, "CONFIG_TEST");
+        assertNotNull(snapshot.capabilities());
+        assertEquals("1", snapshot.capabilities().releaseId());
+        assertTrue(snapshot.toolVersions().values().stream().allMatch(v -> v == 42));
+        assertTrue(snapshot.capabilities().bindings().stream().allMatch(b -> b.effect() == com.astra.freyja.agent.model.AgentProtocol.Effect.READ));
+        assertEquals(snapshot.config().getTools().getNames(), snapshot.capabilities().bindings().stream().map(Binding::name).toList());
+        assertTrue(snapshot.fixedInstructions().contains("发布时规则"));
+    }
+    @Test void unavailableCapabilityPlatformDoesNotFallBackToLocalTools() {
+        when(capabilities.agentSnapshot("core-assistant")).thenThrow(new BizException(503, "能力目录尚未发布"));
+        assertEquals(503, assertThrows(BizException.class, () -> service.get("core-assistant")).getCode());
+        assertEquals(503, assertThrows(BizException.class, () -> service.catalog("core-assistant")).getCode());
+        assertEquals(503, assertThrows(BizException.class, () -> validator.validate("core-assistant", config, true)).getCode());
+        verify(mapper, never()).insert(any(AgentConfig.class));
+    }
+    @Test void dynamicSkillsRecognizeRenamedPlatformBindingsByHandlerIdentity() {
+        var skill = new com.astra.freyja.skill.model.SkillCatalogItem(); skill.setName("story-writing");
+        when(skills.getEnabledCatalog()).thenReturn(List.of(skill));
+        config.getSkills().setNames(List.of("story-writing"));
+        var published = capabilities.agentSnapshot("core-assistant");
+        var bindings = published.bindings().stream().map(b -> switch (b.name()) {
+            case "load_skill" -> renamed(b, "published_skill_loader");
+            case "read_skill_file" -> renamed(b, "published_skill_reader");
+            default -> b;
+        }).toList();
+        when(capabilities.agentSnapshot("core-assistant")).thenReturn(new AgentSnapshot("1", bindings));
+        config.getTools().setNames(bindings.stream().map(Binding::name).toList());
+        assertTrue(validator.validate("core-assistant", config, true).valid());
+        config.getTools().setNames(config.getTools().getNames().stream().filter(n -> !n.equals("published_skill_reader")).toList());
+        assertTrue(validator.validate("core-assistant", config, true).errors().stream().anyMatch(e -> "MISSING_TOOLS".equals(e.code())));
     }
     @Test void mainAndIndependentSummaryPinInheritedProviderCapabilities() {
         var provider = providers.selectById(config.getModel().getProviderId());
@@ -176,11 +256,13 @@ class AgentConfigServiceTest {
         var profile = AgentTestSupport.profile(); var registry = new AgentProfileRegistry(List.of(profile));
         assertEquals(1, registry.all().size()); assertSame(profile, registry.require("core-assistant"));
         assertEquals("FREYJA 助手", profile.defaults().getDisplayName());
-        assertTrue(profile.allowedTools().containsAll(List.of("search_assets", "ensure_text_assets", "prepare_shot_prompts")));
+        var defaults = (AgentConfigDTO) service.catalog(profile.code()).get("defaults");
+        assertTrue(defaults.getTools().getNames().containsAll(List.of("search_assets", "ensure_text_assets", "prepare_shot_prompts")));
+        assertTrue(profile.defaults().getTools().getNames().isEmpty(), "Profiles do not define capability policy");
     }
     @Test void questionsUpgradePreservesExistingSettingsWithoutMergingLegacyAgain() {
         config.setEnabled(false); config.getRuntime().setMaxModelTurns(12); config.getMemory().setContextTokens(16000);
-        config.getTools().setNames(AgentTestSupport.profile().allowedTools().stream().filter(n -> !List.of("request_user_input", "list_project_assets").contains(n)).toList());
+        config.getTools().setNames(platformNames.stream().filter(n -> !List.of("request_user_input", "list_project_assets").contains(n)).toList());
         var stored = stored(config, 2);
         when(mapper.selectOne(any())).thenReturn(stored); when(mapper.lockByCode("core-assistant")).thenReturn(stored);
         var upgraded = service.get("core-assistant");
@@ -194,7 +276,7 @@ class AgentConfigServiceTest {
     @Test void chatDecompositionUpgradeAddsRequiredToolAndPreservesUserConfiguration() {
         config.setDisplayName("我的助手"); config.setEnabled(false); config.getRuntime().setMaxModelTurns(12);
         config.getMemory().setContextTokens(16000); config.getInstructions().setSystemPrompt("遵循我的拆解要求");
-        config.getTools().setNames(AgentTestSupport.profile().allowedTools().stream()
+        config.getTools().setNames(platformNames.stream()
                 .filter(n -> !List.of("prepare_script_decomposition", "list_project_assets").contains(n)).toList());
         var previous = stored(config, 3);
         when(mapper.selectOne(any())).thenReturn(previous); when(mapper.lockByCode("core-assistant")).thenReturn(previous);

@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class UpdateTaskPlanTool implements AgentTool<AgentTaskPlan> {
+    public boolean requiredByDefault() { return true; }
     public String name() { return "update_task_plan"; }
     public String description() {
         return "创建或更新用户可见的任务计划。steps 为完整计划，每步有稳定 id、简短 title、状态 PENDING/IN_PROGRESS/COMPLETED/SKIPPED。"

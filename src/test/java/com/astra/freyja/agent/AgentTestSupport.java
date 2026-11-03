@@ -2,14 +2,45 @@ package com.astra.freyja.agent;
 
 import com.astra.freyja.agent.model.AgentProtocol.*;
 import com.astra.freyja.dto.agent.AgentConfigDTO;
+import com.astra.freyja.agent.tool.AgentTool;
+import com.astra.freyja.agent.tool.AgentToolRegistry;
+import com.astra.freyja.capability.model.CapabilityModels.*;
+import com.astra.freyja.capability.service.CapabilityCatalogService;
 import com.astra.freyja.entity.*;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
 import java.util.List;
 import java.util.Map;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 final class AgentTestSupport {
+    /** Published capability fixture for tests that exercise the real Agent platform adapter. */
+    static CapabilityCatalogService capabilities(List<AgentTool<?>> tools) {
+        var catalog = mock(CapabilityCatalogService.class);
+        var bindings = tools.stream().map(tool -> new Binding(tool.name(), "1", "1", "INTERNAL_AGENT:" + tool.name(),
+                Consumer.INTERNAL_AGENT, "core-assistant", tool.name(), tool.name(), Map.of(), true, tool.requiredByDefault(),
+                ContextMode.AGENT_RUNTIME, tool.projectRequired(), tool.effect(), tool.recoveryMode())).toList();
+        var release = new Release("1", 1, bindings, "平台能力说明", "平台公共规则");
+        when(catalog.current()).thenReturn(release);
+        when(catalog.release("1")).thenReturn(release);
+        when(catalog.agentSnapshot("core-assistant")).thenReturn(new AgentSnapshot("1", bindings));
+        when(catalog.agentSnapshot(eq("core-assistant"), anyList())).thenAnswer(call -> {
+            List<String> selected = call.getArgument(1);
+            if (!bindings.stream().map(Binding::name).toList().containsAll(selected))
+                throw new com.astra.freyja.common.BizException(403, "Agent配置包含未授权能力");
+            return new AgentSnapshot("1", bindings.stream().filter(b -> selected.contains(b.name())).toList());
+        });
+        when(catalog.requireCurrent(anyString())).thenAnswer(call -> bindings.stream()
+                .filter(b -> b.id().equals(call.getArgument(0))).findFirst().orElseThrow());
+        when(catalog.agentTool(any())).thenAnswer(call -> {
+            Binding binding = call.getArgument(0);
+            return tools.stream().filter(t -> binding.handlerKey().equals("INTERNAL_AGENT:" + t.name())).findFirst().orElseThrow();
+        });
+        return catalog;
+    }
+    static AgentToolRegistry registry(List<AgentTool<?>> tools) { return new AgentToolRegistry(capabilities(tools)); }
     static com.astra.freyja.agent.profile.CoreAssistantProfile profile() {
         return new com.astra.freyja.agent.profile.CoreAssistantProfile(
                 org.mockito.Mockito.mock(com.astra.freyja.dao.AgentPreparationJobMapper.class),

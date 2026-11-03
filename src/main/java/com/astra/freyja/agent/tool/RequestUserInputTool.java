@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class RequestUserInputTool implements AgentTool<UserQuestions> {
+    public boolean requiredByDefault() { return true; }
     public String name() { return "request_user_input"; }
     public String description() {
         return "遇到会影响结果的重要不确定项时向用户提问，并暂停本任务等待回答。一次 1–3 题，"

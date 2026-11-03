@@ -53,7 +53,7 @@ class SpringAiAgentModelGatewayTest {
                     .httpClientBuilderCustomizer(com.astra.freyja.agent.gateway.ReasoningReplay.customizer(
                             com.astra.freyja.agent.model.ChatModelCapabilities.from(source.pinnedModel()))).build();
             var factory = mock(AiModelFactory.class); when(factory.getChatModelForSnapshot(anyLong(), any())).thenReturn(model);
-            var gateway = new SpringAiAgentModelGateway(factory, models, providers, new AgentToolRegistry(List.of()), executor);
+            var gateway = new SpringAiAgentModelGateway(factory, models, providers, AgentTestSupport.registry(List.of()), executor);
             var summarizer = new com.astra.freyja.agent.memory.AgentMemorySummarizer(gateway, new com.astra.freyja.agent.model.AgentJson());
             var reply = summarizer.summarize(source, "旧摘要", "新历史", 30000);
             var wireJson = new com.fasterxml.jackson.databind.ObjectMapper().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
@@ -106,7 +106,7 @@ class SpringAiAgentModelGatewayTest {
                 public Class<ShotInput> inputType() { return ShotInput.class; }
                 public ToolResult execute(ShotInput input, ToolContext context) { fail("model must never execute a tool"); return null; }
             };
-            var registry = new AgentToolRegistry(List.of(tool));
+            var registry = AgentTestSupport.registry(List.of(tool));
             var gateway = new SpringAiAgentModelGateway(factory, modelMapper, providerMapper, registry, executor);
             var reply = gateway.call(snapshot, List.of(new UserMessage("读取分镜")), List.of("get_shot_detail"));
             assertEquals(1, reply.toolCalls().size()); assertEquals("get_shot_detail", reply.toolCalls().getFirst().name());
@@ -159,7 +159,7 @@ class SpringAiAgentModelGatewayTest {
                 public Class<ShotInput> inputType() { return ShotInput.class; }
                 public ToolResult execute(ShotInput input, ToolContext context) { fail("model must never execute a tool"); return null; }
             };
-            var gateway = new SpringAiAgentModelGateway(factory, modelMapper, providerMapper, new AgentToolRegistry(List.of(tool)), executor);
+            var gateway = new SpringAiAgentModelGateway(factory, modelMapper, providerMapper, AgentTestSupport.registry(List.of(tool)), executor);
             var reply = gateway.call(AgentTestSupport.snapshot(List.of("get_shot_detail"), "NORMAL"), List.of(new UserMessage("读取分镜")), List.of("get_shot_detail"));
             assertEquals(1, reply.toolCalls().size()); assertFalse(reply.toolCalls().getFirst().id().isBlank());
             assertEquals("get_shot_detail", reply.toolCalls().getFirst().name());

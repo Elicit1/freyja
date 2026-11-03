@@ -5,6 +5,8 @@ import com.astra.freyja.agent.model.ChatModelCapabilities;
 import com.astra.freyja.agent.model.AgentProtocol.*;
 import com.astra.freyja.agent.profile.AgentProfileRegistry;
 import com.astra.freyja.agent.tool.AgentToolRegistry;
+import com.astra.freyja.capability.model.CapabilityModels.Binding;
+import com.astra.freyja.capability.model.CapabilityModels.AgentSnapshot;
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.AgentConfigMapper;
 import com.astra.freyja.dao.AiModelMapper;
@@ -39,12 +41,12 @@ public class AgentConfigService {
     public AgentConfigDTO get(String requestedCode) {
         String code = AgentProfileRegistry.canonicalCode(requestedCode);
         profiles.require(code);
+        var available = tools.available(code);
         AgentConfig entry = mapper.selectOne(new LambdaQueryWrapper<AgentConfig>().eq(AgentConfig::getAgentCode, code));
         if (entry == null) {
-            var defaults = profiles.require(code).defaults();
+            var defaults = defaults(code, available);
             defaults.setAgentCode(code);
             defaults.setEnabled(false);
-            defaults.getTools().setNames(profiles.require(code).allowedTools());
             entry = toEntity(code, defaults, 1);
             try { mapper.insert(entry); }
             catch (DuplicateKeyException concurrentInitialization) {
@@ -52,10 +54,9 @@ public class AgentConfigService {
             }
         }
         var result = fromEntity(entry);
-        var profile = profiles.require(code);
         var selected = new java.util.LinkedHashSet<>(result.getTools().getNames());
-        selected.retainAll(tools.allowedNames(code, profile.allowedTools()));
-        selected.addAll(tools.requiredNames(code, profile.requiredTools()));
+        selected.retainAll(available.bindings().stream().map(Binding::name).toList());
+        selected.addAll(available.bindings().stream().filter(Binding::required).map(Binding::name).toList());
         result.getTools().setNames(List.copyOf(selected));
         return result;
     }
@@ -68,9 +69,15 @@ public class AgentConfigService {
     }
     public Map<String, Object> catalog(String code) {
         var profile = profiles.require(code);
-        return Map.of("tools", tools.catalog(tools.allowedNames(profile.code(), profile.allowedTools())), "requiredTools", tools.requiredNames(profile.code(), profile.requiredTools()),
-                "skills", skills.getEnabledCatalog(), "fixedInstructions", profile.fixedInstructions() + "\n" + tools.sharedRules(),
-                "defaults", profile.defaults(), "profileVersion", profile.version());
+        var available = tools.available(code);
+        return Map.of("tools", tools.catalog(available), "requiredTools", available.bindings().stream().filter(Binding::required).map(Binding::name).toList(),
+                "skills", skills.getEnabledCatalog(), "fixedInstructions", profile.fixedInstructions() + "\n" + tools.sharedRules(available),
+                "defaults", defaults(code, available), "profileVersion", profile.version());
+    }
+    private AgentConfigDTO defaults(String code, AgentSnapshot available) {
+        var defaults = profiles.require(code).defaults();
+        defaults.getTools().setNames(available.bindings().stream().map(Binding::name).toList());
+        return defaults;
     }
     public ValidationResult validate(String code, AgentConfigDTO dto, boolean execution) {
         return validator.validate(code, dto, execution);
@@ -128,17 +135,19 @@ public class AgentConfigService {
             }
         }
         pinned.setParamsJson(json.write(parameters));
+        var capabilitySnapshot = tools.snapshot(code, config.getTools().getNames());
         if ("CONFIG_TEST".equals(type)) {
-            config.getTools().setNames(config.getTools().getNames().stream()
-                    .filter(n -> tools.require(n).effect() == Effect.READ).toList());
+            capabilitySnapshot = new AgentSnapshot(capabilitySnapshot.releaseId(), capabilitySnapshot.bindings().stream()
+                    .filter(b -> b.effect() == Effect.READ).toList());
+            config.getTools().setNames(capabilitySnapshot.bindings().stream().map(Binding::name).toList());
             config.getMemory().setScopes(List.of());
         }
         Map<String, Long> versions = new LinkedHashMap<>();
         skills.getEnabledCatalog().stream().filter(s -> config.getSkills().getNames().contains(s.getName()))
                 .forEach(s -> versions.put(s.getName(), s.getVersionId()));
-        var capabilitySnapshot = tools.snapshot(code, config.getTools().getNames());
         Map<String, Integer> toolVersions = new LinkedHashMap<>();
-        config.getTools().getNames().forEach(name -> toolVersions.put(name, capabilitySnapshot == null ? tools.require(name).version() : tools.releaseVersion(capabilitySnapshot)));
+        int releaseVersion = tools.releaseVersion(capabilitySnapshot);
+        config.getTools().getNames().forEach(name -> toolVersions.put(name, releaseVersion));
         config.setExpectedRevision(null);
         return new Snapshot(code, input.getRevision() == null ? 0 : input.getRevision(), profile.version(), config,
                 profile.fixedInstructions() + "\n公共应用规则（优先于默认创作建议）：\n" + tools.sharedRules(capabilitySnapshot), Map.copyOf(versions), Map.copyOf(toolVersions), pinned, type, pinSummaryModel(config.getMemory().getSummary(), pinned), capabilitySnapshot);
