@@ -64,6 +64,7 @@ front/node_modules/
 front/dist/
 
 /docs/*
+!/docs/architecture-cleanup.md
 !/docs/reference-video-generation-design.md
 !/docs/asset-center-api.md
 !/docs/audio-material-api.md

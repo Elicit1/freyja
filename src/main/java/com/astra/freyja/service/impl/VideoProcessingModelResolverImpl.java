@@ -32,7 +32,6 @@ public class VideoProcessingModelResolverImpl implements VideoProcessingModelRes
     public ResolvedVideoProcessingModel resolve(
             Long providerId,
             Long modelId,
-            String modelCode,
             String operation,
             Integer userScale,
             Integer userMultiplier,
@@ -52,35 +51,12 @@ public class VideoProcessingModelResolverImpl implements VideoProcessingModelRes
             throw new BizException(400, "不支持的操作类型: " + op + " (仅支持 VIDEO_UPSCALE 与 FRAME_INTERPOLATION)");
         }
 
-        // 1. 定位并获取 AiModel
-        AiModel model = null;
-        if (modelId != null) {
-            model = modelMapper.selectById(modelId);
-            if (model == null) {
-                throw new BizException(404, "指定的 AI 模型不存在 (modelId=" + modelId + ")");
-            }
-            if (model.getStatus() == null || model.getStatus() != 1) {
-                throw new BizException(400, "指定的 AI 模型已停用");
-            }
-            if (providerId != null && !providerId.equals(model.getProviderId())) {
-                throw new BizException(400, "指定的模型不属于当前 AI 提供商");
-            }
-        } else if (StringUtils.isNotBlank(modelCode)) {
-            if (providerId == null) {
-                throw new BizException(400, "通过 modelCode 解析模型时必须提供 providerId");
-            }
-            List<AiModel> matchedList = modelMapper.selectList(new LambdaQueryWrapper<AiModel>()
-                    .eq(AiModel::getProviderId, providerId)
-                    .eq(AiModel::getModelCode, modelCode.trim())
-                    .eq(AiModel::getModelType, op)
-                    .eq(AiModel::getStatus, 1));
-            if (matchedList == null || matchedList.isEmpty()) {
-                throw new BizException(404, "在指定提供商下未找到已启用且类型匹配的模型 (modelCode=" + modelCode + ", operation=" + op + ")");
-            }
-            model = matchedList.get(0);
-        } else {
-            throw new BizException(400, "必须指定 modelId 或 modelCode");
-        }
+        // 1. 模型中心 ID 是唯一选择依据。
+        if (modelId == null) throw new BizException(400, "请选择模型中心模型 (modelId)");
+        AiModel model = modelMapper.selectById(modelId);
+        if (model == null) throw new BizException(404, "指定的 AI 模型不存在");
+        if (!Integer.valueOf(1).equals(model.getStatus())) throw new BizException(400, "指定的 AI 模型已停用");
+        if (providerId != null && !providerId.equals(model.getProviderId())) throw new BizException(400, "指定的模型不属于当前 AI 提供商");
 
         // 2. 校验模型类型与当前操作一致
         if (!op.equalsIgnoreCase(model.getModelType())) {

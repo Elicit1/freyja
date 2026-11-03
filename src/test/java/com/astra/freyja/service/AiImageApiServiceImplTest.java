@@ -127,7 +127,7 @@ class AiImageApiServiceImplTest {
         shot.setPreviewImageUrl("data:image/png;base64,aW1hZ2U=");shot.setEndFrameImageUrl("data:image/png;base64,aW1hZ2U=");
         shot.setSeed(1234L);
         // Stored legacy TTS audio must not leak into a new video request.
-        shot.setAudioUrl("https://unreachable.example.invalid/legacy.mp3");
+
         shot.setDuration(new java.math.BigDecimal("3.5"));
         DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
         request.setProviderId(5L);

@@ -482,7 +482,7 @@ function getCharacterAvatar(characterId?: string | number) {
 
 function getCharacterDesc(characterId?: string | number, lookId?: string | number) {
   const c = getCharacter(characterId)
-  const look = c?.outfits?.find(item => lookId && String(item.id) === String(lookId))
+  const look = c?.looks?.find(item => lookId && String(item.id) === String(lookId))
   return look?.designDesc || c?.appearancePrompt || c?.triggerWords || c?.voiceDesc || '暂无文字设定描述'
 }
 
@@ -493,7 +493,7 @@ function hasVoiceSample(characterId?: string | number) {
 
 function getOutfitsForCharacter(characterId?: string | number) {
   const c = getCharacter(characterId)
-  return c?.outfits || []
+  return c?.looks || []
 }
 
 function getCharacterImageCount(characterId?: string | number): number {
@@ -501,7 +501,7 @@ function getCharacterImageCount(characterId?: string | number): number {
   if (!c) return 0
   let count = 0
   if (c.referenceImageUrl || c.avatarUrl) count++
-  for (const o of c.outfits || []) {
+  for (const o of c.looks || []) {
     if (o.referenceImageUrl) count++
   }
   return count
@@ -511,19 +511,19 @@ function handleAddCharacter(charId?: string) {
   if (!charId) return
   const char = props.characterOptions.find(c => String(c.id) === String(charId))
   if (char) {
-    const defaultOutfit = char.outfits?.find(o => o.isDefault === 1)
+    const defaultLook = char.looks?.find(o => o.isDefault === 1)
     const next = [...props.characterRefs]
     next.push({
       characterId: String(char.id),
       characterName: char.name,
       avatarUrl: char.avatarUrl,
       roleType: char.roleType,
-      lookId: defaultOutfit ? String(defaultOutfit.id) : undefined,
-      outfitName: defaultOutfit?.lookName,
-      outfitPreviewUrl: defaultOutfit?.referenceImageUrl,
-      designDesc: defaultOutfit?.designDesc,
-      outfitPrompt: defaultOutfit?.outfitPrompt,
-      appearancePrompt: defaultOutfit?.appearancePrompt,
+      lookId: defaultLook ? String(defaultLook.id) : undefined,
+      lookName: defaultLook?.lookName,
+      outfitPreviewUrl: defaultLook?.referenceImageUrl,
+      designDesc: defaultLook?.designDesc,
+      outfitPrompt: defaultLook?.outfitPrompt,
+      appearancePrompt: defaultLook?.appearancePrompt,
       positionTag: 'center'
     })
     emit('update:characterRefs', next)
@@ -541,11 +541,11 @@ function handleOutfitSelect(cRef: CharacterShotRefInfo, lookId?: string) {
   const next = props.characterRefs.map(item => {
     if (String(item.characterId) === String(cRef.characterId)) {
       const char = getCharacter(item.characterId)
-      const outfit = char?.outfits?.find(o => String(o.id) === String(lookId))
+      const outfit = char?.looks?.find(o => String(o.id) === String(lookId))
       return {
         ...item,
         lookId: lookId || undefined,
-        outfitName: outfit?.lookName,
+        lookName: outfit?.lookName,
         outfitPreviewUrl: outfit?.referenceImageUrl,
         designDesc: outfit?.designDesc,
         outfitPrompt: outfit?.outfitPrompt,

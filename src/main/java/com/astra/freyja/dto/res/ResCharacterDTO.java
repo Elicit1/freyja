@@ -95,10 +95,10 @@ public class ResCharacterDTO {
     private String remark;
 
     /** 可选：创建角色时附带的默认造型名称 */
-    private String defaultOutfitName;
+    private String defaultLookName;
 
     /** 可选：创建角色时附带的默认服装Prompt */
-    private String defaultOutfitPrompt;
+    private String defaultLookPrompt;
 
     /** 附带别名列表 (自动兼容字符串列表与对象列表) */
     private List<String> aliases;

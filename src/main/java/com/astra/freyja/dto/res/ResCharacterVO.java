@@ -76,19 +76,15 @@ public class ResCharacterVO {
     private LocalDateTime updateTime;
 
     /** 关联的造型列表 */
-    private List<ResCharacterOutfitVO> outfits;
-
-    /** 关联的造型列表 (新标准) */
     private List<ResCharacterLookVO> looks;
 
-    /** 默认造型 */
-    private ResCharacterOutfitVO defaultOutfit;
 
-    /** 默认造型 (新标准) */
+    /** 默认造型 */
     private ResCharacterLookVO defaultLook;
 
+
     /** 造型数量统计 */
-    private Integer outfitCount;
+    private Integer lookCount;
 
     /** 角色已知别名列表 */
     private List<ResCharacterAliasVO> aliases;

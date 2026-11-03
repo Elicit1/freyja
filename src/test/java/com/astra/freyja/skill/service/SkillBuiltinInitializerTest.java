@@ -140,7 +140,7 @@ class SkillBuiltinInitializerTest {
         var pkg = imported.getValue();
         assertEquals(name, pkg.getMetadata().getName());
         assertEquals(Files.readString(sourceDir.resolve("SKILL.md")).replace("\r\n", "\n").replace('\r', '\n'),
-                pkg.getEntrypointContent());
+                pkg.getEntrypointContent().replace("\r\n", "\n").replace('\r', '\n'));
         Set<String> sourcePaths;
         try (var paths = Files.walk(sourceDir)) {
             sourcePaths = paths.filter(Files::isRegularFile)
@@ -151,7 +151,9 @@ class SkillBuiltinInitializerTest {
         for (String path : sourcePaths) {
             byte[] source = Files.readString(sourceDir.resolve(path)).replace("\r\n", "\n").replace('\r', '\n')
                     .getBytes(StandardCharsets.UTF_8);
-            assertArrayEquals(source, pkg.getFiles().get(path), path);
+            byte[] packaged = new String(pkg.getFiles().get(path), StandardCharsets.UTF_8)
+                    .replace("\r\n", "\n").replace('\r', '\n').getBytes(StandardCharsets.UTF_8);
+            assertArrayEquals(source, packaged, path);
             assertTrue(pkg.getFiles().get(path).length < 128 * 1024, path);
         }
         verifyNoInteractions(packageValidator);

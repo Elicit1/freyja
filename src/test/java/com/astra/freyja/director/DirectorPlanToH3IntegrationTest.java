@@ -7,7 +7,7 @@ import com.astra.freyja.dao.DramaMapper;
 import com.astra.freyja.dao.DramaSceneMapper;
 import com.astra.freyja.dao.DramaShotMapper;
 import com.astra.freyja.dao.ResCharacterMapper;
-import com.astra.freyja.dao.ResCharacterOutfitMapper;
+import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dao.ResPropMapper;
 import com.astra.freyja.dao.ResSceneMapper;
 import com.astra.freyja.director.model.AppliedSkillRef;
@@ -58,7 +58,7 @@ class DirectorPlanToH3IntegrationTest {
     @Mock
     private com.astra.freyja.dao.ResCharacterLookMapper lookMapper;
     @Mock
-    private ResCharacterOutfitMapper outfitMapper;
+    private ResCharacterLookMapper outfitMapper;
     @Mock
     private ResPropMapper propMapper;
     @Mock
@@ -101,6 +101,7 @@ class DirectorPlanToH3IntegrationTest {
                 directorPlanMergeService,
                 new com.astra.freyja.service.impl.CharacterVisualAssetResolverImpl(characterMapper, outfitMapper)
         );
+        com.astra.freyja.service.PromptServiceTestSupport.configure(service);
     }
 
     @Test

@@ -34,7 +34,7 @@ class CapabilityCatalogMigrationTest {
     @SuppressWarnings("unchecked")
     private static <T> ObjectProvider<T> provider(T value) {
         ObjectProvider<T> result = mock(ObjectProvider.class);
-        when(result.getObject()).thenReturn(value);
+        when(result.getObject()).thenReturn(value); when(result.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(value);
         when(result.getIfAvailable()).thenReturn(value);
         return result;
     }

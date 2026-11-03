@@ -13,17 +13,17 @@ class McpAuthenticationFilterTest {
     @Test void startupRequiresCredentialAndValidStringProjectIds() {
         McpProperties properties = new McpProperties();
         properties.setEnabled(true);
-        assertThrows(IllegalStateException.class, () -> new McpAuthenticationFilter(properties));
+        assertThrows(IllegalStateException.class, () -> McpTestSupport.filter(properties));
         properties.setToken("0123456789abcdef0123456789abcdef");
         properties.setAllowedProjectIds(Set.of("0"));
-        assertThrows(com.astra.freyja.common.BizException.class, () -> new McpAuthenticationFilter(properties));
+        assertThrows(com.astra.freyja.common.BizException.class, () -> McpTestSupport.filter(properties));
     }
 
     @Test void allowedOriginAndCredentialCreateImmutableScopedIdentity() throws Exception {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef");
         properties.setEnabled(true);
         properties.setAllowedProjectIds(Set.of("2032095628944588801")); properties.setAllowedOrigins(Set.of("https://studio.example"));
-        McpAuthenticationFilter filter = new McpAuthenticationFilter(properties);
+        McpAuthenticationFilter filter = McpTestSupport.filter(properties);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp"); request.setServletPath("/mcp");
         request.addHeader("Authorization", "Bearer " + properties.getToken()); request.addHeader("Origin", "https://studio.example");
         AtomicBoolean called = new AtomicBoolean();
@@ -37,7 +37,7 @@ class McpAuthenticationFilterTest {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef");
         properties.setEnabled(true);
         properties.setAllowedOrigins(Set.of("https://studio.example"));
-        McpAuthenticationFilter filter = new McpAuthenticationFilter(properties);
+        McpAuthenticationFilter filter = McpTestSupport.filter(properties);
         MockHttpServletRequest preflight = new MockHttpServletRequest("OPTIONS", "/mcp"); preflight.setServletPath("/mcp");
         preflight.addHeader("Origin", "https://studio.example"); preflight.addHeader("Access-Control-Request-Method", "POST");
         MockHttpServletResponse response = new MockHttpServletResponse(); AtomicBoolean called = new AtomicBoolean();
@@ -53,7 +53,7 @@ class McpAuthenticationFilterTest {
     @Test void oversizedBodyIsRejectedEvenWithoutContentLength() throws Exception {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef");
         properties.setEnabled(true);
-        McpAuthenticationFilter filter = new McpAuthenticationFilter(properties);
+        McpAuthenticationFilter filter = McpTestSupport.filter(properties);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp") {
             @Override public long getContentLengthLong() { return -1; }
         };
@@ -67,7 +67,7 @@ class McpAuthenticationFilterTest {
     @Test void boundedBufferPassesOriginalBodyToTransport() throws Exception {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef");
         properties.setEnabled(true);
-        McpAuthenticationFilter filter = new McpAuthenticationFilter(properties);
+        McpAuthenticationFilter filter = McpTestSupport.filter(properties);
         MockHttpServletRequest request = new MockHttpServletRequest("POST", "/mcp"); request.setServletPath("/mcp");
         request.addHeader("Authorization", "Bearer " + properties.getToken()); byte[] body = "{\"业务\":true}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         request.setContent(body); AtomicBoolean called = new AtomicBoolean();
@@ -79,7 +79,7 @@ class McpAuthenticationFilterTest {
 
     @Test void retiredUploadNamesAndSpoofedHeadersCannotExpandJsonBodyLimit() throws Exception {
         McpProperties properties = new McpProperties(); properties.setToken("0123456789abcdef0123456789abcdef"); properties.setEnabled(true);
-        var filter = new McpAuthenticationFilter(properties);
+        var filter = McpTestSupport.filter(properties);
         for (String name : java.util.List.of("upload_asset_image", "batch_upload_asset_images", "prepare_asset_image_upload", "batch_create_records")) {
             var request = new MockHttpServletRequest("POST", "/mcp") { @Override public long getContentLengthLong() { return -1; } };
             request.setServletPath("/mcp"); request.addHeader("Authorization", "Bearer " + properties.getToken());

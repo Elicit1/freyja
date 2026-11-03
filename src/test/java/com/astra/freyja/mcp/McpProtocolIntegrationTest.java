@@ -31,8 +31,26 @@ class McpProtocolIntegrationTest {
 
     @Configuration(proxyBeanMethods = false)
     @EnableAutoConfiguration(excludeName = "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")
-    @Import({McpServerConfiguration.class, McpToolCatalog.class, McpJson.class})
+    @Import({McpServerConfiguration.class, McpToolCatalog.class, McpJson.class, com.astra.freyja.capability.service.CapabilityMcpDispatcher.class})
     static class App {
+        @Bean McpRuntimeControl control(McpProperties properties) {
+            var control = mock(McpRuntimeControl.class);
+            when(control.current()).thenAnswer(i -> {
+                var state = new McpRuntimeSettings(); state.setEnabled(properties.isEnabled()); state.setWriteEnabled(properties.isWriteEnabled());
+                state.setAllowAllProjects(properties.isAllowAllProjects()); state.setAllowCreateProjects(properties.isAllowCreateProjects());
+                state.setAllowedProjectIds(properties.getAllowedProjectIds()); state.setAllowedOrigins(properties.getAllowedOrigins()); return state;
+            });
+            when(control.token(any())).thenAnswer(i -> properties.getToken());
+            when(control.toolEnabled(any(), any())).thenCallRealMethod(); return control;
+        }
+        @Bean McpBusinessOptions options() {
+            var options = mock(McpBusinessOptions.class); when(options.apply(any())).thenAnswer(i -> i.getArgument(0)); return options;
+        }
+        @Bean com.astra.freyja.capability.service.CapabilityCatalogService capabilities(McpReadTools reads) {
+            var platform = mock(com.astra.freyja.capability.service.CapabilityCatalogService.class);
+            var release = new com.astra.freyja.capability.model.CapabilityModels.Release("1", 1, List.of(), McpServerConfiguration.GUIDE, "平台规则");
+            when(platform.current()).thenReturn(release); when(platform.mcpTools(release)).thenAnswer(i -> reads.tools()); return platform;
+        }
         @Bean McpReadTools reads() {
             McpReadTools reads = mock(McpReadTools.class);
             when(reads.tools()).thenReturn(List.of(McpTool.read("get_project", "Test project", McpRecordInputs.Get.class, (caller, input) ->

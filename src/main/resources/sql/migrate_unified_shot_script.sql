@@ -1,6 +1,6 @@
--- Optional bulk migration for an existing MySQL database. No DROP/TRUNCATE.
--- The application also projects legacy speech into the editor before migration;
--- saving the unified script retires the old speech fields for that shot.
+-- Required startup migration for existing MySQL databases. No DROP/TRUNCATE.
+-- Live business entities only expose script_content; immutable JSON snapshots
+-- retain their explicit historical-format converter.
 -- Backups preserve original script/speech/audio before an idempotent migration.
 CREATE TABLE IF NOT EXISTS drama_shot_legacy_script_backup (
     shot_id BIGINT NOT NULL PRIMARY KEY,

@@ -121,7 +121,7 @@ class VideoRenderBatchTest {
         when(api.resolveVideoModelCode(any(),eq(100L),eq(VideoBatchPreparation.REF))).thenReturn("ref");
         var singleRequest=new DramaShotRenderRequestDTO();singleRequest.setProviderId(100L);singleRequest.setWorkflowTemplateId("ref");singleRequest.setSize("960x544");
         var queued=service.enqueueSingle(43L,singleRequest);
-        assertEquals(com.astra.freyja.entity.enums.ComfyTaskStatus.PENDING,queued.getStatus());
+        assertEquals(com.astra.freyja.entity.enums.RenderSubmissionStatus.PENDING,queued.getStatus());
         verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
         for(int n=0;n<3;n++)assertTrue(service.runNext());
         assertFalse(service.runNext());

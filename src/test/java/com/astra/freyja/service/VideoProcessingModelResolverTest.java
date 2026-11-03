@@ -96,7 +96,7 @@ public class VideoProcessingModelResolverTest {
         when(modelMapper.selectById(999L)).thenReturn(null);
 
         BizException ex = assertThrows(BizException.class, () -> resolver.resolve(
-                1L, 999L, null, "VIDEO_UPSCALE", null, null, null, null, null, null));
+                1L, 999L, "VIDEO_UPSCALE", null, null, null, null, null, null));
         assertEquals(404, ex.getCode());
     }
 
@@ -107,7 +107,7 @@ public class VideoProcessingModelResolverTest {
         when(modelMapper.selectById(101L)).thenReturn(upscaleModel);
 
         BizException ex = assertThrows(BizException.class, () -> resolver.resolve(
-                1L, 101L, null, "VIDEO_UPSCALE", null, null, null, null, null, null));
+                1L, 101L, "VIDEO_UPSCALE", null, null, null, null, null, null));
         assertTrue(ex.getMessage().contains("停用"));
     }
 
@@ -117,7 +117,7 @@ public class VideoProcessingModelResolverTest {
         when(modelMapper.selectById(101L)).thenReturn(upscaleModel);
 
         BizException ex = assertThrows(BizException.class, () -> resolver.resolve(
-                2L, 101L, null, "VIDEO_UPSCALE", null, null, null, null, null, null));
+                2L, 101L, "VIDEO_UPSCALE", null, null, null, null, null, null));
         assertTrue(ex.getMessage().contains("不属于当前 AI 提供商"));
     }
 
@@ -127,7 +127,7 @@ public class VideoProcessingModelResolverTest {
         when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
 
         BizException ex = assertThrows(BizException.class, () -> resolver.resolve(
-                1L, 102L, null, "VIDEO_UPSCALE", null, null, null, null, null, null));
+                1L, 102L, "VIDEO_UPSCALE", null, null, null, null, null, null));
         assertTrue(ex.getMessage().contains("不匹配"));
     }
 
@@ -137,7 +137,7 @@ public class VideoProcessingModelResolverTest {
         when(modelMapper.selectById(101L)).thenReturn(upscaleModel);
 
         ResolvedVideoProcessingModel result = resolver.resolve(
-                1L, 101L, null, "VIDEO_UPSCALE", 4, null, 18, 24, 24, null);
+                1L, 101L, "VIDEO_UPSCALE", 4, null, 18, 24, 24, null);
 
         assertNotNull(result);
         assertEquals(4, result.getScale());
@@ -157,23 +157,14 @@ public class VideoProcessingModelResolverTest {
         when(modelMapper.selectById(101L)).thenReturn(upscaleModel);
 
         BizException ex = assertThrows(BizException.class, () -> resolver.resolve(
-                1L, 101L, null, "VIDEO_UPSCALE", 8, null, null, 24, 24, null));
+                1L, 101L, "VIDEO_UPSCALE", 8, null, null, 24, 24, null));
         assertTrue(ex.getMessage().contains("不在模型允许的范围内"));
     }
 
-    @Test
-    @DisplayName("旧 modelCode 调用从模型中心解析")
-    void testResolveByModelCode_Success() {
-        when(modelMapper.selectList(any())).thenReturn(List.of(interpolationModel));
-
-        ResolvedVideoProcessingModel result = resolver.resolve(
-                1L, null, "rife49-video-48fps", "FRAME_INTERPOLATION", null, null, null, 24, null, null);
-
-        assertNotNull(result);
-        assertEquals("rife49-video-48fps", result.getModelCode());
-        assertEquals(48, result.getTargetFps());
-        assertEquals("rife49.pth", result.getExtraBody().get("filename_prefix") != null ? "rife49.pth" : null);
-        assertEquals("video_rife/rife_48fps", result.getExtraBody().get("filename_prefix"));
+    @Test void missingModelIdIsRejected() {
+        var ex = assertThrows(BizException.class, () -> resolver.resolve(1L, null, "FRAME_INTERPOLATION", null, null, null, 24, null, null));
+        assertEquals(400, ex.getCode());
+        org.mockito.Mockito.verify(modelMapper, org.mockito.Mockito.never()).selectList(any());
     }
 
     @Test
@@ -198,7 +189,7 @@ public class VideoProcessingModelResolverTest {
     void acceptsPositiveCacheCycleBelowLegacyModelMinimum(int frames) {
         when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
 
-        var result = resolver.resolve(1L, 102L, null, "FRAME_INTERPOLATION",
+        var result = resolver.resolve(1L, 102L, "FRAME_INTERPOLATION",
                 null, null, null, 24, null, frames);
 
         assertEquals(frames, result.getClearCacheFrames());
@@ -210,7 +201,7 @@ public class VideoProcessingModelResolverTest {
     void rejectsInvalidCacheCycleWhileKeepingMaximum(int frames) {
         when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
 
-        assertThrows(BizException.class, () -> resolver.resolve(1L, 102L, null,
+        assertThrows(BizException.class, () -> resolver.resolve(1L, 102L,
                 "FRAME_INTERPOLATION", null, null, null, 24, null, frames));
     }
 
@@ -229,7 +220,7 @@ public class VideoProcessingModelResolverTest {
     void selectedBatchSizeReachesGateway(int batchSize) {
         when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
 
-        var result = resolver.resolve(1L, 102L, null, "FRAME_INTERPOLATION",
+        var result = resolver.resolve(1L, 102L, "FRAME_INTERPOLATION",
                 null, null, null, 24, null, null, batchSize);
 
         assertEquals(batchSize, result.getExtraBody().get("batch_size"));
@@ -240,7 +231,7 @@ public class VideoProcessingModelResolverTest {
     void rejectsBatchSizeOutsideModelRange(int batchSize) {
         when(modelMapper.selectById(102L)).thenReturn(interpolationModel);
 
-        assertThrows(BizException.class, () -> resolver.resolve(1L, 102L, null,
+        assertThrows(BizException.class, () -> resolver.resolve(1L, 102L,
                 "FRAME_INTERPOLATION", null, null, null, 24, null, null, batchSize));
     }
 
@@ -264,10 +255,10 @@ public class VideoProcessingModelResolverTest {
         assertEquals(4, option.getDefaultBatchSize());
         assertEquals(2, option.getMinBatchSize());
         assertEquals(8, option.getMaxBatchSize());
-        var resolved = resolver.resolve(1L, 102L, null, "FRAME_INTERPOLATION",
+        var resolved = resolver.resolve(1L, 102L, "FRAME_INTERPOLATION",
                 null, null, null, 24, null, null, null);
         assertEquals(4, resolved.getExtraBody().get("batch_size"));
-        assertThrows(BizException.class, () -> resolver.resolve(1L, 102L, null,
+        assertThrows(BizException.class, () -> resolver.resolve(1L, 102L,
                 "FRAME_INTERPOLATION", null, null, null, 24, null, null, 16));
     }
 }

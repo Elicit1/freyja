@@ -169,8 +169,7 @@ public class DirectorPlanStateService {
         if (Boolean.TRUE.equals(shot.getShotTypeLocked())) fields.put("shot_type", shot.getShotType());
         if (Boolean.TRUE.equals(shot.getCameraMovementLocked())) fields.put("camera_movement", shot.getCameraMovement());
         fields.put("script_content", shot.getScriptContent()); fields.put("action_description", shot.getActionDescription());
-        fields.put("dialogue", shot.getDialogue()); fields.put("dialogue_speaker", shot.getDialogueSpeaker());
-        fields.put("voiceover", shot.getVoiceover()); fields.put("sound_effect", shot.getSoundEffect());
+        fields.put("sound_effect", shot.getSoundEffect());
         return java.util.Collections.unmodifiableMap(fields);
     }
 }

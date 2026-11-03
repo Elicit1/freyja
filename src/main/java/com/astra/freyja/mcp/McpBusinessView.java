@@ -33,7 +33,7 @@ public class McpBusinessView {
     public static Set<String> publicFields(Kind kind) {
         Set<String> result = new TreeSet<>(FIELDS.get(kind));
         result.add("editFingerprint");
-        if (kind == Kind.SHOT) result.addAll(List.of("legacyScriptPending", "refAudiosConfigured", "characterRefs", "propRefs", "refImages", "refAudios", "refVideos", "directorPlan"));
+        if (kind == Kind.SHOT) result.addAll(List.of("refAudiosConfigured", "characterRefs", "propRefs", "refImages", "refAudios", "refVideos", "directorPlan"));
         return result;
     }
 
@@ -74,8 +74,7 @@ public class McpBusinessView {
         if ("0".equals(result.get("dramaId"))) result.put("dramaId", null);
         if (kind == Kind.SHOT) {
             if (entity instanceof com.astra.freyja.entity.DramaShot shot) {
-                if (selected == null || selected.contains("scriptContent")) result.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(shot));
-                if (selected == null || selected.contains("legacyScriptPending")) result.put("legacyScriptPending", com.astra.freyja.util.UnifiedShotScript.hasLegacySpeech(shot));
+                if (selected == null || selected.contains("scriptContent")) result.put("scriptContent", shot.getScriptContent());
                 if (selected == null || selected.contains("refAudiosConfigured")) result.put("refAudiosConfigured", shot.getRefAudiosJson() != null && !shot.getRefAudiosJson().isBlank());
             }
             if (selected == null || selected.contains("characterRefs")) result.put("characterRefs", references(source.get("characterRefsJson"), metadata.referenceFields("CHARACTER")));
@@ -93,7 +92,7 @@ public class McpBusinessView {
         try {
             if (entity instanceof com.astra.freyja.entity.DramaShot shot) {
                 Map<String, Object> basis = new LinkedHashMap<>((Map<String, Object>) json.value(entity));
-                basis.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(shot));
+                basis.put("scriptContent", shot.getScriptContent());
                 return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(json.write(basis).getBytes(StandardCharsets.UTF_8)));
             }
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(json.write(entity).getBytes(StandardCharsets.UTF_8)));

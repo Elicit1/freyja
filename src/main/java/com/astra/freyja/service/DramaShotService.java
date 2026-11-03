@@ -1,6 +1,6 @@
 package com.astra.freyja.service;
 
-import com.astra.freyja.dto.comfy.ComfyRenderTaskVO;
+import com.astra.freyja.dto.render.RenderSubmissionVO;
 import com.astra.freyja.dto.drama.DramaShotBatchAssembleDTO;
 import com.astra.freyja.dto.drama.DramaShotDTO;
 import com.astra.freyja.dto.drama.DramaShotRenderRequestDTO;
@@ -71,7 +71,7 @@ public interface DramaShotService {
     /**
      * 单分镜调用本地 ComfyUI 生成首帧关键图 (T2I)
      */
-    ComfyRenderTaskVO generateFirstFrame(Long id, com.astra.freyja.dto.drama.DramaShotFirstFrameDTO dto);
+    RenderSubmissionVO generateFirstFrame(Long id, com.astra.freyja.dto.drama.DramaShotFirstFrameDTO dto);
 
     /**
      * 保存/确认为该分镜首帧图
@@ -91,7 +91,7 @@ public interface DramaShotService {
     /**
      * 单分镜提交 ComfyUI 异步渲染 (视频或单帧)
      */
-    ComfyRenderTaskVO submitShotRender(Long id, DramaShotRenderRequestDTO requestDTO);
+    RenderSubmissionVO submitShotRender(Long id, DramaShotRenderRequestDTO requestDTO);
 
     /**
      * 根据短剧ID获取该剧下所有分镜镜头的轻量级下拉选项

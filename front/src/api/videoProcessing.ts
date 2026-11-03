@@ -8,7 +8,6 @@ export interface VideoProcessSubmitDTO {
   sourceVideoTakeId?: string
   providerId?: string
   modelId?: string
-  modelCode?: string
   sourceFps?: number
   targetFps?: number
   scale?: number

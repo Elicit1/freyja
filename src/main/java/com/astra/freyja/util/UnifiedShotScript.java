@@ -1,6 +1,5 @@
 package com.astra.freyja.util;
 
-import com.astra.freyja.entity.DramaShot;
 import org.apache.commons.lang3.StringUtils;
 import java.util.ArrayList;
 import java.util.List;
@@ -8,14 +7,6 @@ import java.util.List;
 /** Lossless legacy-field projection. Formatting only; never parses or guesses script semantics. */
 public final class UnifiedShotScript {
     private UnifiedShotScript() {}
-
-    public static String fromShot(DramaShot shot) {
-        return merge(shot.getScriptContent(), shot.getDialogueSpeaker(), shot.getDialogue(), shot.getVoiceover());
-    }
-
-    public static boolean hasLegacySpeech(DramaShot shot) {
-        return StringUtils.isNotBlank(shot.getDialogue()) || StringUtils.isNotBlank(shot.getVoiceover());
-    }
 
     public static String merge(String script, String speaker, String dialogue, String voiceover) {
         List<String> parts = new ArrayList<>();

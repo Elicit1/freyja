@@ -118,28 +118,26 @@ class PlannerCharacterDisambiguationTest {
     @Test
     void skillDocumentsRequestedNameAliasPronounAndAmbiguityCases() throws IOException {
         String skill;
-        try (var input = getClass().getResourceAsStream("/skills/character-disambiguation/SKILL.md")) {
-            assertNotNull(input, "Skill source must be packaged as a resource");
-            skill = new String(input.readAllBytes(), StandardCharsets.UTF_8);
+        try (var archive = new java.util.zip.ZipFile(java.nio.file.Path.of("skills", "character-disambiguation.zip").toFile());
+             var input = archive.getInputStream(archive.getEntry("SKILL.md"))) {
+            skill = new String(input.readAllBytes(), StandardCharsets.UTF_8).replace("\r\n", "\n");
         }
-
         assertTrue(skill.startsWith("---\nname: character-disambiguation\n"));
-        assertTrue(skill.contains("菜月昴"));
-        assertTrue(skill.contains("昴"));
-        assertTrue(skill.contains("486"));
-        assertTrue(skill.contains("雷姆看着菜月昴"));
-        assertTrue(skill.contains("雷姆推开玻璃门"));
-        assertTrue(skill.contains("UNRESOLVED"));
-        assertTrue(skill.contains("不得编造角色 ID"));
+        assertTrue(skill.contains("合法 ID"));
+        assertTrue(skill.contains("唯一别名"));
+        assertTrue(skill.contains("同名"));
+        assertTrue(skill.contains("多人对话"));
+        assertTrue(skill.contains("无法确认"));
+        assertTrue(skill.contains("不负责"));
     }
 
     @Test
     void distributableSkillZipPassesTheExistingPackageValidator() throws IOException {
-        try (var input = getClass().getResourceAsStream("/skills/character-disambiguation.zip")) {
-            assertNotNull(input, "Uploadable Skill ZIP must be packaged as a resource");
+        try (var input = java.nio.file.Files.newInputStream(java.nio.file.Path.of("skills", "character-disambiguation.zip"))) {
+            assertNotNull(input, "Use the same published ZIP as the builtin initializer");
             var skillPackage = new SkillPackageValidator().validateZip(input, 20 * 1024);
             assertEquals("character-disambiguation", skillPackage.getMetadata().getName());
-            assertTrue(skillPackage.getEntrypointContent().contains("# Character Disambiguation"));
+            assertTrue(skillPackage.getEntrypointContent().contains("# Planner 角色消歧"));
         }
     }
 

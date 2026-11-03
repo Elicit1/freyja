@@ -7,7 +7,7 @@ import com.astra.freyja.dao.DramaMapper;
 import com.astra.freyja.dao.DramaSceneMapper;
 import com.astra.freyja.dao.DramaShotMapper;
 import com.astra.freyja.dao.ResCharacterMapper;
-import com.astra.freyja.dao.ResCharacterOutfitMapper;
+import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dao.ResPropMapper;
 import com.astra.freyja.dao.ResSceneMapper;
 import com.astra.freyja.dao.DramaEpisodeMapper;
@@ -41,7 +41,7 @@ import com.astra.freyja.entity.DramaEpisode;
 import com.astra.freyja.entity.DramaScene;
 import com.astra.freyja.entity.DramaShot;
 import com.astra.freyja.entity.ResCharacter;
-import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.entity.ResCharacterLook;
 import com.astra.freyja.dao.ResKeyframeMapper;
 import com.astra.freyja.entity.ResKeyframe;
 import com.astra.freyja.entity.ResProp;
@@ -103,7 +103,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.beans.factory.annotation.Autowired
     private com.astra.freyja.capability.service.CapabilityCatalogService capabilityCatalog;
 
 
@@ -514,7 +514,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     private final DramaSceneMapper sceneMapper;
     private final ResSceneMapper resSceneMapper;
     private final ResCharacterMapper characterMapper;
-    private final ResCharacterOutfitMapper outfitMapper;
+    private final ResCharacterLookMapper outfitMapper;
     private final ResPropMapper propMapper;
     private final AiProviderMapper providerMapper;
     private final AiModelMapper modelMapper;
@@ -528,9 +528,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     private com.astra.freyja.director.service.DirectorPlanStateService directorPlanStateService;
 
     private com.astra.freyja.director.service.DirectorPlanStateService planState() {
-        return directorPlanStateService != null ? directorPlanStateService :
-                new com.astra.freyja.director.service.DirectorPlanStateService(shotMapper,
-                        new com.astra.freyja.director.service.DirectorPlanValidator());
+        return directorPlanStateService;
     }
     private void prepareDirectorPlan(ShotPromptDeriveDTO dto) {
         populateContext(dto);
@@ -541,18 +539,17 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
     /**
      * 所有提示词生成统一通过缓存型 Skill 上下文服务读取当前启用的标准 Skill。
-     * 采用可选注入是为了保留没有 Skill 数据表初始化时的降级能力，以及兼容现有单元测试构造器。
      */
-    @Autowired(required = false)
+    @Autowired
     private SkillPromptContextService skillPromptContextService;
 
-    @Autowired(required = false)
+    @Autowired
     private LoadSkillToolFactory loadSkillToolFactory;
 
     @Autowired
     private ReadSkillFileToolFactory readSkillFileToolFactory;
 
-    @Autowired(required = false)
+    @Autowired
     private ResKeyframeMapper resKeyframeMapper;
 
     public void setResKeyframeMapper(ResKeyframeMapper resKeyframeMapper) {
@@ -560,20 +557,16 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     }
 
     private CharacterVisualAssetResolver getCharacterVisualAssetResolver() {
-        if (this.characterVisualAssetResolver != null) {
-            return this.characterVisualAssetResolver;
-        }
-        return new CharacterVisualAssetResolverImpl(characterMapper, outfitMapper);
+        return java.util.Objects.requireNonNull(characterVisualAssetResolver, "角色视觉资产解析器未配置");
     }
 
     /**
-     * 后台提示词任务持久化依赖。保留可选注入以兼容尚未初始化 ai_task 表的旧环境，
-     * 但生产环境必须启用该 Bean 才能获得页面关闭后的结果恢复能力。
+     * 后台提示词任务与事件存储为必需依赖，创建失败时不启动生成。
      */
-    @Autowired(required = false)
+    @Autowired
     private AiTaskService aiTaskService;
 
-    @Autowired(required = false)
+    @Autowired
     private ShotPromptEventStore shotPromptEventStore;
 
     private static final Pattern SENSITIVE_MEDIA_URL_PATTERN = Pattern.compile(
@@ -703,7 +696,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         Map<String, Object> context = new LinkedHashMap<>();
         Map<String, Object> shotData = new LinkedHashMap<>();
         shotData.put("shotNo", shot.getShotNo());
-        shotData.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(shot));
+        shotData.put("scriptContent", shot.getScriptContent());
         if (Boolean.TRUE.equals(shot.getShotTypeLocked()) && StringUtils.isNotBlank(shot.getShotType())
                 && !"AUTO".equalsIgnoreCase(shot.getShotType())) {
             shotData.put("shotType", shot.getShotType());
@@ -862,7 +855,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                     com.astra.freyja.dto.res.ResolvedCharacterVisual visual = characterVisualAssetResolver.resolve(characterId, lookId);
                     if (visual != null && StringUtils.isNotBlank(visual.getReferenceImageUrl())) {
                         String label = "COMBINED".equals(visual.getReferenceRole())
-                                ? "造型参考: " + visual.getCharacter().getName() + " - " + (visual.getOutfit() != null ? visual.getOutfit().getLookName() : "造型")
+                                ? "造型参考: " + visual.getCharacter().getName() + " - " + (visual.getLook() != null ? visual.getLook().getLookName() : "造型")
                                 : "人物参考: " + visual.getCharacter().getName();
                         images.add(ControlImageVO.builder().controlType("CHARACTER_REF").imageUrl(visual.getReferenceImageUrl())
                                 .weight(new BigDecimal("0.90")).label(label).build());
@@ -913,7 +906,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
             DramaShot existingShot = shotMapper.selectById(dto.getShotId());
             if (existingShot != null) {
                 if (StringUtils.isBlank(dto.getScriptContent())) {
-                    dto.setScriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(existingShot));
+                    dto.setScriptContent(existingShot.getScriptContent());
                 }
                 // Older callers may omit the new lock flags. Recover stored values only when both the value
                 // and marker are absent; an explicit false from the current UI means intentionally unlocked.
@@ -949,16 +942,10 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     }
 
     private SkillPromptContext loadSkillContext(String consumer, String requestId, List<String> selectedSkillNames) {
-        if (skillPromptContextService == null) {
-            return SkillPromptContext.empty();
-        }
         return skillPromptContextService.loadSelected(consumer, requestId, selectedSkillNames);
     }
 
     private String appendSkillContext(String systemPrompt, SkillPromptContext skillContext) {
-        if (skillPromptContextService == null) {
-            return StringUtils.defaultString(systemPrompt);
-        }
         return skillPromptContextService.appendToSystemPrompt(systemPrompt, skillContext);
     }
 
@@ -974,7 +961,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     private String sharedRules(ShotPromptDeriveDTO dto) {
         if (dto != null && dto.getCapabilityRulesSnapshot() != null) return dto.getCapabilityRulesSnapshot();
         String scoped = com.astra.freyja.capability.service.CapabilityRuleContext.current();
-        String rules = scoped != null ? scoped : capabilityCatalog == null ? "" : capabilityCatalog.rules();
+        String rules = scoped != null ? scoped : capabilityCatalog.rules();
         if (dto != null) dto.setCapabilityRulesSnapshot(rules);
         return rules;
     }
@@ -992,13 +979,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                                        String consumer, String requestId, List<String> requiredSkillNames,
                                        java.util.function.Consumer<String> stageListener,
                                        java.util.function.Consumer<String> chunkListener, String rules) {
-        if (skillPromptContextService == null || loadSkillToolFactory == null) {
-            systemPrompt += ruleSection(rules);
-            ChatResponse response = chatModel.call(new Prompt(List.of(
-                    new SystemMessage(appendCameraDutyBoundary(systemPrompt)), new UserMessage(userPrompt))));
-            return response != null && response.getResult() != null && response.getResult().getOutput() != null
-                    ? response.getResult().getOutput().getText() : null;
-        }
         LoadSkillToolSession session = skillPromptContextService.createApiSession(consumer, requestId, requiredSkillNames);
         SkillPromptContext requiredContext = skillPromptContextService.loadSelected(
                 consumer, requestId, requiredSkillNames, session.getVersionSnapshot());
@@ -1576,13 +1556,13 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         ConcurrentSseBridge sseBridge = new ConcurrentSseBridge(emitter);
 
         AiTask task = createPromptTask(dto);
-        if (task != null && task.getId() != null) {
-            if (shotPromptEventStore != null) {
-                try { shotPromptEventStore.append(String.valueOf(task.getId()), "task_created", String.valueOf(task.getId())); }
-                catch (Exception e) { log.warn("旧 SSE 任务创建事件缓存失败: {}", e.getMessage()); }
-            }
-            sseBridge.sendTaskCreated(task.getId(), dto != null ? dto.getShotId() : null);
+        try {
+            shotPromptEventStore.append(String.valueOf(task.getId()), "task_created", String.valueOf(task.getId()));
+        } catch (RuntimeException error) {
+            markPromptTaskFailed(task.getId(), "提示词事件缓存写入失败");
+            throw new BizException(503, "提示词事件缓存写入失败，请稍后重试");
         }
+        sseBridge.sendTaskCreated(task.getId(), dto.getShotId());
 
         Thread.ofVirtual().start(() -> runPromptTask(dto, task, sseBridge));
         return emitter;
@@ -1745,7 +1725,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                 publishPromptEvent(taskId, sseBridge, "result", resultJson);
                 publishPromptEvent(taskId, sseBridge, "done", "[DONE]");
             } catch (Exception e) {
-                if (taskId != null && aiTaskService != null && aiTaskService.isCancelled(taskId)) {
+                if (taskId != null && aiTaskService.isCancelled(taskId)) {
                     publishPromptEvent(taskId, sseBridge, "cancelled", "任务已取消");
                     publishPromptEvent(taskId, sseBridge, "done", "[DONE]");
                     return;
@@ -1758,50 +1738,36 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     }
 
     private AiTask createPromptTask(ShotPromptDeriveDTO dto) {
-        if (aiTaskService == null || dto == null) return null;
+        java.util.Objects.requireNonNull(dto, "提示词请求不能为空");
+        dto.setCapabilityRulesSnapshot(sharedRules(dto));
         try {
-            dto.setCapabilityRulesSnapshot(sharedRules(dto));
-            String inputPayload = objectMapper.writeValueAsString(dto);
-            AiTask task = aiTaskService.createTask(
-                    dto.getDramaId(),
-                    dto.getEpisodeId(),
-                    AiTaskType.SHOT_PROMPT_DERIVE,
-                    dto.getShotId() != null ? String.valueOf(dto.getShotId()) : null,
-                    null,
-                    inputPayload,
-                    dto.getModelCode(),
-                    null
-            );
-            // AiTaskService 对旧流水线保留了“写库失败后降级为内存 ID”的兼容行为。
-            // 提示词后台任务不能接受伪 ID，否则前端会永久轮询一个不存在的任务。
-            if (task == null || task.getId() == null || aiTaskService.getTaskById(task.getId()) == null) {
-                log.warn("[ShotPromptTask] 任务未成功持久化，不向前端发布可恢复的 taskId");
-                return null;
-            }
+            AiTask task = aiTaskService.createTask(dto.getDramaId(), dto.getEpisodeId(), AiTaskType.SHOT_PROMPT_DERIVE,
+                    dto.getShotId() == null ? null : String.valueOf(dto.getShotId()), null,
+                    objectMapper.writeValueAsString(dto), dto.getModelCode(), null);
+            if (task == null || task.getId() == null) throw new BizException(503, "提示词任务未持久化");
             return task;
-        } catch (Exception e) {
-            log.warn("[ShotPromptTask] 创建持久化任务失败，将继续执行当前 SSE: {}", e.getMessage());
-            return null;
+        } catch (tools.jackson.core.JacksonException e) {
+            throw new BizException("提示词任务请求序列化失败");
         }
     }
 
     private void markPromptTaskRunning(Long taskId) {
-        if (taskId != null && aiTaskService != null) aiTaskService.markRunning(taskId);
+        if (taskId != null) aiTaskService.markRunning(taskId);
     }
 
     private void ensurePromptTaskNotCancelled(Long taskId) {
         if (Thread.currentThread().isInterrupted()
-                || (taskId != null && aiTaskService != null && aiTaskService.isCancelled(taskId))) {
+                || (taskId != null && aiTaskService.isCancelled(taskId))) {
             throw new java.util.concurrent.CancellationException("提示词任务已取消");
         }
     }
 
     private void markPromptTaskSuccess(Long taskId, String resultJson) {
-        if (taskId != null && aiTaskService != null) aiTaskService.markSuccess(taskId, resultJson, null);
+        if (taskId != null) aiTaskService.markSuccess(taskId, resultJson, null);
     }
 
     private void markPromptTaskFailed(Long taskId, String message) {
-        if (taskId != null && aiTaskService != null) aiTaskService.markFailed(taskId, message);
+        if (taskId != null) aiTaskService.markFailed(taskId, message);
     }
 
     private String buildDramaContext(Drama drama, ShotPromptDeriveDTO dto) {

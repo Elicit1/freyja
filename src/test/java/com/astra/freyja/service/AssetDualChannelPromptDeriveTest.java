@@ -43,6 +43,12 @@ class AssetDualChannelPromptDeriveTest {
     @InjectMocks
     private ResSceneServiceImpl sceneService;
 
+    @org.junit.jupiter.api.BeforeEach
+    void configureSkills() {
+        PromptServiceTestSupport.configureSkills(propService);
+        PromptServiceTestSupport.configureSkills(sceneService);
+    }
+
     @Test
     @DisplayName("Prop: buildPromptPackage 与 parseAndValidateDerivedPrompt 全流程")
     void testPropDualChannelFlow() {

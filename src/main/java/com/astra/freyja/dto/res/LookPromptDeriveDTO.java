@@ -8,7 +8,7 @@ import java.util.List;
  * 角色造型/服装变体提示词 AI 智能衍生请求 DTO。
  */
 @Data
-public class OutfitPromptDeriveDTO {
+public class LookPromptDeriveDTO {
 
     /** 造型ID (可选，若传入且其它属性为空则自动读取) */
     private Long lookId;
@@ -17,7 +17,7 @@ public class OutfitPromptDeriveDTO {
     private Long characterId;
 
     /** 造型名称 (如: 日常便服 / 战术作战服 / 晚礼服) */
-    private String outfitName;
+    private String lookName;
 
     /** 视觉状态类型: BASE/COSTUME/AGE_PHASE/DISGUISE/DAMAGE/CUSTOM */
     private String lookType;

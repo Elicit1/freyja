@@ -92,7 +92,7 @@ class McpBusinessDatabaseTest {
             McpPresignedImageUploads.class, McpImageTransferStorage.class, McpPresignedVideoUploads.class, McpVideoTransferStorage.class, McpPresignedAudioUploads.class, McpAudioTransferStorage.class, McpAudioAssets.class, ResAudioServiceImpl.class, com.astra.freyja.service.impl.ResVideoServiceImpl.class,
             DramaServiceImpl.class, DramaEpisodeServiceImpl.class, DramaSceneServiceImpl.class,
             DramaShotGroupServiceImpl.class, DramaShotServiceImpl.class, ResCharacterServiceImpl.class,
-            ResCharacterLookServiceImpl.class, ResCharacterOutfitServiceImpl.class, ResSceneServiceImpl.class,
+            ResCharacterLookServiceImpl.class, ResSceneServiceImpl.class,
             ResPropServiceImpl.class, ResKeyframeServiceImpl.class, CharacterRegistryServiceImpl.class,
             ShotVideoTakeServiceImpl.class, DirectorPlanStateService.class, DirectorPlanValidator.class, McpSkillTools.class})
     static class Config {
@@ -123,6 +123,12 @@ class McpBusinessDatabaseTest {
         @Bean PromptAssembleService prompts() { return mock(PromptAssembleService.class); }
         @Bean RenderTaskService renders() { return mock(RenderTaskService.class); }
         @Bean com.astra.freyja.service.video.VideoRenderBatchService videoBatches() { return mock(com.astra.freyja.service.video.VideoRenderBatchService.class); }
+        @Bean com.astra.freyja.skill.service.SkillPromptContextService skillContext() {
+            return mock(com.astra.freyja.skill.service.SkillPromptContextService.class);
+        }
+        @Bean com.astra.freyja.skill.tool.LoadSkillToolFactory loadSkillTools() {
+            return mock(com.astra.freyja.skill.tool.LoadSkillToolFactory.class);
+        }
         @Bean ReadSkillFileToolFactory skillFiles() { return mock(ReadSkillFileToolFactory.class); }
         @Bean com.astra.freyja.skill.service.SkillCatalogService skillCatalog() { return mock(com.astra.freyja.skill.service.SkillCatalogService.class); }
         @Bean com.astra.freyja.skill.service.SkillContentService skillContents() { return mock(com.astra.freyja.skill.service.SkillContentService.class); }
@@ -456,7 +462,7 @@ class McpBusinessDatabaseTest {
 
     McpSchema.CallToolResult protocolCall(String name, McpPrincipal principal, Map<String, Object> arguments) {
         var tool = tools.tools().stream().filter(t -> t.name().equals(name)).findFirst().orElseThrow();
-        return new McpToolCatalog(json).specification(tool).callHandler().apply(
+        return com.astra.freyja.mcp.McpTestSupport.catalog(json).specification(tool).callHandler().apply(
                 McpTransportContext.create(Map.of(McpPrincipal.CONTEXT_KEY, principal)), new McpSchema.CallToolRequest(name, arguments));
     }
 
@@ -471,7 +477,7 @@ class McpBusinessDatabaseTest {
         List<McpTool<?>> all = new ArrayList<>(reads.tools()); all.addAll(tools.tools()); all.addAll(skills.tools());
         assertEquals(expected, all.stream().map(McpTool::name).collect(java.util.stream.Collectors.toSet()));
         for (McpTool<?> tool : all) {
-            var spec = new McpToolCatalog(json).specification(tool);
+            var spec = com.astra.freyja.mcp.McpTestSupport.catalog(json).specification(tool);
             assertEquals(tool.effect() == McpTool.Effect.READ, spec.tool().annotations().readOnlyHint());
             assertTrue(spec.tool().annotations().idempotentHint());
             assertFalse(spec.tool().annotations().openWorldHint());

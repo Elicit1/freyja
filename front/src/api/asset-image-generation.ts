@@ -2,7 +2,7 @@ import { request } from './request'
 import { runAiTaskResult } from './ai-task-stream'
 
 export interface AssetImageGenerationRequest {
-  targetType: 'CHARACTER' | 'CHARACTER_OUTFIT' | 'SCENE' | 'PROP'
+  targetType: 'CHARACTER' | 'CHARACTER_LOOK' | 'SCENE' | 'PROP'
   targetId?: string | number
   slot: string
   mode?: string

@@ -88,10 +88,9 @@ public class McpServerConfiguration {
     }
 
     @Bean
-    FilterRegistrationBean<McpAuthenticationFilter> mcpAuthenticationFilter(McpProperties properties, ObjectProvider<McpRuntimeControl> controls,
-            ObjectProvider<com.astra.freyja.capability.service.CapabilityMcpDispatcher> dispatchers) {
-        var filter = new McpAuthenticationFilter(properties, controls.getIfAvailable());
-        filter.setDispatcher(dispatchers.getIfAvailable());
+    FilterRegistrationBean<McpAuthenticationFilter> mcpAuthenticationFilter(McpProperties properties, McpRuntimeControl control,
+            com.astra.freyja.capability.service.CapabilityMcpDispatcher dispatcher) {
+        var filter = new McpAuthenticationFilter(control, dispatcher);
         var registration = new FilterRegistrationBean<>(filter);
         registration.addUrlPatterns("/mcp", "/mcp/*");
         registration.setOrder(Ordered.HIGHEST_PRECEDENCE + 20);
@@ -112,22 +111,9 @@ public class McpServerConfiguration {
     }
 
     @Bean
-    List<McpStatelessServerFeatures.SyncToolSpecification> freyjaMcpTools(McpReadTools reads, McpToolCatalog catalog, ObjectProvider<McpBusinessTools> business, ObjectProvider<McpRuntimeControl> controls, ObjectProvider<McpSkillTools> skills,
-            ObjectProvider<McpVoiceTools> voices, McpProperties properties) {
-        McpRuntimeControl control = controls.getIfAvailable();
-        if (control != null) {
-            var state = control.current();
-            java.util.List<McpTool<?>> all = new java.util.ArrayList<>(reads.tools()); business.ifAvailable(adapter -> all.addAll(adapter.allTools()));
-            skills.ifAvailable(adapter -> all.addAll(adapter.tools()));
-            voices.ifAvailable(adapter -> all.addAll(adapter.tools()));
-            return all.stream().filter(tool -> control.toolEnabled(state, tool)).map(catalog::specification).toList();
-        }
-        java.util.List<McpTool<?>> tools = new java.util.ArrayList<>(reads.tools());
-        business.ifAvailable(adapter -> tools.addAll(adapter.tools()));
-        skills.ifAvailable(adapter -> tools.addAll(adapter.tools()));
-        voices.ifAvailable(adapter -> tools.addAll(adapter.tools().stream()
-                .filter(tool -> tool.effect() == McpTool.Effect.READ || properties.isWriteEnabled()).toList()));
-        return tools.stream().map(catalog::specification).toList();
+    List<McpStatelessServerFeatures.SyncToolSpecification> freyjaMcpTools() {
+        // CapabilityMcpDispatcher owns request-local discovery and calls, including published names and schemas.
+        return List.of();
     }
 
     @Bean

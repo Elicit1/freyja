@@ -2,12 +2,12 @@ package com.astra.freyja.service.video;
 
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.*;
-import com.astra.freyja.dto.comfy.ComfyRenderTaskVO;
+import com.astra.freyja.dto.render.RenderSubmissionVO;
 import com.astra.freyja.dto.drama.*;
 import com.astra.freyja.dto.render.RenderTaskVO;
 import com.astra.freyja.dto.task.*;
 import com.astra.freyja.entity.*;
-import com.astra.freyja.entity.enums.ComfyTaskStatus;
+import com.astra.freyja.entity.enums.RenderSubmissionStatus;
 import com.astra.freyja.event.TaskStatusChangedEvent;
 import com.astra.freyja.service.*;
 import com.astra.freyja.service.video.VideoBatchModels.*;
@@ -132,7 +132,7 @@ public class VideoRenderBatchService {
             }
         }
     }
-    public ComfyRenderTaskVO enqueueSingle(Long id,DramaShotRenderRequestDTO request) {
+    public RenderSubmissionVO enqueueSingle(Long id,DramaShotRenderRequestDTO request) {
         if(request!=null&&(request.getResolvedRefVideos()!=null||request.getReferenceVideoRevision()!=null||request.getReferenceVideoNodeId()!=null))
             throw new BizException(400,"请仅提交 preflightId，参考视频快照必须由服务端生成");
         String task=tx.execute(s->{
@@ -159,7 +159,7 @@ public class VideoRenderBatchService {
             Item i=new Item();i.setId(IdWorker.getId());i.setBatchId(b.getId());i.setQueueOrder(b.getId());i.setShotId(id);i.setTaskId("RENDER_"+IdWorker.getId());i.setName("S"+shot.getShotNo()+" · "+StringUtils.defaultString(shot.getShotName(),"分镜"));
             i.setPhase(VideoBatchPreparation.REF.equals(shot.getGenerationMode())?"REF2VA":"FL2VA");i.setStatus("QUEUED");i.setCreatedAt(LocalDateTime.now());snap.getRequest().setTaskId(i.getTaskId());i.setSnapshotJson(preparation.write(snap));register(i,snap);store.insert(i);return i.getTaskId();
         });
-        Item queued=store.task(task);publish(queued.getBatchId());queueChanged();var vo=new ComfyRenderTaskVO();vo.setTaskId(task);vo.setShotId(id);vo.setProjectId(detail(queued.getBatchId()).getDramaId());vo.setStatus(ComfyTaskStatus.PENDING);vo.setProgress(0);return vo;
+        Item queued=store.task(task);publish(queued.getBatchId());queueChanged();var vo=new RenderSubmissionVO();vo.setTaskId(task);vo.setShotId(id);vo.setProjectId(detail(queued.getBatchId()).getDramaId());vo.setStatus(RenderSubmissionStatus.PENDING);vo.setProgress(0);return vo;
     }
     private void register(Item i,Snapshot snap) {
         store.holdShot(i.getShotId(),i.getTaskId());

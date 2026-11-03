@@ -1,13 +1,13 @@
 package com.astra.freyja.service;
 
 import com.astra.freyja.dao.ResCharacterMapper;
-import com.astra.freyja.dao.ResCharacterOutfitMapper;
+import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dao.ResSceneMapper;
 import com.astra.freyja.dto.res.CharacterShotRefDTO;
 import com.astra.freyja.dto.res.PromptAssembleRequestDTO;
 import com.astra.freyja.dto.res.PromptAssembleResultVO;
 import com.astra.freyja.entity.ResCharacter;
-import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.entity.ResCharacterLook;
 import com.astra.freyja.entity.ResScene;
 import com.astra.freyja.service.impl.PromptAssembleServiceImpl;
 import org.junit.jupiter.api.Test;
@@ -33,7 +33,7 @@ class PromptAssembleServiceTest {
     private ResCharacterMapper characterMapper;
 
     @Mock
-    private ResCharacterOutfitMapper outfitMapper;
+    private ResCharacterLookMapper outfitMapper;
 
     @Mock
     private SysConfigService sysConfigService;
@@ -44,7 +44,7 @@ class PromptAssembleServiceTest {
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
         characterVisualAssetResolver = new com.astra.freyja.service.impl.CharacterVisualAssetResolverImpl(characterMapper, outfitMapper);
-        promptAssembleService = new PromptAssembleServiceImpl(sceneMapper, characterMapper, outfitMapper, sysConfigService, new com.fasterxml.jackson.databind.ObjectMapper(), characterVisualAssetResolver);
+        promptAssembleService = new PromptAssembleServiceImpl(sceneMapper, characterMapper, outfitMapper, org.mockito.Mockito.mock(com.astra.freyja.dao.ResKeyframeMapper.class), sysConfigService, new com.fasterxml.jackson.databind.ObjectMapper(), characterVisualAssetResolver);
     }
 
     @Test
@@ -72,10 +72,10 @@ class PromptAssembleServiceTest {
         character.setLoraWeight(new BigDecimal("0.85"));
         character.setReferenceImageUrl("http://127.0.0.1:9000/video-assets/character/linchen_ref.png");
 
-        ResCharacterOutfit outfit = new ResCharacterOutfit();
+        ResCharacterLook outfit = new ResCharacterLook();
         outfit.setId(200L);
         outfit.setCharacterId(100L);
-        outfit.setOutfitName("深色战术风衣");
+        outfit.setLookName("深色战术风衣");
         outfit.setOutfitPrompt("wearing dark long trench coat, leather gloves");
         outfit.setLoraName("tactical_coat.safetensors");
         outfit.setLoraWeight(new BigDecimal("0.60"));

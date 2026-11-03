@@ -37,7 +37,7 @@ import java.util.List;
 
 /**
  * AI 任务流水线数据库存储与历史管理服务实现类。
- * 设计为高容错模式：即使数据库 ai_task 表未初始化或发生瞬态异常，也不阻断 AI 核心流水线的执行。
+ * SQL 任务必须先持久化再执行；拆解草稿由显式的持久化 DraftStore 承载。
  */
 @Slf4j
 @Service
@@ -116,14 +116,11 @@ public class AiTaskServiceImpl implements AiTaskService {
         }
 
         try {
-            aiTaskMapper.insert(task);
+            if (aiTaskMapper.insert(task) != 1 || task.getId() == null) throw new BizException(503, "AI 任务未持久化");
             log.info("[AiTaskService] 新建 AI 任务记录: id={}, type={}, targetId={}", task.getId(), task.getTaskType(), targetId);
             publishTaskStatusChanged(task.getId(), task.getStatus());
         } catch (Exception e) {
-            log.warn("[AiTaskService] 写入 AI 任务记录至数据库失败 (若 ai_task 表尚未初始化，请执行 resources/sql/ai_task_schema.sql): {}", e.getMessage());
-            if (task.getId() == null) {
-                task.setId(System.currentTimeMillis());
-            }
+            throw new BizException(503, "AI 任务持久化失败，请检查数据库后重试");
         }
 
         return task;
@@ -153,7 +150,7 @@ public class AiTaskServiceImpl implements AiTaskService {
                 publishTaskStatusChanged(taskId, AiTaskStatus.RUNNING.name());
             }
         } catch (Exception e) {
-            log.debug("[AiTaskService] 更新任务状态为 RUNNING 失败: taskId={}, msg={}", taskId, e.getMessage());
+            throw new BizException(503, "AI 任务运行状态持久化失败");
         }
     }
 
@@ -187,7 +184,7 @@ public class AiTaskServiceImpl implements AiTaskService {
                 publishTaskStatusChanged(taskId, AiTaskStatus.SUCCESS.name());
             }
         } catch (Exception e) {
-            log.debug("[AiTaskService] 更新任务状态为 SUCCESS 失败: taskId={}, msg={}", taskId, e.getMessage());
+            throw new BizException(503, "AI 任务完成状态持久化失败");
         }
     }
 
@@ -217,7 +214,7 @@ public class AiTaskServiceImpl implements AiTaskService {
                 publishTaskStatusChanged(taskId, AiTaskStatus.FAILED.name());
             }
         } catch (Exception e) {
-            log.debug("[AiTaskService] 更新任务状态为 FAILED 失败: taskId={}, msg={}", taskId, e.getMessage());
+            throw new BizException(503, "AI 任务失败状态持久化失败");
         }
     }
 
@@ -285,7 +282,7 @@ public class AiTaskServiceImpl implements AiTaskService {
                 task.setRetryCount((task.getRetryCount() != null ? task.getRetryCount() : 0) + 1);
                 task.setStartedAt(LocalDateTime.now());
                 task.setErrorMessage(null);
-                aiTaskMapper.updateById(task);
+                if (aiTaskMapper.updateById(task) != 1) throw new BizException(409, "AI 任务重试状态保存冲突");
                 log.info("[AiTaskService] 触发单任务重试: id={}, retryCount={}", taskId, task.getRetryCount());
                 publishTaskStatusChanged(taskId, AiTaskStatus.RETRYING.name());
                 return task;
@@ -293,14 +290,10 @@ public class AiTaskServiceImpl implements AiTaskService {
         } catch (BizException e) {
             throw e;
         } catch (Exception e) {
-            log.warn("[AiTaskService] 重试查询任务失败: taskId={}, msg={}", taskId, e.getMessage());
+            throw new BizException(503, "重试任务持久化失败");
         }
 
-        AiTask fallback = new AiTask();
-        fallback.setId(taskId);
-        fallback.setStatus(AiTaskStatus.RETRYING.name());
-        fallback.setRetryCount(1);
-        return fallback;
+        throw new BizException(404, "AI 任务不存在");
     }
 
     @Override
@@ -326,7 +319,7 @@ public class AiTaskServiceImpl implements AiTaskService {
             qw.orderByDesc(AiTask::getId);
             for (AiTask task : aiTaskMapper.selectList(qw)) canonical.put(task.getId(), task);
         } catch (Exception e) {
-            log.warn("[AiTaskService] 查询任务列表失败 (可能 ai_task 表尚未初始化): {}", e.getMessage());
+            throw new BizException(503, "AI 任务列表读取失败");
         }
         // Redis is authoritative while a draft exists. Filter only after replacing stale SQL checkpoints.
         canonical.putAll(drafts);
@@ -354,8 +347,7 @@ public class AiTaskServiceImpl implements AiTaskService {
             AiTask task = aiTaskMapper.selectById(taskId);
             return task != null ? toDTO(task) : null;
         } catch (Exception e) {
-            log.warn("[AiTaskService] 获取任务详情失败: taskId={}, msg={}", taskId, e.getMessage());
-            return null;
+            throw new BizException(503, "AI 任务详情读取失败");
         }
     }
 
@@ -387,7 +379,7 @@ public class AiTaskServiceImpl implements AiTaskService {
                 publishTaskStatusChanged(taskId, AiTaskStatus.PARTIAL_SUCCESS.name());
             }
         } catch (Exception e) {
-            log.warn("[AiTaskService] 更新任务为 PARTIAL_SUCCESS 失败: {}", e.getMessage());
+            throw new BizException(503, "AI 任务部分成功状态持久化失败");
         }
     }
 
@@ -419,7 +411,7 @@ public class AiTaskServiceImpl implements AiTaskService {
                 publishTaskStatusChanged(taskId, task.getStatus());
             }
         } catch (Exception e) {
-            log.warn("[AiTaskService] 更新任务载荷失败: {}", e.getMessage());
+            throw new BizException(503, "AI 任务载荷持久化失败");
         }
     }
 
@@ -450,7 +442,7 @@ public class AiTaskServiceImpl implements AiTaskService {
             List<AiTask> tasks = aiTaskMapper.selectList(qw);
             if (tasks != null) for (AiTask t : tasks) historyList.add(parseHistoryItem(t));
         } catch (Exception e) {
-            log.warn("[AiTaskService] 查询章节拆解历史失败: dramaId={}, episodeId={}, msg={}", dramaId, episodeId, e.getMessage());
+            throw new BizException(503, "章节拆解历史读取失败");
         }
         historyList.sort((left, right) -> Long.compare(right.getTaskId(), left.getTaskId()));
         return dramaId == null && historyList.size() > 50 ? historyList.subList(0, 50) : historyList;
@@ -611,7 +603,7 @@ public class AiTaskServiceImpl implements AiTaskService {
             subQw.eq("parent_task_id", taskId);
             aiTaskMapper.update(updateSub, subQw);
         } catch (Exception e) {
-            log.warn("[AiTaskService] 回填任务 dramaId 失败: taskId={}, dramaId={}, msg={}", taskId, dramaId, e.getMessage());
+            throw new BizException(503, "AI 任务项目关联持久化失败");
         }
     }
 

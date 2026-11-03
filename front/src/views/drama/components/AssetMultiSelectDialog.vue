@@ -296,8 +296,8 @@ async function loadAssets(dramaId?: string | number) {
       }
 
       // 人物下各造型
-      if (ch.outfits && ch.outfits.length > 0) {
-        for (const out of ch.outfits) {
+      if (ch.looks && ch.looks.length > 0) {
+        for (const out of ch.looks) {
           const outfitImg = out.referenceImageUrl
           if (outfitImg) {
             items.push({

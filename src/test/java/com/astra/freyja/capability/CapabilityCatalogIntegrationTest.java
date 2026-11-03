@@ -50,7 +50,7 @@ class CapabilityCatalogIntegrationTest {
     final McpPrincipal caller = new McpPrincipal(true, false, false, Set.of(2032095628944588801L));
 
     @SuppressWarnings("unchecked") static <T> ObjectProvider<T> provider(T value) {
-        ObjectProvider<T> provider = mock(ObjectProvider.class); when(provider.getObject()).thenReturn(value); when(provider.getIfAvailable()).thenReturn(value); return provider;
+        ObjectProvider<T> provider = mock(ObjectProvider.class); when(provider.getObject()).thenReturn(value); when(provider.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(value); when(provider.getIfAvailable()).thenReturn(value); return provider;
     }
     @BeforeEach void setup() throws Exception {
         String url = System.getenv().getOrDefault("FREYJA_CAPABILITY_JDBC_URL", "jdbc:mysql://127.0.0.1:3306/freyja_capability_it?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai");
@@ -123,7 +123,7 @@ class CapabilityCatalogIntegrationTest {
         release = editBinding(release, old.id(), b -> renamed(b, "read_story_shot", true));
         catalog.save(new Edit(mapper.state().getRevision(), release.bindings(), "数据库创作指南", "用户要求配乐时允许背景音乐"));
         catalog.publish(new Publish(mapper.state().getRevision(), "指南发布"));
-        var dispatcher = new CapabilityMcpDispatcher(catalog, new McpToolCatalog(json), control);
+        var dispatcher = new CapabilityMcpDispatcher(catalog, com.astra.freyja.mcp.McpTestSupport.catalog(json), control);
         var init = rpc(dispatcher, "initialize", Map.of("protocolVersion", "2025-06-18")); assertTrue(init.contains("数据库创作指南"));
         var list = rpc(dispatcher, "tools/list", Map.of()); assertTrue(list.contains("read_story_shot")); assertFalse(list.contains("\"name\":\"get_shot\""));
         var result = rpc(dispatcher, "tools/call", Map.of("name", "read_story_shot", "arguments", Map.of("dramaId", "2032095628944588801", "shotId", "2032095628944588810")));
@@ -140,13 +140,13 @@ class CapabilityCatalogIntegrationTest {
         assertNull(CapabilityRuleContext.current());
         var renamedTool = catalog.mcpTools().stream().filter(t -> t.name().equals("read_saved_result")).findFirst().orElseThrow();
         assertTrue(renamedTool.writePermissionRequired());
-        var definition = new McpToolCatalog(json).specification(renamedTool);
+        var definition = com.astra.freyja.mcp.McpTestSupport.catalog(json).specification(renamedTool);
         var reader = new McpPrincipal(false, false, false, caller.projects());
         var denied = definition.callHandler().apply(io.modelcontextprotocol.common.McpTransportContext.create(Map.of(McpPrincipal.CONTEXT_KEY, reader)), new io.modelcontextprotocol.spec.McpSchema.CallToolRequest("read_saved_result", Map.of()));
         assertTrue(denied.isError());
         var internal = pinned.bindings().stream().filter(b -> b.name().equals("operation_result")).findFirst().orElseThrow();
         assertThrows(BizException.class, () -> catalog.agentTool(internal).execute(Map.of(), context(pinned, "CONFIG_TEST")));
-        var dispatcher = new CapabilityMcpDispatcher(catalog, new McpToolCatalog(json), control);
+        var dispatcher = new CapabilityMcpDispatcher(catalog, com.astra.freyja.mcp.McpTestSupport.catalog(json), control);
         assertTrue(rpc(dispatcher, "initialize", Map.of("protocolVersion", "unknown")).contains("2025-11-25"));
         assertTrue(rpc(dispatcher, "initialize", Map.of()).contains("-32602"));
     }

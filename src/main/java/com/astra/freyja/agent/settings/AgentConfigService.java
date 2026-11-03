@@ -39,7 +39,7 @@ public class AgentConfigService {
     private final TransactionTemplate transactions;
 
     public AgentConfigDTO get(String requestedCode) {
-        String code = AgentProfileRegistry.canonicalCode(requestedCode);
+        String code = requestedCode;
         profiles.require(code);
         var available = tools.available(code);
         AgentConfig entry = mapper.selectOne(new LambdaQueryWrapper<AgentConfig>().eq(AgentConfig::getAgentCode, code));
@@ -83,7 +83,7 @@ public class AgentConfigService {
         return validator.validate(code, dto, execution);
     }
     public AgentConfigDTO save(String requestedCode, AgentConfigDTO dto) {
-        String code = AgentProfileRegistry.canonicalCode(requestedCode);
+        String code = requestedCode;
         ValidationResult result = validator.validate(code, dto, false);
         if (!result.valid()) throw new BizException(400, result.errors().getFirst().field() + ": " + result.errors().getFirst().message());
         get(code);
@@ -110,7 +110,7 @@ public class AgentConfigService {
     }
     /** Called inside the run submission transaction; the copied configuration is never read again during recovery. */
     public Snapshot snapshot(String requestedCode, AgentConfigDTO input, String type) {
-        String code = AgentProfileRegistry.canonicalCode(requestedCode);
+        String code = requestedCode;
         var config = json.copy(input, AgentConfigDTO.class);
         if (!"CONFIG_TEST".equals(type) && !config.isEnabled()) throw new BizException("Agent 尚未启用");
         ValidationResult result = validator.validate(code, config, true);

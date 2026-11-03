@@ -15,17 +15,30 @@ public final class LegacyShotJsonMigration {
             migrate(object);
             if (object.get("directorPlanInput") instanceof ObjectNode input) migrate(input);
         }
-        return copy;
+        return visit(copy, false);
     }
 
     private static JsonNode visit(JsonNode node, boolean shot) {
         if (node.isArray()) {
             for (JsonNode item : node) visit(item, shot);
         } else if (node instanceof ObjectNode object) {
+            rename(object, "outfits", "looks");
+            rename(object, "defaultOutfit", "defaultLook");
+            rename(object, "outfitName", "lookName");
+            rename(object, "outfitReferenceImageUrl", "lookReferenceImageUrl");
+            rename(object, "outfitCount", "lookCount");
+            rename(object, "defaultOutfitName", "defaultLookName");
+            rename(object, "defaultOutfitPrompt", "defaultLookPrompt");
             if (shot) migrate(object);
             object.properties().forEach(entry -> visit(entry.getValue(), "shots".equals(entry.getKey())));
         }
         return node;
+    }
+
+    private static void rename(ObjectNode object, String oldName, String name) {
+        if (!object.has(oldName)) return;
+        if (!object.has(name)) object.set(name, object.get(oldName));
+        object.remove(oldName);
     }
 
     private static void migrate(ObjectNode object) {

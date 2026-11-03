@@ -3,7 +3,6 @@ package com.astra.freyja.service.impl;
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dao.ResCharacterMapper;
-import com.astra.freyja.dao.ResCharacterOutfitMapper;
 import com.astra.freyja.dto.res.ResolvedCharacterPromptContext;
 import com.astra.freyja.dto.res.ResolvedCharacterVisual;
 import com.astra.freyja.entity.ResCharacter;
@@ -42,16 +41,7 @@ public class CharacterVisualAssetResolverImpl implements CharacterVisualAssetRes
     public CharacterVisualAssetResolverImpl(ResCharacterMapper characterMapper, ResCharacterLookMapper lookMapper) {
         this.characterMapper = characterMapper;
         this.lookMapper = lookMapper;
-        this.fallbackOutfitMapper = null;
     }
-
-    public CharacterVisualAssetResolverImpl(ResCharacterMapper characterMapper, ResCharacterOutfitMapper outfitMapper) {
-        this.characterMapper = characterMapper;
-        this.lookMapper = null;
-        this.fallbackOutfitMapper = outfitMapper;
-    }
-
-    private final ResCharacterOutfitMapper fallbackOutfitMapper;
 
     @Override
     public ResolvedCharacterVisual resolve(Long characterId, Long lookId) {
@@ -67,11 +57,7 @@ public class CharacterVisualAssetResolverImpl implements CharacterVisualAssetRes
         ResCharacterLook look = null;
         if (lookId != null && lookId > 0) {
             // 明确指定了造型
-            if (lookMapper != null) {
-                look = lookMapper.selectById(lookId);
-            } else if (fallbackOutfitMapper != null) {
-                look = fallbackOutfitMapper.selectById(lookId);
-            }
+            look = lookMapper.selectById(lookId);
             if (look == null || (look.getStatus() != null && look.getStatus() == 0)) {
                 throw new BizException(400, "所选人物造型不存在或已停用，请重新选择造型");
             }
@@ -80,19 +66,11 @@ public class CharacterVisualAssetResolverImpl implements CharacterVisualAssetRes
             }
         } else {
             // 未明确指定造型，查找启用状态的默认造型
-            if (lookMapper != null) {
-                look = lookMapper.selectOne(new LambdaQueryWrapper<ResCharacterLook>()
-                        .eq(ResCharacterLook::getCharacterId, characterId)
-                        .eq(ResCharacterLook::getIsDefault, 1)
-                        .eq(ResCharacterLook::getStatus, 1)
-                        .last("LIMIT 1"));
-            } else if (fallbackOutfitMapper != null) {
-                look = fallbackOutfitMapper.selectOne(new LambdaQueryWrapper<com.astra.freyja.entity.ResCharacterOutfit>()
-                        .eq(com.astra.freyja.entity.ResCharacterOutfit::getCharacterId, characterId)
-                        .eq(com.astra.freyja.entity.ResCharacterOutfit::getIsDefault, 1)
-                        .eq(com.astra.freyja.entity.ResCharacterOutfit::getStatus, 1)
-                        .last("LIMIT 1"));
-            }
+            look = lookMapper.selectOne(new LambdaQueryWrapper<ResCharacterLook>()
+                    .eq(ResCharacterLook::getCharacterId, characterId)
+                    .eq(ResCharacterLook::getIsDefault, 1)
+                    .eq(ResCharacterLook::getStatus, 1)
+                    .last("LIMIT 1"));
         }
 
         List<String> positiveSegments = new ArrayList<>();
@@ -150,12 +128,7 @@ public class CharacterVisualAssetResolverImpl implements CharacterVisualAssetRes
 
     private ResCharacterLook findLookById(Long lookId) {
         if (lookId == null || lookId <= 0) return null;
-        if (lookMapper != null) {
-            return lookMapper.selectById(lookId);
-        } else if (fallbackOutfitMapper != null) {
-            return fallbackOutfitMapper.selectById(lookId);
-        }
-        return null;
+        return lookMapper.selectById(lookId);
     }
 
     @Override

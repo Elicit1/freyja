@@ -2,13 +2,13 @@ package com.astra.freyja.service;
 
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.ResCharacterMapper;
-import com.astra.freyja.dao.ResCharacterOutfitMapper;
+import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dto.res.ResCharacterDTO;
 import com.astra.freyja.dto.res.ResCharacterOptionVO;
-import com.astra.freyja.dto.res.ResCharacterOutfitVO;
+import com.astra.freyja.dto.res.ResCharacterLookVO;
 import com.astra.freyja.dto.res.ResCharacterVO;
 import com.astra.freyja.entity.ResCharacter;
-import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.entity.ResCharacterLook;
 import com.astra.freyja.service.impl.ResCharacterServiceImpl;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
@@ -34,17 +34,17 @@ class ResCharacterServiceTest {
     static void initTableInfo() {
         MapperBuilderAssistant assistant = new MapperBuilderAssistant(new MybatisConfiguration(), "");
         TableInfoHelper.initTableInfo(assistant, ResCharacter.class);
-        TableInfoHelper.initTableInfo(assistant, ResCharacterOutfit.class);
+        TableInfoHelper.initTableInfo(assistant, ResCharacterLook.class);
     }
 
     @Mock
     private ResCharacterMapper characterMapper;
 
     @Mock
-    private ResCharacterOutfitMapper outfitMapper;
+    private ResCharacterLookMapper outfitMapper;
 
     @Mock
-    private ResCharacterOutfitService outfitService;
+    private ResCharacterLookService outfitService;
 
     @Mock
     private CharacterRegistryService characterRegistryService;
@@ -65,8 +65,8 @@ class ResCharacterServiceTest {
         dto.setTriggerWords("linchen");
         dto.setLoraName("linchen_lora_v1.safetensors");
         dto.setLoraWeight(new BigDecimal("0.85"));
-        dto.setDefaultOutfitName("日常便服");
-        dto.setDefaultOutfitPrompt("wearing white shirt, black pants");
+        dto.setDefaultLookName("日常便服");
+        dto.setDefaultLookPrompt("wearing white shirt, black pants");
 
         doAnswer(invocation -> {
             ResCharacter c = invocation.getArgument(0);
@@ -100,10 +100,10 @@ class ResCharacterServiceTest {
         character.setName("林晨");
         character.setGender("MALE");
 
-        ResCharacterOutfitVO outfitVO = new ResCharacterOutfitVO();
+        ResCharacterLookVO outfitVO = new ResCharacterLookVO();
         outfitVO.setId(2001L);
         outfitVO.setCharacterId(1001L);
-        outfitVO.setOutfitName("日常便服");
+        outfitVO.setLookName("日常便服");
         outfitVO.setIsDefault(1);
 
         when(characterMapper.selectById(1001L)).thenReturn(character);
@@ -112,9 +112,9 @@ class ResCharacterServiceTest {
         ResCharacterVO vo = characterService.getById(1001L);
         assertNotNull(vo);
         assertEquals("林晨", vo.getName());
-        assertEquals(1, vo.getOutfitCount());
-        assertNotNull(vo.getDefaultOutfit());
-        assertEquals("日常便服", vo.getDefaultOutfit().getOutfitName());
+        assertEquals(1, vo.getLookCount());
+        assertNotNull(vo.getDefaultLook());
+        assertEquals("日常便服", vo.getDefaultLook().getLookName());
     }
 
     @Test
@@ -137,10 +137,10 @@ class ResCharacterServiceTest {
         character.setName("林晨");
         character.setRoleType("PROTAGONIST");
 
-        ResCharacterOutfit outfit = new ResCharacterOutfit();
+        ResCharacterLook outfit = new ResCharacterLook();
         outfit.setId(2001L);
         outfit.setCharacterId(1001L);
-        outfit.setOutfitName("日常便服");
+        outfit.setLookName("日常便服");
         outfit.setIsDefault(1);
         outfit.setStatus(1);
 
@@ -150,7 +150,7 @@ class ResCharacterServiceTest {
         List<ResCharacterOptionVO> options = characterService.options(1L);
         assertEquals(1, options.size());
         assertEquals("林晨", options.get(0).getName());
-        assertEquals(1, options.get(0).getOutfits().size());
+        assertEquals(1, options.get(0).getLooks().size());
     }
 
 }

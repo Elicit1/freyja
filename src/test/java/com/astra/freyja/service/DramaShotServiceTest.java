@@ -4,9 +4,9 @@ import com.astra.freyja.dao.DramaMapper;
 import com.astra.freyja.dao.DramaSceneMapper;
 import com.astra.freyja.dao.DramaShotMapper;
 import com.astra.freyja.dao.ResCharacterMapper;
-import com.astra.freyja.dao.ResCharacterOutfitMapper;
+import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dao.ResSceneMapper;
-import com.astra.freyja.dto.comfy.ComfyRenderTaskVO;
+import com.astra.freyja.dto.render.RenderSubmissionVO;
 import com.astra.freyja.dto.drama.DramaShotDTO;
 import com.astra.freyja.dto.drama.DramaShotFirstFrameDTO;
 import com.astra.freyja.dto.drama.DramaShotRenderRequestDTO;
@@ -59,7 +59,7 @@ class DramaShotServiceTest {
     private ResCharacterMapper characterMapper;
 
     @Mock
-    private ResCharacterOutfitMapper outfitMapper;
+    private ResCharacterLookMapper outfitMapper;
 
     @Mock
     private com.astra.freyja.dao.ResPropMapper resPropMapper;
@@ -160,7 +160,7 @@ class DramaShotServiceTest {
     @Test
     void singleVideoSubmissionAlwaysUsesTheGlobalQueue() {
         DramaShotRenderRequestDTO request = new DramaShotRenderRequestDTO();
-        ComfyRenderTaskVO queued = new ComfyRenderTaskVO(); queued.setTaskId("RENDER_123");
+        RenderSubmissionVO queued = new RenderSubmissionVO(); queued.setTaskId("RENDER_123");
         when(videoBatches.enqueueSingle(1000L, request)).thenReturn(queued);
         assertSame(queued, shotService.submitShotRender(1000L, request));
         verify(videoBatches).enqueueSingle(1000L, request);
@@ -673,7 +673,7 @@ class DramaShotServiceTest {
 
         DramaShotFirstFrameDTO req = new DramaShotFirstFrameDTO();
         // 未指定 size
-        ComfyRenderTaskVO taskVO = shotService.generateFirstFrame(1000L, req);
+        RenderSubmissionVO taskVO = shotService.generateFirstFrame(1000L, req);
 
         assertNotNull(taskVO);
         assertEquals("http://minio/test.png", taskVO.getOutputUrl());

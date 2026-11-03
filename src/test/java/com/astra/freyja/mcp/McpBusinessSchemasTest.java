@@ -24,7 +24,7 @@ class McpBusinessSchemasTest {
     McpToolCatalog catalog;
 
     @BeforeEach void setup() {
-        catalog = new McpToolCatalog(json);
+        catalog = com.astra.freyja.mcp.McpTestSupport.catalog(json);
         ReflectionTestUtils.setField(catalog, "businessOptions", options);
     }
 

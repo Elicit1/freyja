@@ -170,7 +170,6 @@
             </el-col>
           </el-row>
 
-          <el-alert v-if="form.legacyScriptPending" title="历史对白和旁白已完整附加到剧本，请核对并整理；保存后完成迁移。" type="warning" :closable="false" class="mb-3" />
           <el-form-item label="镜头剧本文本 (Shot Script)" prop="scriptContent">
             <el-input
               v-model="form.scriptContent"
@@ -1462,7 +1461,7 @@ async function handleSelectAssetCommand(type: 'scene' | 'character' | 'prop' | '
           })
         }
         // 4. 多造型服装预览图
-        for (const out of ch.outfits || []) {
+        for (const out of ch.looks || []) {
           const outfitImg = out.referenceImageUrl
           if (outfitImg) {
             items.push({
@@ -1542,7 +1541,7 @@ function selectDubbingAudios(selected: ShotRefAudio[]) {
 function getOutfitsForCharacter(characterId?: string | number) {
   if (!characterId) return []
   const found = characterOptions.value.find(c => String(c.id) === String(characterId))
-  return found?.outfits || []
+  return found?.looks || []
 }
 
 function handleAddCharacter() {
@@ -1565,17 +1564,17 @@ function handleCharacterChange(item: CharacterShotRefInfo, characterId: string |
   item.characterName = char?.name
   item.avatarUrl = char?.avatarUrl
   item.roleType = char?.roleType
-  const defaultOutfit = char?.outfits?.find(o => o.isDefault === 1)
-  if (defaultOutfit) {
-    item.lookId = String(defaultOutfit.id)
-    item.outfitName = defaultOutfit.lookName
-    item.outfitPreviewUrl = defaultOutfit.referenceImageUrl
-    item.designDesc = defaultOutfit.designDesc
-    item.outfitPrompt = defaultOutfit.outfitPrompt
-    item.appearancePrompt = defaultOutfit.appearancePrompt
+  const defaultLook = char?.looks?.find(o => o.isDefault === 1)
+  if (defaultLook) {
+    item.lookId = String(defaultLook.id)
+    item.lookName = defaultLook.lookName
+    item.outfitPreviewUrl = defaultLook.referenceImageUrl
+    item.designDesc = defaultLook.designDesc
+    item.outfitPrompt = defaultLook.outfitPrompt
+    item.appearancePrompt = defaultLook.appearancePrompt
   } else {
     item.lookId = undefined
-    item.outfitName = undefined
+    item.lookName = undefined
     item.outfitPreviewUrl = undefined
     item.designDesc = undefined
     item.outfitPrompt = undefined
@@ -1586,8 +1585,8 @@ function handleCharacterChange(item: CharacterShotRefInfo, characterId: string |
 function handleOutfitChange(item: CharacterShotRefInfo, lookId?: string | number) {
   item.lookId = lookId
   const char = characterOptions.value.find(c => String(c.id) === String(item.characterId))
-  const outfit = char?.outfits?.find(o => String(o.id) === String(lookId))
-  item.outfitName = outfit?.lookName
+  const outfit = char?.looks?.find(o => String(o.id) === String(lookId))
+  item.lookName = outfit?.lookName
   item.outfitPreviewUrl = outfit?.referenceImageUrl
   item.designDesc = outfit?.designDesc
   item.outfitPrompt = outfit?.outfitPrompt
@@ -1772,7 +1771,6 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
       form.scriptContent = res.scriptContent ?? ''
       form.actionDescription = res.actionDescription ?? ''
       form.soundEffect = res.soundEffect ?? ''
-      form.legacyScriptPending = res.legacyScriptPending === true
       savedSeed.value = form.seed
       // 兼容服务端省略 null 字段的序列化配置，始终以本次详情结果为准。
       form.directorPlanJson = res.directorPlanJson || undefined
@@ -1882,7 +1880,6 @@ async function handleSave(closeAfter = false): Promise<boolean> {
     if (isEdit.value && form.id) {
       await shotApi.update(payload)
       form.refAudiosConfigured = true
-      form.legacyScriptPending = false
       savedSeed.value = seed || savedSeed.value
       form.seed = savedSeed.value
       ElMessage.success('分镜保存成功')

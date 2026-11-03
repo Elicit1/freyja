@@ -6,9 +6,9 @@ import com.astra.freyja.dao.DramaSceneMapper;
 import com.astra.freyja.dao.DramaShotGroupMapper;
 import com.astra.freyja.dao.DramaShotMapper;
 import com.astra.freyja.dao.ResCharacterMapper;
-import com.astra.freyja.dao.ResCharacterOutfitMapper;
+import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dao.ResSceneMapper;
-import com.astra.freyja.dto.comfy.ComfyRenderTaskVO;
+import com.astra.freyja.dto.render.RenderSubmissionVO;
 import com.astra.freyja.dto.drama.CharacterShotRefInfoVO;
 import com.astra.freyja.dto.drama.DramaShotBatchAssembleDTO;
 import com.astra.freyja.dto.drama.DramaShotDTO;
@@ -32,9 +32,9 @@ import com.astra.freyja.entity.Drama;
 import com.astra.freyja.entity.DramaScene;
 import com.astra.freyja.entity.DramaShot;
 import com.astra.freyja.entity.ResCharacter;
-import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.entity.ResCharacterLook;
 import com.astra.freyja.entity.ResScene;
-import com.astra.freyja.entity.enums.ComfyTaskStatus;
+import com.astra.freyja.entity.enums.RenderSubmissionStatus;
 import com.astra.freyja.service.DramaEpisodeService;
 import com.astra.freyja.service.DramaShotService;
 import com.astra.freyja.service.PromptAssembleService;
@@ -85,7 +85,7 @@ public class DramaShotServiceImpl implements DramaShotService {
     private final ResPropMapper resPropMapper;
     private final ResKeyframeMapper resKeyframeMapper;
     private final ResCharacterMapper characterMapper;
-    private final ResCharacterOutfitMapper outfitMapper;
+    private final ResCharacterLookMapper outfitMapper;
     private final DramaEpisodeService episodeService;
     private final PromptAssembleService promptAssembleService;
     private final ObjectMapper objectMapper;
@@ -106,7 +106,7 @@ public class DramaShotServiceImpl implements DramaShotService {
                                 ResPropMapper resPropMapper,
                                 ResKeyframeMapper resKeyframeMapper,
                                 ResCharacterMapper characterMapper,
-                                ResCharacterOutfitMapper outfitMapper,
+                                ResCharacterLookMapper outfitMapper,
                                 DramaEpisodeService episodeService,
                                 PromptAssembleService promptAssembleService,
                                 ObjectMapper objectMapper,
@@ -418,7 +418,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         com.astra.freyja.util.SceneImageReferenceResolver.resolve(dto.getRefImages(), existing.getDramaId(), resSceneMapper::selectById, false);
         DramaShot shot = new DramaShot();
         BeanUtils.copyProperties(dto, shot, "directorPlan", "directorPlanMode");
-        shot.setScriptContent(dto.getScriptContent() != null ? dto.getScriptContent() : com.astra.freyja.util.UnifiedShotScript.fromShot(existing));
+        shot.setScriptContent(dto.getScriptContent() != null ? dto.getScriptContent() : existing.getScriptContent());
         // 视频产物及其来源只能通过视频 Take 选择/渲染流程更新，不能被旧的编辑表单覆盖。
         // 详情页可能在用户切换历史版本前已打开，直接保存 DTO 会把旧 videoUrl 写回数据库。
         shot.setVideoUrl(existing.getVideoUrl());
@@ -436,11 +436,6 @@ public class DramaShotServiceImpl implements DramaShotService {
 
         // 局部更新省略背景字段时保留原值；只对主动清空或互斥切换显式写入 NULL。
         UpdateWrapper<DramaShot> backgroundUpdate = new UpdateWrapper<>();
-        // Retire legacy speech only together with a lossless canonical script update.
-        // Other sparse updates (sorting/group/render state) must never clear these columns.
-        if (com.astra.freyja.util.UnifiedShotScript.hasLegacySpeech(existing) || StringUtils.isNotBlank(existing.getDialogueSpeaker())) {
-            backgroundUpdate.set("dialogue", null).set("dialogue_speaker", null).set("voiceover", null);
-        }
         if (dto.getResKeyframeId() != null && dto.getResKeyframeId() > 0) {
             shot.setResKeyframeId(dto.getResKeyframeId());
             shot.setResSceneId(null);
@@ -570,9 +565,7 @@ public class DramaShotServiceImpl implements DramaShotService {
         clone.setPreviewImageUrl(null);
         clone.setEndFrameImageUrl(null);
         clone.setVideoUrl(null);
-        clone.setAudioUrl(null);
-        clone.setScriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(source));
-        clone.setDialogue(null); clone.setDialogueSpeaker(null); clone.setVoiceover(null);
+        clone.setScriptContent(source.getScriptContent());
         clone.setLatestTaskId(null);
 
         shotMapper.insert(clone);
@@ -776,7 +769,7 @@ public class DramaShotServiceImpl implements DramaShotService {
 
     @Override
     @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
-    public ComfyRenderTaskVO generateFirstFrame(Long id, DramaShotFirstFrameDTO dto) {
+    public RenderSubmissionVO generateFirstFrame(Long id, DramaShotFirstFrameDTO dto) {
         DramaShot shot = shotMapper.selectById(id);
         if (shot == null) {
             throw new BizException(404, "分镜不存在: " + id);
@@ -874,9 +867,9 @@ public class DramaShotServiceImpl implements DramaShotService {
             outputUrl = aiImageApiService.generateAndArchiveImage(id, shot.getDramaId(), prompt, dto);
             if (isTaskCancelled(taskId)) {
                 log.warn("[DramaShotService] 关键帧生图完成但任务已取消，终止落库: shotId={}, taskId={}", id, taskId);
-                ComfyRenderTaskVO taskVO = new ComfyRenderTaskVO();
+                RenderSubmissionVO taskVO = new RenderSubmissionVO();
                 taskVO.setTaskId(taskId);
-                taskVO.setStatus(ComfyTaskStatus.CANCELED);
+                taskVO.setStatus(RenderSubmissionStatus.CANCELED);
                 taskVO.setProgress(0);
                 taskVO.setShotId(id);
                 taskVO.setProjectId(shot.getDramaId());
@@ -886,9 +879,9 @@ public class DramaShotServiceImpl implements DramaShotService {
         } catch (Exception e) {
             if (isTaskCancelled(taskId)) {
                 log.info("[DramaShotService] 关键帧生图因任务取消中断: shotId={}, taskId={}", id, taskId);
-                ComfyRenderTaskVO taskVO = new ComfyRenderTaskVO();
+                RenderSubmissionVO taskVO = new RenderSubmissionVO();
                 taskVO.setTaskId(taskId);
-                taskVO.setStatus(ComfyTaskStatus.CANCELED);
+                taskVO.setStatus(RenderSubmissionStatus.CANCELED);
                 return taskVO;
             }
             renderTaskService.failTask(taskId, e.getMessage(), org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(e));
@@ -911,9 +904,9 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
         shotMapper.updateById(shot);
 
-        ComfyRenderTaskVO taskVO = new ComfyRenderTaskVO();
+        RenderSubmissionVO taskVO = new RenderSubmissionVO();
         taskVO.setTaskId(taskId);
-        taskVO.setStatus(ComfyTaskStatus.SUCCESS);
+        taskVO.setStatus(RenderSubmissionStatus.SUCCESS);
         taskVO.setProgress(100);
         taskVO.setOutputUrl(outputUrl);
         taskVO.setShotId(id);
@@ -956,7 +949,7 @@ public class DramaShotServiceImpl implements DramaShotService {
     }
 
     @Override
-    public ComfyRenderTaskVO submitShotRender(Long id, DramaShotRenderRequestDTO requestDTO) {
+    public RenderSubmissionVO submitShotRender(Long id, DramaShotRenderRequestDTO requestDTO) {
         return videoBatches.enqueueSingle(id, requestDTO);
     }
 
@@ -987,8 +980,7 @@ public class DramaShotServiceImpl implements DramaShotService {
     private DramaShotVO enrichShotVO(DramaShot shot) {
         DramaShotVO vo = new DramaShotVO();
         BeanUtils.copyProperties(shot, vo);
-        vo.setScriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(shot));
-        vo.setLegacyScriptPending(com.astra.freyja.util.UnifiedShotScript.hasLegacySpeech(shot));
+        vo.setScriptContent(shot.getScriptContent());
         vo.setRefAudiosConfigured(StringUtils.isNotBlank(shot.getRefAudiosJson()));
 
         // 1. 补充环境场景或关键帧信息 (二者严格互斥)
@@ -1045,10 +1037,10 @@ public class DramaShotServiceImpl implements DramaShotService {
                 }
                 Long lookId = ref.getLookId();
                 if (lookId != null) {
-                    ResCharacterOutfit outfit = outfitMapper.selectById(lookId);
+                    ResCharacterLook outfit = outfitMapper.selectById(lookId);
                     if (outfit != null) {
-                        info.setOutfitName(outfit.getLookName());
-                        info.setOutfitReferenceImageUrl(outfit.getReferenceImageUrl());
+                        info.setLookName(outfit.getLookName());
+                        info.setLookReferenceImageUrl(outfit.getReferenceImageUrl());
                         info.setCharacterReferenceImageUrl(outfit.getReferenceImageUrl());
                         info.setDesignDesc(outfit.getDesignDesc());
                         info.setOutfitPrompt(outfit.getOutfitPrompt());
@@ -1056,19 +1048,19 @@ public class DramaShotServiceImpl implements DramaShotService {
                     }
                 } else if (ref.getCharacterId() != null) {
                     // 未明确指定造型时，保留现有分镜展示的默认造型兼容行为。
-                    ResCharacterOutfit defaultOutfit = outfitMapper.selectOne(new LambdaQueryWrapper<ResCharacterOutfit>()
-                            .eq(ResCharacterOutfit::getCharacterId, ref.getCharacterId())
-                            .eq(ResCharacterOutfit::getIsDefault, 1)
-                            .eq(ResCharacterOutfit::getStatus, 1)
+                    ResCharacterLook defaultLook = outfitMapper.selectOne(new LambdaQueryWrapper<ResCharacterLook>()
+                            .eq(ResCharacterLook::getCharacterId, ref.getCharacterId())
+                            .eq(ResCharacterLook::getIsDefault, 1)
+                            .eq(ResCharacterLook::getStatus, 1)
                             .last("LIMIT 1"));
-                    if (defaultOutfit != null) {
-                        info.setLookId(defaultOutfit.getId());
-                        info.setOutfitName(defaultOutfit.getLookName());
-                        info.setOutfitReferenceImageUrl(defaultOutfit.getReferenceImageUrl());
-                        info.setCharacterReferenceImageUrl(defaultOutfit.getReferenceImageUrl());
-                        info.setDesignDesc(StringUtils.defaultIfBlank(ref.getDesignDesc(), defaultOutfit.getDesignDesc()));
-                        info.setOutfitPrompt(defaultOutfit.getOutfitPrompt());
-                        info.setAppearancePrompt(defaultOutfit.getAppearancePrompt());
+                    if (defaultLook != null) {
+                        info.setLookId(defaultLook.getId());
+                        info.setLookName(defaultLook.getLookName());
+                        info.setLookReferenceImageUrl(defaultLook.getReferenceImageUrl());
+                        info.setCharacterReferenceImageUrl(defaultLook.getReferenceImageUrl());
+                        info.setDesignDesc(StringUtils.defaultIfBlank(ref.getDesignDesc(), defaultLook.getDesignDesc()));
+                        info.setOutfitPrompt(defaultLook.getOutfitPrompt());
+                        info.setAppearancePrompt(defaultLook.getAppearancePrompt());
                     } else if (StringUtils.isNotBlank(ref.getDesignDesc())) {
                         info.setDesignDesc(ref.getDesignDesc());
                     }

@@ -1,5 +1,4 @@
 export type AvatarState = 'IDLE' | 'THINKING' | 'WORKING' | 'SUCCESS' | 'ATTENTION' | 'ERROR'
-export interface StateMedia { url: string; contentType: 'image/png' | 'image/webp' | 'image/gif'; objectPath?: string }
 export interface AgentPet {
   id: string; displayName: string; description: string; spritesheetUrl: string; contentType: 'image/png' | 'image/webp'; objectPath?: string
   spriteVersionNumber: number; frameWidth: number; frameHeight: number; columns: number; rows: number
@@ -7,7 +6,6 @@ export interface AgentPet {
 export interface AgentAvatar {
   visible: boolean
   pet: AgentPet
-  stateMedia: Partial<Record<AvatarState, StateMedia>>
   notifications: { completed: boolean; failed: boolean; needsAttention: boolean }
 }
 export interface AgentConfig {

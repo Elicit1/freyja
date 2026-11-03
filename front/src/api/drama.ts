@@ -28,7 +28,7 @@ import type {
 } from '@/types/drama'
 import type { ShotAiVisualPlan } from '@/types/drama'
 import type { PromptAssembleResult } from '@/types/resource'
-import type { ComfyRenderTaskVO } from '@/types/comfy'
+import type { RenderSubmissionVO } from '@/types/render-submission'
 
 // ==========================================
 // 1. 短剧管理 API
@@ -315,7 +315,7 @@ export const shotApi = {
   },
 
   generateFirstFrame(id: string | number, data?: DramaShotFirstFrame) {
-    return runAiTaskResult<ComfyRenderTaskVO>(`/ai/tasks/shot/${String(id)}/frame`, data)
+    return runAiTaskResult<RenderSubmissionVO>(`/ai/tasks/shot/${String(id)}/frame`, data)
   },
 
   generateAiVisualPlan(id: string | number, data?: { providerId?: number | string; modelCode?: string; instruction?: string }) {
@@ -424,7 +424,7 @@ export const shotApi = {
       if (!report.submissionReady) {
         throw Object.assign(new Error('渲染检查未通过，请修正提示词与素材后重新提交'), { data: report })
       }
-      return await request<ComfyRenderTaskVO>({
+      return await request<RenderSubmissionVO>({
       url: `/drama/shot/${id}/render`,
       method: 'post',
       data: { ...data, expectedRenderFingerprint: report.inputFingerprint }

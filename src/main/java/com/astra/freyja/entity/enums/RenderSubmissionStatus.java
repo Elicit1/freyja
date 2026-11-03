@@ -3,10 +3,10 @@ package com.astra.freyja.entity.enums;
 import lombok.Getter;
 
 /**
- * ComfyUI 渲染任务状态枚举。
+ * 渲染提交任务状态枚举。
  */
 @Getter
-public enum ComfyTaskStatus {
+public enum RenderSubmissionStatus {
 
     /** 等待调度/下发 */
     PENDING("PENDING", "等待排队"),
@@ -26,7 +26,7 @@ public enum ComfyTaskStatus {
     private final String code;
     private final String description;
 
-    ComfyTaskStatus(String code, String description) {
+    RenderSubmissionStatus(String code, String description) {
         this.code = code;
         this.description = description;
     }

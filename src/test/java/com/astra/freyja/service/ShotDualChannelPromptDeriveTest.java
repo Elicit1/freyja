@@ -41,7 +41,7 @@ class ShotDualChannelPromptDeriveTest {
     @Mock
     private ResCharacterMapper characterMapper;
     @Mock
-    private ResCharacterOutfitMapper outfitMapper;
+    private ResCharacterLookMapper outfitMapper;
     @Mock
     private ResPropMapper propMapper;
     @Mock
@@ -86,6 +86,7 @@ class ShotDualChannelPromptDeriveTest {
                 directorPlanMergeService,
                 new com.astra.freyja.service.impl.CharacterVisualAssetResolverImpl(characterMapper, outfitMapper)
         );
+        com.astra.freyja.service.PromptServiceTestSupport.configure(service);
     }
 
     @Test

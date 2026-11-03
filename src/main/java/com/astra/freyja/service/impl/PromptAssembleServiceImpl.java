@@ -1,18 +1,18 @@
 package com.astra.freyja.service.impl;
 
 import com.astra.freyja.dao.ResCharacterMapper;
-import com.astra.freyja.dao.ResCharacterOutfitMapper;
+import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dao.ResSceneMapper;
 import com.astra.freyja.dto.res.CharacterShotRefDTO;
 import com.astra.freyja.dto.res.ControlImageVO;
 import com.astra.freyja.dto.res.LoraItemVO;
 import com.astra.freyja.dto.res.PromptAssembleRequestDTO;
 import com.astra.freyja.dto.res.PromptAssembleResultVO;
-import com.astra.freyja.dto.res.ResCharacterOutfitVO;
+import com.astra.freyja.dto.res.ResCharacterLookVO;
 import com.astra.freyja.dto.res.ResCharacterVO;
 import com.astra.freyja.dto.res.ResSceneVO;
 import com.astra.freyja.entity.ResCharacter;
-import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.entity.ResCharacterLook;
 import com.astra.freyja.entity.ResScene;
 import com.astra.freyja.service.CharacterVisualAssetResolver;
 import com.astra.freyja.service.PromptAssembleService;
@@ -39,7 +39,7 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
 
     private final ResSceneMapper sceneMapper;
     private final ResCharacterMapper characterMapper;
-    private final ResCharacterOutfitMapper outfitMapper;
+    private final ResCharacterLookMapper outfitMapper;
     private final ResKeyframeMapper keyframeMapper;
     private final SysConfigService sysConfigService;
     private final ObjectMapper objectMapper;
@@ -48,8 +48,8 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
     @Autowired
     public PromptAssembleServiceImpl(ResSceneMapper sceneMapper,
                                      ResCharacterMapper characterMapper,
-                                     ResCharacterOutfitMapper outfitMapper,
-                                     @Autowired(required = false) ResKeyframeMapper keyframeMapper,
+                                     ResCharacterLookMapper outfitMapper,
+                                     ResKeyframeMapper keyframeMapper,
                                      SysConfigService sysConfigService,
                                      ObjectMapper objectMapper,
                                      CharacterVisualAssetResolver characterVisualAssetResolver) {
@@ -58,33 +58,8 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
         this.outfitMapper = outfitMapper;
         this.keyframeMapper = keyframeMapper;
         this.sysConfigService = sysConfigService;
-        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
-        this.characterVisualAssetResolver = characterVisualAssetResolver != null ? characterVisualAssetResolver
-                : new CharacterVisualAssetResolverImpl(characterMapper, outfitMapper);
-    }
-
-    public PromptAssembleServiceImpl(ResSceneMapper sceneMapper,
-                                     ResCharacterMapper characterMapper,
-                                     ResCharacterOutfitMapper outfitMapper,
-                                     SysConfigService sysConfigService,
-                                     ObjectMapper objectMapper,
-                                     CharacterVisualAssetResolver characterVisualAssetResolver) {
-        this(sceneMapper, characterMapper, outfitMapper, null, sysConfigService, objectMapper, characterVisualAssetResolver);
-    }
-
-    public PromptAssembleServiceImpl(ResSceneMapper sceneMapper,
-                                     ResCharacterMapper characterMapper,
-                                     ResCharacterOutfitMapper outfitMapper,
-                                     SysConfigService sysConfigService,
-                                     ObjectMapper objectMapper) {
-        this(sceneMapper, characterMapper, outfitMapper, null, sysConfigService, objectMapper, null);
-    }
-
-    public PromptAssembleServiceImpl(ResSceneMapper sceneMapper,
-                                     ResCharacterMapper characterMapper,
-                                     ResCharacterOutfitMapper outfitMapper,
-                                     SysConfigService sysConfigService) {
-        this(sceneMapper, characterMapper, outfitMapper, null, sysConfigService, new ObjectMapper(), null);
+        this.objectMapper = java.util.Objects.requireNonNull(objectMapper);
+        this.characterVisualAssetResolver = java.util.Objects.requireNonNull(characterVisualAssetResolver);
     }
 
     private static final String DEFAULT_BASE_NEGATIVE =
@@ -184,8 +159,8 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
                 }
 
                 ResCharacterVO charVO = toCharacterVO(visual.getCharacter());
-                if (visual.getOutfit() != null) {
-                    charVO.setDefaultOutfit(toOutfitVO(visual.getOutfit()));
+                if (visual.getLook() != null) {
+                    charVO.setDefaultLook(toOutfitVO(visual.getLook()));
                 }
                 characterSummaries.add(charVO);
 
@@ -216,7 +191,7 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
                 // 单一参考图注入 (有造型图优先 COMBINED，缺造型图回退 IDENTITY)
                 if (StringUtils.isNotBlank(visual.getReferenceImageUrl())) {
                     String label = "COMBINED".equals(visual.getReferenceRole())
-                            ? "造型参考: " + visual.getCharacter().getName() + " - " + (visual.getOutfit() != null ? visual.getOutfit().getLookName() : "造型")
+                            ? "造型参考: " + visual.getCharacter().getName() + " - " + (visual.getLook() != null ? visual.getLook().getLookName() : "造型")
                             : "人物参考: " + visual.getCharacter().getName();
                     controlImages.add(ControlImageVO.builder()
                             .controlType("CHARACTER_REF")
@@ -386,8 +361,8 @@ public class PromptAssembleServiceImpl implements PromptAssembleService {
         return vo;
     }
 
-    private ResCharacterOutfitVO toOutfitVO(ResCharacterOutfit outfit) {
-        ResCharacterOutfitVO vo = new ResCharacterOutfitVO();
+    private ResCharacterLookVO toOutfitVO(ResCharacterLook outfit) {
+        ResCharacterLookVO vo = new ResCharacterLookVO();
         BeanUtils.copyProperties(outfit, vo);
         return vo;
     }

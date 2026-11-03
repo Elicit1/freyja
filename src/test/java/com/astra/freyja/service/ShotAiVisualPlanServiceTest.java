@@ -48,7 +48,7 @@ class ShotAiVisualPlanServiceTest {
     @Mock
     private ResCharacterMapper characterMapper;
     @Mock
-    private ResCharacterOutfitMapper outfitMapper;
+    private ResCharacterLookMapper outfitMapper;
     @Mock
     private ResPropMapper propMapper;
     @Mock
@@ -76,6 +76,7 @@ class ShotAiVisualPlanServiceTest {
 
     @BeforeEach
     void setUp() {
+        com.astra.freyja.service.PromptServiceTestSupport.configure(shotAiVisualPlanService);
         CharacterVisualAssetResolver realResolver = new com.astra.freyja.service.impl.CharacterVisualAssetResolverImpl(characterMapper, outfitMapper);
         when(characterVisualAssetResolver.resolvePromptContext(any(CharacterShotRefInfoVO.class)))
                 .thenAnswer(inv -> realResolver.resolvePromptContext(inv.getArgument(0)));
@@ -86,6 +87,7 @@ class ShotAiVisualPlanServiceTest {
                 ));
 
         when(aiModelFactory.getChatModel(anyLong(), anyString())).thenReturn(chatModel);
+        when(chatModel.getOptions()).thenReturn(org.springframework.ai.chat.prompt.ChatOptions.builder().build());
         when(sysConfigService.getConfigValue(anyString(), anyString()))
                 .thenAnswer(inv -> inv.getArgument(1));
 
@@ -123,7 +125,7 @@ class ShotAiVisualPlanServiceTest {
             verify(chatModel, atLeastOnce()).stream(promptCaptor.capture());
             return promptCaptor.getValue();
         } catch (Throwable t) {
-            verify(chatModel, atLeastOnce()).call(promptCaptor.capture());
+            verify(chatModel, atLeastOnce()).stream(promptCaptor.capture());
             return promptCaptor.getValue();
         }
     }
@@ -173,7 +175,7 @@ class ShotAiVisualPlanServiceTest {
         character.setAppearanceDesc("剑眉星目，左眼角有一道浅浅剑痕");
         when(characterMapper.selectById(400L)).thenReturn(character);
 
-        ResCharacterOutfit outfit = new ResCharacterOutfit();
+        ResCharacterLook outfit = new ResCharacterLook();
         outfit.setId(500L);
         outfit.setCharacterId(400L);
         outfit.setStatus(1);

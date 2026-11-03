@@ -1,8 +1,8 @@
 package com.astra.freyja.service;
 
 import com.astra.freyja.dto.res.AssetPromptPackageVO;
-import com.astra.freyja.dto.res.OutfitPromptDeriveDTO;
-import com.astra.freyja.dto.res.OutfitPromptDeriveVO;
+import com.astra.freyja.dto.res.LookPromptDeriveDTO;
+import com.astra.freyja.dto.res.LookPromptDeriveVO;
 import com.astra.freyja.dto.res.ResCharacterLookDTO;
 import com.astra.freyja.dto.res.ResCharacterLookVO;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -57,15 +57,15 @@ public interface ResCharacterLookService {
     /**
      * AI 智能衍生角色造型/服饰专属提示词
      */
-    OutfitPromptDeriveVO deriveLookPrompt(OutfitPromptDeriveDTO dto);
+    LookPromptDeriveVO deriveLookPrompt(LookPromptDeriveDTO dto);
 
     /**
      * AI 智能衍生角色造型/服饰专属提示词 (流式 SSE)
      */
-    SseEmitter deriveLookPromptStream(OutfitPromptDeriveDTO dto);
+    SseEmitter deriveLookPromptStream(LookPromptDeriveDTO dto);
 
     /**
      * 构建角色造型提示词任务导出包 (外部 AI 复制使用)
      */
-    AssetPromptPackageVO buildLookPromptPackage(OutfitPromptDeriveDTO dto);
+    AssetPromptPackageVO buildLookPromptPackage(LookPromptDeriveDTO dto);
 }

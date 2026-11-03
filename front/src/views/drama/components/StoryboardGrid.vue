@@ -262,7 +262,7 @@
                             :key="cIdx"
                             :size="20"
                             :src="refItem.avatarUrl"
-                            :title="`${refItem.characterName || '角色'} (${refItem.outfitName || '日常装'})`"
+                            :title="`${refItem.characterName || '角色'} (${refItem.lookName || '日常装'})`"
                             class="border border-[var(--surface)] ring-1 ring-[var(--border-default)] text-[10px]"
                           >
                             {{ refItem.characterName?.charAt(0) || '角' }}

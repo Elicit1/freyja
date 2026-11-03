@@ -352,7 +352,7 @@
                       </el-button>
                     </el-upload>
                     <AssetImageGenerator
-                      target-type="CHARACTER_OUTFIT"
+                      target-type="CHARACTER_LOOK"
                       :target-id="defaultLook.id"
                       image-slot="REFERENCE"
                       :prompt="defaultLook.outfitPrompt"
@@ -597,7 +597,7 @@
                               </el-button>
                             </el-upload>
                             <AssetImageGenerator
-                              target-type="CHARACTER_OUTFIT"
+                              target-type="CHARACTER_LOOK"
                               :target-id="selectedLook.id"
                               image-slot="REFERENCE"
                               :prompt="selectedLook.outfitPrompt"
@@ -712,7 +712,7 @@ import { ArrowLeft, Operation, Plus } from '@element-plus/icons-vue'
 import { characterApi } from '@/api/res-character'
 import { dramaApi } from '@/api/drama'
 import { assetApi } from '@/api/res-asset'
-import type { ResCharacter, ResCharacterLook, CharacterVisualPromptDeriveVO, OutfitPromptDeriveVO, ResCharacterAlias } from '@/types/resource'
+import type { ResCharacter, ResCharacterLook, CharacterVisualPromptDeriveVO, LookPromptDeriveVO, ResCharacterAlias } from '@/types/resource'
 import type { DramaOption } from '@/types/drama'
 import AssetImageGenerator from './AssetImageGenerator.vue'
 import PromptDeriveModal from './PromptDeriveModal.vue'
@@ -1035,7 +1035,7 @@ function handleDeriveSelectedLookPrompt() {
   void nextTick(() => lookPromptPanelRefs.value[panel.key]?.open({ ...look }, { ...formData }, drama as any))
 }
 
-function applyLookPrompts(target: ResCharacterLook, res: OutfitPromptDeriveVO) {
+function applyLookPrompts(target: ResCharacterLook, res: LookPromptDeriveVO) {
   if (res.outfitPrompt) {
     target.outfitPrompt = res.outfitPrompt
   }
@@ -1047,7 +1047,7 @@ function applyLookPrompts(target: ResCharacterLook, res: OutfitPromptDeriveVO) {
   }
 }
 
-async function handleApplyLookDerivedPromptsForPanel(panel: LookPromptPanelSession, res: OutfitPromptDeriveVO) {
+async function handleApplyLookDerivedPromptsForPanel(panel: LookPromptPanelSession, res: LookPromptDeriveVO) {
   const sameCharacter = String(formData.id ?? '') === panel.characterId
   const sameLook = sameCharacter && selectedLook.value && (
     (panel.lookId && String(selectedLook.value.id ?? '') === panel.lookId)
@@ -1315,11 +1315,11 @@ async function handleSubmit() {
         payload.canonicalName = trimmedName
       }
 
-      delete payload.outfits
       delete payload.looks
-      delete payload.defaultOutfit
+      delete payload.looks
       delete payload.defaultLook
-      delete payload.outfitCount
+      delete payload.defaultLook
+      delete payload.lookCount
       delete payload.evidences
       delete payload.createTime
       delete payload.updateTime

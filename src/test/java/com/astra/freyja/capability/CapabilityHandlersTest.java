@@ -20,7 +20,7 @@ class CapabilityHandlersTest {
     @SuppressWarnings("unchecked")
     <T> ObjectProvider<T> provider(T value) {
         var result = (ObjectProvider<T>) mock(ObjectProvider.class);
-        when(result.getObject()).thenReturn(value); return result;
+        when(result.getObject()).thenReturn(value); when(result.getIfAvailable(org.mockito.ArgumentMatchers.any())).thenReturn(value); return result;
     }
     CapabilityHandlers handlers(List<AgentTool<?>> tools) {
         var inventory = mock(McpToolInventory.class); when(inventory.registeredHandlers()).thenReturn(List.of());

@@ -27,11 +27,7 @@ import com.astra.freyja.skill.tool.ReadSkillFileToolFactory;
 import com.astra.freyja.util.JsonExtractionUtil;
 import com.astra.freyja.util.JsonRepairUtil;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.tool.ToolCallback;
@@ -62,10 +58,10 @@ public class ResPropServiceImpl implements ResPropService {
     private final SysConfigService sysConfigService;
     private final DramaMapper dramaMapper;
 
-    @Autowired(required = false)
+    @Autowired
     private SkillPromptContextService skillPromptContextService;
 
-    @Autowired(required = false)
+    @Autowired
     private LoadSkillToolFactory loadSkillToolFactory;
 
     @Autowired
@@ -268,9 +264,6 @@ public class ResPropServiceImpl implements ResPropService {
     }
 
     private SkillPromptContext loadSkillContext(Long propId, List<String> selectedSkillNames) {
-        if (skillPromptContextService == null) {
-            return SkillPromptContext.empty();
-        }
         return skillPromptContextService.loadSelected("prop-prompt", String.valueOf(propId), selectedSkillNames);
     }
 
@@ -292,9 +285,7 @@ public class ResPropServiceImpl implements ResPropService {
 
         String systemPrompt = sysConfigService.getConfigValue("ai.prompt.prop_prompt_enrich_system", DEFAULT_PROP_SYSTEM_PROMPT);
         SkillPromptContext skillContext = loadSkillContext(dto.getPropId(), dto.getSelectedSkillNames());
-        systemPrompt = skillPromptContextService != null
-                ? skillPromptContextService.appendToSystemPrompt(systemPrompt, skillContext)
-                : systemPrompt;
+        systemPrompt = skillPromptContextService.appendToSystemPrompt(systemPrompt, skillContext);
 
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append("请根据以下道具设定，输出高精度英文核心道具生图 Prompt：\n");
@@ -510,12 +501,6 @@ public class ResPropServiceImpl implements ResPropService {
     private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
                                        String consumer, String requestId, List<String> requiredSkillNames,
                                        java.util.function.Consumer<String> stageListener) {
-        if (skillPromptContextService == null || loadSkillToolFactory == null) {
-            ChatResponse response = chatModel.call(new Prompt(List.of(
-                    new SystemMessage(systemPrompt), new UserMessage(userPrompt))));
-            return response != null && response.getResult() != null && response.getResult().getOutput() != null
-                    ? response.getResult().getOutput().getText() : null;
-        }
         LoadSkillToolSession session = skillPromptContextService.createApiSession(consumer, requestId, requiredSkillNames);
         SkillPromptContext requiredContext = skillPromptContextService.loadSelected(
                 consumer, requestId, requiredSkillNames, session.getVersionSnapshot());

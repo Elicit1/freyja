@@ -4,7 +4,6 @@ export interface ResCharacterLook {
   id?: string | number
   characterId?: string | number
   lookName: string
-  outfitName?: string
   isDefault: number
   referenceImageUrl?: string
   previewImageUrl?: string
@@ -25,7 +24,6 @@ export interface ResCharacterLook {
   updateTime?: string
 }
 
-export type ResCharacterOutfit = ResCharacterLook
 
 export interface ResCharacterAlias {
   id?: string | number
@@ -117,16 +115,14 @@ export interface ResCharacter {
   remark?: string
   createTime?: string
   updateTime?: string
-  outfits?: ResCharacterOutfit[]
   looks?: ResCharacterLook[]
-  defaultOutfit?: ResCharacterOutfit
   defaultLook?: ResCharacterLook
-  outfitCount?: number
+  lookCount?: number
   aliases?: ResCharacterAlias[]
   evidences?: ResCharacterEvidence[]
   // 用于创建时的便捷字段
-  defaultOutfitName?: string
-  defaultOutfitPrompt?: string
+  defaultLookName?: string
+  defaultLookPrompt?: string
   aliasList?: string[]
 }
 
@@ -153,10 +149,10 @@ export interface CharacterVisualPromptDeriveVO {
   negativePrompt?: string
 }
 
-export interface OutfitPromptDeriveDTO {
+export interface LookPromptDeriveDTO {
   lookId?: string | number
   characterId?: string | number
-  outfitName?: string
+  lookName?: string
   lookType?: string
   designDesc?: string
   characterName?: string
@@ -171,14 +167,14 @@ export interface OutfitPromptDeriveDTO {
   selectedSkillNames?: string[]
 }
 
-export interface OutfitPromptDeriveVO {
+export interface LookPromptDeriveVO {
   outfitPrompt: string
   appearancePrompt?: string
   negativePrompt?: string
 }
 
 export interface AssetPromptPackageVO {
-  assetType: 'CHARACTER' | 'CHARACTER_IDENTITY' | 'CHARACTER_OUTFIT' | 'PROP' | 'SCENE'
+  assetType: 'CHARACTER' | 'CHARACTER_IDENTITY' | 'CHARACTER_LOOK' | 'PROP' | 'SCENE'
   assetId?: string | number
   assetName?: string
   systemPrompt?: string
@@ -213,7 +209,7 @@ export interface ResCharacterOption {
   voiceSampleUrl?: string
   voiceSampleText?: string
   voiceDesc?: string
-  outfits?: ResCharacterOutfit[]
+  looks?: ResCharacterLook[]
 }
 
 export interface ResScene {

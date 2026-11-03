@@ -3,17 +3,17 @@ package com.astra.freyja.service.impl;
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.DramaMapper;
 import com.astra.freyja.dao.ResCharacterMapper;
-import com.astra.freyja.dao.ResCharacterOutfitMapper;
+import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dto.res.*;
 import com.astra.freyja.entity.Drama;
 import com.astra.freyja.entity.ResCharacter;
-import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.entity.ResCharacterLook;
 import com.astra.freyja.entity.enums.AliasType;
 import com.astra.freyja.entity.enums.EvidenceType;
 import com.astra.freyja.entity.enums.IdentityStatus;
 import com.astra.freyja.service.AiModelFactory;
 import com.astra.freyja.service.CharacterRegistryService;
-import com.astra.freyja.service.ResCharacterOutfitService;
+import com.astra.freyja.service.ResCharacterLookService;
 import com.astra.freyja.service.ResCharacterService;
 import com.astra.freyja.service.SysConfigService;
 import com.astra.freyja.skill.model.SkillPromptContext;
@@ -26,11 +26,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.tool.ToolCallback;
@@ -61,8 +57,8 @@ public class ResCharacterServiceImpl implements ResCharacterService {
 
     private final ResCharacterMapper characterMapper;
     private final com.astra.freyja.service.AssetMediaCleanupService mediaCleanup;
-    private final ResCharacterOutfitMapper outfitMapper;
-    private final ResCharacterOutfitService outfitService;
+    private final ResCharacterLookMapper outfitMapper;
+    private final ResCharacterLookService outfitService;
     private final CharacterRegistryService characterRegistryService;
     private final AiModelFactory aiModelFactory;
     private final SysConfigService sysConfigService;
@@ -71,10 +67,10 @@ public class ResCharacterServiceImpl implements ResCharacterService {
     @Autowired(required = false)
     private com.astra.freyja.service.DubbingService dubbingService;
 
-    @Autowired(required = false)
+    @Autowired
     private SkillPromptContextService skillPromptContextService;
 
-    @Autowired(required = false)
+    @Autowired
     private LoadSkillToolFactory loadSkillToolFactory;
 
     @Autowired
@@ -115,23 +111,21 @@ public class ResCharacterServiceImpl implements ResCharacterService {
 
         // 批量加载造型信息
         List<Long> characterIds = entityPage.getRecords().stream().map(ResCharacter::getId).collect(Collectors.toList());
-        List<ResCharacterOutfit> outfits = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterOutfit>()
-                .in(ResCharacterOutfit::getCharacterId, characterIds)
-                .orderByDesc(ResCharacterOutfit::getIsDefault)
-                .orderByAsc(ResCharacterOutfit::getSortOrder));
+        List<ResCharacterLook> looks = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterLook>()
+                .in(ResCharacterLook::getCharacterId, characterIds)
+                .orderByDesc(ResCharacterLook::getIsDefault)
+                .orderByAsc(ResCharacterLook::getSortOrder));
 
-        Map<Long, List<ResCharacterOutfitVO>> outfitMap = outfits.stream()
+        Map<Long, List<ResCharacterLookVO>> outfitMap = looks.stream()
                 .map(this::toOutfitVO)
-                .collect(Collectors.groupingBy(ResCharacterOutfitVO::getCharacterId));
+                .collect(Collectors.groupingBy(ResCharacterLookVO::getCharacterId));
 
         List<ResCharacterVO> voList = entityPage.getRecords().stream().map(entity -> {
             ResCharacterVO vo = toVO(entity);
-            List<ResCharacterOutfitVO> charOutfits = outfitMap.getOrDefault(entity.getId(), Collections.emptyList());
-            vo.setOutfits(charOutfits);
+            List<ResCharacterLookVO> charOutfits = outfitMap.getOrDefault(entity.getId(), Collections.emptyList());
             vo.setLooks(new ArrayList<>(charOutfits));
-            vo.setOutfitCount(charOutfits.size());
-            ResCharacterOutfitVO defLook = charOutfits.stream().filter(o -> Integer.valueOf(1).equals(o.getIsDefault())).findFirst().orElse(null);
-            vo.setDefaultOutfit(defLook);
+            vo.setLookCount(charOutfits.size());
+            ResCharacterLookVO defLook = charOutfits.stream().filter(o -> Integer.valueOf(1).equals(o.getIsDefault())).findFirst().orElse(null);
             vo.setDefaultLook(defLook);
             if (defLook != null && StringUtils.isNotBlank(defLook.getReferenceImageUrl())) {
                 vo.setReferenceImageUrl(defLook.getReferenceImageUrl());
@@ -152,12 +146,10 @@ public class ResCharacterServiceImpl implements ResCharacterService {
             throw new BizException("人物角色不存在");
         }
         ResCharacterVO vo = toVO(entity);
-        List<ResCharacterOutfitVO> outfits = outfitService.listByCharacterId(id);
-        vo.setOutfits(outfits);
-        vo.setLooks(new ArrayList<>(outfits));
-        vo.setOutfitCount(outfits.size());
-        ResCharacterOutfitVO defLook = outfits.stream().filter(o -> Integer.valueOf(1).equals(o.getIsDefault())).findFirst().orElse(null);
-        vo.setDefaultOutfit(defLook);
+        List<ResCharacterLookVO> looks = outfitService.listByCharacterId(id);
+        vo.setLooks(new ArrayList<>(looks));
+        vo.setLookCount(looks.size());
+        ResCharacterLookVO defLook = looks.stream().filter(o -> Integer.valueOf(1).equals(o.getIsDefault())).findFirst().orElse(null);
         vo.setDefaultLook(defLook);
         if (defLook != null && StringUtils.isNotBlank(defLook.getReferenceImageUrl())) {
             vo.setReferenceImageUrl(defLook.getReferenceImageUrl());
@@ -286,15 +278,15 @@ public class ResCharacterServiceImpl implements ResCharacterService {
 
         if (dubbingService != null) dubbingService.deleteForCharacter(id);
 
-        var images = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterOutfit>()
-                .eq(ResCharacterOutfit::getCharacterId, id)).stream()
-                .map(ResCharacterOutfit::getReferenceImageUrl).toList();
+        var images = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterLook>()
+                .eq(ResCharacterLook::getCharacterId, id)).stream()
+                .map(ResCharacterLook::getReferenceImageUrl).toList();
 
         // 删除角色本身
         characterMapper.deleteById(id);
 
         // 级联逻辑删除该角色的所有造型
-        outfitMapper.delete(new LambdaQueryWrapper<ResCharacterOutfit>().eq(ResCharacterOutfit::getCharacterId, id));
+        outfitMapper.delete(new LambdaQueryWrapper<ResCharacterLook>().eq(ResCharacterLook::getCharacterId, id));
         mediaCleanup.deleteAfterCommit(images);
     }
 
@@ -314,23 +306,23 @@ public class ResCharacterServiceImpl implements ResCharacterService {
         }
 
         List<Long> characterIds = characters.stream().map(ResCharacter::getId).collect(Collectors.toList());
-        List<ResCharacterOutfit> outfits = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterOutfit>()
-                .in(ResCharacterOutfit::getCharacterId, characterIds)
-                .eq(ResCharacterOutfit::getStatus, 1)
-                .orderByDesc(ResCharacterOutfit::getIsDefault)
-                .orderByAsc(ResCharacterOutfit::getSortOrder));
+        List<ResCharacterLook> looks = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterLook>()
+                .in(ResCharacterLook::getCharacterId, characterIds)
+                .eq(ResCharacterLook::getStatus, 1)
+                .orderByDesc(ResCharacterLook::getIsDefault)
+                .orderByAsc(ResCharacterLook::getSortOrder));
 
-        Map<Long, List<ResCharacterOutfitVO>> outfitMap = outfits.stream()
+        Map<Long, List<ResCharacterLookVO>> outfitMap = looks.stream()
                 .map(this::toOutfitVO)
-                .collect(Collectors.groupingBy(ResCharacterOutfitVO::getCharacterId));
+                .collect(Collectors.groupingBy(ResCharacterLookVO::getCharacterId));
 
         return characters.stream().map(c -> {
             ResCharacterOptionVO vo = new ResCharacterOptionVO();
             vo.setId(c.getId());
             vo.setDramaId(c.getDramaId());
             vo.setName(StringUtils.defaultIfBlank(c.getCanonicalName(), c.getName()));
-            List<ResCharacterOutfitVO> charOutfits = outfitMap.getOrDefault(c.getId(), Collections.emptyList());
-            ResCharacterOutfitVO defLook = charOutfits.stream().filter(o -> Integer.valueOf(1).equals(o.getIsDefault())).findFirst().orElse(null);
+            List<ResCharacterLookVO> charOutfits = outfitMap.getOrDefault(c.getId(), Collections.emptyList());
+            ResCharacterLookVO defLook = charOutfits.stream().filter(o -> Integer.valueOf(1).equals(o.getIsDefault())).findFirst().orElse(null);
             if (defLook != null && StringUtils.isNotBlank(defLook.getReferenceImageUrl())) {
                 vo.setReferenceImageUrl(defLook.getReferenceImageUrl());
             } else {
@@ -342,7 +334,7 @@ public class ResCharacterServiceImpl implements ResCharacterService {
             vo.setVoiceSampleUrl(c.getVoiceSampleUrl());
             vo.setVoiceSampleText(c.getVoiceSampleText());
             vo.setVoiceDesc(c.getVoiceDesc());
-            vo.setOutfits(charOutfits);
+            vo.setLooks(charOutfits);
             return vo;
         }).collect(Collectors.toList());
     }
@@ -442,9 +434,6 @@ public class ResCharacterServiceImpl implements ResCharacterService {
     }
 
     private SkillPromptContext loadSkillContext(Long characterId, List<String> selectedSkillNames) {
-        if (skillPromptContextService == null) {
-            return SkillPromptContext.empty();
-        }
         return skillPromptContextService.loadSelected(
                 "character-identity-prompt", String.valueOf(characterId), selectedSkillNames);
     }
@@ -466,9 +455,7 @@ public class ResCharacterServiceImpl implements ResCharacterService {
 
         String systemPrompt = sysConfigService.getConfigValue("ai.prompt.character_identity_prompt_system", DEFAULT_CHARACTER_IDENTITY_SYSTEM_PROMPT);
         SkillPromptContext skillContext = loadSkillContext(dto.getCharacterId(), dto.getSelectedSkillNames());
-        systemPrompt = skillPromptContextService != null
-                ? skillPromptContextService.appendToSystemPrompt(systemPrompt, skillContext)
-                : systemPrompt;
+        systemPrompt = skillPromptContextService.appendToSystemPrompt(systemPrompt, skillContext);
 
         StringBuilder userPrompt = new StringBuilder();
         userPrompt.append("请根据以下角色稳定身份设定，输出角色专属纯正英文外观提示词 (appearancePrompt) 与负向约束 (negativePrompt)：\n");
@@ -609,7 +596,7 @@ public class ResCharacterServiceImpl implements ResCharacterService {
     }
 
     private String appendSkillContext(String systemPrompt, SkillPromptContext skillContext) {
-        if (skillPromptContextService == null || skillContext == null || !skillContext.hasSkills()) {
+        if (skillContext == null || !skillContext.hasSkills()) {
             return systemPrompt;
         }
         return skillPromptContextService.appendToSystemPrompt(systemPrompt, skillContext);
@@ -623,12 +610,6 @@ public class ResCharacterServiceImpl implements ResCharacterService {
     private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
                                        String consumer, String requestId, List<String> requiredSkillNames,
                                        java.util.function.Consumer<String> stageListener) {
-        if (skillPromptContextService == null || loadSkillToolFactory == null) {
-            ChatResponse response = chatModel.call(new Prompt(List.of(
-                    new SystemMessage(systemPrompt), new UserMessage(userPrompt))));
-            return response != null && response.getResult() != null && response.getResult().getOutput() != null
-                    ? response.getResult().getOutput().getText() : null;
-        }
 
         LoadSkillToolSession session = skillPromptContextService.createApiSession(consumer, requestId, requiredSkillNames);
         SkillPromptContext requiredContext = skillPromptContextService.loadSelected(
@@ -659,8 +640,8 @@ public class ResCharacterServiceImpl implements ResCharacterService {
         return vo;
     }
 
-    private ResCharacterOutfitVO toOutfitVO(ResCharacterOutfit entity) {
-        ResCharacterOutfitVO vo = new ResCharacterOutfitVO();
+    private ResCharacterLookVO toOutfitVO(ResCharacterLook entity) {
+        ResCharacterLookVO vo = new ResCharacterLookVO();
         BeanUtils.copyProperties(entity, vo);
         return vo;
     }

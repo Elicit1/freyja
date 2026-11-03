@@ -16,7 +16,7 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class ControlImageVO {
 
-    /** 控制类型：FACE_ID / TRIVIEW / SCENE_REF / OUTFIT_REF / CONTROLNET */
+    /** 控制类型：CHARACTER_REF / SCENE_REF / KEYFRAME_REF / CONTROLNET */
     private String controlType;
 
     /** 图片 URL */

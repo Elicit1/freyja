@@ -8,7 +8,7 @@ import com.astra.freyja.dto.drama.DramaShotFirstFrameDTO;
 import com.astra.freyja.dto.res.AssetImageGenerationRequest;
 import com.astra.freyja.dto.res.AssetImageGenerationVO;
 import com.astra.freyja.entity.ResCharacter;
-import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.entity.ResCharacterLook;
 import com.astra.freyja.entity.ResProp;
 import com.astra.freyja.entity.ResScene;
 import com.astra.freyja.service.AiImageApiService;
@@ -29,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class AssetImageGenerationServiceImpl implements AssetImageGenerationService {
     private final AiImageApiService aiImageApiService;
     private final ResCharacterMapper characterMapper;
-    private final com.astra.freyja.dao.ResCharacterOutfitMapper outfitMapper;
+    private final com.astra.freyja.dao.ResCharacterLookMapper outfitMapper;
     private final ResSceneMapper sceneMapper;
     private final ResPropMapper propMapper;
     private final com.astra.freyja.service.RenderTaskService renderTaskService;
@@ -41,9 +41,9 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
         String taskId = "ASSET_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
 
         // 如果是造型生图且未显式指定参考图，自动注入人物身份参考图作为垫图/面部保持基准
-        if (("CHARACTER_OUTFIT".equalsIgnoreCase(request.getTargetType()) || "OUTFIT".equalsIgnoreCase(request.getTargetType()))
+        if ("CHARACTER_LOOK".equalsIgnoreCase(request.getTargetType())
                 && (request.getReferenceImageUrls() == null || request.getReferenceImageUrls().isEmpty())) {
-            ResCharacterOutfit outfit = outfitMapper.selectById(request.getTargetId());
+            ResCharacterLook outfit = outfitMapper.selectById(request.getTargetId());
             if (outfit != null && outfit.getCharacterId() != null) {
                 ResCharacter character = characterMapper.selectById(outfit.getCharacterId());
                 if (character != null && StringUtils.isNotBlank(character.getReferenceImageUrl())) {
@@ -132,8 +132,8 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
                 default -> throw new BizException(400, "不支持的角色图片槽位: " + slot);
             }
             characterMapper.updateById(character);
-        } else if ("CHARACTER_OUTFIT".equalsIgnoreCase(targetType) || "OUTFIT".equalsIgnoreCase(targetType)) {
-            ResCharacterOutfit outfit = outfitMapper.selectById(targetId);
+        } else if ("CHARACTER_LOOK".equalsIgnoreCase(targetType)) {
+            ResCharacterLook outfit = outfitMapper.selectById(targetId);
             if (outfit == null) throw new BizException(404, "人物造型不存在");
             switch (slot.toUpperCase()) {
                 case "REFERENCE", "PREVIEW" -> outfit.setReferenceImageUrl(imageUrl);
@@ -166,6 +166,10 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
         if (request == null || request.getTargetId() == null || StringUtils.isBlank(request.getTargetType())
                 || StringUtils.isBlank(request.getSlot()) || StringUtils.isBlank(request.getPrompt())) {
             throw new BizException(400, "资产、图片槽位和生成提示词不能为空");
+        }
+        if (!java.util.Set.of("CHARACTER", "CHARACTER_LOOK", "SCENE", "PROP")
+                .contains(request.getTargetType().toUpperCase(java.util.Locale.ROOT))) {
+            throw new BizException(400, "不支持的资产类型: " + request.getTargetType());
         }
     }
 }

@@ -14,10 +14,10 @@ public class McpToolInventory {
     private McpVoiceTools voices;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private McpDubbingTools dubbing;
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.beans.factory.annotation.Autowired
     private com.astra.freyja.capability.service.CapabilityCatalogService capabilities;
     public List<McpTool<?>> all() {
-        return capabilities == null ? registeredHandlers() : capabilities.mcpTools();
+        return capabilities.mcpTools();
     }
     public List<McpTool<?>> registeredHandlers() {
         List<McpTool<?>> result = new ArrayList<>(reads.tools()); result.addAll(business.allTools());

@@ -29,9 +29,6 @@ public class VideoProcessSubmitDTO {
     /** 模型中心 AI 模型 ID (新调用必填) */
     private Long modelId;
 
-    /** 模型标识代码 (保留兼容旧调用) */
-    private String modelCode;
-
     /** 输入源视频帧率 (FPS，如 24) */
     private Integer sourceFps;
 

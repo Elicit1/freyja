@@ -60,24 +60,6 @@ public class DramaShot extends BaseEntity {
     /** 画面动作与视觉描述 */
     private String actionDescription;
 
-    /** 对白台词 */
-    @Deprecated
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    @TableField(updateStrategy = FieldStrategy.NEVER)
-    private String dialogue;
-
-    /** 台词说话人 */
-    @Deprecated
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    @TableField(updateStrategy = FieldStrategy.NEVER)
-    private String dialogueSpeaker;
-
-    /** 旁白/内心独白 */
-    @Deprecated
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    @TableField(updateStrategy = FieldStrategy.NEVER)
-    private String voiceover;
-
     /** 音效描述 */
     private String soundEffect;
 
@@ -168,11 +150,6 @@ public class DramaShot extends BaseEntity {
 
     /** 当前选中的分镜视频 Take ID */
     private Long currentVideoTakeId;
-
-    /** TTS配音音频 (MinIO URL) */
-    @Deprecated
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    private String audioUrl;
 
     /** 渲染状态 (INIT/QUEUED/RENDERING/SUCCESS/FAILED) */
     private String renderStatus;

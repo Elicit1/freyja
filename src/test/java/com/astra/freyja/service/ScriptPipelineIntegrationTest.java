@@ -44,7 +44,7 @@ class ScriptPipelineIntegrationTest {
     private ResCharacterMapper characterMapper;
 
     @Mock
-    private ResCharacterOutfitMapper outfitMapper;
+    private ResCharacterLookMapper outfitMapper;
 
     @Mock
     private ResSceneMapper resSceneMapper;
@@ -96,6 +96,15 @@ class ScriptPipelineIntegrationTest {
     void setUp() {
         validationService = new AIOutputValidationServiceImpl(objectMapper);
         aiTaskService = new AiTaskServiceImpl(aiTaskMapper);
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
+                new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), "tasks"),
+                com.astra.freyja.entity.AiTask.class);
+        var taskIds = new java.util.concurrent.atomic.AtomicLong(10000);
+        lenient().when(aiTaskMapper.insert(any(com.astra.freyja.entity.AiTask.class))).thenAnswer(invocation -> {
+            com.astra.freyja.entity.AiTask task = invocation.getArgument(0);
+            task.setId(taskIds.incrementAndGet());
+            return 1;
+        });
 
         promptBuilder = new PromptBuilderImpl(sysConfigService);
 

@@ -11,7 +11,7 @@ import com.astra.freyja.dto.drama.ShotRefAudioDTO;
 import com.astra.freyja.dto.drama.ShotRefImageDTO;
 import com.astra.freyja.dto.drama.manifest.ReferenceManifest;
 import com.astra.freyja.entity.ResCharacter;
-import com.astra.freyja.entity.ResCharacterOutfit;
+import com.astra.freyja.entity.ResCharacterLook;
 import com.astra.freyja.entity.ResKeyframe;
 import com.astra.freyja.entity.ResProp;
 import com.astra.freyja.entity.ResScene;
@@ -83,7 +83,7 @@ class ShotPromptDeriveH3Test {
     @Mock
     private ResCharacterMapper characterMapper;
     @Mock
-    private ResCharacterOutfitMapper outfitMapper;
+    private ResCharacterLookMapper outfitMapper;
     @Mock
     private ResPropMapper propMapper;
     @Mock
@@ -126,6 +126,7 @@ class ShotPromptDeriveH3Test {
                 directorPlanMergeService,
                 new com.astra.freyja.service.impl.CharacterVisualAssetResolverImpl(characterMapper, outfitMapper)
         );
+        com.astra.freyja.service.PromptServiceTestSupport.configure(service);
         service.setResKeyframeMapper(resKeyframeMapper);
         lenient().when(sysConfigService.getConfigValue(anyString(), anyString())).thenAnswer(inv -> inv.getArgument(1));
     }
@@ -282,7 +283,7 @@ class ShotPromptDeriveH3Test {
         when(shotMapper.selectById(7L)).thenReturn(shot);
         ResCharacter character = new ResCharacter(); character.setId(201L); character.setName("林默");
         when(characterMapper.selectById(201L)).thenReturn(character);
-        ResCharacterOutfit look = new ResCharacterOutfit(); look.setId(301L); look.setCharacterId(201L);
+        ResCharacterLook look = new ResCharacterLook(); look.setId(301L); look.setCharacterId(201L);
         look.setOutfitPrompt("charcoal-gray sleeves");
         when(outfitMapper.selectById(301L)).thenReturn(look);
         ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder().shotId(7L).build();
@@ -778,7 +779,7 @@ class ShotPromptDeriveH3Test {
         assertTrue(pkg1.getUserPrompt().contains("范闲 (定位: PROTAGONIST)"));
 
         // 2. 测试通过 lookId 获取 outfit 的 designDesc
-        ResCharacterOutfit outfit = new ResCharacterOutfit();
+        ResCharacterLook outfit = new ResCharacterLook();
         outfit.setId(601L);
         outfit.setCharacterId(501L);
         outfit.setLookName("夜行黑衣");
@@ -815,7 +816,7 @@ class ShotPromptDeriveH3Test {
         rem.setAppearanceDesc("浅蓝色短发遮住右眼，常年身穿经典洛丽塔女仆黑白短裙装，白色围裙，头戴女仆发箍");
         when(characterMapper.selectById(701L)).thenReturn(rem);
 
-        ResCharacterOutfit weddingLook = new ResCharacterOutfit();
+        ResCharacterLook weddingLook = new ResCharacterLook();
         weddingLook.setId(801L);
         weddingLook.setCharacterId(701L);
         weddingLook.setLookName("花嫁婚纱");
@@ -970,7 +971,7 @@ class ShotPromptDeriveH3Test {
         assertTrue(ex1.getMessage().contains("所选人物造型不存在或已停用"));
 
         // 2. 属于其他角色的 lookId
-        ResCharacterOutfit mismatchedLook = new ResCharacterOutfit();
+        ResCharacterLook mismatchedLook = new ResCharacterLook();
         mismatchedLook.setId(888L);
         mismatchedLook.setCharacterId(999L); // 属于角色 999
         mismatchedLook.setStatus(1);
@@ -1000,7 +1001,7 @@ class ShotPromptDeriveH3Test {
         rem.setAppearanceDesc("浅蓝色短发遮右眼，身穿经典洛丽塔女仆黑白短裙装，白色围裙，头戴女仆发箍");
         when(characterMapper.selectById(706L)).thenReturn(rem);
 
-        ResCharacterOutfit weddingLook = new ResCharacterOutfit();
+        ResCharacterLook weddingLook = new ResCharacterLook();
         weddingLook.setId(806L);
         weddingLook.setCharacterId(706L);
         weddingLook.setLookName("花嫁婚纱");
@@ -1066,12 +1067,12 @@ class ShotPromptDeriveH3Test {
         character.setReferenceImageUrl("http://minio/freyja/characters/char_201.png");
         when(characterMapper.selectById(201L)).thenReturn(character);
 
-        ResCharacterOutfit outfit = new ResCharacterOutfit();
+        ResCharacterLook outfit = new ResCharacterLook();
         outfit.setId(301L);
         outfit.setCharacterId(201L);
         outfit.setLookName("战袍");
         outfit.setOutfitPrompt("black tactical armor");
-        outfit.setReferenceImageUrl("http://minio/freyja/outfits/look_301.png");
+        outfit.setReferenceImageUrl("http://minio/freyja/looks/look_301.png");
         outfit.setStatus(1);
         when(outfitMapper.selectById(301L)).thenReturn(outfit);
 
@@ -1110,7 +1111,7 @@ class ShotPromptDeriveH3Test {
                                 .sourceId(201L)
                                 .lookId(301L)
                                 .name("林默")
-                                .imageUrl("http://minio/freyja/outfits/look_301.png")
+                                .imageUrl("http://minio/freyja/looks/look_301.png")
                                 .build()
                 ))
                 .refAudios(List.of(
@@ -1166,7 +1167,7 @@ class ShotPromptDeriveH3Test {
         rem.setAppearanceDesc("蓝色短发，右眼常被刘海遮挡，常年身穿经典洛丽塔女仆黑白短裙装，白色围裙，头戴女仆发箍");
         when(characterMapper.selectById(remCharacterId)).thenReturn(rem);
 
-        ResCharacterOutfit weddingLook = new ResCharacterOutfit();
+        ResCharacterLook weddingLook = new ResCharacterLook();
         weddingLook.setId(remWeddingLookId);
         weddingLook.setCharacterId(remCharacterId);
         weddingLook.setLookName("花嫁雷姆");

@@ -135,8 +135,8 @@ public class ProductionAssets {
             case "CHARACTER" -> {
                 var d = new ResCharacterDTO(); d.setDramaId(drama); d.setName(a.getName()); d.setCanonicalName(a.getCanonicalName());
                 d.setAliases(a.getAliases()); d.setPersonality(a.getPersonality()); d.setAppearanceDesc(a.getDescription());
-                d.setAppearancePrompt(a.getPrompt()); d.setDefaultOutfitName(a.getName() + "基础造型");
-                d.setDefaultOutfitPrompt(a.getOutfitPrompt()); yield characterService.create(d);
+                d.setAppearancePrompt(a.getPrompt()); d.setDefaultLookName(a.getName() + "基础造型");
+                d.setDefaultLookPrompt(a.getOutfitPrompt()); yield characterService.create(d);
             }
             case "CHARACTER_LOOK" -> {
                 Material c = resolve("CHARACTER", a.getCharacterId(), drama);

@@ -20,20 +20,16 @@ import java.util.stream.Collectors;
 
 public final class McpAuthenticationFilter extends OncePerRequestFilter {
     private static final int MAX_BODY_BYTES = 2 * 1024 * 1024;
-    private final McpProperties properties;
     private final McpRuntimeControl control;
-    private com.astra.freyja.capability.service.CapabilityMcpDispatcher dispatcher;
+    private final com.astra.freyja.capability.service.CapabilityMcpDispatcher dispatcher;
 
-    public void setDispatcher(com.astra.freyja.capability.service.CapabilityMcpDispatcher dispatcher) { this.dispatcher = dispatcher; }
-
-    public McpAuthenticationFilter(McpProperties properties) {
-        this(properties, null);
-    }
-    public McpAuthenticationFilter(McpProperties properties, McpRuntimeControl control) {
-        this.properties = properties; this.control = control;
-        if (control == null && properties.isEnabled() && !McpRuntimeControl.validToken(properties.getToken()))
-            throw new IllegalStateException("开启 MCP 必须配置至少 24 字符的 FREYJA_MCP_TOKEN");
-        properties.getAllowedProjectIds().stream().filter(s -> !s.isBlank()).forEach(McpScope::id);
+    public McpAuthenticationFilter(McpRuntimeControl control, com.astra.freyja.capability.service.CapabilityMcpDispatcher dispatcher) {
+        this.dispatcher = java.util.Objects.requireNonNull(dispatcher);
+        this.control = java.util.Objects.requireNonNull(control);
+        var settings = control.current();
+        if (settings.isEnabled() && !McpRuntimeControl.validToken(control.token(settings)))
+            throw new IllegalStateException("开启 MCP 必须配置至少 24 字符的访问令牌");
+        settings.getAllowedProjectIds().forEach(McpScope::id);
     }
 
     @Override protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -43,17 +39,16 @@ public final class McpAuthenticationFilter extends OncePerRequestFilter {
 
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        McpRuntimeSettings settings = control == null ? null : control.current();
-        boolean enabled = settings == null ? properties.isEnabled() : settings.isEnabled();
+        McpRuntimeSettings settings = control.current();
+        boolean enabled = settings.isEnabled();
         if (!enabled) { reject(response, 404, "MCP_DISABLED"); return; }
-        String token = settings == null ? properties.getToken() : control.token(settings);
+        String token = control.token(settings);
         if (!McpRuntimeControl.validToken(token)) { reject(response, 503, "MCP_TOKEN_NOT_CONFIGURED"); return; }
         byte[] credential = token.getBytes(StandardCharsets.UTF_8);
-        Set<String> origins = settings == null ? properties.getAllowedOrigins() : settings.getAllowedOrigins();
-        Set<Long> projects = (settings == null ? properties.getAllowedProjectIds() : settings.getAllowedProjectIds()).stream().filter(s -> !s.isBlank())
+        Set<String> origins = settings.getAllowedOrigins();
+        Set<Long> projects = settings.getAllowedProjectIds().stream().filter(s -> !s.isBlank())
                 .map(McpScope::id).collect(Collectors.toUnmodifiableSet());
-        McpPrincipal principal = settings == null ? new McpPrincipal(properties.isWriteEnabled(), properties.isAllowAllProjects(), properties.isAllowCreateProjects(), projects)
-                : new McpPrincipal(settings.isWriteEnabled(), settings.isAllowAllProjects(), settings.isAllowCreateProjects(), projects);
+        McpPrincipal principal = new McpPrincipal(settings.isWriteEnabled(), settings.isAllowAllProjects(), settings.isAllowCreateProjects(), projects);
         String origin = request.getHeader("Origin");
         if (origin != null && !origins.contains(origin)) { reject(response, 403, "MCP_ORIGIN_DENIED"); return; }
         if (origin != null) {
@@ -81,7 +76,7 @@ public final class McpAuthenticationFilter extends OncePerRequestFilter {
             reject(response, 413, "MCP_REQUEST_TOO_LARGE"); return;
         }
         request.setAttribute(McpPrincipal.CONTEXT_KEY, principal);
-        if (dispatcher != null && dispatcher.handle(request, response, body, principal)) return;
+        if (dispatcher.handle(request, response, body, principal)) return;
         chain.doFilter(new BufferedRequest(request, body), response);
     }
 

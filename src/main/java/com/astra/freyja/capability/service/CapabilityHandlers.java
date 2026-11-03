@@ -38,7 +38,7 @@ public class CapabilityHandlers {
                 register(entries, new Handler(key, tool, null, schema, Effect.valueOf(tool.effect().name()),
                         tool.effect() == McpTool.Effect.WRITE ? RecoveryMode.TRANSACTIONAL : RecoveryMode.REPLAY_SAFE, project));
             }
-            for (AgentTool<?> tool : nativeTools.getObject()) {
+            for (AgentTool<?> tool : nativeTools.getIfAvailable(List::of)) {
                 String key = Consumer.INTERNAL_AGENT.name() + ":" + tool.name();
                 var schema = parse(tool.descriptor().inputSchema());
                 stringIds(schema);

@@ -150,7 +150,6 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
         ResolvedVideoProcessingModel resolvedModel = modelResolver.resolve(
                 dto.getProviderId(),
                 dto.getModelId(),
-                dto.getModelCode(),
                 op,
                 dto.getScale(),
                 dto.getMultiplier(),

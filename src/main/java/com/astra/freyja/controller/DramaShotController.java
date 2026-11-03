@@ -1,7 +1,7 @@
 package com.astra.freyja.controller;
 
 import com.astra.freyja.common.R;
-import com.astra.freyja.dto.comfy.ComfyRenderTaskVO;
+import com.astra.freyja.dto.render.RenderSubmissionVO;
 import com.astra.freyja.dto.drama.DramaShotBatchAssembleDTO;
 import com.astra.freyja.dto.drama.DramaShotDTO;
 import com.astra.freyja.dto.drama.DramaShotRenderRequestDTO;
@@ -136,7 +136,7 @@ public class DramaShotController {
     }
 
     @PostMapping("/{id}/generate-first-frame")
-    public R<ComfyRenderTaskVO> generateFirstFrame(@PathVariable Long id,
+    public R<RenderSubmissionVO> generateFirstFrame(@PathVariable Long id,
                                                    @RequestBody(required = false) com.astra.freyja.dto.drama.DramaShotFirstFrameDTO dto) {
         return R.ok(shotService.generateFirstFrame(id, dto));
     }
@@ -191,7 +191,7 @@ public class DramaShotController {
     }
 
     @PostMapping("/{id}/render")
-    public R<ComfyRenderTaskVO> submitRender(@PathVariable Long id,
+    public R<RenderSubmissionVO> submitRender(@PathVariable Long id,
                                              @RequestBody(required = false) DramaShotRenderRequestDTO requestDTO) {
         return R.ok(shotService.submitShotRender(id, requestDTO));
     }

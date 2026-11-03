@@ -22,7 +22,7 @@ public class LoraItemVO {
     /** 模型权重 */
     private BigDecimal weight;
 
-    /** 来源类型：CHARACTER / OUTFIT / SCENE / CUSTOM */
+    /** 来源类型：CHARACTER / CHARACTER_LOOK / SCENE / CUSTOM */
     private String source;
 
     /** 关联的资产名称（便于前端展示说明） */

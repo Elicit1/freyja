@@ -2,8 +2,8 @@ package com.astra.freyja.controller;
 
 import com.astra.freyja.common.R;
 import com.astra.freyja.dto.res.AssetPromptPackageVO;
-import com.astra.freyja.dto.res.OutfitPromptDeriveDTO;
-import com.astra.freyja.dto.res.OutfitPromptDeriveVO;
+import com.astra.freyja.dto.res.LookPromptDeriveDTO;
+import com.astra.freyja.dto.res.LookPromptDeriveVO;
 import com.astra.freyja.dto.res.ResCharacterLookDTO;
 import com.astra.freyja.dto.res.ResCharacterLookVO;
 import com.astra.freyja.service.ResCharacterLookService;
@@ -97,7 +97,7 @@ public class ResCharacterLookController {
      * AI 智能衍生造型提示词
      */
     @PostMapping("/look/derive-prompt")
-    public R<OutfitPromptDeriveVO> derivePrompt(@RequestBody OutfitPromptDeriveDTO dto) {
+    public R<LookPromptDeriveVO> derivePrompt(@RequestBody LookPromptDeriveDTO dto) {
         return R.ok(lookService.deriveLookPrompt(dto));
     }
 
@@ -105,7 +105,7 @@ public class ResCharacterLookController {
      * AI 智能衍生造型提示词 (流式 SSE)
      */
     @PostMapping(value = "/look/derive-prompt-stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter derivePromptStream(@RequestBody OutfitPromptDeriveDTO dto) {
+    public SseEmitter derivePromptStream(@RequestBody LookPromptDeriveDTO dto) {
         return lookService.deriveLookPromptStream(dto);
     }
 
@@ -113,7 +113,7 @@ public class ResCharacterLookController {
      * 构建造型提示词任务导出包
      */
     @PostMapping("/look/derive-prompt-package")
-    public R<AssetPromptPackageVO> derivePromptPackage(@RequestBody OutfitPromptDeriveDTO dto) {
+    public R<AssetPromptPackageVO> derivePromptPackage(@RequestBody LookPromptDeriveDTO dto) {
         return R.ok(lookService.buildLookPromptPackage(dto));
     }
 }

@@ -77,7 +77,7 @@ export function useShotReferenceAssets(
       if (!char) continue
 
       // 寻找当前选中的造型（或默认造型）
-      const selectedOutfit = char.outfits?.find(o =>
+      const selectedOutfit = char.looks?.find(o =>
         (charRef.lookId && String(charRef.lookId) === String(o.id)) ||
         (!charRef.lookId && o.isDefault === 1)
       )

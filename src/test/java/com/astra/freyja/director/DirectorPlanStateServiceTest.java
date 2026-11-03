@@ -203,7 +203,7 @@ class DirectorPlanStateServiceTest {
 
     @Test void confirmedReplanningUpdatesHashPlanAndModeTogetherOnlyOnCompletion() {
         generatedBasis(); shot.setDirectorPlanMode("MANUAL");
-        String oldHash = shot.getDirectorPlanInputHash(); shot.setVoiceover("new voiceover");
+        String oldHash = shot.getDirectorPlanInputHash(); shot.setScriptContent("new script");
         ShotPromptDeriveDTO dto = localRequest(); dto.setDirectorPlanOverwriteConfirmed(true);
         service.freeze(dto);
         verify(mapper, never()).update(isNull(), any(UpdateWrapper.class));

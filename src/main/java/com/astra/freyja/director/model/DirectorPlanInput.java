@@ -24,7 +24,7 @@ public record DirectorPlanInput(Integer shotNo, String shotName, Double duration
     public static DirectorPlanInput fromShot(DramaShot shot) {
         return new DirectorPlanInput(shot.getShotNo(), shot.getShotName(), shot.getDuration() == null ? null : shot.getDuration().doubleValue(),
                 shot.getShotTypeLocked(), shot.getShotType(), shot.getCameraMovementLocked(), shot.getCameraMovement(),
-                com.astra.freyja.util.UnifiedShotScript.fromShot(shot), shot.getActionDescription(), shot.getSoundEffect()).normalized();
+                shot.getScriptContent(), shot.getActionDescription(), shot.getSoundEffect()).normalized();
     }
 
     public static DirectorPlanInput fromRequest(ShotPromptDeriveDTO dto) {

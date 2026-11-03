@@ -24,7 +24,6 @@ import java.util.Set;
 @Component
 @RequiredArgsConstructor
 public class AgentConfigValidator {
-    public static final Set<String> AVATAR_STATES = Set.of("IDLE", "THINKING", "WORKING", "SUCCESS", "ATTENTION", "ERROR");
     private final AgentProfileRegistry profiles;
     private final AgentToolRegistry tools;
     private final AiProviderMapper providers;
@@ -36,7 +35,7 @@ public class AgentConfigValidator {
         AgentProfile profile = profiles.require(code);
         List<ValidationIssue> errors = new ArrayList<>(), warnings = new ArrayList<>();
         if (config == null) return new ValidationResult(false, List.of(issue("config", "REQUIRED", "配置不能为空")), warnings);
-        if (config.getAgentCode() != null && !java.util.Objects.equals(AgentProfileRegistry.canonicalCode(code), AgentProfileRegistry.canonicalCode(config.getAgentCode())))
+        if (config.getAgentCode() != null && !java.util.Objects.equals(code, config.getAgentCode()))
             errors.add(issue("agentCode", "MISMATCH", "Agent 编码不能修改"));
         text(errors, "displayName", config.getDisplayName(), 100);
         if (config.getDescription() != null && config.getDescription().length() > 500)
@@ -150,27 +149,20 @@ public class AgentConfigValidator {
             text(errors, "avatar.pet.displayName", pet.getDisplayName(), 100);
             if (pet.getDescription() != null && pet.getDescription().length() > 1000)
                 errors.add(issue("avatar.pet.description", "SIZE", "宠物描述不能超过 1000 字"));
-            var sheet = new AgentConfigDTO.StateMedia(); sheet.setUrl(pet.getSpritesheetUrl()); sheet.setContentType(pet.getContentType());
-            if (!validMedia(sheet) || !Set.of("image/webp", "image/png").contains(pet.getContentType() == null ? "" : pet.getContentType())
+            if (!validMedia(pet.getSpritesheetUrl()) || !Set.of("image/webp", "image/png").contains(pet.getContentType() == null ? "" : pet.getContentType())
                     || (pet.getSpriteVersionNumber() != 1 && pet.getSpriteVersionNumber() != 2)
                     || pet.getFrameWidth() != 192 || pet.getFrameHeight() != 208 || pet.getColumns() != 8
                     || pet.getRows() != (pet.getSpriteVersionNumber() == 2 ? 11 : 9))
                 errors.add(issue("avatar.pet", "INVALID_PET", "宠物必须使用 Codex Pet v1/v2 的 PNG/WebP 精灵图"));
         }
-        if (avatar.getStateMedia() == null || avatar.getNotifications() == null) {
-            errors.add(issue("avatar", "REQUIRED", "形象分区不能为空"));
-        } else avatar.getStateMedia().forEach((state, media) -> {
-            if (state == null || !AVATAR_STATES.contains(state) || media == null || !validMedia(media))
-                errors.add(issue("avatar.stateMedia." + state, "INVALID_MEDIA", "仅支持 PNG/WebP/GIF 和 HTTP(S)/站内访问地址"));
-        });
+        if (avatar.getNotifications() == null) errors.add(issue("avatar.notifications", "REQUIRED", "通知配置不能为空"));
         return new ValidationResult(errors.isEmpty(), List.copyOf(errors), List.copyOf(warnings));
     }
-    public static boolean validMedia(AgentConfigDTO.StateMedia media) {
-        if (media.getUrl() == null || media.getUrl().isBlank() || media.getUrl().length() > 2048
-                || media.getContentType() == null || !Set.of("image/png", "image/webp", "image/gif").contains(media.getContentType())) return false;
+    public static boolean validMedia(String url) {
+        if (url == null || url.isBlank() || url.length() > 2048) return false;
         try {
-            URI uri = URI.create(media.getUrl());
-            return (uri.getScheme() == null && media.getUrl().startsWith("/") && !media.getUrl().startsWith("//"))
+            URI uri = URI.create(url);
+            return (uri.getScheme() == null && url.startsWith("/") && !url.startsWith("//"))
                     || (Set.of("https", "http").contains(uri.getScheme()) && uri.getHost() != null);
         } catch (RuntimeException e) { return false; }
     }

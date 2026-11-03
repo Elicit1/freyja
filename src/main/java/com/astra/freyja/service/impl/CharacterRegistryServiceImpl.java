@@ -38,7 +38,7 @@ public class CharacterRegistryServiceImpl implements CharacterRegistryService {
     private final ResCharacterAliasMapper aliasMapper;
     private final ResCharacterEvidenceMapper evidenceMapper;
     private final ResCharacterResolutionMapper resolutionMapper;
-    private final ResCharacterOutfitMapper outfitMapper;
+    private final ResCharacterLookMapper outfitMapper;
     private final DramaShotMapper shotMapper;
     private final ObjectMapper objectMapper;
 
@@ -351,10 +351,10 @@ public class CharacterRegistryServiceImpl implements CharacterRegistryService {
                 .eq(ResCharacterEvidence::getCharacterId, sourceId));
 
         // 3. 迁移服装造型 (res_character_outfit)
-        List<ResCharacterOutfit> sourceOutfits = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterOutfit>()
-                .eq(ResCharacterOutfit::getCharacterId, sourceId));
+        List<ResCharacterLook> sourceOutfits = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterLook>()
+                .eq(ResCharacterLook::getCharacterId, sourceId));
         if (sourceOutfits != null && !sourceOutfits.isEmpty()) {
-            for (ResCharacterOutfit outfit : sourceOutfits) {
+            for (ResCharacterLook outfit : sourceOutfits) {
                 outfit.setCharacterId(targetId);
                 outfit.setIsDefault(0); // 迁移过来的造型不覆盖目标角色的默认造型
                 outfitMapper.updateById(outfit);

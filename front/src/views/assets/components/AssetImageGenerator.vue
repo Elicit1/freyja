@@ -261,7 +261,7 @@ import type { AiModel, AiProviderVO } from '@/types/ai-provider'
 import { validateGenerationSize } from '@/utils/generation-size'
 
 const props = defineProps<{
-  targetType: 'CHARACTER' | 'CHARACTER_OUTFIT' | 'SCENE' | 'PROP'
+  targetType: 'CHARACTER' | 'CHARACTER_LOOK' | 'SCENE' | 'PROP'
   targetId?: string | number
   imageSlot: string
   prompt?: string

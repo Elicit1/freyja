@@ -62,7 +62,7 @@ public class ProductionPlans {
         ShotProductionPlan p = current(shot.getId());
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("shotId", shot.getId()); out.put("shotGroupId", shot.getShotGroupId()); out.put("shotNo", shot.getShotNo()); out.put("shotName", shot.getShotName());
-        out.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(shot)); out.put("actionDescription", shot.getActionDescription());
+        out.put("scriptContent", shot.getScriptContent()); out.put("actionDescription", shot.getActionDescription());
         out.put("duration", shot.getDuration()); out.put("characterRefs", readMaps(shot.getCharacterRefsJson()));
         out.put("propRefs", readMaps(shot.getPropRefsJson())); out.put("resSceneId", shot.getResSceneId()); out.put("resKeyframeId", shot.getResKeyframeId());
         out.put("generationMode", shot.getGenerationMode()); out.put("expectedRevision", p == null ? 0 : p.getRevision());
@@ -82,7 +82,7 @@ public class ProductionPlans {
             try { basis.put(key, new org.springframework.beans.BeanWrapperImpl(s).getPropertyValue(key)); }
             catch (RuntimeException e) { throw new IllegalStateException(key, e); }
         }
-        basis.put("scriptContent", com.astra.freyja.util.UnifiedShotScript.fromShot(s));
+        basis.put("scriptContent", s.getScriptContent());
         if (Boolean.TRUE.equals(s.getShotTypeLocked())) basis.put("shotType", s.getShotType());
         if (Boolean.TRUE.equals(s.getCameraMovementLocked())) basis.put("cameraMovement", s.getCameraMovement());
         basis.put("directorPlanMode", s.getDirectorPlanMode());

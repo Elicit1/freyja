@@ -240,7 +240,7 @@ function payload() {
   const data: AgentConfig = JSON.parse(JSON.stringify(form.value))
   data.model.providerId ||= undefined
   data.model.modelCode ||= undefined
-  data.avatar.stateMedia = {}
+
   return data
 }
 async function validate() {
@@ -266,7 +266,7 @@ async function upload(options: UploadRequestOptions) {
   uploading.value = true
   try {
     const media = await agentConfigApi.uploadAvatar(options.file)
-    if (form.value) { form.value.avatar.pet = media; form.value.avatar.stateMedia = {}; form.value.avatar.visible = true; requestAvatarReveal() }
+    if (form.value) { form.value.avatar.pet = media; form.value.avatar.visible = true; requestAvatarReveal() }
     ElMessage.success('宠物包已导入，保存后生效')
     return media
   } finally { uploading.value = false }
@@ -275,7 +275,7 @@ function requestAvatarReveal() { revealAvatarOnSave.value = !!form.value?.avatar
 function useFreyjaAvatar() {
   if (!form.value) return
   form.value.avatar.pet = structuredClone(freyjaDefaultPet)
-  form.value.avatar.stateMedia = {}
+
   form.value.avatar.visible = true
   requestAvatarReveal()
   ElMessage.success('已恢复默认形象，保存后生效')

@@ -48,7 +48,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
     private final PromptBuilder promptBuilder;
 
     private final ResCharacterMapper characterMapper;
-    private final ResCharacterOutfitMapper outfitMapper;
+    private final ResCharacterLookMapper outfitMapper;
     private final ResSceneMapper resSceneMapper;
     private final ResPropMapper resPropMapper;
     private final DramaMapper dramaMapper;
@@ -74,7 +74,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             CharacterRegistryService characterRegistryService,
             PromptBuilder promptBuilder,
             ResCharacterMapper characterMapper,
-            ResCharacterOutfitMapper outfitMapper,
+            ResCharacterLookMapper outfitMapper,
             ResSceneMapper resSceneMapper,
             ResPropMapper resPropMapper,
             DramaMapper dramaMapper,
@@ -111,7 +111,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             CharacterRegistryService characterRegistryService,
             PromptBuilder promptBuilder,
             ResCharacterMapper characterMapper,
-            ResCharacterOutfitMapper outfitMapper,
+            ResCharacterLookMapper outfitMapper,
             ResSceneMapper resSceneMapper,
             ResPropMapper resPropMapper,
             DramaMapper dramaMapper,
@@ -739,11 +739,11 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                     }
                     if (updated) characterMapper.updateById(existingChar);
 
-                    ResCharacterOutfit defaultOutfit = outfitMapper.selectOne(new LambdaQueryWrapper<ResCharacterOutfit>()
-                            .eq(ResCharacterOutfit::getCharacterId, charId)
-                            .eq(ResCharacterOutfit::getIsDefault, 1)
+                    ResCharacterLook defaultLook = outfitMapper.selectOne(new LambdaQueryWrapper<ResCharacterLook>()
+                            .eq(ResCharacterLook::getCharacterId, charId)
+                            .eq(ResCharacterLook::getIsDefault, 1)
                             .last("LIMIT 1"));
-                    Long lookId = defaultOutfit != null ? defaultOutfit.getId() : null;
+                    Long lookId = defaultLook != null ? defaultLook.getId() : null;
                     bindNamesToCharacterMaps(charVO, charId, lookId, characterNameToId, characterNameToLookId);
                 } else {
                     ResCharacter resChar = new ResCharacter();
@@ -765,7 +765,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                     characterMapper.insert(resChar);
                     charId = resChar.getId();
 
-                    ResCharacterOutfit outfit = new ResCharacterOutfit();
+                    ResCharacterLook outfit = new ResCharacterLook();
                     outfit.setCharacterId(charId);
                     outfit.setLookName("默认造型");
                     outfit.setIsDefault(1);

@@ -1,6 +1,6 @@
-package com.astra.freyja.dto.comfy;
+package com.astra.freyja.dto.render;
 
-import com.astra.freyja.entity.enums.ComfyTaskStatus;
+import com.astra.freyja.entity.enums.RenderSubmissionStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,18 +10,18 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * ComfyUI 渲染任务状态与结果视图对象 VO。
+ * 渲染提交任务状态与结果视图对象 VO。
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class ComfyRenderTaskVO implements Serializable {
+public class RenderSubmissionVO implements Serializable {
 
     /** 业务任务 UUID */
     private String taskId;
 
-    /** ComfyUI Prompt ID */
+    /** 提供商任务标识 */
     private String promptId;
 
     /** 关联项目 ID */
@@ -31,7 +31,7 @@ public class ComfyRenderTaskVO implements Serializable {
     private Long shotId;
 
     /** 任务状态 (PENDING/RUNNING/SUCCESS/FAILED/CANCELED) */
-    private ComfyTaskStatus status;
+    private RenderSubmissionStatus status;
 
     /** 任务状态说明 */
     private String statusDesc;

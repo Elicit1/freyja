@@ -24,8 +24,8 @@ class ResCharacterDTOTest {
                     {"id": 2001, "alias": "小张", "aliasType": "OTHER"},
                     {"id": 2002, "alias": "张哥", "aliasType": "NICKNAME"}
                 ],
-                "defaultOutfit": {"id": 3001, "outfitName": "日常装"},
-                "outfits": [{"id": 3001}]
+                "defaultLook": {"id": 3001, "lookName": "日常装"},
+                "looks": [{"id": 3001}]
             }
             """;
 

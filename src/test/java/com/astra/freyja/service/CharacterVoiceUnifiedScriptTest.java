@@ -20,11 +20,20 @@ import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class CharacterVoiceUnifiedScriptTest {
+    @Test void historicalLookNamesAreConvertedOnlyAtTheSnapshotBoundary() {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        var original = mapper.readTree("{\"characterRefs\":[{\"outfitName\":\"旧造型\",\"characterId\":\"2032095628944588801\"}]}");
+        var converted = com.astra.freyja.util.LegacyShotJsonMigration.projectPromptInput(original);
+        assertEquals("旧造型", converted.path("characterRefs").get(0).path("lookName").asText());
+        assertFalse(converted.toString().contains("outfitName"));
+        assertTrue(original.toString().contains("outfitName"));
+    }
     @Mock DramaShotMapper shots;
+    @Mock com.astra.freyja.dao.ResSceneMapper scenes;
     @InjectMocks ShotAiVisualPlanServiceImpl prompts;
 
     private ShotPromptDeriveDTO input(List<ShotRefAudioDTO> audios) {
-        return ShotPromptDeriveDTO.builder().shotId(1L).refImages(List.of()).characterRefs(List.of()).refAudios(audios).build();
+        return ShotPromptDeriveDTO.builder().shotId(1L).dramaId(1L).refVideos(List.of()).refImages(List.of()).characterRefs(List.of()).refAudios(audios).build();
     }
 
     @Test void explicitOptOutNeverReloadsSavedAudio() {
@@ -84,8 +93,7 @@ class CharacterVoiceUnifiedScriptTest {
 
     @Test void legacySpeechIsVisibleAndNeverGuessesMissingSpeaker() {
         DramaShot saved = new DramaShot(); saved.setScriptContent("人物推门。");
-        saved.setDialogue("不要过来。"); saved.setVoiceover("他仍不知道真相。");
-        String script = UnifiedShotScript.fromShot(saved);
+        String script = UnifiedShotScript.merge(saved.getScriptContent(), null, "不要过来。", "他仍不知道真相。");
         assertTrue(script.contains("人物推门。"));
         assertTrue(script.contains("未指定说话人：“不要过来。”"));
         assertTrue(script.contains("他仍不知道真相。"));

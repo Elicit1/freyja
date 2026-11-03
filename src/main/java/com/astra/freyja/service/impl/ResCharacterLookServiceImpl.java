@@ -5,8 +5,8 @@ import com.astra.freyja.dao.DramaMapper;
 import com.astra.freyja.dao.ResCharacterLookMapper;
 import com.astra.freyja.dao.ResCharacterMapper;
 import com.astra.freyja.dto.res.AssetPromptPackageVO;
-import com.astra.freyja.dto.res.OutfitPromptDeriveDTO;
-import com.astra.freyja.dto.res.OutfitPromptDeriveVO;
+import com.astra.freyja.dto.res.LookPromptDeriveDTO;
+import com.astra.freyja.dto.res.LookPromptDeriveVO;
 import com.astra.freyja.dto.res.ResCharacterLookDTO;
 import com.astra.freyja.dto.res.ResCharacterLookVO;
 import com.astra.freyja.engine.sse.ConcurrentSseBridge;
@@ -26,11 +26,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatModel;
-import org.springframework.ai.chat.model.ChatResponse;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.tool.ToolCallback;
@@ -60,10 +56,10 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
     private final AiModelFactory aiModelFactory;
     private final SysConfigService sysConfigService;
 
-    @Autowired(required = false)
+    @Autowired
     private SkillPromptContextService skillPromptContextService;
 
-    @Autowired(required = false)
+    @Autowired
     private LoadSkillToolFactory loadSkillToolFactory;
 
     @Autowired
@@ -314,7 +310,7 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
     }
 
     @Override
-    public OutfitPromptDeriveVO deriveLookPrompt(OutfitPromptDeriveDTO dto) {
+    public LookPromptDeriveVO deriveLookPrompt(LookPromptDeriveDTO dto) {
         validateDesignDesc(dto);
         Long providerId = dto.getProviderId();
         String modelCode = dto.getModelCode();
@@ -324,12 +320,12 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
         String userPrompt = buildOutfitUserPrompt(dto);
 
         String output = invokeApiWithSkills(chatModel, systemPrompt, userPrompt,
-                "character-outfit-prompt", String.valueOf(dto.getLookId()), dto.getRequiredSkillNames());
+                "character-look-prompt", String.valueOf(dto.getLookId()), dto.getRequiredSkillNames());
         if (StringUtils.isBlank(output)) {
             throw new BizException(500, "AI 模型未能返回响应");
         }
 
-        OutfitPromptDeriveVO vo = JsonExtractionUtil.cleanAndParseJson(output, OutfitPromptDeriveVO.class);
+        LookPromptDeriveVO vo = JsonExtractionUtil.cleanAndParseJson(output, LookPromptDeriveVO.class);
         if (vo == null || (StringUtils.isBlank(vo.getOutfitPrompt()) && StringUtils.isBlank(vo.getAppearancePrompt()))) {
             throw new BizException(500, "AI 模型未能返回有效的造型提示词结构，返回原始内容: " + output);
         }
@@ -337,7 +333,7 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
     }
 
     @Override
-    public SseEmitter deriveLookPromptStream(OutfitPromptDeriveDTO dto) {
+    public SseEmitter deriveLookPromptStream(LookPromptDeriveDTO dto) {
         validateDesignDesc(dto);
         SseEmitter emitter = new SseEmitter(180_000L);
         emitter.onTimeout(() -> {
@@ -359,12 +355,12 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
                 String systemPrompt = sysConfigService.getConfigValue("PROMPT_OUTFIT_DERIVE_SYSTEM", DEFAULT_OUTFIT_SYSTEM_PROMPT);
                 String userPrompt = buildOutfitUserPrompt(dto);
                 String rawText = invokeApiWithSkills(chatModel, systemPrompt, userPrompt,
-                        "character-outfit-prompt", String.valueOf(dto.getLookId()), dto.getRequiredSkillNames(),
+                        "character-look-prompt", String.valueOf(dto.getLookId()), dto.getRequiredSkillNames(),
                         sseBridge::sendChunk);
                 if (StringUtils.isNotBlank(rawText)) {
                     sseBridge.sendChunk(rawText);
                 }
-                OutfitPromptDeriveVO vo = JsonExtractionUtil.cleanAndParseJson(rawText, OutfitPromptDeriveVO.class);
+                LookPromptDeriveVO vo = JsonExtractionUtil.cleanAndParseJson(rawText, LookPromptDeriveVO.class);
                 if (vo == null) {
                     sseBridge.sendError("未能从 AI 输出中提取合法的 JSON 提示词结构");
                     return;
@@ -383,7 +379,7 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
     }
 
     @Override
-    public AssetPromptPackageVO buildLookPromptPackage(OutfitPromptDeriveDTO dto) {
+    public AssetPromptPackageVO buildLookPromptPackage(LookPromptDeriveDTO dto) {
         validateDesignDesc(dto);
         String systemPrompt = sysConfigService.getConfigValue("PROMPT_OUTFIT_DERIVE_SYSTEM", DEFAULT_OUTFIT_SYSTEM_PROMPT);
         SkillPromptContext skillContext = loadSkillContext(dto);
@@ -405,9 +401,9 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
         }
 
         return AssetPromptPackageVO.builder()
-                .assetType("CHARACTER_OUTFIT")
+                .assetType("CHARACTER_LOOK")
                 .assetId(dto.getLookId())
-                .assetName(StringUtils.firstNonBlank(dto.getOutfitName(), "新造型"))
+                .assetName(StringUtils.firstNonBlank(dto.getLookName(), "新造型"))
                 .systemPrompt(systemPrompt)
                 .userPrompt(userPrompt)
                 .combinedPrompt(combined)
@@ -417,25 +413,19 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
                 .build();
     }
 
-    private void validateDesignDesc(OutfitPromptDeriveDTO dto) {
+    private void validateDesignDesc(LookPromptDeriveDTO dto) {
         if (dto == null || StringUtils.isBlank(dto.getDesignDesc())) {
             throw new BizException(400, "中文造型视觉概念描述不能为空");
         }
     }
 
-    private SkillPromptContext loadSkillContext(OutfitPromptDeriveDTO dto) {
-        if (skillPromptContextService == null) {
-            return SkillPromptContext.empty();
-        }
+    private SkillPromptContext loadSkillContext(LookPromptDeriveDTO dto) {
         Long requestId = dto == null ? null : dto.getLookId();
         return skillPromptContextService.loadSelected(
-                "character-outfit-prompt", String.valueOf(requestId), dto == null ? null : dto.getSelectedSkillNames());
+                "character-look-prompt", String.valueOf(requestId), dto == null ? null : dto.getSelectedSkillNames());
     }
 
     private String appendSkillContext(String systemPrompt, SkillPromptContext skillContext) {
-        if (skillPromptContextService == null) {
-            return systemPrompt;
-        }
         return skillPromptContextService.appendToSystemPrompt(systemPrompt, skillContext);
     }
 
@@ -447,12 +437,6 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
     private String invokeApiWithSkills(ChatModel chatModel, String systemPrompt, String userPrompt,
                                        String consumer, String requestId, List<String> requiredSkillNames,
                                        java.util.function.Consumer<String> stageListener) {
-        if (skillPromptContextService == null || loadSkillToolFactory == null) {
-            ChatResponse response = chatModel.call(new Prompt(List.of(
-                    new SystemMessage(systemPrompt), new UserMessage(userPrompt))));
-            return response != null && response.getResult() != null && response.getResult().getOutput() != null
-                    ? response.getResult().getOutput().getText() : null;
-        }
         LoadSkillToolSession session = skillPromptContextService.createApiSession(consumer, requestId, requiredSkillNames);
         SkillPromptContext requiredContext = skillPromptContextService.loadSelected(
                 consumer, requestId, requiredSkillNames, session.getVersionSnapshot());
@@ -475,7 +459,7 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
         return content;
     }
 
-    private String buildOutfitUserPrompt(OutfitPromptDeriveDTO dto) {
+    private String buildOutfitUserPrompt(LookPromptDeriveDTO dto) {
         StringBuilder sb = new StringBuilder();
         sb.append("请为以下人物的具体造型生成高质量的 Midjourney/Stable Diffusion 英文提示词：\n\n");
 
@@ -492,7 +476,7 @@ public class ResCharacterLookServiceImpl implements ResCharacterLookService {
         }
 
         sb.append("【造型设定目标】\n");
-        String name = dto.getOutfitName();
+        String name = dto.getLookName();
         if (StringUtils.isNotBlank(name)) sb.append("- 造型名称: ").append(name).append("\n");
         if (StringUtils.isNotBlank(dto.getLookType())) sb.append("- 视觉状态类型: ").append(dto.getLookType()).append("\n");
         if (StringUtils.isNotBlank(dto.getDesignDesc())) sb.append("- 视觉概念描述: ").append(dto.getDesignDesc()).append("\n\n");

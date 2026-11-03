@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 public class AiEventTaskController {
     private final AiEventTaskService tasks;
     private final ResCharacterService characters;
-    private final ResCharacterOutfitService outfits;
+    private final ResCharacterLookService looks;
     private final ResSceneService scenes;
     private final ResPropService props;
     private final ShotAiVisualPlanService visualPlans;
@@ -42,9 +42,9 @@ public class AiEventTaskController {
     }
 
     @PostMapping("/look-prompt")
-    public R<String> lookPrompt(@RequestBody OutfitPromptDeriveDTO dto) {
+    public R<String> lookPrompt(@RequestBody LookPromptDeriveDTO dto) {
         return R.ok(tasks.start(AiTaskType.LOOK_PROMPT_DERIVE, dto.getDramaId(),
-                String.valueOf(dto.getLookId()), dto.getModelCode(), dto, () -> outfits.deriveOutfitPrompt(dto)));
+                String.valueOf(dto.getLookId()), dto.getModelCode(), dto, () -> looks.deriveLookPrompt(dto)));
     }
 
     @PostMapping("/scene-prompt")

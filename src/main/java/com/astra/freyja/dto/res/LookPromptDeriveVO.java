@@ -13,7 +13,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class OutfitPromptDeriveVO {
+public class LookPromptDeriveVO {
 
     @JsonPropertyDescription("服饰装扮Prompt (英文，详尽描述服装款式、面料材质、剪裁层次、色彩纹理、配饰与穿戴细节)")
     private String outfitPrompt;

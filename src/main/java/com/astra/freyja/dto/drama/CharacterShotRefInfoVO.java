@@ -21,13 +21,13 @@ public class CharacterShotRefInfoVO {
     private String roleType;
     private Long lookId;
 
-    private String outfitName;
+    private String lookName;
 
     /** 人物身份设定参考图URL */
     private String characterReferenceImageUrl;
 
     /** 造型专属参考图URL (COMBINED) */
-    private String outfitReferenceImageUrl;
+    private String lookReferenceImageUrl;
 
     /** 造型视觉概念描述 (颜色/面料/轮廓/配饰/妆发) */
     private String designDesc;

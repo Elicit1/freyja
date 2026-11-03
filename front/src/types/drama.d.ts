@@ -235,7 +235,7 @@ export interface CharacterShotRefInfo {
   avatarUrl?: string
   roleType?: string
   lookId?: string | number
-  outfitName?: string
+  lookName?: string
   outfitPreviewUrl?: string
   designDesc?: string
   outfitPrompt?: string
@@ -330,7 +330,6 @@ export interface DramaShot {
   refAudios?: ShotRefAudio[]
   refVideos?: ShotRefVideo[]
   refAudiosConfigured?: boolean
-  legacyScriptPending?: boolean
   startState?: ShotState
   endState?: ShotState
   startStateJson?: string

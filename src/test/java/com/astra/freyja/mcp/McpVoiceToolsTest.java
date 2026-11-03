@@ -141,7 +141,7 @@ class McpVoiceToolsTest {
     }
 
     @Test void protocolRejectsNumericIdsUnknownFieldsAndOversizedTextBeforeInference() {
-        var definition = new McpToolCatalog(json).specification(tool(McpVoiceTools.DESIGN_TOOL));
+        var definition = com.astra.freyja.mcp.McpTestSupport.catalog(json).specification(tool(McpVoiceTools.DESIGN_TOOL));
         var context = McpTransportContext.create(Map.of(McpPrincipal.CONTEXT_KEY, caller));
         Map<String, Object> args = json.read(input(false), Map.class);
         args.put("characterId", Long.valueOf(CHARACTER));

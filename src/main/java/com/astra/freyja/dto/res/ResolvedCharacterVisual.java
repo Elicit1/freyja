@@ -2,7 +2,6 @@ package com.astra.freyja.dto.res;
 
 import com.astra.freyja.entity.ResCharacter;
 import com.astra.freyja.entity.ResCharacterLook;
-import com.astra.freyja.entity.ResCharacterOutfit;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -27,19 +26,6 @@ public class ResolvedCharacterVisual {
 
     /** 关联的具体造型变体（若无造型则为 null） */
     private ResCharacterLook look;
-
-    /** 兼容旧引用 outfit */
-    public ResCharacterOutfit getOutfit() {
-        if (look == null) return null;
-        if (look instanceof ResCharacterOutfit outfit) return outfit;
-        ResCharacterOutfit o = new ResCharacterOutfit();
-        org.springframework.beans.BeanUtils.copyProperties(look, o);
-        return o;
-    }
-
-    public void setOutfit(ResCharacterOutfit outfit) {
-        this.look = outfit;
-    }
 
     /** 正向提示词片段列表 (人物外观 + 造型附加状态 + 造型服装) */
     @Builder.Default

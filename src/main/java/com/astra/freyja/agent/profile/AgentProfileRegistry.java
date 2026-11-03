@@ -9,8 +9,6 @@ import java.util.Map;
 @Component
 public class AgentProfileRegistry {
     public static final String ASSISTANT_CODE = "core-assistant";
-    public static final String LEGACY_PRODUCTION_CODE = "production-preparation";
-    public static String canonicalCode(String code) { return code; }
     private final Map<String, AgentProfile> profiles = new LinkedHashMap<>();
     public AgentProfileRegistry(List<AgentProfile> entries) {
         for (AgentProfile profile : entries) {
@@ -19,7 +17,7 @@ public class AgentProfileRegistry {
         }
     }
     public AgentProfile require(String code) {
-        AgentProfile profile = profiles.get(canonicalCode(code));
+        AgentProfile profile = profiles.get(code);
         if (profile == null) throw new BizException(404, "Agent 模板不存在");
         return profile;
     }

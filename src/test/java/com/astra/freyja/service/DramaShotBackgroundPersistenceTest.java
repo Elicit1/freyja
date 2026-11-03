@@ -34,6 +34,7 @@ class DramaShotBackgroundPersistenceTest {
     @Mock private DramaSceneMapper sceneMapper;
     @Mock private DramaEpisodeService episodeService;
     @org.mockito.Spy private com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+    @Mock private com.astra.freyja.dao.ResSceneMapper scenes;
     @InjectMocks private DramaShotServiceImpl service;
     private DramaShot existing;
     private final Map<String, Object> background = new HashMap<>();
@@ -101,16 +102,11 @@ class DramaShotBackgroundPersistenceTest {
     }
 
     @Test
-    void partialSavePreservesLegacySpeechAndClearsRetiredColumnsInActualSql() {
-        existing.setScriptContent("他走到门口。"); existing.setDialogueSpeaker("林远");
-        existing.setDialogue("你是谁？"); existing.setVoiceover("夜色渐深。");
-        background.put("dialogue", "你是谁？"); background.put("dialogue_speaker", "林远");
-        background.put("voiceover", "夜色渐深。"); background.put("script_content", existing.getScriptContent());
+    void partialSavePreservesMigratedCanonicalScript() {
+        existing.setScriptContent("他走到门口。\n\n林远：你是谁？\n\n夜色渐深。");
+        background.put("script_content", existing.getScriptContent());
         service.update(request("{\"id\":\"1000\",\"remark\":\"仅修改备注\"}"));
-        String unified = (String) background.get("script_content");
-        assertTrue(unified.contains("他走到门口。")); assertTrue(unified.contains("林远：“你是谁？”"));
-        assertTrue(unified.contains("夜色渐深。"));
-        assertNull(background.get("dialogue")); assertNull(background.get("dialogue_speaker")); assertNull(background.get("voiceover"));
+        assertEquals(existing.getScriptContent(), background.get("script_content"));
     }
 
     @Test

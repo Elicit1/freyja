@@ -242,7 +242,7 @@ public class DramaServiceImpl implements DramaService {
                     .cameraMovement(s.getCameraMovement())
                     .duration(s.getDuration())
                     .actionDescription(s.getActionDescription())
-                    .scriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(s))
+                    .scriptContent(s.getScriptContent())
                     .renderStatus(s.getRenderStatus())
                     .generationMode(s.getGenerationMode())
                     .previewImageUrl(s.getPreviewImageUrl())

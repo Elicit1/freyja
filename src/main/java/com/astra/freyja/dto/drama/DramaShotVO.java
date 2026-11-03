@@ -71,7 +71,6 @@ public class DramaShotVO {
     /** Includes a persisted empty selection; opening a dialog must not restore defaults. */
     private Boolean refAudiosConfigured;
     /** Legacy speech has been projected into scriptContent for creator review. */
-    private Boolean legacyScriptPending;
 
     /** 产物媒体 */
     private String previewImageUrl;

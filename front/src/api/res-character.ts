@@ -6,15 +6,14 @@ import type {
   ResCharacterQuery,
   ResCharacterOption,
   ResCharacterLook,
-  ResCharacterOutfit,
   ResCharacterAlias,
   ResCharacterEvidence,
   ResCharacterResolution,
   CharacterMergeParam,
   CharacterVisualPromptDeriveDTO,
   CharacterVisualPromptDeriveVO,
-  OutfitPromptDeriveDTO,
-  OutfitPromptDeriveVO,
+  LookPromptDeriveDTO,
+  LookPromptDeriveVO,
   AssetPromptPackageVO
 } from '@/types/resource'
 
@@ -221,37 +220,8 @@ export const characterApi = {
       method: 'put'
     })
   },
-  // ============ 兼容旧造型变体接口 (Outfit API) ============
-  getOutfitList(characterId: string | number) {
-    return this.getLookList(characterId)
-  },
 
-  createOutfit(data: Partial<ResCharacterOutfit>) {
-    return request<number>({
-      url: '/res/character/outfit',
-      method: 'post',
-      data
-    })
-  },
-
-  updateOutfit(data: Partial<ResCharacterOutfit>) {
-    return request<void>({
-      url: '/res/character/outfit',
-      method: 'put',
-      data
-    })
-  },
-
-  deleteOutfit(id: string | number) {
-    return this.deleteLook(id)
-  },
-
-  setDefaultOutfit(id: string | number) {
-    return this.setDefaultLook(id)
-  },
-
-  // 构建造型提示词任务导出包 (专供外部 AI 手工生成通道复制使用)
-  deriveOutfitPromptPackage(data: OutfitPromptDeriveDTO) {
+  deriveLookPromptPackage(data: LookPromptDeriveDTO) {
     return request<AssetPromptPackageVO>({
       url: '/res/character/look/derive-prompt-package',
       method: 'post',
@@ -260,16 +230,16 @@ export const characterApi = {
   },
 
   // AI 智能衍生角色造型专属提示词
-  deriveOutfitPrompt(data: OutfitPromptDeriveDTO) {
-    return runAiTaskResult<OutfitPromptDeriveVO>('/ai/tasks/look-prompt', data)
+  deriveLookPrompt(data: LookPromptDeriveDTO) {
+    return runAiTaskResult<LookPromptDeriveVO>('/ai/tasks/look-prompt', data)
   },
 
   // AI 智能衍生角色造型专属提示词 (流式 SSE)
-  async deriveOutfitPromptStream(
-    data: OutfitPromptDeriveDTO,
+  async deriveLookPromptStream(
+    data: LookPromptDeriveDTO,
     options: {
       onChunk?: (chunk: string) => void
-      onResult: (result: OutfitPromptDeriveVO) => void
+      onResult: (result: LookPromptDeriveVO) => void
       onError: (err: Error) => void
       onDone?: () => void
       signal?: AbortSignal
@@ -280,7 +250,7 @@ export const characterApi = {
       onEvent(event) {
         if (event.type === 'chunk' || event.type === 'stage') options.onChunk?.(event.data)
         if (event.type === 'result') {
-          try { options.onResult(JSON.parse(event.data) as OutfitPromptDeriveVO) }
+          try { options.onResult(JSON.parse(event.data) as LookPromptDeriveVO) }
           catch (error) { options.onError(error as Error) }
         }
       },

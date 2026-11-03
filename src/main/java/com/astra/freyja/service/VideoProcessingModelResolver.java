@@ -16,7 +16,6 @@ public interface VideoProcessingModelResolver {
     default ResolvedVideoProcessingModel resolve(
             Long providerId,
             Long modelId,
-            String modelCode,
             String operation,
             Integer userScale,
             Integer userMultiplier,
@@ -24,7 +23,7 @@ public interface VideoProcessingModelResolver {
             Integer userSourceFps,
             Integer userTargetFps,
             Integer userClearCacheFrames) {
-        return resolve(providerId, modelId, modelCode, operation, userScale, userMultiplier, userCrf,
+        return resolve(providerId, modelId, operation, userScale, userMultiplier, userCrf,
                 userSourceFps, userTargetFps, userClearCacheFrames, null);
     }
 
@@ -34,7 +33,6 @@ public interface VideoProcessingModelResolver {
     ResolvedVideoProcessingModel resolve(
             Long providerId,
             Long modelId,
-            String modelCode,
             String operation,
             Integer userScale,
             Integer userMultiplier,

@@ -22,6 +22,13 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class AgentConfigServiceTest {
+    @Test void retiredAvatarMediaIsIgnoredWithoutWeakeningOtherConfigurationValidation() {
+        var json = new AgentJson();
+        var avatar = json.read("{\"stateMedia\":{\"IDLE\":{\"url\":\"old.gif\"}}}", AgentConfigDTO.Avatar.class);
+        assertNotNull(avatar.getPet());
+        assertFalse(json.write(avatar).contains("stateMedia"));
+        assertThrows(BizException.class, () -> json.read("{\"unknownField\":true}", AgentConfigDTO.Avatar.class));
+    }
     AgentConfigMapper mapper = mock(AgentConfigMapper.class);
     AiModelMapper models = mock(AiModelMapper.class);
     AiProviderMapper providers = mock(AiProviderMapper.class);
@@ -225,9 +232,8 @@ class AgentConfigServiceTest {
         config.getModel().setTokenMode("CUSTOM");
         config.getTools().setNames(new ArrayList<>(java.util.Arrays.asList((String) null)));
         assertFalse(validator.validate("core-assistant", config, true).valid());
-        var media = new AgentConfigDTO.StateMedia(); media.setUrl("javascript:alert(1)"); media.setContentType("image/gif");
-        assertFalse(AgentConfigValidator.validMedia(media));
-        media.setUrl("/media/idle.gif"); assertTrue(AgentConfigValidator.validMedia(media));
+        assertFalse(AgentConfigValidator.validMedia("javascript:alert(1)"));
+        assertTrue(AgentConfigValidator.validMedia("/media/idle.gif"));
     }
     private AgentConfig stored(AgentConfigDTO dto, int version) {
         var row = new AgentConfig(); row.setId(123L); row.setAgentCode(dto.getAgentCode()); row.setProfileVersion(version);

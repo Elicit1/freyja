@@ -32,5 +32,5 @@ public class ResCharacterOptionVO {
 
     private String voiceDesc;
 
-    private List<ResCharacterOutfitVO> outfits;
+    private List<ResCharacterLookVO> looks;
 }

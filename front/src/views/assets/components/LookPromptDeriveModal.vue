@@ -422,18 +422,17 @@ import { aiProviderApi } from '@/api/ai-provider'
 import DictSelect from '@/components/DictSelect.vue'
 import SkillSelector from '@/components/SkillSelector.vue'
 import type {
-  OutfitPromptDeriveDTO,
-  OutfitPromptDeriveVO,
+  LookPromptDeriveDTO,
+  LookPromptDeriveVO,
   ResCharacter,
   ResCharacterLook,
-  ResCharacterOutfit,
   AssetPromptPackageVO
 } from '@/types/resource'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import type { Drama } from '@/types/drama'
 
 const emit = defineEmits<{
-  (e: 'apply', result: OutfitPromptDeriveVO): void
+  (e: 'apply', result: LookPromptDeriveVO): void
   (e: 'task-starting'): void
   (e: 'task-finished'): void
   (e: 'panel-close'): void
@@ -466,8 +465,8 @@ const providers = ref<AiProviderVO[]>([])
 const models = ref<AiModel[]>([])
 
 const currentCharacter = reactive<Partial<ResCharacter>>({})
-const currentLook = reactive<Partial<ResCharacterLook & ResCharacterOutfit>>({})
-const previewResult = ref<OutfitPromptDeriveVO | null>(null)
+const currentLook = reactive<Partial<ResCharacterLook>>({})
+const previewResult = ref<LookPromptDeriveVO | null>(null)
 const streamConsoleRef = ref<HTMLPreElement | null>(null)
 
 let timer: any = null
@@ -479,7 +478,7 @@ const modalTitle = computed(() => {
 })
 
 function open(
-  look: Partial<ResCharacterLook & ResCharacterOutfit>,
+  look: Partial<ResCharacterLook>,
   character: Partial<ResCharacter>,
   drama?: Drama | null
 ) {
@@ -525,11 +524,11 @@ function onStyleParamsChange() {
   }
 }
 
-function buildDerivePayload(): OutfitPromptDeriveDTO {
+function buildDerivePayload(): LookPromptDeriveDTO {
   return {
     lookId: currentLook.id ? String(currentLook.id) : undefined,
     characterId: currentCharacter.id ? String(currentCharacter.id) : undefined,
-    outfitName: currentLook.lookName,
+    lookName: currentLook.lookName,
     lookType: currentLook.lookType,
     designDesc: currentLook.designDesc,
     characterName: currentCharacter.name,
@@ -552,7 +551,7 @@ async function loadPromptPackage() {
   isExportingPackage.value = true
   try {
     const payload = buildDerivePayload()
-    const res = await characterApi.deriveOutfitPromptPackage(payload)
+    const res = await characterApi.deriveLookPromptPackage(payload)
     promptPackage.value = res
   } catch (err: any) {
     ElMessage.error(err.message || '生成造型任务 Prompt 失败')
@@ -697,7 +696,7 @@ async function handleStartStream() {
   const payload = buildDerivePayload()
 
   try {
-    await characterApi.deriveOutfitPromptStream(payload, {
+    await characterApi.deriveLookPromptStream(payload, {
       signal: abortController.signal,
       onChunk(chunk) {
         streamText.value += chunk

@@ -320,7 +320,7 @@ public class McpBusinessRecords {
             binding.readerForUpdating(dto).readValue(binding.writeValueAsString(data));
             if (dto instanceof DramaShotDTO shot) {
                 if (current instanceof DramaShot existing) {
-                    if (!data.containsKey("scriptContent")) shot.setScriptContent(com.astra.freyja.util.UnifiedShotScript.fromShot(existing));
+                    if (!data.containsKey("scriptContent")) shot.setScriptContent(existing.getScriptContent());
                     preserveReferenceDetails(shot, existing, data);
                     cameraLock("shotType", existing.getShotTypeLocked(), existing.getShotType(), shot.getShotTypeLocked(), shot.getShotType());
                     cameraLock("cameraMovement", existing.getCameraMovementLocked(), existing.getCameraMovement(), shot.getCameraMovementLocked(), shot.getCameraMovement());

@@ -201,8 +201,8 @@
 
           <div class="px-4 py-2 bg-gray-50/80 border-t border-gray-100 text-[11px] flex items-center justify-between">
             <span class="text-slate-400">点击卡片编辑人物与造型</span>
-            <span v-if="char.outfitCount" class="text-slate-500 font-mono text-[10px]">
-              共 {{ char.outfitCount }} 套造型
+            <span v-if="char.lookCount" class="text-slate-500 font-mono text-[10px]">
+              共 {{ char.lookCount }} 套造型
             </span>
           </div>
         </div>

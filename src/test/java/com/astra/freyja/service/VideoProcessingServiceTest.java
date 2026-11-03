@@ -222,7 +222,7 @@ public class VideoProcessingServiceTest {
         model.setProviderId(provider.getId());
         model.setModelCode("test-video-processing");
         model.setModelName("测试视频后处理");
-        when(modelResolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(modelResolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(ResolvedVideoProcessingModel.builder()
                         .model(model).modelId(model.getId()).modelCode(model.getModelCode()).modelName(model.getModelName())
                         .sourceFps(24).targetFps(48).scale(2).multiplier(2).crf(19).clearCacheFrames(100)
@@ -267,7 +267,7 @@ public class VideoProcessingServiceTest {
                 .extraBody(Map.of("upscale_model", "RealESRGAN_x2plus.pth"))
                 .build();
 
-        when(modelResolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(modelResolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(mockModel);
 
         ResolvedVideoProcessSource mockSource = ResolvedVideoProcessSource.builder()
@@ -343,7 +343,7 @@ public class VideoProcessingServiceTest {
                 .extraBody(Map.of())
                 .build();
 
-        when(modelResolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
+        when(modelResolver.resolve(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenReturn(mockModel);
 
         ResolvedVideoProcessSource mockSource = ResolvedVideoProcessSource.builder()

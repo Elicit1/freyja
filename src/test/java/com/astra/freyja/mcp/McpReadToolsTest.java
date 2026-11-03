@@ -31,7 +31,7 @@ class McpReadToolsTest {
     final McpAssets assets = mock(McpAssets.class);
     final McpScope scope = new McpScope(dramas, episodes, scenes, groups, shots);
     final McpJson json = new McpJson();
-    final McpToolCatalog catalog = new McpToolCatalog(json);
+    final McpToolCatalog catalog = com.astra.freyja.mcp.McpTestSupport.catalog(json);
     final McpPrincipal caller = new McpPrincipal(false, false, false, Set.of(PROJECT));
     McpReadTools reads;
 

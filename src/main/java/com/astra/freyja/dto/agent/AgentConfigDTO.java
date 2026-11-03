@@ -70,11 +70,11 @@ public class AgentConfigDTO {
         private int maxRetries = 2;
         private int maxConcurrentRuns = 2;
     }
-    @Data public static class Avatar {
+    @Data
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties("stateMedia")
+    public static class Avatar {
         private boolean visible = true;
         private Pet pet = new Pet();
-        // Retained only for reading existing configuration and run snapshots.
-        private Map<String, StateMedia> stateMedia = new LinkedHashMap<>();
         private Notifications notifications = new Notifications();
     }
     @Data public static class Pet {
@@ -89,11 +89,6 @@ public class AgentConfigDTO {
         private int frameHeight = 208;
         private int columns = 8;
         private int rows = 9;
-    }
-    @Data public static class StateMedia {
-        private String url;
-        private String contentType;
-        private String objectPath;
     }
     @Data public static class Notifications {
         private boolean completed = true;
