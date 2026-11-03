@@ -291,3 +291,47 @@ models:
       crf: ["76", "inputs", "format.codec.encoding.crf"]
       filename_prefix: ["76", "inputs", "filename_prefix"]
       output_audio: ["75", "inputs", "audio"]
+
+  - model_name: "pika-h3-flex-fl2va"
+    description: "Pika H3 Flex FL2VA，LCM + 固定六步 Sigma，原生音视频"
+    template_file: "comfyUIApi/pika_h3_flex_fl2va.json"
+    handler: "minimax_h3_fl2va"
+    default_steps: 6
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    # Preserve the released LCM sampler and six-step sigma schedule.
+    mappings:
+      prompt: ["104", "inputs", "prompt"]
+      width: ["104", "inputs", "width"]
+      height: ["104", "inputs", "height"]
+      length: ["104", "inputs", "length"]
+      seed: ["15", "inputs", "noise_seed"]
+      unet_name: ["6", "inputs", "unet_name"]
+      clip_name: ["13", "inputs", "clip_name"]
+      video_vae_name: ["11", "inputs", "vae_name"]
+      audio_vae_name: ["24", "inputs", "vae_name"]
+
+  - model_name: "pika-h3-flex-ref2va"
+    description: "Pika H3 Flex REF2VA，LCM + 固定六步 Sigma，原生音视频"
+    template_file: "comfyUIApi/pika_h3_flex_ref2va.json"
+    handler: "minimax_h3_ref2va"
+    default_steps: 6
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    reference_video:
+      status: "UNVERIFIED"
+      condition_node_id: "136"
+      output_node_ids: ["130"]
+      max_videos: 3
+      decode_fps: 24
+    # Preserve the released LCM sampler and six-step sigma schedule.
+    mappings:
+      prompt: ["136", "inputs", "prompt"]
+      width: ["136", "inputs", "width"]
+      height: ["136", "inputs", "height"]
+      length: ["136", "inputs", "length"]
+      seed: ["129", "inputs", "noise_seed"]
+      unet_name: ["127", "inputs", "unet_name"]
+      clip_name: ["128", "inputs", "clip_name"]
+      video_vae_name: ["119", "inputs", "vae_name"]
+      audio_vae_name: ["120", "inputs", "vae_name"]

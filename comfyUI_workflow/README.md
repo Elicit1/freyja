@@ -1,6 +1,6 @@
 # 🎨 Freyja 配套 ComfyUI 工作流与算力端配置指南
 
-本目录包含 **Freyja AI 短剧系统** 配套 ComfyUI UI 工作流，涵盖 **FLUX.2 生图、MiniMax H3 原 16GB HiFi 与官方 FL2VA / Ref2VA、Turbo4 / Turbo8、人脸修复、RIFE 补帧、RealESRGAN 与 SeedVR2 超分**。下表按默认节点实际注册的 13 个入口列出对应文件，目录另有原始、保存版及显存优化示例。
+本目录包含 **Freyja AI 短剧系统** 配套 ComfyUI UI 工作流，涵盖 **FLUX.2 生图、MiniMax H3 原 16GB HiFi 与官方 FL2VA / Ref2VA、Turbo4 / Turbo8、Pika H3 Flex、人脸修复、RIFE 补帧、RealESRGAN 与 SeedVR2 超分**。下表按默认节点实际注册的 15 个入口列出对应文件，目录另有原始、保存版及显存优化示例。
 
 ---
 
@@ -34,6 +34,8 @@
 
 | 工作流文件 | 网关模型编码 | 任务类型 | 使用说明 |
 | :--- | :--- | :--- | :--- |
+| `video_pika_h3_flex_fl2va.json` | `pika-h3-flex-fl2va` | 文生 / 首帧 / 首尾帧视频 | Pika Flex LoRA，LCM 与固定六步 Sigma；[接入说明](../docs/pika-h3-flex.md) |
+| `video_pika_h3_flex_ref2va.json` | `pika-h3-flex-ref2va` | 多参考图 / 音频视频 | Pika Flex LoRA，LCM 与固定六步 Sigma；参考视频待单独验收 |
 | `flux2_klein_9b_t2i_r3.json` | `flux-2-klein-9b` | 文本 / 参考图生图 | 角色设定图、造型图、分镜首帧与关键图 |
 | `minimax_h3_fl2va_fast.json` | `minimax-h3-fl2va` | 首尾帧视频与原生音频 | 原 16GB HiFi，默认 20 步 |
 | `minimax_h3_ref2va_fast.json` | `minimax-h3-ref2va` | 多参考图 / 音频视频 | 原 16GB HiFi，默认 20 步 |

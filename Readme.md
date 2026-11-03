@@ -182,10 +182,12 @@ Java 直接运行时，未设置 MCP 上传地址会兼容使用 `MINIO_EXTERNAL
 ---
 
 ### 2. 🎥 MiniMax H3 视频模型、加速与人脸修复
-系统支持直接调度 ComfyUI 生成高质量短剧视频，预置了 9 个主流模型入口：
+系统支持直接调度 ComfyUI 生成高质量短剧视频，预置了 11 个视频模型入口：
 
 | 模型代号 (在系统里选择) | 使用方式 | 步数与速度 | 人脸修复 | 适合什么场景 |
 | :--- | :--- | :--- | :--- | :--- |
+| **`pika-h3-flex-fl2va`** | 文生 / 首帧 / 首尾帧视频 | **固定 6 步（LCM）** | 否 | Pika H3 Flex 首尾帧与原生音频；[接入说明](docs/pika-h3-flex.md) |
+| **`pika-h3-flex-ref2va`** | 多参考图 / 音频视频 | **固定 6 步（LCM）** | 否 | Pika H3 Flex 多模态参考；参考视频待单独验收 |
 | **`minimax-h3-fl2va-turbo4`** | 首尾两张图生视频 | **固定 4 步（极速）** | 否 | 快速预览首尾帧镜头动效与运镜轨迹 |
 | **`minimax-h3-fl2va-turbo8`** | 首尾两张图生视频 | **固定 8 步（均衡）** | 否 | 画面更加细腻的首尾帧视频输出 |
 | **`minimax-h3-ref`** | 多张参考图+配音演播 | **固定 4 步（极速）** | 否 | 快速生成人物说话对话镜头 |
@@ -292,6 +294,8 @@ cp .env.example .env
 
 | 用途 | 文件名 | 放入哪个文件夹 | 说明 |
 | :--- | :--- | :--- | :--- |
+| **Pika Flex 首尾帧** | `pika_h3_flex_fl2va_v1_bf16.safetensors` | `models/loras/` | [Comfy-Org 权重](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/loras)，匹配官方 FL2VA 底模，固定 6 步 |
+| **Pika Flex 多参考图** | `pika_h3_flex_ref2va_v1_bf16.safetensors` | `models/loras/` | [Comfy-Org 权重](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/loras)，匹配官方 Ref2VA 底模，固定 6 步 |
 | **FL2VA 4步快速** | `minimax_h3_fl2v_turbo_4step_v1.0_768p_comfyui_bf16.safetensors` | `models/loras/` | [官方 LoRA](https://huggingface.co/Comfy-Org/MiniMax-H3)，固定 4 步 |
 | **FL2VA 8步精细** | `minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors` | `models/loras/` | [官方 LoRA](https://huggingface.co/Comfy-Org/MiniMax-H3)，固定 8 步 |
 | **Ref2VA 4步快速** | `minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors` | `models/loras/` | [官方 LoRA](https://huggingface.co/Comfy-Org/MiniMax-H3)，固定 4 步 |
@@ -307,6 +311,52 @@ cp .env.example .env
 | **SeedVR2 VAE** | `seedvr2_ema_vae_fp16.safetensors` | `models/vae/` | 潜空间编解码 |
 | **RIFE 4.9 补帧** | `rife49.pth` | `custom_nodes/ComfyUI-Frame-Interpolation/ckpts/rife/` | 画面流畅补帧 |
 | **RealESRGAN x2** | `RealESRGAN_x2plus.pth` | `models/upscale_models/` | 2 倍画面无损放大 |
+
+---
+
+### 第四步：接入 Pika H3 Flex 工作流与平台模型中心
+
+两套工作流复用上面的官方 H3 INT8 底模、Qwen3-VL 编码器和音视频 VAE，分别加载匹配的 Pika LoRA。使用 **LCM + 固定六步 ManualSigmas**；不能只把原 Turbo4/8 工作流改成六步，也不叠加 Turbo LoRA。
+
+#### 1. ComfyUI 与 Gateway
+
+ComfyUI 可导入以下 UI 文件，选择自己的图片后调试；平台渲染使用对应的 API 图：
+
+| 模型编码 | ComfyUI UI 工作流 | Gateway API 图 |
+| :--- | :--- | :--- |
+| `pika-h3-flex-fl2va` | [video_pika_h3_flex_fl2va.json](comfyUI_workflow/video_pika_h3_flex_fl2va.json) | [pika_h3_flex_fl2va.json](comfy_gateway/comfyUIApi/pika_h3_flex_fl2va.json) |
+| `pika-h3-flex-ref2va` | [video_pika_h3_flex_ref2va.json](comfyUI_workflow/video_pika_h3_flex_ref2va.json) | [pika_h3_flex_ref2va.json](comfy_gateway/comfyUIApi/pika_h3_flex_ref2va.json) |
+
+两个模型已注册到 [默认节点配置](comfy_gateway/nodes/machine_default.yaml)，沿用 H3 首尾帧与多参考图 handler，动态注入提示词、尺寸、时长、种子及参考素材。若使用私有 `comfy_gateway/nodes/machine_local.yaml`，需要同时添加这两个模型定义，因为私有文件会覆盖默认节点的整个模型列表；节点地址应指向实际 GPU 机器。
+
+更新源码后，重建并部署网关：
+
+```bash
+docker compose build comfy-gateway
+docker compose up -d --no-deps comfy-gateway
+
+# 确认返回的模型列表包含 pika-h3-flex-fl2va 和 pika-h3-flex-ref2va
+curl http://localhost:8000/v1/models
+```
+
+#### 2. 数据库模型配置与平台使用
+
+在「系统管理 → AI 提供商」选择指向该 Gateway 的提供商，在模型管理中保存以下配置。Docker 部署的提供商 Base URL 为 `http://comfy-gateway:8000/v1`；后端直接运行在宿主机时，使用宿主机可访问的网关地址，例如 `http://127.0.0.1:8000/v1`。
+
+| 字段 | Pika 首尾帧 / 文生视频 | Pika 多参考图 / 音频 |
+| :--- | :--- | :--- |
+| 模型编码 `modelCode` | `pika-h3-flex-fl2va` | `pika-h3-flex-ref2va` |
+| 模型类型 `modelType` | `TXT2VIDEO_FIRST_LAST` | `TXT2VIDEO_REF` |
+| 最大参考图数 `maxImages` | `2` | `9` |
+| 最大参考音频数 `maxAudios` | `0` | `3` |
+| 最大参考视频数 `maxVideos` | `0` | `0` |
+| 状态 `status` | `1`（启用） | `1`（启用） |
+
+平台保存时会写入 `ai_model` 表并刷新提供商模型缓存；同一提供商下已存在相同编码时，直接检查现有记录。模型主键由后端生成，前端保持字符串。额外参数 JSON 可留空，固定六步调度由 Gateway 工作流负责。
+
+刷新创作工作台后，在对应的「首尾帧模式」或「参考图模式」选择该提供商和 Pika 模型即可渲染。两者均生成原生音轨；首尾帧模式的 `maxAudios=0` 表示不接收参考音频。参考视频输入暂未单独验收，保持关闭。
+
+已完成两套工作流的 512×288、124 帧、24 FPS 在线出片验证，均含 32 kHz 双声道音轨；其中 Ref2VA 通过 Gateway 完整调用。15 项相关离线测试通过。高分辨率、长视频和最大参考数量组合需按显存另行验证。完整配置说明见 [Pika H3 Flex 接入](docs/pika-h3-flex.md)。
 
 ---
 
