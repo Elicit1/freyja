@@ -16,6 +16,7 @@ import java.io.Serializable;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties({"isHighFragmentation", "warningMessage"})
 public class FragmentationStatsVO implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -44,10 +45,4 @@ public class FragmentationStatsVO implements Serializable {
     @Builder.Default
     private Double shortShotRatio = 0.0;
 
-    /** 已停用的历史兼容字段；新结果固定 false，不由时长猜测叙事边界 */
-    @Builder.Default
-    private Boolean isHighFragmentation = false;
-
-    /** 已停用的历史兼容字段；新结果为空 */
-    private String warningMessage;
 }

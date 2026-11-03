@@ -4,7 +4,6 @@ import com.astra.freyja.dao.ResCharacterMapper;
 import com.astra.freyja.dto.voice.CharacterVoiceDesignDTO;
 import com.astra.freyja.dto.voice.CharacterVoiceResultVO;
 import com.astra.freyja.entity.ResCharacter;
-import com.astra.freyja.service.impl.CharacterVoiceServiceImpl;
 import com.baomidou.mybatisplus.core.MybatisConfiguration;
 import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import org.apache.ibatis.builder.MapperBuilderAssistant;
@@ -20,7 +19,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
-class CharacterVoiceServiceTest {
+class DubbingVoiceDesignTest {
 
     @BeforeAll
     static void initTableInfo() {
@@ -34,10 +33,10 @@ class CharacterVoiceServiceTest {
     @Mock
     private AiAudioApiService aiAudioApiService;
 
-    @Mock private DubbingService dubbingService;
+    @Mock private com.astra.freyja.dao.CharacterVoiceAudioMapper audios;
 
-    @InjectMocks
-    private CharacterVoiceServiceImpl characterVoiceService;
+    @org.mockito.Spy @InjectMocks
+    private DubbingService characterVoiceService;
 
     @Test
     void testDesignCharacterVoice_Success() {
@@ -56,8 +55,8 @@ class CharacterVoiceServiceTest {
         dto.setSampleText("商界战场，胜者为王。");
         dto.setAutoSave(true);
 
-        when(dubbingService.adoptDesignedBase(eq(charId), anyString(), anyString(), any()))
-                .thenReturn(new AiAudioApiService.AudioArchiveResult("http://minio/sample.wav", 4.2, 102400L));
+        doReturn(new AiAudioApiService.AudioArchiveResult("http://minio/sample.wav", 4.2, 102400L))
+                .when(characterVoiceService).adoptDesignedBase(eq(charId), anyString(), anyString(), any());
         CharacterVoiceResultVO result = characterVoiceService.designCharacterVoice(charId, dto);
 
         assertNotNull(result);
@@ -65,7 +64,7 @@ class CharacterVoiceServiceTest {
         assertEquals("http://minio/sample.wav", result.getVoiceSampleUrl());
         assertEquals(4.2, result.getDuration());
 
-        verify(dubbingService).adoptDesignedBase(eq(charId), eq("商界战场，胜者为王。"), eq("30岁低沉磁性男声"), any());
+        verify(characterVoiceService).adoptDesignedBase(eq(charId), eq("商界战场，胜者为王。"), eq("30岁低沉磁性男声"), any());
         verify(characterMapper, never()).updateById(any(ResCharacter.class));
     }
 
@@ -78,7 +77,11 @@ class CharacterVoiceServiceTest {
         dto.setVoiceDesc("清朗明快的少年音");
         dto.setSampleText("快看，流星划过去了！");
 
-        CharacterVoiceResultVO result = characterVoiceService.previewVoiceDesign(dto);
+        var character = new ResCharacter(); character.setId(101L); character.setName("少年");
+        when(characterMapper.selectById(101L)).thenReturn(character);
+        dto.setAutoSave(false);
+        CharacterVoiceResultVO result = characterVoiceService.designCharacterVoice(101L, dto);
+        verify(characterVoiceService, never()).adoptDesignedBase(any(), anyString(), anyString(), any());
 
         assertNotNull(result);
         assertEquals("http://minio/preview.wav", result.getVoiceSampleUrl());

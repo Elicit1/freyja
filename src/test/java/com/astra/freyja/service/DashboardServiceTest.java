@@ -49,8 +49,17 @@ class DashboardServiceTest {
     @Mock
     private AiProviderMapper aiProviderMapper;
 
+    @Mock private com.astra.freyja.dao.AiTaskMapper aiTaskMapper;
+    @Mock private com.astra.freyja.config.MinioProperties minioProperties;
+
     @InjectMocks
     private DashboardServiceImpl dashboardService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void requiredIntegrations() {
+        org.springframework.test.util.ReflectionTestUtils.setField(dashboardService, "aiTaskMapper", aiTaskMapper);
+        org.springframework.test.util.ReflectionTestUtils.setField(dashboardService, "minioProperties", minioProperties);
+    }
 
     @Test
     @DisplayName("测试获取工作台首页统计数据")

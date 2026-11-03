@@ -18,7 +18,7 @@ public class DirectorPlanStateService {
     private final DramaShotMapper mapper;
     private final DirectorPlanValidator validator;
     private final ObjectMapper json = new ObjectMapper();
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.beans.factory.annotation.Autowired
     private com.astra.freyja.service.DramaEpisodeService episodeService;
 
     public String encode(DirectorPlan plan) {
@@ -68,7 +68,7 @@ public class DirectorPlanStateService {
             if (dto.getCameraMovementLocked() != null) update.set("camera_movement_locked", dto.getCameraMovementLocked());
         }
         if (mapper.update(null, update) != 1) throw new BizException(409, "导演计划已被修改，请重新载入后编辑");
-        if ("MANUAL".equals(mode) && dto.getDuration() != null && s.getEpisodeId() != null && episodeService != null)
+        if ("MANUAL".equals(mode) && dto.getDuration() != null && s.getEpisodeId() != null)
             episodeService.recalculateEpisodeDuration(s.getEpisodeId());
         dto.setDirectorPlanRevision(next);
         dto.setDirectorPlanInputHash(inputHash);

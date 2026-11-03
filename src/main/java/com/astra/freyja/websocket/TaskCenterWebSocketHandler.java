@@ -6,7 +6,7 @@ import com.astra.freyja.dto.render.RenderTaskWsMessage;
 import com.astra.freyja.event.TaskStatusChangedEvent;
 import com.astra.freyja.service.TaskCenterService;
 import com.astra.freyja.service.AiTaskService;
-import com.astra.freyja.service.ShotPromptEventStore;
+import com.astra.freyja.service.AiTaskEventStore;
 import tools.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -34,7 +34,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
     private final ObjectMapper objectMapper;
     private final TaskCenterService taskCenterService;
     private final AiTaskService aiTaskService;
-    private final ShotPromptEventStore promptEvents;
+    private final AiTaskEventStore promptEvents;
     private final Map<String, WebSocketSession> sessions = new ConcurrentHashMap<>();
     private final Map<WebSocketSession, Set<String>> promptSubscriptions = new ConcurrentHashMap<>();
     private final Map<WebSocketSession, Set<String>> agentSubscriptions = new ConcurrentHashMap<>();
@@ -52,7 +52,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
     }
 
     public TaskCenterWebSocketHandler(ObjectMapper objectMapper, @Lazy TaskCenterService taskCenterService,
-                                      AiTaskService aiTaskService, ShotPromptEventStore promptEvents) {
+                                      AiTaskService aiTaskService, AiTaskEventStore promptEvents) {
         this.objectMapper = objectMapper;
         this.taskCenterService = taskCenterService;
         this.aiTaskService = aiTaskService;
@@ -231,7 +231,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
         });
     }
 
-    private void broadcastPromptEvent(ShotPromptEventStore.Event event) {
+    private void broadcastPromptEvent(AiTaskEventStore.Event event) {
         promptSubscriptions.forEach((session, taskIds) -> {
             if (!taskIds.contains(event.taskId())) return;
             synchronized (session) {
@@ -267,7 +267,7 @@ public class TaskCenterWebSocketHandler extends TextWebSocketHandler {
         if (session.isOpen()) session.sendMessage(new TextMessage(objectMapper.writeValueAsString(Map.of("event", "AGENT_STREAM", "data", event))));
     }
 
-    private void sendPromptEvent(WebSocketSession session, ShotPromptEventStore.Event event) throws IOException {
+    private void sendPromptEvent(WebSocketSession session, AiTaskEventStore.Event event) throws IOException {
         if (!session.isOpen()) return;
         String json = objectMapper.writeValueAsString(Map.of("event", "AI_EVENT", "data", event));
         session.sendMessage(new TextMessage(json));

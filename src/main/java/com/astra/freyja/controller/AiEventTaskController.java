@@ -4,7 +4,6 @@ import com.astra.freyja.common.R;
 import com.astra.freyja.dto.res.*;
 import com.astra.freyja.dto.drama.DramaShotFirstFrameDTO;
 import com.astra.freyja.dto.drama.ShotAiVisualPlanRequestDTO;
-import com.astra.freyja.dto.voice.CharacterVoiceDesignDTO;
 import com.astra.freyja.dto.script.ScriptDecomposeRequestDTO;
 import com.astra.freyja.dto.script.WorkerRetryDTO;
 import com.astra.freyja.dto.script.AiTaskDTO;
@@ -24,7 +23,6 @@ public class AiEventTaskController {
     private final ResSceneService scenes;
     private final ResPropService props;
     private final ShotAiVisualPlanService visualPlans;
-    private final CharacterVoiceService characterVoices;
     private final DramaShotService shots;
     private final AssetImageGenerationService images;
     private final ScriptDecomposeService scripts;
@@ -64,19 +62,6 @@ public class AiEventTaskController {
         var input = dto == null ? new ShotAiVisualPlanRequestDTO() : dto;
         return R.ok(tasks.start(AiTaskType.SHOT_VISUAL_PLAN, null, String.valueOf(shotId),
                 input.getModelCode(), input, () -> visualPlans.generate(shotId, input)));
-    }
-
-    @PostMapping("/character/{characterId}/voice-design")
-    public R<String> voiceDesign(@PathVariable Long characterId, @RequestBody CharacterVoiceDesignDTO dto) {
-        dto.setCharacterId(characterId);
-        return R.ok(tasks.start(AiTaskType.CHARACTER_VOICE_DESIGN, null, String.valueOf(characterId),
-                dto.getModelCode(), dto, () -> characterVoices.designCharacterVoice(characterId, dto)));
-    }
-
-    @PostMapping("/voice-preview")
-    public R<String> voicePreview(@RequestBody CharacterVoiceDesignDTO dto) {
-        return R.ok(tasks.start(AiTaskType.VOICE_PREVIEW, null, String.valueOf(dto.getCharacterId()),
-                dto.getModelCode(), dto, () -> characterVoices.previewVoiceDesign(dto)));
     }
 
     @PostMapping("/shot/{shotId}/frame")

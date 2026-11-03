@@ -5,7 +5,7 @@ import com.astra.freyja.dao.*;
 import com.astra.freyja.dto.voice.CharacterVoiceDesignDTO;
 import com.astra.freyja.dto.voice.CharacterVoiceResultVO;
 import com.astra.freyja.entity.*;
-import com.astra.freyja.service.CharacterVoiceService;
+import com.astra.freyja.service.DubbingService;
 import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,12 +18,18 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class McpVoiceToolsTest {
+    @org.junit.jupiter.api.BeforeAll static void metadata() {
+        var builder = new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), "voices");
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(builder, com.astra.freyja.entity.AiModel.class);
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(builder, com.astra.freyja.entity.AiProvider.class);
+    }
+
     static final String PROJECT = "2032095628944588801", CHARACTER = "2032095628944588802", PROVIDER = "2032095628944588803";
     final McpScope scope = mock(McpScope.class);
     final McpBusinessRecords records = mock(McpBusinessRecords.class);
     final McpQueryMapper queries = mock(McpQueryMapper.class);
     final McpBusinessOperationMapper operations = mock(McpBusinessOperationMapper.class);
-    final CharacterVoiceService voices = mock(CharacterVoiceService.class);
+    final DubbingService voices = mock(DubbingService.class);
     final AiProviderMapper providers = mock(AiProviderMapper.class);
     final AiModelMapper models = mock(AiModelMapper.class);
     final McpJson json = new McpJson();

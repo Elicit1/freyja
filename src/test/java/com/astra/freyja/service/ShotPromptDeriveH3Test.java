@@ -150,7 +150,7 @@ class ShotPromptDeriveH3Test {
         ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder()
                 .shotNo(1)
                 .generationMode("REFERENCE_MODE")
-                .promptTarget("MINIMAX_H3")
+
                 .refImages(List.of(
                         ShotRefImageDTO.builder()
                                 .id("ref_scene_1")
@@ -328,7 +328,7 @@ class ShotPromptDeriveH3Test {
         ShotPromptDeriveDTO dto = ShotPromptDeriveDTO.builder()
                 .shotNo(2)
                 .generationMode("REFERENCE_MODE")
-                .promptTarget("MINIMAX_H3")
+
                 .resKeyframeId(301L)
                 .refImages(List.of(
                         ShotRefImageDTO.builder()

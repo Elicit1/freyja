@@ -31,7 +31,5 @@ class ShotDecomposeDurationTest {
         assertEquals(7, direct.getShortShots());
         assertEquals(1, direct.getLongShots());
         assertEquals(3.8, direct.getAverageDuration());
-        assertFalse(direct.getIsHighFragmentation());
-        assertNull(direct.getWarningMessage());
     }
 }

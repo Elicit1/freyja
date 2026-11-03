@@ -70,7 +70,7 @@ public class DramaShotVO {
     private List<ShotRefVideoDTO> refVideos;
     /** Includes a persisted empty selection; opening a dialog must not restore defaults. */
     private Boolean refAudiosConfigured;
-    /** Legacy speech has been projected into scriptContent for creator review. */
+    /** 统一镜头剧本，包含人物动作、对白和旁白。 */
 
     /** 产物媒体 */
     private String previewImageUrl;

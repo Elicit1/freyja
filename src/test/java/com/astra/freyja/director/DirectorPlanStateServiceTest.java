@@ -22,6 +22,7 @@ class DirectorPlanStateServiceTest {
     @BeforeEach void setup() {
         mapper = mock(DramaShotMapper.class);
         service = new DirectorPlanStateService(mapper, new DirectorPlanValidator());
+        org.springframework.test.util.ReflectionTestUtils.setField(service, "episodeService", mock(com.astra.freyja.service.DramaEpisodeService.class));
         shot = new DramaShot(); shot.setId(7L); shot.setDuration(new BigDecimal("4"));
         when(mapper.selectById(7L)).thenReturn(shot);
     }

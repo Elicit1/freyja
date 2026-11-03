@@ -19,9 +19,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -33,7 +31,6 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
     private final ResSceneMapper sceneMapper;
     private final ResPropMapper propMapper;
     private final com.astra.freyja.service.RenderTaskService renderTaskService;
-    private final Map<String, AssetImageGenerationVO> taskStore = new ConcurrentHashMap<>();
 
     @Override
     public AssetImageGenerationVO submit(AssetImageGenerationRequest request) {
@@ -53,17 +50,11 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
         }
 
         Long requestedProviderId = request.getProviderId() != null ? Long.valueOf(request.getProviderId()) : null;
-        com.astra.freyja.entity.AiProvider actualProvider = null;
-        String actualModelCode = null;
-        try {
-            actualProvider = aiImageApiService.resolveProvider(requestedProviderId);
-            DramaShotFirstFrameDTO tempDto = new DramaShotFirstFrameDTO();
-            tempDto.setProviderId(actualProvider.getId());
-            tempDto.setModelCode(request.getModelCode());
-            actualModelCode = aiImageApiService.resolveModelCode(tempDto, actualProvider.getId());
-        } catch (Exception e) {
-            log.warn("[AssetImageGeneration] 预解析提供商与模型警告: {}", e.getMessage());
-        }
+        var actualProvider = aiImageApiService.resolveProvider(requestedProviderId);
+        DramaShotFirstFrameDTO modelRequest = new DramaShotFirstFrameDTO();
+        modelRequest.setProviderId(actualProvider.getId());
+        modelRequest.setModelCode(request.getModelCode());
+        String actualModelCode = aiImageApiService.resolveModelCode(modelRequest, actualProvider.getId());
 
         com.astra.freyja.dto.render.RenderTaskVO rTask = com.astra.freyja.dto.render.RenderTaskVO.builder()
                 .taskId(taskId)
@@ -74,9 +65,9 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
                 .assetSlot(request.getSlot())
                 .prompt(request.getPrompt())
                 .negativePrompt(request.getNegativePrompt())
-                .providerId(actualProvider != null ? actualProvider.getId() : requestedProviderId)
-                .providerName(actualProvider != null ? actualProvider.getProviderName() : null)
-                .modelCode(actualModelCode != null ? actualModelCode : request.getModelCode())
+                .providerId(actualProvider.getId())
+                .providerName(actualProvider.getProviderName())
+                .modelCode(actualModelCode)
                 .status("QUEUED")
                 .progress(0)
                 .currentNode("等待前序渲染任务完成")
@@ -100,24 +91,13 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
             renderTaskService.finishTask(taskId, output, null);
         } catch (Exception e) {
             renderTaskService.failTask(taskId, e.getMessage(), org.apache.commons.lang3.exception.ExceptionUtils.getStackTrace(e));
-            AssetImageGenerationVO errVo = AssetImageGenerationVO.builder().taskId(taskId).mode("API")
-                    .status("FAILED").errorMessage(e.getMessage()).build();
-            taskStore.put(taskId, errVo);
             throw e;
         } finally {
             com.astra.freyja.service.RenderTaskThreadRegistry.unregister(taskId);
         }
 
-        AssetImageGenerationVO result = AssetImageGenerationVO.builder().taskId(taskId).mode("API")
+        AssetImageGenerationVO result = AssetImageGenerationVO.builder().taskId(taskId)
                 .status("SUCCESS").progress(100).outputUrl(output).build();
-        taskStore.put(taskId, result);
-        return result;
-    }
-
-    @Override
-    public AssetImageGenerationVO getTask(String taskId) {
-        AssetImageGenerationVO result = taskStore.get(taskId);
-        if (result == null) throw new BizException(404, "资产生图任务不存在: " + taskId);
         return result;
     }
 

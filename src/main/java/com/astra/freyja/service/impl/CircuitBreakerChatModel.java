@@ -93,13 +93,4 @@ public class CircuitBreakerChatModel implements ChatModel {
         return delegate.getOptions();
     }
 
-    /**
-     * Spring AI 2.0 已将 getOptions() 作为当前 API。
-     * 保留旧方法仅用于兼容旧调用方，并统一转发到新的 Options 代理。
-     */
-    @Override
-    @Deprecated(forRemoval = true)
-    public ChatOptions getDefaultOptions() {
-        return getOptions();
-    }
 }

@@ -46,7 +46,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
     private final AIOutputValidationService validationService;
     private final AiTaskService aiTaskService;
     private final ObjectMapper objectMapper;
-    @Autowired(required = false)
+    @Autowired
     private ScriptSkillRuntime scriptSkillRuntime;
     @Autowired
     private StoryNormalizerService storyNormalizerService;
@@ -415,8 +415,7 @@ public class ParallelShotGenerationServiceImpl implements ParallelShotGeneration
                 + "\n\n【统一剧本契约】scriptContent 必须完整包含动作、逐字原文台词、画外音和旁白/独白；不输出 dialogue、dialogueSpeaker、voiceover 字段。characterIds 只包含实际画面出场人物，不含仅被提到或仅画外发声的人物；缺值保持空列表，Java 不扫描剧本补猜。"
                 + "\n\n【输入事实优先级】originalContent 为最高剧情事实来源；优先按 normalizedContent 拆镜，明确冲突时以 originalContent 为准。已标准化的空间关系无需重新推断或扩写。"
                 + "\n\n### 本次 Worker 任务输入（动态事实）\n" + taskInput;
-        ScriptSkillRuntime.Invocation skillInvocation = scriptSkillRuntime == null ? null
-                : scriptSkillRuntime.begin(request,
+        ScriptSkillRuntime.Invocation skillInvocation = scriptSkillRuntime.begin(request,
                 request.getSkillPolicy() == null ? null : request.getSkillPolicy().getWorker(),
                 globalContext, systemPrompt, "WORKER", segment.getId(), attempt, channelChunkConsumer);
         if (skillInvocation != null) {

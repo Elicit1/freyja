@@ -34,3 +34,17 @@
 SQL 任务插入、查询及状态保存失败时明确返回持久化错误，不生成时间戳任务 ID，不返回虚构的重试状态。不存在的任务不能重试。显式使用 DraftStore 的拆解草稿继续使用其持久化机制，不作为 SQL 异常后的内存兜底。
 
 本次代码修改没有连接或迁移业务数据库；迁移在部署并启动新后端时执行。回归使用 H2 数据库验证备份、合并和重复执行。
+
+
+## 第二轮运行时清理
+
+- Planner/Worker 必须注入 `ScriptSkillRuntime`；拆解服务和 AI 任务服务必须具备草稿存储、任务服务与事件日志。移除无任务执行的构造器及缺少草稿存储时另存 SQL 请求/结果的分支。读取既有 SQL 历史任务仍受支持。
+- 跨功能事件日志更名为 `AiTaskEventStore`，已有 Redis Key 保持兼容，任务重放与恢复无需清空数据。
+- 配音设计和母音归档收拢到 `DubbingService`，删除 `CharacterVoiceService` 及旧 `/res/character/{id}/voice/design`、`/res/character/voice/preview`、`/ai/tasks/character/{id}/voice-design`、`/ai/tasks/voice-preview` 入口。工作台继续使用 `/dubbing/**`；已发布 `design_character_voice` 工具调用配音中心服务，保留试听和幂等语义。
+- 资产生图只通过 `/ai/tasks/asset-image` 提交、通过统一任务中心恢复；删除 `/assets/image-generation/submit` 和 `/assets/image-generation/task/{taskId}` 及内存任务仓库。`/assets/image-generation/apply` 继续负责应用产物。删除无效的 `mode`、`workflowTemplateId`、`steps`、`strength` 入参，模型解析失败时停止提交渲染。
+- 删除空的前端提示词轮询方法和重复资产生图轮询。参考图支持由模型声明的类型决定，不再猜测模型名。
+- 删除 `promptTarget`、场景 `lightingPrompt`、统计 `isHighFragmentation/warningMessage` 和过时 Spring AI Options 代理。旧统计 JSON 和模型参数 `minClearCacheFrames` 只在读取时忽略，不再作为字段发布。当前清理周期选项最小值仍为 1。
+- 首尾帧提示词必须使用 `videoPrompt`，不再将参考模式的 `prompt` 复制成视频词。导演规划异常直接标记任务失败，不继续普通提示词生成；原计划保留。
+- 任务中心、渲染任务取消联动、角色配音级联删除、导演时长同步和制作画幅字典验证使用必需依赖，缺少模块时不再静默跳过。
+
+历史快照转换、数据库升级器、旧密钥读取、历史枚举和已冻结渲染快照指纹适配属于数据读取边界，继续保留。正常的网络流式重试、原文标准化失败后使用原文，以及模型能力默认值仍是现行功能。

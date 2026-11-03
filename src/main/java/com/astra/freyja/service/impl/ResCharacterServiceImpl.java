@@ -64,7 +64,7 @@ public class ResCharacterServiceImpl implements ResCharacterService {
     private final SysConfigService sysConfigService;
     private final DramaMapper dramaMapper;
 
-    @Autowired(required = false)
+    @Autowired
     private com.astra.freyja.service.DubbingService dubbingService;
 
     @Autowired
@@ -276,7 +276,7 @@ public class ResCharacterServiceImpl implements ResCharacterService {
             return;
         }
 
-        if (dubbingService != null) dubbingService.deleteForCharacter(id);
+        dubbingService.deleteForCharacter(id);
 
         var images = outfitMapper.selectList(new LambdaQueryWrapper<ResCharacterLook>()
                 .eq(ResCharacterLook::getCharacterId, id)).stream()

@@ -73,7 +73,6 @@ class CircuitBreakerChatModelTest {
         CircuitBreakerChatModel cb = new CircuitBreakerChatModel(delegate, "TestProvider", 0, 2, 10);
 
         assertSame(options, cb.getOptions());
-        assertSame(options, cb.getDefaultOptions());
-        verify(delegate, times(2)).getOptions();
+        verify(delegate).getOptions();
     }
 }

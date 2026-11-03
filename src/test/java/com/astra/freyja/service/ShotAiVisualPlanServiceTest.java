@@ -105,6 +105,20 @@ class ShotAiVisualPlanServiceTest {
         when(modelMapper.selectOne(any())).thenReturn(model);
     }
 
+    @Test
+    void failedDirectorPlanningStopsBeforePromptModelInvocation() throws Exception {
+        var events = (AiTaskEventStore) org.springframework.test.util.ReflectionTestUtils.getField(shotAiVisualPlanService, "aiTaskEventStore");
+        var failed = new CountDownLatch(1);
+        doAnswer(call -> { failed.countDown(); return null; }).when(events).append(anyString(), eq("error"), anyString());
+        when(directorPlanningService.plan(any(), any())).thenThrow(new com.astra.freyja.common.BizException("planning unavailable"));
+        var dto = ShotPromptDeriveDTO.builder().providerId(1L).modelCode("chat-model")
+                .scriptContent("人物安静等待。").generationMode("REFERENCE_MODE").build();
+        shotAiVisualPlanService.derivePromptStream(dto);
+        assertTrue(failed.await(5, TimeUnit.SECONDS), "导演规划失败必须通知统一任务日志");
+        verify(chatModel, never()).call(any(Prompt.class));
+        verify(chatModel, never()).stream(any(Prompt.class));
+    }
+
     private CountDownLatch mockChatModelResponse(String jsonContent) {
         CountDownLatch latch = new CountDownLatch(1);
         Generation gen = new Generation(new AssistantMessage(jsonContent));

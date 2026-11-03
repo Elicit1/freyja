@@ -18,6 +18,21 @@ import static org.mockito.Mockito.*;
 
 class TaskCenterCancellationTest {
 
+    @Test void activeTaskListConsultsEveryInstalledModule() {
+        var ai = mock(AiTaskService.class); var renders = mock(RenderTaskService.class);
+        var center = new TaskCenterServiceImpl(ai, renders, mock(DramaMapper.class), mock(DramaEpisodeMapper.class),
+                mock(DramaSceneMapper.class), mock(DramaShotMapper.class));
+        var agent = mock(com.astra.freyja.agent.runtime.AgentStore.class);
+        var batches = mock(com.astra.freyja.service.video.VideoRenderBatchService.class);
+        var exports = mock(com.astra.freyja.service.mediaexport.ShotVideoExportService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(center, "agentStore", agent);
+        org.springframework.test.util.ReflectionTestUtils.setField(center, "videoBatches", batches);
+        org.springframework.test.util.ReflectionTestUtils.setField(center, "videoExports", exports);
+        assertTrue(center.getActiveTasks().isEmpty());
+        verify(agent).activeRuns(); verify(batches).list(true, 200); verify(exports).list(true, 200);
+        verify(renders).getActiveTasks(); verify(ai).listTasks(any());
+    }
+
     @Test
     void fileExportUsesItsOwnTaskCenterSourceAndCancellation() {
         var center=new TaskCenterServiceImpl(mock(AiTaskService.class),mock(RenderTaskService.class),mock(DramaMapper.class),mock(DramaEpisodeMapper.class),mock(DramaSceneMapper.class),mock(DramaShotMapper.class));

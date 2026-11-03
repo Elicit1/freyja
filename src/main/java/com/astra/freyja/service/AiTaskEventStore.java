@@ -13,10 +13,10 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.Consumer;
 
-/** Shared AI task event journal. The legacy class/key names preserve existing prompt task replay. */
+/** Shared AI task event journal. Existing Redis key prefixes preserve task replay across upgrades. */
 @Service
 @RequiredArgsConstructor
-public class ShotPromptEventStore {
+public class AiTaskEventStore {
     private static final Duration RETENTION = Duration.ofHours(24);
     private final StringRedisTemplate redis;
     private final ObjectMapper objectMapper;

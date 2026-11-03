@@ -62,9 +62,9 @@ public class RenderTaskServiceImpl implements RenderTaskService {
     @Lazy
     private final AiImageApiService aiImageApiService;
 
-    @Autowired(required = false)
+    @Autowired
     private ApplicationEventPublisher eventPublisher;
-    @Autowired(required = false)
+    @Autowired
     private AiTaskService aiTaskService;
 
     @Autowired @Lazy
@@ -116,7 +116,7 @@ public class RenderTaskServiceImpl implements RenderTaskService {
         if (vo.getParentAiTaskId() == null) {
             vo.setParentAiTaskId(AiTaskExecutionRegistry.currentTaskId());
         }
-        if (vo.getParentAiTaskId() != null && aiTaskService != null
+        if (vo.getParentAiTaskId() != null
                 && aiTaskService.isCancelled(vo.getParentAiTaskId())) {
             throw new java.util.concurrent.CancellationException("父 AI 任务已取消，停止提交渲染");
         }
@@ -129,7 +129,7 @@ public class RenderTaskServiceImpl implements RenderTaskService {
 
         // A parent can be cancelled while this insert is in flight. The second check closes
         // the gap between the initial check and the task center's descendant scan.
-        if (vo.getParentAiTaskId() != null && aiTaskService != null
+        if (vo.getParentAiTaskId() != null
                 && aiTaskService.isCancelled(vo.getParentAiTaskId())) {
             throw new java.util.concurrent.CancellationException("父 AI 任务已取消，停止提交渲染");
         }

@@ -8,7 +8,6 @@ import lombok.Data;
 @Builder
 public class AssetImageGenerationVO {
     private String taskId;
-    private String mode;
     private String status;
     private Integer progress;
     private String outputUrl;

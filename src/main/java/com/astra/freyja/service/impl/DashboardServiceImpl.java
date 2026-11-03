@@ -36,10 +36,10 @@ public class DashboardServiceImpl implements DashboardService {
     private final ResPropMapper resPropMapper;
     private final AiProviderMapper aiProviderMapper;
 
-    @Autowired(required = false)
+    @Autowired
     private AiTaskMapper aiTaskMapper;
 
-    @Autowired(required = false)
+    @Autowired
     private MinioProperties minioProperties;
 
     @Override
@@ -68,9 +68,9 @@ public class DashboardServiceImpl implements DashboardService {
         long activeAiProviders = aiProviderMapper.selectCount(
                 new LambdaQueryWrapper<AiProvider>().eq(AiProvider::getStatus, 1)
         );
-        long aiTaskCount = aiTaskMapper != null ? aiTaskMapper.selectCount(null) : 0L;
+        long aiTaskCount = aiTaskMapper.selectCount(null);
         boolean aiReady = activeAiProviders > 0;
-        boolean storageReady = minioProperties != null && StringUtils.isNotBlank(minioProperties.getEndpoint());
+        boolean storageReady = StringUtils.isNotBlank(minioProperties.getEndpoint());
 
         // 5. 题材分布统计
         List<Drama> allDramas = dramaMapper.selectList(new LambdaQueryWrapper<Drama>().select(Drama::getId, Drama::getGenre));

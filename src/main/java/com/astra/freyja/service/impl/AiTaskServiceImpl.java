@@ -15,7 +15,7 @@ import com.astra.freyja.entity.enums.AiTaskType;
 import com.astra.freyja.service.AiTaskService;
 import com.astra.freyja.service.AiTaskExecutionRegistry;
 import com.astra.freyja.service.ScriptDecomposeDraftStore;
-import com.astra.freyja.service.ShotPromptEventStore;
+import com.astra.freyja.service.AiTaskEventStore;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
@@ -51,12 +51,12 @@ public class AiTaskServiceImpl implements AiTaskService {
     private final DramaMapper dramaMapper;
     private final DramaEpisodeMapper episodeMapper;
 
-    @Autowired(required = false)
+    @Autowired
     private ApplicationEventPublisher eventPublisher;
-    @Autowired(required = false)
+    @Autowired
     private ScriptDecomposeDraftStore draftStore;
-    @Autowired(required = false)
-    private ShotPromptEventStore aiEvents;
+    @Autowired
+    private AiTaskEventStore aiEvents;
 
     public void setEventPublisher(ApplicationEventPublisher eventPublisher) {
         this.eventPublisher = eventPublisher;
@@ -75,16 +75,12 @@ public class AiTaskServiceImpl implements AiTaskService {
     @Autowired
     public AiTaskServiceImpl(AiTaskMapper aiTaskMapper,
                              ObjectMapper objectMapper,
-                             @Autowired(required = false) DramaMapper dramaMapper,
-                             @Autowired(required = false) DramaEpisodeMapper episodeMapper) {
+                             DramaMapper dramaMapper,
+                             DramaEpisodeMapper episodeMapper) {
         this.aiTaskMapper = aiTaskMapper;
-        this.objectMapper = objectMapper != null ? objectMapper : new ObjectMapper();
+        this.objectMapper = java.util.Objects.requireNonNull(objectMapper);
         this.dramaMapper = dramaMapper;
         this.episodeMapper = episodeMapper;
-    }
-
-    public AiTaskServiceImpl(AiTaskMapper aiTaskMapper) {
-        this(aiTaskMapper, new ObjectMapper(), null, null);
     }
 
     @Override
@@ -105,9 +101,9 @@ public class AiTaskServiceImpl implements AiTaskService {
         task.setMaxTokens(maxTokens != null ? maxTokens : 8192);
         task.setRetryCount(0);
 
-        if (draftStore != null && (taskType == AiTaskType.CHAPTER_DECOMPOSE
+        if (taskType == AiTaskType.CHAPTER_DECOMPOSE
                 || taskType == AiTaskType.WORKER_RETRY
-                || (parentTaskId != null && draftStore.getTask(parentTaskId) != null))) {
+                || (parentTaskId != null && draftStore.getTask(parentTaskId) != null)) {
             task.setId(IdWorker.getId());
             task.setCreateTime(LocalDateTime.now());
             draftStore.saveTask(task);
@@ -129,7 +125,7 @@ public class AiTaskServiceImpl implements AiTaskService {
     @Override
     public synchronized void markRunning(Long taskId) {
         if (taskId == null) return;
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) {
             if (!ACTIVE_STATUSES.contains(draftTask.getStatus())) return;
             draftTask.setStatus(AiTaskStatus.RUNNING.name());
@@ -158,7 +154,7 @@ public class AiTaskServiceImpl implements AiTaskService {
     public synchronized void markSuccess(Long taskId, String outputPayload, Integer consumedTokens) {
         if (taskId == null) return;
         AiTaskExecutionRegistry.unregister(taskId);
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) {
             if (!FINISHABLE_STATUSES.contains(draftTask.getStatus())) return;
             draftTask.setStatus(AiTaskStatus.SUCCESS.name());
@@ -192,7 +188,7 @@ public class AiTaskServiceImpl implements AiTaskService {
     public synchronized void markFailed(Long taskId, String errorMessage) {
         if (taskId == null) return;
         AiTaskExecutionRegistry.unregister(taskId);
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) {
             if (!ACTIVE_STATUSES.contains(draftTask.getStatus())) return;
             draftTask.setStatus(AiTaskStatus.FAILED.name());
@@ -223,7 +219,7 @@ public class AiTaskServiceImpl implements AiTaskService {
         if (taskId == null) return false;
         String status = upstreamConfirmed ? AiTaskStatus.CANCELLED.name() : AiTaskStatus.CANCEL_UNCONFIRMED.name();
         String message = upstreamConfirmed ? "用户取消任务，上游已确认" : "本地请求已中断；上游未提供取消确认";
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) {
             if (isCancelledStatus(draftTask.getStatus())) {
                 if (upstreamConfirmed && AiTaskStatus.CANCEL_UNCONFIRMED.name().equals(draftTask.getStatus())) {
@@ -268,7 +264,7 @@ public class AiTaskServiceImpl implements AiTaskService {
         if (taskId == null) {
             throw new BizException("任务 ID 不能为空");
         }
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) {
             throw new BizException("拆解任务请使用指定分段的 Worker 重试功能");
         }
@@ -299,9 +295,7 @@ public class AiTaskServiceImpl implements AiTaskService {
     @Override
     public List<AiTaskDTO> listTasks(AiTaskQueryDTO query) {
         var drafts = new java.util.LinkedHashMap<Long, AiTask>();
-        if (draftStore != null) {
-            for (AiTask task : draftStore.listTasks()) drafts.put(task.getId(), task);
-        }
+        for (AiTask task : draftStore.listTasks()) drafts.put(task.getId(), task);
         var canonical = new java.util.LinkedHashMap<Long, AiTask>();
         try {
             LambdaQueryWrapper<AiTask> qw = new LambdaQueryWrapper<>();
@@ -341,7 +335,7 @@ public class AiTaskServiceImpl implements AiTaskService {
     @Override
     public AiTaskDTO getTaskById(Long taskId) {
         if (taskId == null) return null;
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) return toDTO(draftTask);
         try {
             AiTask task = aiTaskMapper.selectById(taskId);
@@ -355,7 +349,7 @@ public class AiTaskServiceImpl implements AiTaskService {
     public synchronized void markPartialSuccess(Long taskId, String outputPayload, String errorMessage) {
         if (taskId == null) return;
         AiTaskExecutionRegistry.unregister(taskId);
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) {
             if (!FINISHABLE_STATUSES.contains(draftTask.getStatus())) return;
             draftTask.setStatus(AiTaskStatus.PARTIAL_SUCCESS.name());
@@ -386,7 +380,7 @@ public class AiTaskServiceImpl implements AiTaskService {
     @Override
     public synchronized void updateTaskPayload(Long taskId, String status, String outputPayload, String errorMessage) {
         if (taskId == null) return;
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) {
             if (isCancelledStatus(draftTask.getStatus())) return;
             if (StringUtils.isNotBlank(status)) draftTask.setStatus(status);
@@ -418,13 +412,11 @@ public class AiTaskServiceImpl implements AiTaskService {
     @Override
     public List<ChapterDecomposeHistoryVO> listChapterHistory(Long dramaId, Long episodeId) {
         List<ChapterDecomposeHistoryVO> historyList = new ArrayList<>();
-        if (draftStore != null) {
-            historyList.addAll(draftStore.listTasks().stream()
-                    .filter(task -> AiTaskType.CHAPTER_DECOMPOSE.name().equals(task.getTaskType()))
-                    .filter(task -> dramaId == null || dramaId <= 0 || dramaId.equals(task.getDramaId()))
-                    .filter(task -> episodeId == null || episodeId <= 0 || episodeId.equals(task.getEpisodeId()))
-                    .map(this::parseHistoryItem).toList());
-        }
+        historyList.addAll(draftStore.listTasks().stream()
+                .filter(task -> AiTaskType.CHAPTER_DECOMPOSE.name().equals(task.getTaskType()))
+                .filter(task -> dramaId == null || dramaId <= 0 || dramaId.equals(task.getDramaId()))
+                .filter(task -> episodeId == null || episodeId <= 0 || episodeId.equals(task.getEpisodeId()))
+                .map(this::parseHistoryItem).toList());
         try {
             QueryWrapper<AiTask> qw = new QueryWrapper<>();
             qw.eq("task_type", AiTaskType.CHAPTER_DECOMPOSE.name());
@@ -466,7 +458,7 @@ public class AiTaskServiceImpl implements AiTaskService {
         }
 
         // 解析 inputPayload 获取原始请求中的标题、集号等
-        ScriptDecomposeRequestDTO draftRequest = draftStore != null ? draftStore.getRequest(task.getId()) : null;
+        ScriptDecomposeRequestDTO draftRequest = draftStore.getRequest(task.getId());
         if (draftRequest != null) {
             builder.chapterTitle(draftRequest.getChapterTitle())
                     .episodeNo(draftRequest.getStartEpisodeNo());
@@ -486,7 +478,7 @@ public class AiTaskServiceImpl implements AiTaskService {
         }
 
         // 解析 outputPayload 获取统计指标 (分段数、镜头数、碎片率等)
-        ScriptDecomposeResultVO draftResult = draftStore != null ? draftStore.getResult(task.getId()) : null;
+        ScriptDecomposeResultVO draftResult = draftStore.getResult(task.getId());
         if (draftResult != null || StringUtils.isNotBlank(task.getOutputPayload())) {
             try {
                 ScriptDecomposeResultVO resultVO = draftResult != null ? draftResult
@@ -540,7 +532,7 @@ public class AiTaskServiceImpl implements AiTaskService {
 
         // 数据库兜底填充短剧名称
         ChapterDecomposeHistoryVO historyVO = builder.build();
-        if (StringUtils.isBlank(historyVO.getDramaTitle()) && dramaMapper != null && task.getDramaId() != null && task.getDramaId() > 0) {
+        if (StringUtils.isBlank(historyVO.getDramaTitle()) && task.getDramaId() != null && task.getDramaId() > 0) {
             try {
                 var drama = dramaMapper.selectById(task.getDramaId());
                 if (drama != null) historyVO.setDramaTitle(drama.getTitle());
@@ -555,12 +547,12 @@ public class AiTaskServiceImpl implements AiTaskService {
         if (taskId == null) {
             throw new BizException("任务 ID 不能为空");
         }
-        AiTask task = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask task = draftStore.getTask(taskId);
         if (task == null) task = aiTaskMapper.selectById(taskId);
         if (task == null) {
             throw new BizException(404, "拆解任务记录不存在: " + taskId);
         }
-        ScriptDecomposeResultVO draftResult = draftStore != null ? draftStore.getResult(taskId) : null;
+        ScriptDecomposeResultVO draftResult = draftStore.getResult(taskId);
         if (draftResult != null) {
             draftResult.setTaskId(taskId);
             draftResult.setStatus(task.getStatus());
@@ -583,7 +575,7 @@ public class AiTaskServiceImpl implements AiTaskService {
     @Override
     public void bindDrama(Long taskId, Long dramaId) {
         if (taskId == null || dramaId == null) return;
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) {
             draftTask.setDramaId(dramaId);
             draftStore.saveTask(draftTask);
@@ -610,7 +602,7 @@ public class AiTaskServiceImpl implements AiTaskService {
     @Override
     public void deleteTask(Long taskId) {
         if (taskId == null) return;
-        AiTask draftTask = draftStore != null ? draftStore.getTask(taskId) : null;
+        AiTask draftTask = draftStore.getTask(taskId);
         if (draftTask != null) {
             if (AiTaskStatus.PENDING.name().equals(draftTask.getStatus())
                     || AiTaskStatus.RUNNING.name().equals(draftTask.getStatus())
@@ -624,18 +616,16 @@ public class AiTaskServiceImpl implements AiTaskService {
                     || AiTaskStatus.RETRYING.name().equals(child.getStatus()))) {
                 throw new BizException("Worker 重试正在运行，暂不能删除拆解任务");
             }
-            if (aiEvents != null) {
-                for (AiTask child : children) aiEvents.delete(String.valueOf(child.getId()));
-            }
+            for (AiTask child : children) aiEvents.delete(String.valueOf(child.getId()));
             draftStore.delete(taskId);
-            if (aiEvents != null) aiEvents.delete(String.valueOf(taskId));
+            aiEvents.delete(String.valueOf(taskId));
             return;
         }
         aiTaskMapper.deleteById(taskId);
         QueryWrapper<AiTask> deleteQw = new QueryWrapper<>();
         deleteQw.eq("parent_task_id", taskId);
         aiTaskMapper.delete(deleteQw);
-        if (draftStore != null) draftStore.delete(taskId);
+        draftStore.delete(taskId);
         log.info("[AiTaskService] 删除拆解任务及子任务记录: taskId={}", taskId);
     }
 

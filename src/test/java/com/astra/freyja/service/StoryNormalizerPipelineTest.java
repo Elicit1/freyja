@@ -107,6 +107,7 @@ class StoryNormalizerPipelineTest {
         ParallelShotGenerationServiceImpl worker = new ParallelShotGenerationServiceImpl(
                 factory, config, validation, tasks, new ObjectMapper());
         ReflectionTestUtils.setField(worker, "storyNormalizerService", normalizer);
+        ReflectionTestUtils.setField(worker, "scriptSkillRuntime", mock(com.astra.freyja.skill.service.ScriptSkillRuntime.class));
         StorySegment one = StorySegment.builder().id("SEG001").sequence(1).rawText("原文事件一").build();
         StorySegment two = StorySegment.builder().id("SEG002").sequence(2).rawText("原文事件二").build();
         var future = java.util.concurrent.CompletableFuture.supplyAsync(() -> worker.generateShotsInParallel(

@@ -119,8 +119,6 @@ export interface FragmentationStats {
   longShots: number
   averageDuration: number
   shortShotRatio: number
-  isHighFragmentation: boolean
-  warningMessage?: string
 }
 
 export interface SegmentShotResult {

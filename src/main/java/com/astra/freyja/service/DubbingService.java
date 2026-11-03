@@ -3,6 +3,10 @@ package com.astra.freyja.service;
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.*;
 import com.astra.freyja.dto.voice.DubbingInputs.*;
+import com.astra.freyja.dto.voice.CharacterVoiceDesignDTO;
+import com.astra.freyja.dto.voice.CharacterVoiceResultVO;
+import org.springframework.transaction.annotation.Transactional;
+import org.apache.commons.lang3.StringUtils;
 import com.astra.freyja.entity.*;
 import com.astra.freyja.entity.enums.AiTaskType;
 import com.astra.freyja.util.AfterCommitTask;
@@ -35,6 +39,59 @@ public class DubbingService {
     private final TransactionTemplate transactions;
     private final JdbcTemplate jdbc;
     @Autowired @Qualifier("renderAsyncExecutor") private Executor executor;
+
+    @Transactional(rollbackFor = Exception.class)
+    public CharacterVoiceResultVO designCharacterVoice(Long characterId, CharacterVoiceDesignDTO dto) {
+        if (characterId == null || characterId <= 0) {
+            throw new BizException(400, "角色 ID 不能为空");
+        }
+        ResCharacter character = characters.selectById(characterId);
+        if (character == null) {
+            throw new BizException(404, "目标角色不存在: " + characterId);
+        }
+
+        // 提取声音设计提示词：优先取请求参数，缺省取角色性格人设
+        String voiceDesc = dto.getVoiceDesc();
+        if (StringUtils.isBlank(voiceDesc)) {
+            voiceDesc = character.getPersonality();
+        }
+        if (StringUtils.isBlank(voiceDesc)) {
+            throw new BizException(400, "声音设计提示词不能为空，请在角色抽屉中输入音色描述");
+        }
+
+        String sampleText = StringUtils.defaultIfBlank(
+                dto.getSampleText(),
+                StringUtils.defaultIfBlank(character.getVoiceSampleText(), "我是" + character.getName() + "，这就是我的真实声音。")
+        );
+
+        if ((dto.getAutoSave() == null || dto.getAutoSave()) && base(characterId) != null) {
+            throw new BizException(409, "角色已有基础声音，请前往配音中心管理或明确替换");
+        }
+        String archivePath = String.format("dubbing/%d/design_%s.wav", characterId, java.util.UUID.randomUUID());
+
+        AiAudioApiService.AudioArchiveResult archiveResult = tts.designVoice(
+                dto.getProviderId(),
+                dto.getModelCode(),
+                voiceDesc,
+                sampleText,
+                archivePath
+        );
+
+        // All character base adoption uses the dubbing center uniqueness and validation rules.
+        if (dto.getAutoSave() == null || dto.getAutoSave()) {
+            archiveResult = adoptDesignedBase(characterId, sampleText, voiceDesc, archiveResult);
+        }
+
+        CharacterVoiceResultVO vo = new CharacterVoiceResultVO();
+        vo.setCharacterId(characterId);
+        vo.setCharacterName(character.getName());
+        vo.setVoiceDesc(voiceDesc);
+        vo.setSampleText(sampleText);
+        vo.setVoiceSampleUrl(archiveResult.audioUrl());
+        vo.setDuration(archiveResult.durationSeconds());
+        vo.setModelCode(dto.getModelCode());
+        return vo;
+    }
 
     public CharacterPage characters(int current,int size,String name,String drama,Long locateId) {
         size=Math.clamp(size,1,50);

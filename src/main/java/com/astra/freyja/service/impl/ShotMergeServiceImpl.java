@@ -299,7 +299,6 @@ public class ShotMergeServiceImpl implements ShotMergeService {
                     .longShots(0)
                     .averageDuration(0.0)
                     .shortShotRatio(0.0)
-                    .isHighFragmentation(false)
                     .build();
         }
 
@@ -332,8 +331,6 @@ public class ShotMergeServiceImpl implements ShotMergeService {
                 .longShots(longCount)
                 .averageDuration(avgDuration)
                 .shortShotRatio(shortRatio)
-                .isHighFragmentation(false)
-                .warningMessage(null)
                 .build();
     }
 }

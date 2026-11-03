@@ -35,7 +35,6 @@ function writeStoredIds(ids: string[]) {
 
 export const usePromptTaskStore = defineStore('promptTask', () => {
   const tasks = ref<Record<string, PromptTaskSnapshot>>({})
-  const polling = ref(false)
   let listenerAttached = false
 
   const activeTasks = computed(() => Object.values(tasks.value).filter(task =>
@@ -139,18 +138,10 @@ export const usePromptTaskStore = defineStore('promptTask', () => {
     window.addEventListener('task-center-task-updated', handleTaskCenterUpdate)
   }
 
-  // 兼容旧接口：不再执行 setInterval 轮询，改为单次按需刷新
+  // 按需刷新当前跟踪的任务
   async function refreshAll() {
     const ids = Object.keys(tasks.value)
     await Promise.all(ids.map(id => refreshTask(id).catch(() => undefined)))
-  }
-
-  function ensurePolling() {
-    ensureListener()
-  }
-
-  function stopPolling() {
-    // WebSocket 模式下无需轮询计时器
   }
 
   // 初始化从 localStorage 恢复
@@ -179,12 +170,9 @@ export const usePromptTaskStore = defineStore('promptTask', () => {
     tasks,
     activeTasks,
     activeCount,
-    polling,
     register,
     refreshTask,
     refreshAll,
-    ensurePolling,
-    stopPolling,
     getTask
   }
 })

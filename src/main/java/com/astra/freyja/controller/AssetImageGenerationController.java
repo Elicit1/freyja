@@ -20,16 +20,6 @@ import org.springframework.web.bind.annotation.RestController;
 public class AssetImageGenerationController {
     private final AssetImageGenerationService generationService;
 
-    @PostMapping("/submit")
-    public R<AssetImageGenerationVO> submit(@RequestBody AssetImageGenerationRequest request) {
-        return R.ok(generationService.submit(request));
-    }
-
-    @GetMapping("/task/{taskId}")
-    public R<AssetImageGenerationVO> getTask(@PathVariable String taskId) {
-        return R.ok(generationService.getTask(taskId));
-    }
-
     @PostMapping("/apply")
     public R<Void> apply(@RequestParam String targetType,
                          @RequestParam Long targetId,

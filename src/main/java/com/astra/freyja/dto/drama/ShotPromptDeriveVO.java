@@ -30,7 +30,7 @@ public class ShotPromptDeriveVO {
     @JsonPropertyDescription("尾帧生图专属英文正向Prompt (首尾帧模式专属: 动作演变终态瞬间定格，融合终态姿势神情与环境演变，严禁运镜词)")
     private String endFramePrompt;
 
-    @JsonPropertyDescription("视频动态运镜专属英文Prompt (兼容旧字段，与 prompt 保持一致)")
+    @JsonPropertyDescription("首尾帧模式的视频动态运镜专属英文Prompt；参考模式使用 prompt")
     private String videoPrompt;
 
     /** 现场环境声、拟音与对白声场（结构化字段，供服务端最终渲染） */

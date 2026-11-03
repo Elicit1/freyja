@@ -2,7 +2,7 @@ package com.astra.freyja.websocket;
 
 import com.astra.freyja.dto.script.AiTaskDTO;
 import com.astra.freyja.service.AiTaskService;
-import com.astra.freyja.service.ShotPromptEventStore;
+import com.astra.freyja.service.AiTaskEventStore;
 import com.astra.freyja.service.TaskCenterService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.socket.TextMessage;
@@ -24,13 +24,13 @@ class TaskCenterPromptReplayTest {
     void genericAiSubscriptionReplaysWorkerEvents() throws Exception {
         TaskCenterService taskCenter = mock(TaskCenterService.class);
         AiTaskService tasks = mock(AiTaskService.class);
-        ShotPromptEventStore journal = mock(ShotPromptEventStore.class);
+        AiTaskEventStore journal = mock(AiTaskEventStore.class);
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.isOpen()).thenReturn(true);
         when(tasks.getTaskById(456L)).thenReturn(AiTaskDTO.builder().id(456L).taskType("CHAPTER_DECOMPOSE").build());
         when(journal.after("456", 0)).thenReturn(List.of(
-                new ShotPromptEventStore.Event("456", 1, "channel_chunk", "{\"channel\":\"PLANNER\",\"chunk\":\"分段完成\"}"),
-                new ShotPromptEventStore.Event("456", 2, "worker_status", "{\"channel\":\"SEG001\",\"status\":\"RUNNING\"}")));
+                new AiTaskEventStore.Event("456", 1, "channel_chunk", "{\"channel\":\"PLANNER\",\"chunk\":\"分段完成\"}"),
+                new AiTaskEventStore.Event("456", 2, "worker_status", "{\"channel\":\"SEG001\",\"status\":\"RUNNING\"}")));
         List<String> sent = new ArrayList<>();
         doAnswer(call -> { sent.add(((TextMessage) call.getArgument(0)).getPayload()); return null; })
                 .when(session).sendMessage(any(TextMessage.class));
@@ -46,11 +46,11 @@ class TaskCenterPromptReplayTest {
     void subscribeReplaysMissingEventsAndContinuesLiveOnSameSession() throws Exception {
         TaskCenterService taskCenter = mock(TaskCenterService.class);
         AiTaskService tasks = mock(AiTaskService.class);
-        ShotPromptEventStore journal = mock(ShotPromptEventStore.class);
+        AiTaskEventStore journal = mock(AiTaskEventStore.class);
         WebSocketSession session = mock(WebSocketSession.class);
         when(session.isOpen()).thenReturn(true);
         when(tasks.getTaskById(123L)).thenReturn(AiTaskDTO.builder().id(123L).taskType("SHOT_PROMPT_DERIVE").build());
-        when(journal.after("123", 1)).thenReturn(List.of(new ShotPromptEventStore.Event("123", 2, "chunk", "恢复的内容")));
+        when(journal.after("123", 1)).thenReturn(List.of(new AiTaskEventStore.Event("123", 2, "chunk", "恢复的内容")));
         List<String> sent = new ArrayList<>();
         doAnswer(call -> { sent.add(((TextMessage) call.getArgument(0)).getPayload()); return null; })
                 .when(session).sendMessage(any(TextMessage.class));
@@ -61,7 +61,7 @@ class TaskCenterPromptReplayTest {
         TaskCenterWebSocketHandler handler = new TaskCenterWebSocketHandler(new ObjectMapper(), taskCenter, tasks, journal);
         handler.registerPromptEvents();
         handler.handleTextMessage(session, new TextMessage("{\"event\":\"PROMPT_SUBSCRIBE\",\"taskId\":\"123\",\"afterSeq\":1}"));
-        listener[0].accept(new ShotPromptEventStore.Event("123", 3, "done", "[DONE]"));
+        listener[0].accept(new AiTaskEventStore.Event("123", 3, "done", "[DONE]"));
 
         assertEquals(2, sent.size());
         assertEquals(2, new ObjectMapper().readTree(sent.get(0)).path("data").path("seq").asInt());

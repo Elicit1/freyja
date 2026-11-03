@@ -34,8 +34,8 @@ public final class PromptServiceTestSupport {
             });
             ReflectionTestUtils.setField(service, "aiTaskService", tasks);
         }
-        if (ReflectionTestUtils.getField(service, "shotPromptEventStore") == null)
-            ReflectionTestUtils.setField(service, "shotPromptEventStore", mock(ShotPromptEventStore.class));
+        if (ReflectionTestUtils.getField(service, "aiTaskEventStore") == null)
+            ReflectionTestUtils.setField(service, "aiTaskEventStore", mock(AiTaskEventStore.class));
     }
     public static void configureSkills(Object service) {
         if (ReflectionTestUtils.getField(service, "skillPromptContextService") == null) {

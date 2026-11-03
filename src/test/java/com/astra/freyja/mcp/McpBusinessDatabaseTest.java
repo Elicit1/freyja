@@ -121,6 +121,7 @@ class McpBusinessDatabaseTest {
         @Bean DictService dictionaries() { return dictionaryFixture(); }
         @Bean AiImageApiService images() { return mock(AiImageApiService.class); }
         @Bean PromptAssembleService prompts() { return mock(PromptAssembleService.class); }
+        @Bean DubbingService dubbing() { return mock(DubbingService.class); }
         @Bean RenderTaskService renders() { return mock(RenderTaskService.class); }
         @Bean com.astra.freyja.service.video.VideoRenderBatchService videoBatches() { return mock(com.astra.freyja.service.video.VideoRenderBatchService.class); }
         @Bean com.astra.freyja.skill.service.SkillPromptContextService skillContext() {

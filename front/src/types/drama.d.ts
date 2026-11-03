@@ -492,7 +492,6 @@ export interface ShotPromptDeriveDTO {
   modelCode?: string
   userInstruction?: string
   generationMode?: 'FIRST_LAST_FRAME' | 'REFERENCE_MODE'
-  promptTarget?: 'GENERIC' | 'MINIMAX_H3' | string
   refImages?: ShotRefImage[]
   refAudios?: ShotRefAudio[]
   refVideos?: ShotRefVideo[]

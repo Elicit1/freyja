@@ -7,7 +7,7 @@ import com.astra.freyja.dao.McpQueryMapper;
 import com.astra.freyja.dto.voice.CharacterVoiceDesignDTO;
 import com.astra.freyja.entity.AiModel;
 import com.astra.freyja.entity.AiProvider;
-import com.astra.freyja.service.CharacterVoiceService;
+import com.astra.freyja.service.DubbingService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -30,7 +30,7 @@ public class McpVoiceTools {
     private final McpBusinessView views;
     private final McpQueryMapper queries;
     private final McpOperationStore journal;
-    private final CharacterVoiceService voices;
+    private final DubbingService voices;
     private final AiProviderMapper providers;
     private final AiModelMapper models;
 

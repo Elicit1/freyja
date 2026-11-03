@@ -29,7 +29,7 @@ public class ProductionJobs {
     private final AiTaskMapper taskMapper;
     private final DramaEpisodeMapper episodes;
     private final AgentMessageMapper messages;
-    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    @org.springframework.beans.factory.annotation.Autowired
     private DictService dictionaries;
 
     private void validate(Start input) {
@@ -37,7 +37,7 @@ public class ProductionJobs {
             throw new BizException("需要合法的 clientRequestId");
         if (!ProductionAssets.text(input.getSourceText()) || input.getSourceText().length() > 100000)
             throw new BizException("请输入小说或剧本，最长 100000 字");
-        if (!ProductionAssets.text(input.getAspectRatio()) || (dictionaries != null && dictionaries.listByType("drama_aspect_ratio").stream()
+        if (!ProductionAssets.text(input.getAspectRatio()) || (dictionaries.listByType("drama_aspect_ratio").stream()
                 .noneMatch(option -> Integer.valueOf(1).equals(option.getStatus()) && input.getAspectRatio().equals(option.getDictValue()))))
             throw new BizException("请选择启用的画幅比例");
         if (input.getPacingPreset() == null || !Set.of("AUTO", "FAST_PACED", "COMPACT", "STANDARD", "CINEMATIC_LONG").contains(input.getPacingPreset())) throw new BizException("节奏不合法");

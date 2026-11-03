@@ -106,7 +106,7 @@ class ScriptDecomposeServiceTest {
     void setUp() {
         validationService = new AIOutputValidationServiceImpl(objectMapper);
         scriptChunkService = new ScriptChunkServiceImpl();
-        aiTaskService = new AiTaskServiceImpl(aiTaskMapper);
+        aiTaskService = AiTaskServiceTestSupport.create(aiTaskMapper);
         com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
                 new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), "tasks"),
                 com.astra.freyja.entity.AiTask.class);
@@ -153,10 +153,13 @@ class ScriptDecomposeServiceTest {
                 shotGroupMapper,
                 shotMapper,
                 promptAssembleService,
-                objectMapper
+                objectMapper,
+                aiTaskService
         );
         ReflectionTestUtils.setField(scriptDecomposeService, "scriptSkillRuntime", scriptSkillRuntime);
+        ReflectionTestUtils.setField(scriptDecomposeService, "draftStore", ReflectionTestUtils.getField(aiTaskService, "draftStore"));
         ReflectionTestUtils.setField(chapterDecompositionService, "scriptSkillRuntime", scriptSkillRuntime);
+        ReflectionTestUtils.setField(parallelShotGenerationService, "scriptSkillRuntime", scriptSkillRuntime);
         lenient().when(scriptSkillRuntime.begin(any(), any(), any(), anyString(), anyString(), any(), anyInt(), any()))
                 .thenAnswer(invocation -> {
                     String systemPrompt = invocation.getArgument(3);

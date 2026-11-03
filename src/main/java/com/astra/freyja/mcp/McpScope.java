@@ -17,7 +17,7 @@ public class McpScope {
     private final DramaSceneMapper scenes;
     private final DramaShotGroupMapper groups;
     private final DramaShotMapper shots;
-    @Autowired(required = false)
+    @Autowired
     private McpBusinessOperationMapper operations;
 
     public static Long id(String raw) {
@@ -34,7 +34,7 @@ public class McpScope {
     /** Permission-only check allows an authorized caller to recover a committed project deletion. */
     public Long authorizeProject(McpPrincipal caller, String raw) {
         Long id = id(raw);
-        if (!caller.canRead(id) && !(caller.createProjects() && operations != null && operations.createdProjectCount(id) > 0))
+        if (!caller.canRead(id) && !(caller.createProjects() && operations.createdProjectCount(id) > 0))
             throw new BizException(403, "PROJECT_ACCESS_DENIED: 项目不在 MCP 授权范围");
         return id;
     }

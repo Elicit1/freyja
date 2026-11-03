@@ -59,11 +59,11 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
     private final PromptAssembleService promptAssembleService;
     private final ObjectMapper objectMapper;
     private final AiTaskService aiTaskService;
-    @Autowired(required = false)
+    @Autowired
     private ScriptSkillRuntime scriptSkillRuntime;
-    @Autowired(required = false)
-    private ShotPromptEventStore aiEvents;
-    @Autowired(required = false)
+    @Autowired
+    private AiTaskEventStore aiEvents;
+    @Autowired
     private ScriptDecomposeDraftStore draftStore;
 
     @Autowired
@@ -84,7 +84,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             DramaShotMapper shotMapper,
             PromptAssembleService promptAssembleService,
             ObjectMapper objectMapper,
-            @Autowired(required = false) AiTaskService aiTaskService) {
+            AiTaskService aiTaskService) {
         this.chapterDecompositionService = chapterDecompositionService;
         this.parallelShotGenerationService = parallelShotGenerationService;
         this.shotMergeService = shotMergeService;
@@ -102,30 +102,6 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         this.promptAssembleService = promptAssembleService;
         this.objectMapper = objectMapper;
         this.aiTaskService = aiTaskService;
-    }
-
-    public ScriptDecomposeServiceImpl(
-            ChapterDecompositionService chapterDecompositionService,
-            ParallelShotGenerationService parallelShotGenerationService,
-            ShotMergeService shotMergeService,
-            CharacterRegistryService characterRegistryService,
-            PromptBuilder promptBuilder,
-            ResCharacterMapper characterMapper,
-            ResCharacterLookMapper outfitMapper,
-            ResSceneMapper resSceneMapper,
-            ResPropMapper resPropMapper,
-            DramaMapper dramaMapper,
-            DramaEpisodeMapper episodeMapper,
-            DramaSceneMapper dramaSceneMapper,
-            DramaShotGroupMapper shotGroupMapper,
-            DramaShotMapper shotMapper,
-            PromptAssembleService promptAssembleService,
-            ObjectMapper objectMapper) {
-        this(chapterDecompositionService, parallelShotGenerationService, shotMergeService,
-                characterRegistryService, promptBuilder,
-                characterMapper, outfitMapper, resSceneMapper, resPropMapper,
-                dramaMapper, episodeMapper, dramaSceneMapper, shotGroupMapper, shotMapper,
-                promptAssembleService, objectMapper, null);
     }
 
     @Override
@@ -189,7 +165,6 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
     public String startDecomposeTask(ScriptDecomposeRequestDTO request) {
         validateDecomposeRequest(request);
         prepareSkillRequest(request);
-        if (aiTaskService == null || aiEvents == null || draftStore == null) throw new BizException("AI 任务或 Redis 草稿服务不可用");
         AiTask task = aiTaskService.createTask(request.getDramaId(), request.getEpisodeId(),
                 AiTaskType.CHAPTER_DECOMPOSE, "CHAPTER_" + System.currentTimeMillis() % 100000,
                 null, null, request.getModelCode(), 16384);
@@ -285,24 +260,24 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
 
         // 0. 创建整章拆解父级持久化任务 (CHAPTER_DECOMPOSE)
         AiTask parentTask = existingTask;
-        if (aiTaskService != null && parentTask == null) {
+        if (parentTask == null) {
             parentTask = aiTaskService.createTask(
                     request.getDramaId(),
                     request.getEpisodeId(),
                     AiTaskType.CHAPTER_DECOMPOSE,
                     "CHAPTER_" + System.currentTimeMillis() % 100000,
                     com.astra.freyja.service.AiTaskExecutionRegistry.currentTaskId(),
-                    draftStore == null ? objectMapper.writeValueAsString(request) : null,
+                    null,
                     request.getModelCode(),
                     16384
             );
         }
 
-        if (aiTaskService != null && parentTask != null) aiTaskService.markRunning(parentTask.getId());
+        if (parentTask != null) aiTaskService.markRunning(parentTask.getId());
 
         Long taskId = parentTask != null ? parentTask.getId() : null;
         ensureTaskNotCancelled(taskId);
-        if (draftStore != null && taskId != null) draftStore.saveRequest(taskId, request);
+        if (taskId != null) draftStore.saveRequest(taskId, request);
 
         // 0. 加载并缓存 GlobalStoryContext (一次性加载，0 次重复查库)
         String registryContext = characterRegistryService.formatRegistryForPrompt(request.getDramaId());
@@ -333,7 +308,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 : (existingDrama != null && StringUtils.isNotBlank(existingDrama.getAspectRatio()) ? existingDrama.getAspectRatio() : "9:16");
         request.setAspectRatio(effectiveAspectRatio);
         request.setPacingPreset(StringUtils.defaultIfBlank(request.getPacingPreset(), "AUTO"));
-        if (draftStore != null && taskId != null) draftStore.saveRequest(taskId, request);
+        if (taskId != null) draftStore.saveRequest(taskId, request);
 
         GlobalStoryContext globalContext = GlobalStoryContext.builder()
                 .taskId(taskId)
@@ -362,7 +337,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         if (plannerResult == null || plannerResult.getSegments() == null || plannerResult.getSegments().isEmpty()) {
             throw new BizException("Planner AI 章节分段未产生有效数据");
         }
-        if (draftStore != null && taskId != null) draftStore.savePlanner(taskId, plannerResult);
+        if (taskId != null) draftStore.savePlanner(taskId, plannerResult);
 
         if (StringUtils.isBlank(globalContext.getDramaTitle())) {
             globalContext.setDramaTitle(plannerResult.getDramaTitle());
@@ -439,7 +414,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
                 plannerResult.getSegments().size()));
 
         Consumer<SegmentShotResult> progressCallback = segProgress -> {
-            if (draftStore != null && taskId != null
+            if (taskId != null
                     && ("SUCCESS".equalsIgnoreCase(segProgress.getStatus()) || "FAILED".equalsIgnoreCase(segProgress.getStatus()))) {
                 draftStore.saveWorker(taskId, segProgress);
             }
@@ -511,9 +486,9 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         }
 
         ensureTaskNotCancelled(taskId);
-        if (draftStore != null && taskId != null) draftStore.saveResult(taskId, mergedResult);
-        if (aiTaskService != null && taskId != null) {
-            String outputJson = draftStore == null ? objectMapper.writeValueAsString(mergedResult) : null;
+        if (taskId != null) draftStore.saveResult(taskId, mergedResult);
+        if (taskId != null) {
+            String outputJson = null;
             if (anyFailed) {
                 aiTaskService.markPartialSuccess(taskId, outputJson, "部分分段失败待补救: " + String.join(", ", failedIds));
             } else {
@@ -523,7 +498,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
 
         return mergedResult;
         } catch (Exception e) {
-            if (aiTaskService != null && taskId != null && !aiTaskService.isCancelled(taskId)) {
+            if (taskId != null && !aiTaskService.isCancelled(taskId)) {
                 aiTaskService.markFailed(taskId, e.getMessage());
             }
             throw e;
@@ -532,7 +507,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
 
     private void ensureTaskNotCancelled(Long taskId) {
         if (Thread.currentThread().isInterrupted()
-                || (taskId != null && aiTaskService != null && aiTaskService.isCancelled(taskId))) {
+                || (taskId != null && aiTaskService.isCancelled(taskId))) {
             throw new java.util.concurrent.CancellationException("剧本拆解已取消");
         }
     }
@@ -1441,9 +1416,6 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
     }
 
     private void prepareSkillRequest(ScriptDecomposeRequestDTO request) {
-        if (scriptSkillRuntime == null) {
-            throw new BizException(400, "Planner 必须加载 character-disambiguation Skill，但 Skill 运行服务不可用");
-        }
         requirePlannerCharacterDisambiguationSkill(request);
         scriptSkillRuntime.prepareRequest(request);
     }
@@ -1616,9 +1588,6 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         if (taskId == null || retryDTO == null || StringUtils.isBlank(retryDTO.getSegmentId())) {
             throw new BizException("任务 ID 和分段编号不能为空");
         }
-        if (aiTaskService == null) {
-            throw new BizException("AI 任务持久化服务不可用");
-        }
 
         AiTaskDTO taskDTO = aiTaskService.getTaskById(taskId);
         if (taskDTO == null) {
@@ -1652,7 +1621,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         }
 
         // 构造请求上下文
-        ScriptDecomposeRequestDTO request = draftStore != null ? draftStore.getRequest(taskId) : null;
+        ScriptDecomposeRequestDTO request = draftStore.getRequest(taskId);
         if (request == null && StringUtils.isNotBlank(taskDTO.getInputPayload())) {
             try {
                 request = objectMapper.readValue(taskDTO.getInputPayload(), ScriptDecomposeRequestDTO.class);
@@ -1680,7 +1649,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
             if (request.getSkillPolicy() == null) request.setSkillPolicy(new ScriptSkillPolicy());
             request.getSkillPolicy().setWorker(retryDTO.getSkillPolicyOverride());
         }
-        if (scriptSkillRuntime != null && request.getSkillPolicy() != null) {
+        if (request.getSkillPolicy() != null) {
             scriptSkillRuntime.validateRetry(request, request.getSkillPolicy().getWorker());
         }
 
@@ -1773,7 +1742,7 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         ScriptDecomposeResultVO reMergedResult = shotMergeService.mergeSegmentResults(
                 segmentResults, plannerResult, globalContext, log::info
         );
-        if (draftStore != null && taskId != null) {
+        if (taskId != null) {
             for (SegmentShotResult segmentResult : segmentResults) draftStore.saveWorker(taskId, segmentResult);
         }
         reMergedResult.setSkillEvents(List.copyOf(globalContext.getSkillEvents()));
@@ -1798,11 +1767,9 @@ public class ScriptDecomposeServiceImpl implements ScriptDecomposeService {
         List<String> remainingFailed = segmentResults.stream().filter(sr -> "FAILED".equalsIgnoreCase(sr.getStatus())).map(SegmentShotResult::getSegmentId).toList();
 
         reMergedResult.setStatus(stillAnyFailed ? "PARTIAL_SUCCESS" : "SUCCESS");
-        if (draftStore != null) {
-            draftStore.saveWorker(taskId, newSegResult);
-            draftStore.saveResult(taskId, reMergedResult);
-        }
-        String outputJson = draftStore == null ? objectMapper.writeValueAsString(reMergedResult) : null;
+        draftStore.saveWorker(taskId, newSegResult);
+        draftStore.saveResult(taskId, reMergedResult);
+        String outputJson = null;
         if (stillAnyFailed) {
             aiTaskService.markPartialSuccess(taskId, outputJson, "部分分段失败待补救: " + String.join(", ", remainingFailed));
         } else {

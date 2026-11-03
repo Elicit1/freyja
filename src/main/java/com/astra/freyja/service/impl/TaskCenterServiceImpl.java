@@ -52,24 +52,24 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     private final DramaEpisodeMapper episodeMapper;
     private final DramaSceneMapper sceneMapper;
     private final DramaShotMapper shotMapper;
-    @Autowired(required = false)
+    @Autowired
     private VideoProcessingService videoProcessingService;
-    @Autowired(required = false)
+    @Autowired
     private com.astra.freyja.agent.runtime.AgentStore agentStore;
-    @Autowired(required = false)
+    @Autowired
     private com.astra.freyja.agent.runtime.AgentExecutionScheduler agentScheduler;
-    @Autowired(required = false) @org.springframework.context.annotation.Lazy
+    @Autowired @org.springframework.context.annotation.Lazy
     private com.astra.freyja.service.video.VideoRenderBatchService videoBatches;
-    @Autowired(required=false) @org.springframework.context.annotation.Lazy
+    @Autowired @org.springframework.context.annotation.Lazy
     private com.astra.freyja.service.mediaexport.ShotVideoExportService videoExports;
 
     @Override
     public List<TaskCenterItemVO> getActiveTasks() {
         List<TaskCenterItemVO> result = new ArrayList<>();
-        if(videoExports!=null)result.addAll(videoExports.list(true,200).stream().map(t->videoExports.summary(t.getId())).toList());
-        if (agentStore != null) result.addAll(agentStore.activeRuns().stream().map(this::fromAgent).toList());
-        result.addAll(renderTaskService.getActiveTasks().stream().filter(t->videoBatches==null||videoBatches.batchForTask(t.getTaskId())==null).map(this::fromRender).toList());
-        if(videoBatches!=null)result.addAll(videoBatches.list(true,200).stream().map(b->videoBatches.summary(b.getId())).toList());
+        result.addAll(videoExports.list(true,200).stream().map(t->videoExports.summary(t.getId())).toList());
+        result.addAll(agentStore.activeRuns().stream().map(this::fromAgent).toList());
+        result.addAll(renderTaskService.getActiveTasks().stream().filter(t->videoBatches.batchForTask(t.getTaskId())==null).map(this::fromRender).toList());
+        result.addAll(videoBatches.list(true,200).stream().map(b->videoBatches.summary(b.getId())).toList());
 
         AiTaskQueryDTO query = AiTaskQueryDTO.builder().statuses(ACTIVE_AI_STATUSES).build();
         result.addAll(aiTaskService.listTasks(query).stream()
@@ -88,12 +88,12 @@ public class TaskCenterServiceImpl implements TaskCenterService {
         Page<RenderTaskVO> renderPage = renderTaskService.getHistoryTasks(query);
 
         List<TaskCenterItemVO> result = new ArrayList<>();
-        if(videoExports!=null)result.addAll(videoExports.list(false,safeLimit).stream().map(t->videoExports.summary(t.getId())).toList());
-        if (agentStore != null) result.addAll(agentStore.historyRuns(safeLimit).stream().map(this::fromAgent).toList());
+        result.addAll(videoExports.list(false,safeLimit).stream().map(t->videoExports.summary(t.getId())).toList());
+        result.addAll(agentStore.historyRuns(safeLimit).stream().map(this::fromAgent).toList());
         if (renderPage != null && renderPage.getRecords() != null) {
-            result.addAll(renderPage.getRecords().stream().filter(t->videoBatches==null||videoBatches.batchForTask(t.getTaskId())==null).map(this::fromRender).toList());
+            result.addAll(renderPage.getRecords().stream().filter(t->videoBatches.batchForTask(t.getTaskId())==null).map(this::fromRender).toList());
         }
-        if(videoBatches!=null)result.addAll(videoBatches.list(false,safeLimit).stream().map(b->videoBatches.summary(b.getId())).toList());
+        result.addAll(videoBatches.list(false,safeLimit).stream().map(b->videoBatches.summary(b.getId())).toList());
         result.addAll(aiTaskService.listTasks(null).stream()
                 .filter(task -> !isDecomposeSubtask(task))
                 .filter(task -> !ACTIVE_AI_STATUSES.contains(task.getStatus()))
@@ -111,16 +111,16 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     @Override
     public TaskCenterItemVO getTask(String sourceType, String taskId) {
         if (StringUtils.isBlank(sourceType) || StringUtils.isBlank(taskId)) return null;
-        if("SHOT_VIDEO_EXPORT".equals(sourceType)&&videoExports!=null)return videoExports.summary(Long.valueOf(taskId));
-        if("VIDEO_RENDER_BATCH".equals(sourceType)&&videoBatches!=null)return videoBatches.summary(Long.valueOf(taskId));
-        if ("AGENT_RUN".equalsIgnoreCase(sourceType) && agentStore != null) {
+        if("SHOT_VIDEO_EXPORT".equals(sourceType))return videoExports.summary(Long.valueOf(taskId));
+        if("VIDEO_RENDER_BATCH".equals(sourceType))return videoBatches.summary(Long.valueOf(taskId));
+        if ("AGENT_RUN".equalsIgnoreCase(sourceType)) {
             Long id = parseLong(taskId);
             if (id == null) return null;
             try { return fromAgent(agentStore.run(id)); }
             catch (com.astra.freyja.common.BizException missing) { return null; }
         }
         if ("RENDER_TASK".equalsIgnoreCase(sourceType)) {
-            if(videoBatches!=null){Long batchId=videoBatches.batchForTask(taskId);if(batchId!=null)return videoBatches.summary(batchId);}
+            Long batchId=videoBatches.batchForTask(taskId);if(batchId!=null)return videoBatches.summary(batchId);
             RenderTaskVO task = renderTaskService.getTaskById(taskId);
             return task == null ? null : fromRender(task);
         }
@@ -138,21 +138,21 @@ public class TaskCenterServiceImpl implements TaskCenterService {
     @Override
     public synchronized TaskCancelResultVO cancelTask(String sourceType, String taskId) {
         if (StringUtils.isBlank(sourceType) || StringUtils.isBlank(taskId)) return failedCancel("任务标识不能为空");
-        if("SHOT_VIDEO_EXPORT".equals(sourceType)&&videoExports!=null)return videoExports.cancel(Long.valueOf(taskId));
-        if("VIDEO_RENDER_BATCH".equals(sourceType)&&videoBatches!=null)return videoBatches.cancel(Long.valueOf(taskId));
-        if ("AGENT_RUN".equalsIgnoreCase(sourceType) && agentStore != null) {
+        if("SHOT_VIDEO_EXPORT".equals(sourceType))return videoExports.cancel(Long.valueOf(taskId));
+        if("VIDEO_RENDER_BATCH".equals(sourceType))return videoBatches.cancel(Long.valueOf(taskId));
+        if ("AGENT_RUN".equalsIgnoreCase(sourceType)) {
             Long id = parseLong(taskId);
             if (id == null) return failedCancel("Agent 任务 ID 无效");
             var run = agentStore.run(id);
             if (com.astra.freyja.agent.model.AgentProtocol.RunStatus.valueOf(run.getStatus()).terminal()) return failedCancel("任务已结束");
             agentStore.cancel(id);
-            if (agentScheduler != null) agentScheduler.interrupt(id);
+            agentScheduler.interrupt(id);
             return TaskCancelResultVO.builder().cancelled(true).status("CANCELLED").upstreamStatus("UNCONFIRMED")
                     .message("已停止后续操作；已提交的数据保留，上游模型请求可能仍在处理").build();
         }
         if ("RENDER_TASK".equalsIgnoreCase(sourceType)) {
             RenderTaskVO render = renderTaskService.getTaskById(taskId);
-            if (render != null && videoProcessingService != null
+            if (render != null
                     && ("VIDEO_UPSCALE".equals(render.getTaskType()) || "FRAME_INTERPOLATION".equals(render.getTaskType()))) {
                 if (!videoProcessingService.cancelTask(taskId)) return failedCancel("视频处理任务已结束或无法取消");
                 RenderTaskVO updated = renderTaskService.getTaskById(taskId);

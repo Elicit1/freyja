@@ -52,8 +52,15 @@ class ResCharacterServiceTest {
     @Mock
     private AssetMediaCleanupService mediaCleanup;
 
+    @Mock private DubbingService dubbingService;
+
     @InjectMocks
     private ResCharacterServiceImpl characterService;
+
+    @org.junit.jupiter.api.BeforeEach
+    void requiredIntegrations() {
+        org.springframework.test.util.ReflectionTestUtils.setField(characterService, "dubbingService", dubbingService);
+    }
 
     @Test
     void testCreateCharacterSuccessAndCreatesDefaultOutfit() {

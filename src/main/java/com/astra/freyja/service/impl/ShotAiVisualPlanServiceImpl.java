@@ -55,7 +55,7 @@ import com.astra.freyja.service.AiTaskService;
 import com.astra.freyja.service.CharacterVisualAssetResolver;
 import com.astra.freyja.dto.res.ResolvedCharacterPromptContext;
 import com.astra.freyja.service.ShotAiVisualPlanService;
-import com.astra.freyja.service.ShotPromptEventStore;
+import com.astra.freyja.service.AiTaskEventStore;
 import com.astra.freyja.service.SysConfigService;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.RequiredArgsConstructor;
@@ -567,7 +567,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     private AiTaskService aiTaskService;
 
     @Autowired
-    private ShotPromptEventStore shotPromptEventStore;
+    private AiTaskEventStore aiTaskEventStore;
 
     private static final Pattern SENSITIVE_MEDIA_URL_PATTERN = Pattern.compile(
             "https?://[^\\s\"'<>]+(?:\\.(?:png|jpe?g|webp|gif|bmp|svg|tiff|mp3|wav|ogg|aac|flac|m4a|mp4|webm|mov|avi|mkv)|minio|/media/|/assets/|/attachments/|/uploads/)[^\\s\"'<>]*|" +
@@ -1223,9 +1223,6 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
         } else {
             // FIRST_LAST_FRAME 模式
-            if (StringUtils.isBlank(vo.getVideoPrompt())) {
-                vo.setVideoPrompt(vo.getPrompt()); // 兼容旧版外部 AI JSON
-            }
             if (StringUtils.isBlank(vo.getFirstFramePrompt())) {
                 errors.add("首尾帧模式未能生成有效的首帧生图提示词 (firstFramePrompt)");
             }
@@ -1557,7 +1554,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
 
         AiTask task = createPromptTask(dto);
         try {
-            shotPromptEventStore.append(String.valueOf(task.getId()), "task_created", String.valueOf(task.getId()));
+            aiTaskEventStore.append(String.valueOf(task.getId()), "task_created", String.valueOf(task.getId()));
         } catch (RuntimeException error) {
             markPromptTaskFailed(task.getId(), "提示词事件缓存写入失败");
             throw new BizException(503, "提示词事件缓存写入失败，请稍后重试");
@@ -1573,12 +1570,12 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
         resolveRefImages(dto);
         resolveRefAudios(dto);
         prepareDirectorPlan(dto);
-        if (shotPromptEventStore == null) throw new BizException("提示词事件缓存不可用");
+        if (aiTaskEventStore == null) throw new BizException("提示词事件缓存不可用");
         AiTask task = createPromptTask(dto);
         if (task == null || task.getId() == null) throw new BizException("提示词任务持久化失败，请检查数据库");
         String taskId = String.valueOf(task.getId());
         try {
-            shotPromptEventStore.append(taskId, "task_created", taskId);
+            aiTaskEventStore.append(taskId, "task_created", taskId);
         } catch (Exception e) {
             markPromptTaskFailed(task.getId(), "提示词事件缓存写入失败");
             throw new BizException("提示词事件缓存写入失败，请稍后重试");
@@ -1606,8 +1603,8 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
     }
 
     private void publishPromptEvent(Long taskId, ConcurrentSseBridge bridge, String type, String data) {
-        if (taskId != null && shotPromptEventStore != null) {
-            try { shotPromptEventStore.append(String.valueOf(taskId), type, data); }
+        if (taskId != null && aiTaskEventStore != null) {
+            try { aiTaskEventStore.append(String.valueOf(taskId), type, data); }
             catch (Exception e) { log.warn("提示词事件缓存写入失败: taskId={}, type={}, err={}", taskId, type, e.getMessage()); }
         }
         if (bridge == null) return;
@@ -1646,9 +1643,7 @@ public class ShotAiVisualPlanServiceImpl implements ShotAiVisualPlanService {
                     directorPlan = directorPlanningService.plan(dto,
                             stage -> publishPromptEvent(taskId, sseBridge, "stage", stage));
                 } catch (Exception ex) {
-                    if (Boolean.TRUE.equals(dto.getDirectorPlanReplanning()))
-                        throw new BizException("导演计划重新生成失败，已保留原计划：" + ex.getMessage());
-                    log.warn("[ShotPromptDeriveStream] 导演决策层规划异常，将降级为常规提示词衍生: {}", ex.getMessage());
+                    throw new BizException("导演计划生成失败，已保留原计划：" + ex.getMessage());
                 }
 
                 if (Boolean.TRUE.equals(dto.getDirectorPlanReplanning()) && directorPlan == null)

@@ -31,7 +31,7 @@ class ScriptDecomposeRedisTaskTest {
         AiTask draft = new AiTask(); draft.setId(42L); draft.setStatus("CANCELLED");
         when(mysql.selectList(any())).thenReturn(List.of(checkpoint));
         when(drafts.listTasks()).thenReturn(List.of(draft));
-        AiTaskServiceImpl service = new AiTaskServiceImpl(mysql);
+        AiTaskServiceImpl service = AiTaskServiceTestSupport.create(mysql);
         ReflectionTestUtils.setField(service, "draftStore", drafts);
         assertTrue(service.listTasks(AiTaskQueryDTO.builder().statuses(Set.of("PENDING", "RUNNING")).build()).isEmpty());
         var history = service.listTasks(null);
@@ -40,7 +40,7 @@ class ScriptDecomposeRedisTaskTest {
 
     @Test void rolledBackLaunchEndsRedisTaskWithoutRunningInferenceOrDeletingDraft() {
         var service = mock(ScriptDecomposeServiceImpl.class, CALLS_REAL_METHODS);
-        var tasks = mock(AiTaskService.class); var events = mock(ShotPromptEventStore.class);
+        var tasks = mock(AiTaskService.class); var events = mock(AiTaskEventStore.class);
         ReflectionTestUtils.setField(service, "aiTaskService", tasks);
         ReflectionTestUtils.setField(service, "aiEvents", events);
         AiTask task = new AiTask(); task.setId(42L);
@@ -72,7 +72,7 @@ class ScriptDecomposeRedisTaskTest {
         }).when(drafts).saveTask(any(AiTask.class));
         when(drafts.getTask(anyLong())).thenAnswer(call -> stored.get(call.getArgument(0)));
 
-        AiTaskServiceImpl service = new AiTaskServiceImpl(mysql);
+        AiTaskServiceImpl service = AiTaskServiceTestSupport.create(mysql);
         ReflectionTestUtils.setField(service, "draftStore", drafts);
 
         AiTask parent = service.createTask(null, null, AiTaskType.CHAPTER_DECOMPOSE,
@@ -107,7 +107,7 @@ class ScriptDecomposeRedisTaskTest {
         when(drafts.getTask(42L)).thenReturn(parent);
         when(drafts.getResult(42L)).thenReturn(result);
 
-        AiTaskServiceImpl service = new AiTaskServiceImpl(mysql);
+        AiTaskServiceImpl service = AiTaskServiceTestSupport.create(mysql);
         ReflectionTestUtils.setField(service, "draftStore", drafts);
 
         assertSame(result, service.getDecomposePreview(42L));

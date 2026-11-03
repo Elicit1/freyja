@@ -42,6 +42,10 @@ class ConversationDecompositionTest {
         jobs = new ProductionJobs(mapper, dramas, mock(DramaShotMapper.class), stores, json,
                 mock(ScriptDecomposeService.class), mock(AiTaskService.class), mock(ProductionAssets.class),
                 mock(AiTaskMapper.class), mock(DramaEpisodeMapper.class), messages);
+        var dictionary = mock(com.astra.freyja.service.DictService.class);
+        var ratio = new com.astra.freyja.entity.SysDictData(); ratio.setDictValue("16:9"); ratio.setStatus(1);
+        lenient().when(dictionary.listByType("drama_aspect_ratio")).thenReturn(List.of(ratio));
+        org.springframework.test.util.ReflectionTestUtils.setField(jobs, "dictionaries", dictionary);
         session = new AgentSession(); session.setId(AgentTestSupport.SESSION); session.setActiveRunId(AgentTestSupport.RUN);
         when(store.session(session.getId())).thenReturn(session);
         when(mapper.lockByRunId(AgentTestSupport.RUN)).thenAnswer(call -> saved);

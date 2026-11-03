@@ -140,10 +140,6 @@ public class ShotPromptDeriveDTO {
     private List<ShotRefAudioDTO> refAudios;
     private List<ShotRefVideoDTO> refVideos;
 
-    /** @deprecated 系统已全量原生切换为 MiniMax H3 规范，此字段已废弃忽略 */
-    @Deprecated
-    private String promptTarget;
-
     /** 是否包含背景配乐 (BGM)，默认为 false (禁用 BGM，仅生成现场环境声与台词，为后期混音留出纯净声轨) */
     @Builder.Default
     private Boolean includeBgm = Boolean.FALSE;

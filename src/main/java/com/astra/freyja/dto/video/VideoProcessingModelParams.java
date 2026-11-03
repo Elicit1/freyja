@@ -8,6 +8,7 @@ import java.util.List;
  * AI 模型中心 ai_model.params_json 中 videoProcessing 配置对象。
  */
 @Data
+@com.fasterxml.jackson.annotation.JsonIgnoreProperties("minClearCacheFrames")
 public class VideoProcessingModelParams {
 
     public static final int DEFAULT_BATCH_SIZE = 32;
@@ -40,9 +41,6 @@ public class VideoProcessingModelParams {
 
     /** 补帧默认显存清理间隔帧数 */
     private Integer defaultClearCacheFrames;
-
-    /** 兼容旧配置字段，不再作为清理周期下限；周期仅要求正整数。 */
-    private Integer minClearCacheFrames;
 
     /** 最大允许清理帧数 */
     private Integer maxClearCacheFrames;

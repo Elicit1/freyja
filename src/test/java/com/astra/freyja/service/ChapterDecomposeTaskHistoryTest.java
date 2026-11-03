@@ -32,7 +32,7 @@ class ChapterDecomposeTaskHistoryTest {
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
-        aiTaskService = new AiTaskServiceImpl(aiTaskMapper, objectMapper, null, null);
+        aiTaskService = AiTaskServiceTestSupport.create(aiTaskMapper);
     }
 
     @Test
@@ -56,7 +56,10 @@ class ChapterDecomposeTaskHistoryTest {
                         SegmentShotResult.builder().segmentId("SEG002").status("SUCCESS").build()
                 ))
                 .build();
-        task1.setOutputPayload(objectMapper.writeValueAsString(result1));
+        var storedResult = objectMapper.valueToTree(result1);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) storedResult).putObject("fragmentationStats")
+                .put("totalShots", 3).put("isHighFragmentation", true).put("warningMessage", "历史告警");
+        task1.setOutputPayload(objectMapper.writeValueAsString(storedResult));
 
         // 创建任务2 (短剧 100, 第 2 集, 部分失败)
         AiTask task2 = new AiTask();

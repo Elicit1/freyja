@@ -18,7 +18,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-class ShotPromptEventStoreTest {
+class AiTaskEventStoreTest {
     @Test
     void parallelWorkersBroadcastInJournalOrder() throws Exception {
         StringRedisTemplate redis = mock(StringRedisTemplate.class);
@@ -32,7 +32,7 @@ class ShotPromptEventStoreTest {
             if (value == 1) firstStored.countDown();
             return value;
         });
-        ShotPromptEventStore store = new ShotPromptEventStore(redis, new ObjectMapper());
+        AiTaskEventStore store = new AiTaskEventStore(redis, new ObjectMapper());
         ConcurrentLinkedQueue<Long> received = new ConcurrentLinkedQueue<>();
         store.addListener(event -> {
             if (event.seq() == 1) {
@@ -64,16 +64,16 @@ class ShotPromptEventStoreTest {
             return new ArrayList<>(journal.subList((int) Math.min(from, journal.size()), journal.size()));
         });
 
-        ShotPromptEventStore store = new ShotPromptEventStore(redis, new ObjectMapper());
-        List<ShotPromptEventStore.Event> live = new ArrayList<>();
+        AiTaskEventStore store = new AiTaskEventStore(redis, new ObjectMapper());
+        List<AiTaskEventStore.Event> live = new ArrayList<>();
         store.addListener(live::add);
         store.append("2032095628944588801", "stage", "正在加载 Skill");
         store.append("2032095628944588801", "chunk", "第一段");
         store.append("2032095628944588801", "done", "[DONE]");
 
-        assertEquals(List.of(1L, 2L, 3L), live.stream().map(ShotPromptEventStore.Event::seq).toList());
-        List<ShotPromptEventStore.Event> resumed = store.after("2032095628944588801", 1);
-        assertEquals(List.of("chunk", "done"), resumed.stream().map(ShotPromptEventStore.Event::type).toList());
-        assertEquals(List.of(2L, 3L), resumed.stream().map(ShotPromptEventStore.Event::seq).toList());
+        assertEquals(List.of(1L, 2L, 3L), live.stream().map(AiTaskEventStore.Event::seq).toList());
+        List<AiTaskEventStore.Event> resumed = store.after("2032095628944588801", 1);
+        assertEquals(List.of("chunk", "done"), resumed.stream().map(AiTaskEventStore.Event::type).toList());
+        assertEquals(List.of(2L, 3L), resumed.stream().map(AiTaskEventStore.Event::seq).toList());
     }
 }

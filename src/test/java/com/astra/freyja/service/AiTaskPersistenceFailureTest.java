@@ -12,7 +12,7 @@ import static org.mockito.Mockito.*;
 
 class AiTaskPersistenceFailureTest {
     AiTaskMapper mapper = mock(AiTaskMapper.class);
-    AiTaskServiceImpl service = new AiTaskServiceImpl(mapper);
+    AiTaskServiceImpl service = AiTaskServiceTestSupport.create(mapper);
     @Test void failedInsertNeverReturnsAnUnpersistedTaskId() {
         when(mapper.insert(any(AiTask.class))).thenThrow(new IllegalStateException("database unavailable"));
         var error = assertThrows(BizException.class, () -> service.createTask(null, null, AiTaskType.SHOT_PROMPT_DERIVE, "1", null, "{}", "model", 100));

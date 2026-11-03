@@ -252,7 +252,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onBeforeUnmount } from 'vue'
+import { reactive, ref, computed } from 'vue'
 import { ElMessage, type UploadRequestOptions } from 'element-plus'
 import { assetImageGenerationApi, type AssetImageGenerationTask } from '@/api/asset-image-generation'
 import { aiProviderApi } from '@/api/ai-provider'
@@ -286,7 +286,6 @@ const refMode = ref<'AVATAR' | 'CURRENT' | 'CUSTOM' | 'NONE'>('NONE')
 const customRefUrl = ref('')
 
 const form = reactive({
-  mode: 'API',
   providerId: undefined as string | undefined,
   modelCode: '',
   prompt: '',
@@ -302,10 +301,7 @@ const currentModel = computed(() => {
 
 // 核心能力判定：只有 文生图/图生图 (TXT_IMG2IMG) 模型支持参考图功能；若选用 文生图 (TXT2IMG) 模型，则不可使用参考图功能
 const isImg2imgSupported = computed(() => {
-  if (!currentModel.value) {
-    const code = (form.modelCode || '').toLowerCase()
-    return code.includes('flux') || code.includes('img2img')
-  }
+  if (!currentModel.value) return false
   return currentModel.value.modelType === 'TXT_IMG2IMG' || currentModel.value.modelType === 'IMAGE'
 })
 
@@ -320,7 +316,6 @@ const effectiveRefImage = computed(() => {
 
 const canSubmit = computed(() => !generating.value && !!form.providerId && !!form.prompt.trim() && !!form.modelCode)
 
-let timer: ReturnType<typeof setTimeout> | undefined
 
 function modelTypeLabel(type?: string) {
   if (type === 'TXT_IMG2IMG') return '文生图/图生图'
@@ -413,7 +408,6 @@ async function submit() {
       targetType: props.targetType,
       targetId: props.targetId,
       slot: props.imageSlot,
-      mode: form.mode,
       providerId: form.providerId,
       modelCode: form.modelCode || undefined,
       prompt: form.prompt,
@@ -421,32 +415,14 @@ async function submit() {
       size: normalizedSize,
       referenceImageUrls: refImages
     })
-    await poll()
+    ElMessage.success('图片已生成并归档到 MinIO')
   } catch (error: any) {
     generating.value = false
     ElMessage.error(error.message || 'AI 生图提交失败')
   } finally {
     loading.value = false
-  }
-}
-
-async function poll() {
-  if (!task.value) return
-  if (task.value.status === 'SUCCESS') {
     generating.value = false
-    ElMessage.success('图片已生成并归档到 MinIO')
-    return
   }
-  if (task.value.status === 'FAILED') {
-    generating.value = false
-    ElMessage.error(task.value.errorMessage || 'AI 生图失败')
-    return
-  }
-  await new Promise<void>((resolve) => {
-    timer = setTimeout(() => resolve(), 1200)
-  })
-  task.value = await assetImageGenerationApi.getTask(task.value.taskId)
-  await poll()
 }
 
 async function applyResult() {
@@ -461,7 +437,4 @@ function statusText(status: string) {
   return ({ PENDING: '排队中', RUNNING: 'AI 生成中', SUCCESS: '生成完成', FAILED: '生成失败' } as Record<string, string>)[status] || status
 }
 
-onBeforeUnmount(() => {
-  if (timer) clearTimeout(timer)
-})
 </script>

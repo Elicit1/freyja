@@ -16,7 +16,7 @@ import java.util.concurrent.Callable;
 @RequiredArgsConstructor
 public class AiEventTaskService {
     private final AiTaskService taskService;
-    private final ShotPromptEventStore events;
+    private final AiTaskEventStore events;
     private final ObjectMapper objectMapper;
 
     public String start(AiTaskType type, Long dramaId, String targetId, String modelCode,

@@ -27,7 +27,7 @@ class TaskCenterAgentReplayTest {
         when(runs.selectById(9L)).thenReturn(run);
         var events = new AgentEventPublisher(mock(ApplicationEventPublisher.class));
         var streams = new com.astra.freyja.agent.event.AgentStreamPublisher(runs, events);
-        var handler = new TaskCenterWebSocketHandler(new ObjectMapper(), mock(TaskCenterService.class), mock(AiTaskService.class), mock(ShotPromptEventStore.class));
+        var handler = new TaskCenterWebSocketHandler(new ObjectMapper(), mock(TaskCenterService.class), mock(AiTaskService.class), mock(AiTaskEventStore.class));
         handler.registerAgentEvents(store, events, streams);
         var step = new com.astra.freyja.entity.AgentStep(); step.setId(8L); step.setConstraintVersion(0);
         var socket = mock(WebSocketSession.class); when(socket.isOpen()).thenReturn(true);
@@ -53,7 +53,7 @@ class TaskCenterAgentReplayTest {
         List<String> sent = new CopyOnWriteArrayList<>();
         doAnswer(call -> { sent.add(((TextMessage) call.getArgument(0)).getPayload()); return null; }).when(socket).sendMessage(any(TextMessage.class));
         AgentEventPublisher events = new AgentEventPublisher(mock(ApplicationEventPublisher.class));
-        TaskCenterWebSocketHandler handler = new TaskCenterWebSocketHandler(new ObjectMapper(), mock(TaskCenterService.class), mock(AiTaskService.class), mock(ShotPromptEventStore.class));
+        TaskCenterWebSocketHandler handler = new TaskCenterWebSocketHandler(new ObjectMapper(), mock(TaskCenterService.class), mock(AiTaskService.class), mock(AiTaskEventStore.class));
         handler.registerAgentEvents(store, events, new com.astra.freyja.agent.event.AgentStreamPublisher(
                 mock(com.astra.freyja.dao.AgentRunMapper.class), events));
         CountDownLatch replayStarted = new CountDownLatch(1), liveAttempted = new CountDownLatch(1);

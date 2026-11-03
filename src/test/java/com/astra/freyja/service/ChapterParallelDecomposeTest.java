@@ -95,7 +95,7 @@ class ChapterParallelDecomposeTest {
     @BeforeEach
     void setUp() {
         validationService = new AIOutputValidationServiceImpl(objectMapper);
-        aiTaskService = new AiTaskServiceImpl(aiTaskMapper);
+        aiTaskService = AiTaskServiceTestSupport.create(aiTaskMapper);
         com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(
                 new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), "tasks"),
                 com.astra.freyja.entity.AiTask.class);
@@ -142,10 +142,13 @@ class ChapterParallelDecomposeTest {
                 shotGroupMapper,
                 shotMapper,
                 promptAssembleService,
-                objectMapper
+                objectMapper,
+                aiTaskService
         );
         ReflectionTestUtils.setField(scriptDecomposeService, "scriptSkillRuntime", scriptSkillRuntime);
+        ReflectionTestUtils.setField(scriptDecomposeService, "draftStore", ReflectionTestUtils.getField(aiTaskService, "draftStore"));
         ReflectionTestUtils.setField(chapterDecompositionService, "scriptSkillRuntime", scriptSkillRuntime);
+        ReflectionTestUtils.setField(parallelShotGenerationService, "scriptSkillRuntime", scriptSkillRuntime);
         lenient().when(scriptSkillRuntime.begin(any(), any(), any(), anyString(), anyString(), any(), anyInt(), any()))
                 .thenAnswer(invocation -> {
                     String systemPrompt = invocation.getArgument(3);
@@ -417,8 +420,6 @@ class ChapterParallelDecomposeTest {
         assertEquals(2, stats.getShortShots());
         assertEquals(1, stats.getNormalShots());
         assertTrue(stats.getShortShotRatio() > 0.60);
-        assertFalse(stats.getIsHighFragmentation());
-        assertNull(stats.getWarningMessage());
     }
 
     @Test
