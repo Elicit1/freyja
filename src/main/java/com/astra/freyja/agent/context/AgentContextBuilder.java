@@ -34,9 +34,8 @@ public class AgentContextBuilder {
     public List<Message> build(AgentRun run, String owner, int epoch) {
         Snapshot snapshot = store.snapshot(run);
         var session = store.session(run.getSessionId());
-        List<AgentMessage> rows = store.modelHistory(session.getId(), session.getCoveredThroughSeq());
-        if (rows.size() == 5000) throw new BizException("历史窗口过大，请新建会话继续");
-        List<Group> groups = groups(rows);
+        HistoryReader historyReader = new HistoryReader(session.getId(), session.getCoveredThroughSeq());
+        List<Group> groups = new ArrayList<>();
         List<Message> context = new ArrayList<>();
         String system = snapshot.fixedInstructions() + "\n" + snapshot.config().getInstructions().getSystemPrompt();
         if (snapshot.config().getSkills().isDynamicLoading()) {
@@ -58,88 +57,143 @@ public class AgentContextBuilder {
         int keep = snapshot.config().getMemory().getRecentMessages();
         int outputReserve = snapshot.config().getModel().getMaxTokens();
         boolean oversizedSummary = session.getSummary() != null && session.getSummary().codePointCount(0, session.getSummary().length()) > snapshot.config().getMemory().getSummary().getMaxCharacters();
-        while (oversizedSummary || needsSummary(groups, context, session.getSummary(), budget, outputReserve, keep)) {
-            if (!snapshot.config().getMemory().isSummaryEnabled()) throw new BizException("上下文超过预算，请启用摘要或新建会话");
-            int cut = safeSummaryCut(groups, Math.max(0, groups.size() - keep));
-            // Recent-message count is a preference. Large tool results may require
-            // fewer recent groups, while every assistant/tool pair remains whole.
-            int available = budget - outputReserve - estimate(context) - estimateText(session.getSummary());
-            for (int requested = Math.max(1, cut); requested < groups.size(); requested++) {
-                int candidate = safeSummaryCut(groups, requested);
-                if (candidate <= 0) continue;
-                cut = candidate;
-                if (estimate(groups.subList(cut, groups.size()).stream().flatMap(g -> g.messages().stream()).toList()) <= available * 3 / 4) break;
-            }
-            if (cut == 0 && !oversizedSummary) throw new SummaryBlockedException("NO_BOUNDARY", "暂无可完整压缩的历史边界，请调整摘要或上下文配置后继续");
-            List<Group> prefix = groups.subList(0, cut);
-            String history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe)
-                    .collect(java.util.stream.Collectors.joining("\n"));
-            // Each assistant/tool pair is included in full in the summary input.
-            int summaryBudget = AgentMemorySummarizer.contextBudget(snapshot);
-            int reserve = Math.max(AgentMemorySummarizer.outputBudget(snapshot, 0, null), AgentMemorySummarizer.outputBudget(snapshot, 1, "TRUNCATED"));
-            // Fit whole groups into the summarizer's own window. Never split a tool pair or slice raw text.
-            while (estimateText(history) + estimateText(session.getSummary()) + reserve + 512L > summaryBudget && cut > 1) {
-                int smaller = safeSummaryCut(groups, cut - 1);
-                if (smaller <= 0) break;
-                cut = smaller; prefix = groups.subList(0, cut);
-                history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe).collect(java.util.stream.Collectors.joining("\n"));
-            }
-            if (estimateText(history) + estimateText(session.getSummary()) + reserve + 512L > summaryBudget)
-                throw new SummaryBlockedException("INPUT_TOO_LARGE", "完整历史组超过摘要模型上下文，请提高摘要模型容量后继续，历史消息仍保留");
-            int through = prefix.stream().mapToInt(Group::throughSeq).max().orElse(session.getCoveredThroughSeq());
-            String previous = null;
-            boolean saved = false;
-            for (int attempt = 0; attempt <= snapshot.config().getMemory().getSummary().getMaxRetries(); attempt++) {
-                var current = store.run(run.getId());
-                long remaining = snapshot.config().getRuntime().getExecutionTimeoutSeconds() * 1000L - current.getExecutionMillis();
-                if (remaining <= 0) throw new BizException("Agent 执行时限已用尽");
-                store.summaryStarted(run.getId(), owner, epoch, attempt + 1);
-                long start = System.nanoTime();
-                ModelReply summary;
-                try {
-                    summary = attempt == 0 ? summarizer.summarize(snapshot, session.getSummary(), history, remaining)
-                            : summarizer.summarize(snapshot, session.getSummary(), history, remaining, attempt, previous);
-                } catch (AgentStore.LeaseLost | java.util.concurrent.CancellationException e) { throw e; }
-                catch (RuntimeException e) {
+        do {
+            groups.addAll(historyReader.next());
+            while (oversizedSummary || needsSummary(groups, context, session.getSummary(), budget, outputReserve, keep)) {
+                if (!snapshot.config().getMemory().isSummaryEnabled()) throw new BizException("上下文超过预算，请启用摘要或新建会话");
+                int cut = safeSummaryCut(groups, Math.max(0, groups.size() - keep));
+                // Recent-message count is a preference. Large tool results may require
+                // fewer recent groups, while every assistant/tool pair remains whole.
+                int available = budget - outputReserve - estimate(context) - estimateText(session.getSummary());
+                for (int requested = Math.max(1, cut); requested < groups.size(); requested++) {
+                    int candidate = safeSummaryCut(groups, requested);
+                    if (candidate <= 0) continue;
+                    cut = candidate;
+                    if (estimate(groups.subList(cut, groups.size()).stream().flatMap(g -> g.messages().stream()).toList()) <= available * 3 / 4) break;
+                }
+                if (cut == 0 && historyReader.hasMore()) cut = groups.size();
+                if (cut == 0 && !oversizedSummary) throw new SummaryBlockedException("NO_BOUNDARY", "暂无可完整压缩的历史边界，请调整摘要或上下文配置后继续");
+                int summaryBudget = AgentMemorySummarizer.contextBudget(snapshot);
+                int reserve = Math.max(AgentMemorySummarizer.outputBudget(snapshot, 0, null), AgentMemorySummarizer.outputBudget(snapshot, 1, "TRUNCATED"));
+                // Measure the prefix once; shrinking a large backlog one group at a time is quadratic.
+                int fittingCut = fittingSummaryCut(groups, cut, (long) summaryBudget - estimateText(session.getSummary()) - reserve - 512);
+                if (cut > 0 && fittingCut == 0)
+                    throw new SummaryBlockedException("INPUT_TOO_LARGE", "完整历史组超过摘要模型上下文，请提高摘要模型容量后继续，历史消息仍保留");
+                cut = fittingCut;
+                List<Group> prefix = groups.subList(0, cut);
+                String history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe)
+                        .collect(java.util.stream.Collectors.joining("\n"));
+                if (estimateText(history) + estimateText(session.getSummary()) + reserve + 512L > summaryBudget)
+                    throw new SummaryBlockedException("INPUT_TOO_LARGE", "完整历史组超过摘要模型上下文，请提高摘要模型容量后继续，历史消息仍保留");
+                int through = prefix.stream().mapToInt(Group::throughSeq).max().orElse(session.getCoveredThroughSeq());
+                String previous = null;
+                boolean saved = false;
+                for (int attempt = 0; attempt <= snapshot.config().getMemory().getSummary().getMaxRetries(); attempt++) {
+                    var current = store.run(run.getId());
+                    long remaining = snapshot.config().getRuntime().getExecutionTimeoutSeconds() * 1000L - current.getExecutionMillis();
+                    if (remaining <= 0) throw new BizException("Agent 执行时限已用尽");
+                    store.summaryStarted(run.getId(), owner, epoch, attempt + 1);
+                    long start = System.nanoTime();
+                    ModelReply summary;
+                    try {
+                        summary = attempt == 0 ? summarizer.summarize(snapshot, session.getSummary(), history, remaining)
+                                : summarizer.summarize(snapshot, session.getSummary(), history, remaining, attempt, previous);
+                    } catch (AgentStore.LeaseLost | java.util.concurrent.CancellationException e) { throw e; }
+                    catch (RuntimeException e) {
+                        long elapsed = (System.nanoTime() - start) / 1000000;
+                        store.summaryAttemptFailed(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, null, elapsed, "PROVIDER_ERROR", attempt + 1);
+                        previous = "PROVIDER_ERROR";
+                        if (attempt == snapshot.config().getMemory().getSummary().getMaxRetries()) break;
+                        try { Thread.sleep(Math.min(2000, 250L << attempt)); }
+                        catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new java.util.concurrent.CancellationException(); }
+                        continue;
+                    }
                     long elapsed = (System.nanoTime() - start) / 1000000;
-                    store.summaryAttemptFailed(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, null, elapsed, "PROVIDER_ERROR", attempt + 1);
-                    previous = "PROVIDER_ERROR";
-                    if (attempt == snapshot.config().getMemory().getSummary().getMaxRetries()) break;
-                    try { Thread.sleep(Math.min(2000, 250L << attempt)); }
-                    catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new java.util.concurrent.CancellationException(); }
-                    continue;
-                }
-                long elapsed = (System.nanoTime() - start) / 1000000;
-                previous = invalidSummary(summary, snapshot.config().getMemory().getSummary().getMaxCharacters());
-                if (previous == null && oversizedSummary && cut == 0 && summary.content().length() >= session.getSummary().length()) previous = "NO_PROGRESS";
-                if (previous == null) {
-                    store.saveSummary(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, summary, elapsed); saved = true; break;
-                }
-                store.summaryAttemptFailed(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, summary, elapsed, previous, attempt + 1);
-                if ("TRUNCATED".equals(previous) && attempt < snapshot.config().getMemory().getSummary().getMaxRetries()) {
-                    var caps = com.astra.freyja.agent.model.ChatModelCapabilities.from(snapshot.summaryModel() == null ? snapshot.pinnedModel() : snapshot.summaryModel());
-                    boolean outputCanGrow = AgentMemorySummarizer.outputBudget(snapshot, attempt + 1, previous) > AgentMemorySummarizer.outputBudget(snapshot, attempt, attempt == 0 ? null : previous);
-                    boolean canDisable = attempt == 0 && !"DISABLED".equals(snapshot.config().getMemory().getSummary().getReasoningMode()) && !"NONE".equals(caps.reasoningProtocol());
-                    if (!outputCanGrow && !canDisable) {
-                        int smaller = safeSummaryCut(groups, cut - 1);
-                        if (smaller <= 0) break;
-                        cut = smaller; prefix = groups.subList(0, cut);
-                        history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe).collect(java.util.stream.Collectors.joining("\n"));
-                        through = prefix.stream().mapToInt(Group::throughSeq).max().orElse(session.getCoveredThroughSeq());
+                    previous = invalidSummary(summary, snapshot.config().getMemory().getSummary().getMaxCharacters());
+                    if (previous == null && oversizedSummary && cut == 0 && summary.content().length() >= session.getSummary().length()) previous = "NO_PROGRESS";
+                    if (previous == null) {
+                        store.saveSummary(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, summary, elapsed); saved = true; break;
+                    }
+                    store.summaryAttemptFailed(run.getId(), owner, epoch, session.getCoveredThroughSeq(), through, summary, elapsed, previous, attempt + 1);
+                    if ("TRUNCATED".equals(previous) && attempt < snapshot.config().getMemory().getSummary().getMaxRetries()) {
+                        var caps = com.astra.freyja.agent.model.ChatModelCapabilities.from(snapshot.summaryModel() == null ? snapshot.pinnedModel() : snapshot.summaryModel());
+                        boolean outputCanGrow = AgentMemorySummarizer.outputBudget(snapshot, attempt + 1, previous) > AgentMemorySummarizer.outputBudget(snapshot, attempt, attempt == 0 ? null : previous);
+                        boolean canDisable = attempt == 0 && !"DISABLED".equals(snapshot.config().getMemory().getSummary().getReasoningMode()) && !"NONE".equals(caps.reasoningProtocol());
+                        if (!outputCanGrow && !canDisable) {
+                            int smaller = safeSummaryCut(groups, cut - 1);
+                            if (smaller <= 0) break;
+                            cut = smaller; prefix = groups.subList(0, cut);
+                            history = prefix.stream().flatMap(g -> g.messages().stream()).map(this::describe).collect(java.util.stream.Collectors.joining("\n"));
+                            through = prefix.stream().mapToInt(Group::throughSeq).max().orElse(session.getCoveredThroughSeq());
+                        }
                     }
                 }
+                if (!saved) throw new SummaryBlockedException(previous == null ? "INVALID" : previous, "历史压缩未完成，请调整摘要配置后继续；历史和已完成步骤仍保留");
+                session = store.session(session.getId());
+                // Release compressed pages instead of retaining their backing lists for the whole build.
+                groups = new ArrayList<>(groups.subList(cut, groups.size()));
+                oversizedSummary = false;
             }
-            if (!saved) throw new SummaryBlockedException(previous == null ? "INVALID" : previous, "历史压缩未完成，请调整摘要配置后继续；历史和已完成步骤仍保留");
-            session = store.session(session.getId());
-            groups = groups.subList(cut, groups.size());
-            oversizedSummary = false;
-        }
+        } while (historyReader.hasMore());
         if (session.getSummary() != null && !session.getSummary().isBlank())
             context.add(new SystemMessage("已压缩历史摘要（业务事实仍以当前数据库为准）：\n" + session.getSummary()));
         context.addAll(groups.stream().flatMap(g -> g.messages().stream()).toList());
         if (estimate(context) + snapshot.config().getModel().getMaxTokens() > budget)
             throw new BizException("上下文与输出预留超过配置预算，请提高预算或缩短输入");
         return context;
+    }
+    /** Read by sequence cursor, retaining the trailing tool turn until its latest results are known. */
+    private final class HistoryReader {
+        private final Long sessionId;
+        private int afterSeq;
+        private boolean exhausted;
+        private List<AgentMessage> pending = new ArrayList<>();
+
+        private HistoryReader(Long sessionId, int afterSeq) {
+            this.sessionId = sessionId;
+            this.afterSeq = afterSeq;
+        }
+        private boolean hasMore() { return !exhausted; }
+        private List<Group> next() {
+            while (!exhausted) {
+                if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException();
+                List<AgentMessage> page = store.modelHistory(sessionId, afterSeq);
+                if (!page.isEmpty()) afterSeq = page.getLast().getSeq();
+                exhausted = page.size() < AgentStore.MODEL_HISTORY_PAGE_SIZE;
+                pending.addAll(page);
+                int boundary = pending.size();
+                if (!exhausted) {
+                    // Runtime completes (or seals) all calls before the next assistant message.
+                    // Keep the last tool turn across pages, including any retried results and interleaved user input.
+                    for (int i = pending.size() - 1; i >= 0; i--) {
+                        AgentMessage row = pending.get(i);
+                        if (!"ASSISTANT".equals(row.getMessageType())) continue;
+                        MessageBody body = json.read(row.getContentJson(), MessageBody.class);
+                        if (body.toolCalls() != null && !body.toolCalls().isEmpty()) boundary = i;
+                        break;
+                    }
+                }
+                if (boundary > 0 || exhausted) {
+                    List<Group> complete = groups(pending.subList(0, boundary));
+                    pending = new ArrayList<>(pending.subList(boundary, pending.size()));
+                    return complete;
+                }
+            }
+            return List.of();
+        }
+    }
+    private int fittingSummaryCut(List<Group> groups, int requested, long budget) {
+        long used = 0;
+        int fitting = 0;
+        for (int i = 0; i < requested; i++) {
+            for (Message message : groups.get(i).messages()) {
+                if (used > 0) used++; // newline between described messages
+                used += estimateText(describe(message));
+            }
+            if (used > budget) break;
+            fitting = i + 1;
+        }
+        return safeSummaryCut(groups, fitting);
     }
     public static String invalidSummary(ModelReply summary, int maxCharacters) {
         if (summary == null) return "EMPTY";

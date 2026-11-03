@@ -29,6 +29,7 @@ import java.util.function.Supplier;
 @Service
 @RequiredArgsConstructor
 public class AgentStore {
+    public static final int MODEL_HISTORY_PAGE_SIZE = 5000;
     private final AgentSessionMapper sessions;
     private final AgentMessageMapper messages;
     private final AgentRunMapper runs;
@@ -114,10 +115,11 @@ public class AgentStore {
         return messages.selectList(new LambdaQueryWrapper<AgentMessage>().eq(AgentMessage::getSessionId, sessionId)
                 .gt(AgentMessage::getSeq, afterSeq).orderByAsc(AgentMessage::getSeq).last("LIMIT " + Math.clamp(limit, 1, 5000)));
     }
+    /** One history page; callers continue from the last returned sequence, which may contain event gaps. */
     public List<AgentMessage> modelHistory(Long sessionId, int afterSeq) {
         return messages.selectList(new LambdaQueryWrapper<AgentMessage>().eq(AgentMessage::getSessionId, sessionId)
                 .gt(AgentMessage::getSeq, afterSeq).ne(AgentMessage::getMessageType, "EVENT")
-                .orderByAsc(AgentMessage::getSeq).last("LIMIT 5000"));
+                .orderByAsc(AgentMessage::getSeq).last("LIMIT " + MODEL_HISTORY_PAGE_SIZE));
     }
     public Snapshot snapshot(AgentRun run) { return json.read(run.getProfileSnapshotJson(), Snapshot.class); }
     public List<AgentStep> steps(Long runId) {
