@@ -1,6 +1,9 @@
 package com.astra.freyja.config;
 
 import com.astra.freyja.websocket.TaskCenterWebSocketHandler;
+import com.astra.freyja.auth.AuthService;
+import com.astra.freyja.auth.AuthenticatedWebSocketHandler;
+import com.astra.freyja.auth.LoginHandshakeInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -17,10 +20,11 @@ import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry
 public class WebSocketConfig implements WebSocketConfigurer {
 
     private final TaskCenterWebSocketHandler taskCenterWebSocketHandler;
+    private final AuthService authService;
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(taskCenterWebSocketHandler, "/ws/task-center", "/api/ws/task-center")
-                .setAllowedOrigins("*");
+        registry.addHandler(new AuthenticatedWebSocketHandler(taskCenterWebSocketHandler, authService), "/ws/task-center", "/api/ws/task-center")
+                .addInterceptors(new LoginHandshakeInterceptor());
     }
 }

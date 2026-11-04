@@ -1,7 +1,13 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import Layout from '@/layout/Index.vue'
+import { getLoginSession } from '@/utils/auth-session'
 
 const routes: RouteRecordRaw[] = [
+  {
+    path: '/login', name: 'Login',
+    component: () => import('@/views/login/Index.vue'),
+    meta: { title: '登录' }
+  },
   {
     path: '/',
     component: Layout,
@@ -118,6 +124,14 @@ const router = createRouter({
 })
 
 router.beforeEach((to, _from, next) => {
+  if (to.path !== '/login' && !getLoginSession()) {
+    next({ path: '/login', query: { redirect: to.fullPath } })
+    return
+  }
+  if (to.path === '/login' && getLoginSession()) {
+    next('/dashboard')
+    return
+  }
   if (to.meta?.title) {
     document.title = `${to.meta.title} - Freyja`
   }

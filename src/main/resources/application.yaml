@@ -62,6 +62,11 @@ server:
   port: ${SERVER_PORT:8080}
 
 freyja:
+  auth:
+    username: ${FREYJA_AUTH_USERNAME:admin}
+    # 未配置时，每次启动生成临时密码并仅在启动日志中显示。
+    password: ${FREYJA_AUTH_PASSWORD:}
+    token-ttl-seconds: ${FREYJA_AUTH_TOKEN_TTL_SECONDS:43200}
   mcp:
     enabled: ${FREYJA_MCP_ENABLED:false}
     token: ${FREYJA_MCP_TOKEN:}

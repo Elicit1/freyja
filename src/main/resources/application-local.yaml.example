@@ -19,6 +19,9 @@
 #       password: 123456
 
 # freyja:
+#   auth:
+#     username: admin
+#     password: your-strong-password-here
 #   media-tools:
 #     ffmpeg-path: F:\program_file\ffmpeg\bin\ffmpeg.exe
 #     ffprobe-path: F:\program_file\ffmpeg\bin\ffprobe.exe

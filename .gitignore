@@ -65,6 +65,7 @@ front/dist/
 
 /docs/*
 !/docs/architecture-cleanup.md
+!/docs/auth-api.md
 !/docs/reference-video-generation-design.md
 !/docs/asset-center-api.md
 !/docs/audio-material-api.md

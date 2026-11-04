@@ -65,6 +65,8 @@
 
 ## 🔌 强烈推荐：接入 Codex或国内可以生图Agent平台
 
+工作台现已启用登录：管理员用户名默认为 `admin`，通过 `FREYJA_AUTH_PASSWORD` 设置 12～256 字符密码；未设置时在后端启动日志生成临时密码。所有普通后端接口需要登录 Token，MCP 接口使用独立 MCP 令牌。登录配置与 API 见 [登录与接口鉴权](docs/auth-api.md)。
+
 Freyja 支持标准的 **MCP（Model Context Protocol）协议**。如果你平时使用支持该协议且**具备生图能力的 AI 客户端**（如 **Qoder**、**Codex**、**Cursor**、**Claude Desktop** 等），可以把 Freyja 连接进去，让外部 AI 变成你的全能短剧制作助手。
 
 > 💡 **核心优势：外部 AI 自动生成图片并直接存入 Freyja**  

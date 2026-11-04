@@ -2,6 +2,8 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { taskCenterApi, type TaskCenterItem } from '@/api/task-center'
 import type { AgentEvent, AgentStreamEvent } from '@/types/agent'
+import { authApi } from '@/api/auth'
+import { expireLogin, getLoginSession } from '@/utils/auth-session'
 
 const ACTIVE_STATUSES = new Set(['QUEUED', 'PENDING', 'RUNNING', 'RETRYING', 'RENDERING', 'WAITING_TASK', 'WAITING_USER', 'BLOCKED', 'CANCELLING', 'NEEDS_REVIEW'])
 
@@ -23,6 +25,8 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
   let pingTimer: ReturnType<typeof setInterval> | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let retryCount = 0
+  let connecting = false
+  let connectionGeneration = 0
   type AiListener = (event: PromptEvent) => void
   type ListenerState = { afterSeq: number; pending: Map<number, PromptEvent> }
   const promptSubscriptions = new Map<string, Map<AiListener, ListenerState>>()
@@ -222,7 +226,7 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
   }
 
   function scheduleReconnect() {
-    if (reconnectTimer || !initialized.value) return
+    if (reconnectTimer || !initialized.value || !getLoginSession()) return
     const delay = Math.min(1000 * Math.pow(2, retryCount), 30000)
     retryCount++
     reconnectTimer = setTimeout(() => {
@@ -233,17 +237,20 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
     }, delay)
   }
 
-  function initWebSocket() {
-    if (typeof window === 'undefined') return
+  async function initWebSocket() {
+    if (typeof window === 'undefined' || connecting || !getLoginSession()) return
     if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
       return
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
-    const wsUrl = `${protocol}//${host}/ws/task-center`
-
+    connecting = true
+    const generation = connectionGeneration
     try {
+      const { ticket } = await authApi.websocketTicket()
+      if (!initialized.value || generation !== connectionGeneration || !getLoginSession()) return
+      const wsUrl = `${protocol}//${host}/ws/task-center?ticket=${encodeURIComponent(ticket)}`
       socket = new WebSocket(wsUrl)
 
       socket.onopen = () => {
@@ -269,9 +276,10 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
         }
       }
 
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         connected.value = false
         stopHeartbeat()
+        if (event.code === 4401) { expireLogin(); return }
         scheduleReconnect()
       }
 
@@ -282,7 +290,7 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
     } catch (e) {
       console.error('[TaskCenterWS] 启动 WebSocket 异常:', e)
       scheduleReconnect()
-    }
+    } finally { connecting = false }
   }
 
   // 手动按需拉取活跃任务（供刷新按钮兜底使用，不再作为自动轮询）
@@ -341,18 +349,21 @@ export const useTaskCenterStore = defineStore('taskCenter', () => {
   }
 
   function start() {
-    if (initialized.value || typeof window === 'undefined') return
+    if (initialized.value || typeof window === 'undefined' || !getLoginSession()) return
     initialized.value = true
     initWebSocket()
     window.addEventListener('pageshow', handlePageShow)
     window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('freyja-logged-out', stop)
   }
 
   function stop() {
     initialized.value = false
+    connectionGeneration++
     if (typeof window !== 'undefined') {
       window.removeEventListener('pageshow', handlePageShow)
       window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('freyja-logged-out', stop)
     }
     stopHeartbeat()
     if (reconnectTimer) {

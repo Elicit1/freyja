@@ -28,6 +28,8 @@
     <!-- Right: 任务中心与外观入口 -->
     <div class="flex items-center gap-2.5">
       <TaskCenterFloat />
+      <span class="hidden sm:inline text-xs text-[var(--text-secondary)]">{{ username }}</span>
+      <el-button text :loading="loggingOut" @click="logout">退出登录</el-button>
 
       <!-- 外观设置按钮 -->
       <el-tooltip content="片场视觉与主题" placement="bottom" :show-after="300">
@@ -46,15 +48,30 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/store/app'
 import { Fold, Expand, Brush } from '@element-plus/icons-vue'
 import ThemePanel from '@/components/theme/ThemePanel.vue'
 import TaskCenterFloat from '@/components/task/TaskCenterFloat.vue'
+import { authApi } from '@/api/auth'
+import { clearLoginSession, getLoginSession } from '@/utils/auth-session'
 
 const route = useRoute()
 const appStore = useAppStore()
+const username = getLoginSession()?.username
+const loggingOut = ref(false)
+
+async function logout() {
+  loggingOut.value = true
+  try {
+    await authApi.logout()
+    clearLoginSession()
+    window.location.replace('/login')
+  } catch {
+    // Retain the session when logout could not reach the server, so it can be retried.
+  } finally { loggingOut.value = false }
+}
 
 const currentTitle = computed(() => {
   return (route.meta?.title as string) || '工作台'
