@@ -28,8 +28,17 @@
     <!-- Right: 任务中心与外观入口 -->
     <div class="flex items-center gap-2.5">
       <TaskCenterFloat />
-      <span class="hidden sm:inline text-xs text-[var(--text-secondary)]">{{ username }}</span>
-      <el-button text :loading="loggingOut" @click="logout">退出登录</el-button>
+      <el-dropdown trigger="click" @command="accountCommand">
+        <button class="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[var(--text-secondary)] hover:bg-[var(--surface-hover)]" aria-label="账户与安全">
+          <el-icon><User /></el-icon><span class="hidden sm:inline text-xs">{{ username }}</span><el-icon class="!text-xs"><ArrowDown /></el-icon>
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="password" :icon="Lock">修改密码</el-dropdown-item>
+            <el-dropdown-item command="logout" :icon="SwitchButton" :disabled="loggingOut" divided>退出登录</el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
 
       <!-- 外观设置按钮 -->
       <el-tooltip content="片场视觉与主题" placement="bottom" :show-after="300">
@@ -44,6 +53,7 @@
     </div>
 
     <ThemePanel />
+    <ChangePasswordDialog v-model="passwordDialogVisible" />
   </div>
 </template>
 
@@ -51,16 +61,23 @@
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAppStore } from '@/store/app'
-import { Fold, Expand, Brush } from '@element-plus/icons-vue'
+import { Fold, Expand, Brush, User, ArrowDown, Lock, SwitchButton } from '@element-plus/icons-vue'
 import ThemePanel from '@/components/theme/ThemePanel.vue'
 import TaskCenterFloat from '@/components/task/TaskCenterFloat.vue'
 import { authApi } from '@/api/auth'
 import { clearLoginSession, getLoginSession } from '@/utils/auth-session'
+import ChangePasswordDialog from '@/components/auth/ChangePasswordDialog.vue'
 
 const route = useRoute()
 const appStore = useAppStore()
 const username = getLoginSession()?.username
 const loggingOut = ref(false)
+const passwordDialogVisible = ref(false)
+
+function accountCommand(command: string) {
+  if (command === 'password') passwordDialogVisible.value = true
+  if (command === 'logout') void logout()
+}
 
 async function logout() {
   loggingOut.value = true

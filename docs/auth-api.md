@@ -9,12 +9,18 @@
 | 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
 | `FREYJA_AUTH_USERNAME` | `admin` | 管理员用户名，最多 64 字符 |
-| `FREYJA_AUTH_PASSWORD` | 空 | 12～256 字符；留空时每次启动生成随机临时密码，在后端启动日志显示 |
+| `FREYJA_AUTH_PASSWORD` | 空 | 引导密码，12～256 字符；尚未在页面修改密码且此项为空时，启动生成临时密码并显示在日志 |
 | `FREYJA_AUTH_TOKEN_TTL_SECONDS` | `43200` | Token 有效期，默认 12 小时，允许 60～604800 秒 |
 
-Docker 部署在 `.env` 中设置这些变量；IDE 启动可以使用环境变量，或参考 `application-local.yaml.example`。未设置密码时，查找后端日志中的“临时管理员密码”；Docker 可执行 `docker compose logs backend`。重启会重新生成临时密码。设置固定密码后，同一账户配置下的已有会话可在后端重启后继续使用，直到 Redis 会话过期。变更用户名或密码会使旧会话验证失败。多实例部署应配置相同的管理员账户并共享 Redis。
+Docker 部署在 `.env` 中设置这些变量；IDE 启动可以使用环境变量，或参考 `application-local.yaml.example`。尚未保存登录密码且未设置引导密码时，查找后端日志中的“临时管理员密码”；Docker 可执行 `docker compose logs backend`。
 
-前端 `/login` 登录成功后返回原页面，右上角提供退出入口。登录信息保存在当前标签页的 `sessionStorage`；请求统一携带 Bearer Token，过期或收到 401 时清理会话并返回登录页。
+登录后点击右上角账户菜单 → **修改密码**，验证当前密码并保存新密码。新密码以独立随机盐的 PBKDF2 哈希存入私有表 `sys_admin_credential`，重启服务或清空 Redis 后仍然有效。数据库中已保存的密码优先于 `FREYJA_AUTH_PASSWORD`，也不再生成临时密码；环境变量不会覆盖页面设置的新密码。系统参数管理接口不暴露此表。
+
+修改密码后，全部旧登录 Token 和待用 WebSocket 凭证失效，当前页面回到登录页，MCP 令牌不变。多实例部署应配置相同的管理员用户名并共享数据库和 Redis；会话验证读取当前数据库凭据版本，其他实例的旧会话同样失效。未修改密码时，保留原有引导配置行为。
+
+前端 `/login` 登录成功后返回原页面，右上角账户菜单提供修改密码、退出登录入口。登录信息保存在当前标签页的 `sessionStorage`；请求统一携带 Bearer Token，过期或收到 401 时清理会话并返回登录页。
+
+登录页共用工作台的 Logo、四套主题和明暗模式，自动沿用当前外观设置；右上角“片场外观”复用系统主题面板，切换结果在登录前后保持一致。Freyja 主题使用工作台已有插画，其他主题使用对应的品牌色和背景。
 
 ## 接口
 
@@ -55,6 +61,18 @@ Authorization: Bearer <login-token>
 
 需要登录 Token；删除当前 Redis 会话，返回统一成功响应。该 Token 随即失效，不影响其他登录会话。已经建立的 WebSocket 在下一次收发（含心跳）时拒绝继续传输并关闭。
 
+### `POST /auth/password`
+
+需要登录 Token：
+
+```json
+{"oldPassword":"current-password","newPassword":"your-new-permanent-password"}
+```
+
+新密码须为 12～256 字符、不能全为空白且不能与旧密码相同。原密码错误或新密码不符合要求返回 HTTP 400，不清除仍然有效的登录会话；同一账户每分钟最多尝试 10 次，超出返回 HTTP 429。密码并发修改发生版本冲突时返回 HTTP 409；数据库保存失败返回 HTTP 503，不返回成功结果。成功返回统一成功响应，所有旧 Token 即刻验证失败。
+
+忘记页面设置的密码时，管理员可停止后端，在数据库删除该用户名对应的 `sys_admin_credential` 记录，然后配置 `FREYJA_AUTH_PASSWORD` 并重新启动，用引导密码登录后重新设置。
+
 ### `POST /auth/ws-ticket`
 
 需要登录 Token；返回 `data.ticket`。凭证有效期为 30 秒且只能使用一次，用于浏览器连接 `/ws/task-center?ticket=<ticket>`（后端兼容 `/api/ws/task-center`）。握手需要合法的一次性凭证及同源 Origin；不接受 URL 中的登录 Token。前端开发代理和 Nginx 均保留 WebSocket 请求 Host。
@@ -63,7 +81,7 @@ Authorization: Bearer <login-token>
 
 ## 存储和错误语义
 
-- 密码在服务内通过 PBKDF2-HMAC-SHA256 验证；登录 Token 使用 32 字节安全随机数生成。Redis 仅保存登录 Token 的 SHA-256 索引、账户凭据派生版本和带 TTL 的会话，不保存明文密码或登录 Token。
+- 密码在服务内通过 PBKDF2-HMAC-SHA256 验证；页面保存的密码使用独立随机盐，数据库只保存编码后的哈希及随机会话版本。登录 Token 使用 32 字节安全随机数生成。Redis 仅保存登录 Token 的 SHA-256 索引、账户会话版本和带 TTL 的会话，不保存明文密码或登录 Token。
 - Token 不自动续期；Redis TTL 到期后需重新登录。Redis 无法访问时普通接口拒绝请求并返回 HTTP 503，不降级放行。
 - 普通接口缺失、错误或过期 Token 返回 HTTP 401 和 `{"code":401,"msg":"请先登录或重新登录","data":null}`。登录及鉴权响应禁用缓存。
 - MCP 端点继续使用 `Authorization: Bearer <mcp-token>`，保留 MCP 的独立关闭开关、Origin 白名单及项目/工具权限。先登录工作台，再进入“系统管理 → MCP 服务”维护 MCP 令牌。

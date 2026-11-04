@@ -52,7 +52,7 @@ service.interceptors.response.use(
       if (error.response.status === 401) {
         message = error.response.data?.msg || '登录已失效，请重新登录'
         if (error.config?.url !== '/auth/login') expireLogin()
-      } else if (error.response.status === 429 || error.response.status === 503) {
+      } else if ([400, 409, 429, 503].includes(error.response.status)) {
         message = error.response.data?.msg || '服务暂不可用，请稍后重试'
       } else if (error.response.status === 404) {
         message = '请求接口未找到 (404)'

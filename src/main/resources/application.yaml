@@ -64,7 +64,7 @@ server:
 freyja:
   auth:
     username: ${FREYJA_AUTH_USERNAME:admin}
-    # 未配置时，每次启动生成临时密码并仅在启动日志中显示。
+    # 仅作为引导密码；页面已修改密码时优先使用数据库记录，不再生成临时密码。
     password: ${FREYJA_AUTH_PASSWORD:}
     token-ttl-seconds: ${FREYJA_AUTH_TOKEN_TTL_SECONDS:43200}
   mcp:
@@ -103,6 +103,8 @@ logging:
   level:
     com.astra.freyja: debug
     com.astra.freyja.dao: debug
+    # Credential hashes must not be emitted as SQL parameter/result diagnostics.
+    com.astra.freyja.dao.AdminCredentialMapper: warn
 
 story:
   decomposition:

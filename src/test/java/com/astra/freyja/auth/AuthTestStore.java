@@ -19,6 +19,15 @@ class AuthTestStore {
     final StringRedisTemplate redis = mock(StringRedisTemplate.class);
     final Map<String, Entry> entries = new ConcurrentHashMap<>();
     final AtomicLong time = new AtomicLong();
+    final Map<String, AdminCredential> savedCredentials = new ConcurrentHashMap<>();
+    final AdminCredentialRepository credentials = new AdminCredentialRepository() {
+        @Override public AdminCredential find(String username) { return savedCredentials.get(username); }
+        @Override public boolean insert(AdminCredential value) { return savedCredentials.putIfAbsent(value.username(), value) == null; }
+        @Override public boolean replace(AdminCredential value, String expectedVersion) {
+            AdminCredential old = savedCredentials.get(value.username());
+            return old != null && old.sessionVersion().equals(expectedVersion) && savedCredentials.replace(value.username(), old, value);
+        }
+    };
 
     @SuppressWarnings("unchecked")
     AuthTestStore() {

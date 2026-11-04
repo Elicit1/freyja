@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 import tools.jackson.databind.json.JsonMapper;
@@ -30,22 +31,27 @@ import static org.mockito.Mockito.*;
 
 @SpringBootTest(classes = AuthHttpIntegrationTest.App.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {"spring.ai.mcp.server.enabled=false", "freyja.auth.password=test-admin-password-2026", "freyja.auth.token-ttl-seconds=60",
-                "logging.file.name=target/auth-http-test.log"})
+                "logging.file.name=target/auth-http-test.log", "spring.datasource.url=jdbc:h2:mem:auth-http;MODE=MySQL;DB_CLOSE_DELAY=-1",
+                "spring.datasource.driver-class-name=org.h2.Driver", "spring.datasource.username=sa", "spring.datasource.password=",
+                "spring.sql.init.mode=never"})
 class AuthHttpIntegrationTest {
     @LocalServerPort int port;
     @Autowired AuthService auth;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @MockitoBean TaskCenterWebSocketHandler taskHandler;
     final HttpClient http = HttpClient.newHttpClient();
     final JsonMapper json = JsonMapper.builder().build();
 
     @Configuration(proxyBeanMethods = false)
-    @EnableAutoConfiguration(excludeName = "org.springframework.boot.jdbc.autoconfigure.DataSourceAutoConfiguration")
+    @EnableAutoConfiguration
+    @MapperScan(basePackageClasses = com.astra.freyja.dao.AdminCredentialMapper.class)
     @Import({AuthConfiguration.class, AuthController.class, WebSocketConfig.class, BusinessEndpoint.class})
     static class App {
         @Bean StringRedisTemplate stringRedisTemplate() { return new AuthTestStore().redis; }
     }
 
     @BeforeEach void websocketReplies() throws Exception {
+        jdbc.update("DELETE FROM sys_admin_credential");
         doAnswer(call -> {
             org.springframework.web.socket.WebSocketSession session = call.getArgument(0);
             session.sendMessage(new org.springframework.web.socket.TextMessage("ready")); return null;
@@ -63,7 +69,7 @@ class AuthHttpIntegrationTest {
         return http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
     }
 
-    @Test void registeredFilterProtectsRealHttpAndWebSocketConnections() throws Exception {
+    @Test void passwordChangeRevokesRealHttpAndWebSocketConnections() throws Exception {
         assertEquals(401, request("GET", "/business", null, null).statusCode());
         var response = request("POST", "/auth/login", null, "{\"username\":\"admin\",\"password\":\"test-admin-password-2026\"}");
         assertEquals(200, response.statusCode(), response.body());
@@ -85,8 +91,11 @@ class AuthHttpIntegrationTest {
                 .buildAsync(URI.create("ws://localhost:" + port + "/ws/task-center?ticket=" + ticket), listener).get(10, TimeUnit.SECONDS);
         try {
             assertEquals("ready", ready.get(10, TimeUnit.SECONDS));
-            assertEquals(200, request("POST", "/auth/logout", token, null).statusCode());
+            assertEquals(200, request("POST", "/auth/password", token,
+                    "{\"oldPassword\":\"test-admin-password-2026\",\"newPassword\":\"my-permanent-password\"}").statusCode());
             assertEquals(401, request("GET", "/business", token, null).statusCode());
+            assertEquals(200, request("POST", "/auth/login", null,
+                    "{\"username\":\"admin\",\"password\":\"my-permanent-password\"}").statusCode());
             socket.sendText("PING", true).get(10, TimeUnit.SECONDS);
             assertEquals(4401, closed.get(10, TimeUnit.SECONDS));
         } finally { socket.abort(); }

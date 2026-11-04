@@ -30,7 +30,7 @@ class AuthenticationBoundaryTest {
     McpRuntimeSettings settings;
 
     @BeforeEach void setup() {
-        store = new AuthTestStore(); auth = new AuthService(AuthTestStore.properties(), store.redis);
+        store = new AuthTestStore(); auth = new AuthService(AuthTestStore.properties(), store.redis, store.credentials);
         var control = mock(McpRuntimeControl.class);
         settings = new McpRuntimeSettings(); settings.setEnabled(true);
         when(control.current()).thenReturn(settings); when(control.token(settings)).thenReturn(MCP_TOKEN);
@@ -98,6 +98,26 @@ class AuthenticationBoundaryTest {
         mvc.perform(endpoint("/ws/task-center", null).header("Upgrade", "websocket").param("ticket", ticket)).andExpect(status().isUnauthorized());
         String aliasTicket = auth.createWebSocketTicket(auth.authenticate("Bearer " + token));
         mvc.perform(endpoint("/api/ws/task-center", null).header("Upgrade", "websocket").param("ticket", aliasTicket)).andExpect(status().isOk());
+    }
+
+    @Test void passwordChangeRequiresLoginVerifiesOldPasswordAndRevokesAllTokensWithoutChangingMcpAccess() throws Exception {
+        String input = "{\"oldPassword\":\"test-admin-password-2026\",\"newPassword\":\"my-permanent-password\"}";
+        mvc.perform(post("/auth/password").servletPath("/auth/password").contentType(MediaType.APPLICATION_JSON).content(input)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/auth/password").servletPath("/auth/password").header("Authorization", "Bearer " + MCP_TOKEN)
+                .contentType(MediaType.APPLICATION_JSON).content(input)).andExpect(status().isUnauthorized());
+        String token = login(); String second = login();
+        mvc.perform(post("/auth/password").servletPath("/auth/password").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"oldPassword\":\"wrong\",\"newPassword\":\"my-permanent-password\"}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.msg").value("原密码不正确"));
+        mvc.perform(endpoint("/business", token)).andExpect(status().isOk());
+        mvc.perform(post("/auth/password").servletPath("/auth/password").header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON).content(input)).andExpect(status().isOk());
+        mvc.perform(endpoint("/business", token)).andExpect(status().isUnauthorized());
+        mvc.perform(endpoint("/business", second)).andExpect(status().isUnauthorized());
+        mvc.perform(post("/auth/login").servletPath("/auth/login").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"username\":\"admin\",\"password\":\"my-permanent-password\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.token").isNotEmpty());
+        mvc.perform(post("/mcp").servletPath("/mcp").header("Authorization", "Bearer " + MCP_TOKEN)).andExpect(status().isOk());
     }
 
     @RestController static class Endpoints {

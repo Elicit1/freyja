@@ -41,6 +41,13 @@ public class AuthController {
         return R.ok(Map.of("ticket", auth.createWebSocketTicket(principal)));
     }
 
+    @PostMapping("/password")
+    public R<Void> changePassword(@RequestAttribute(LoginPrincipal.ATTRIBUTE) LoginPrincipal principal,
+            @RequestBody ChangePasswordRequest input) {
+        auth.changePassword(principal, input.oldPassword(), input.newPassword());
+        return R.ok();
+    }
+
     @ExceptionHandler(BizException.class)
     public ResponseEntity<R<Void>> authError(BizException error) {
         return ResponseEntity.status(error.getCode()).header("Cache-Control", "no-store").body(R.fail(error.getCode(), error.getMessage()));
@@ -52,4 +59,5 @@ public class AuthController {
     }
 
     public record LoginRequest(String username, String password) {}
+    public record ChangePasswordRequest(String oldPassword, String newPassword) {}
 }

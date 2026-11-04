@@ -9,7 +9,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AuthServiceTest {
     AuthTestStore store;
     AuthService auth;
-    @BeforeEach void setup() { store = new AuthTestStore(); auth = new AuthService(AuthTestStore.properties(), store.redis); }
+    @BeforeEach void setup() { store = new AuthTestStore(); auth = new AuthService(AuthTestStore.properties(), store.redis, store.credentials); }
     AuthService.LoginResult login() { return auth.login("admin", "test-admin-password-2026", "127.0.0.1"); }
 
     @Test void loginIssuesUniqueOpaqueTokensAndStoresOnlyHashes() {
@@ -42,10 +42,10 @@ class AuthServiceTest {
 
     @Test void credentialChangeInvalidatesOldSessionsButRestartWithSameCredentialsPreservesThem() {
         String token = login().token();
-        var restarted = new AuthService(AuthTestStore.properties(), store.redis);
+        var restarted = new AuthService(AuthTestStore.properties(), store.redis, store.credentials);
         assertNotNull(restarted.authenticate("Bearer " + token));
         var changed = AuthTestStore.properties(); changed.setPassword("different-admin-password");
-        assertNull(new AuthService(changed, store.redis).authenticate("Bearer " + token));
+        assertNull(new AuthService(changed, store.redis, store.credentials).authenticate("Bearer " + token));
     }
 
     @Test void loginRateLimitExpiresAndDoesNotTrustUserSuppliedUsername() {
@@ -70,8 +70,51 @@ class AuthServiceTest {
 
     @Test void invalidConfigurationIsRejected() {
         var properties = AuthTestStore.properties(); properties.setPassword("short");
-        assertThrows(IllegalArgumentException.class, () -> new AuthService(properties, store.redis));
+        assertThrows(IllegalArgumentException.class, () -> new AuthService(properties, store.redis, store.credentials));
         properties.setPassword("valid-long-password"); properties.setTokenTtlSeconds(0);
-        assertThrows(IllegalArgumentException.class, () -> new AuthService(properties, store.redis));
+        assertThrows(IllegalArgumentException.class, () -> new AuthService(properties, store.redis, store.credentials));
+    }
+
+    @Test void passwordChangePersistsAndRevokesEverySessionAndPendingTicketAcrossInstances() {
+        String first = login().token(); String second = login().token();
+        var principal = auth.authenticate("Bearer " + first);
+        String ticket = auth.createWebSocketTicket(principal);
+        var otherInstance = new AuthService(AuthTestStore.properties(), store.redis, store.credentials);
+        auth.changePassword(principal, "test-admin-password-2026", "my-permanent-password");
+        assertNull(auth.authenticate("Bearer " + first));
+        assertNull(otherInstance.authenticate("Bearer " + second));
+        assertNull(otherInstance.consumeWebSocketTicket(ticket));
+        assertThrows(BizException.class, this::login);
+        var config = AuthTestStore.properties(); config.setPassword("");
+        var restarted = new AuthService(config, store.redis, store.credentials);
+        var changed = restarted.login("admin", "my-permanent-password", "new-ip");
+        assertNotNull(restarted.authenticate("Bearer " + changed.token()));
+        assertNotEquals("my-permanent-password", store.credentials.find("admin").passwordHash());
+        assertTrue(store.credentials.find("admin").passwordHash().startsWith("pbkdf2-sha256$"));
+    }
+
+    @Test void badOldPasswordAndInvalidNewPasswordsDoNotChangeAnything() {
+        var principal = auth.authenticate("Bearer " + login().token());
+        assertEquals(400, assertThrows(BizException.class, () -> auth.changePassword(principal, "wrong", "my-permanent-password")).getCode());
+        for (String invalid : new String[]{"short", "            ", "test-admin-password-2026", "x".repeat(257)})
+            assertEquals(400, assertThrows(BizException.class, () -> auth.changePassword(principal, "test-admin-password-2026", invalid)).getCode());
+        assertNotNull(auth.authenticate("Bearer " + login().token()));
+        assertNull(store.credentials.find("admin"));
+    }
+
+    @Test void changingBackToAnOldPasswordNeverReactivatesAnOldToken() {
+        String oldToken = login().token();
+        auth.changePassword(auth.authenticate("Bearer " + oldToken), "test-admin-password-2026", "my-permanent-password");
+        String newToken = auth.login("admin", "my-permanent-password", "new-ip").token();
+        auth.changePassword(auth.authenticate("Bearer " + newToken), "my-permanent-password", "test-admin-password-2026");
+        assertNull(auth.authenticate("Bearer " + oldToken));
+        assertNull(auth.authenticate("Bearer " + newToken));
+        assertNotNull(login());
+    }
+
+    @Test void passwordChangeIsRateLimitedEvenWhenTheCallerHasAValidToken() {
+        var principal = auth.authenticate("Bearer " + login().token());
+        for (int i = 0; i < 10; i++) assertThrows(BizException.class, () -> auth.changePassword(principal, "wrong", "my-permanent-password"));
+        assertEquals(429, assertThrows(BizException.class, () -> auth.changePassword(principal, "test-admin-password-2026", "my-permanent-password")).getCode());
     }
 }

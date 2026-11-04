@@ -12,7 +12,7 @@ import static org.mockito.Mockito.*;
 
 class AuthenticatedWebSocketHandlerTest {
     @Test void logoutOrExpiryBlocksOutgoingEventsAndIncomingMessagesOnAnExistingSocket() throws Exception {
-        var store = new AuthTestStore(); var auth = new AuthService(AuthTestStore.properties(), store.redis);
+        var store = new AuthTestStore(); var auth = new AuthService(AuthTestStore.properties(), store.redis, store.credentials);
         var login = auth.login("admin", "test-admin-password-2026", "ip");
         var principal = auth.authenticate("Bearer " + login.token());
         var delegate = mock(WebSocketHandler.class);
