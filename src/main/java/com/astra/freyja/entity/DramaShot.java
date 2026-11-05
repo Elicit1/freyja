@@ -50,6 +50,8 @@ public class DramaShot extends BaseEntity {
 
     /** 预估镜头时长 (秒) */
     private BigDecimal duration;
+    /** Explicit per-segment continuation draft; null means ordinary <=15s generation. */
+    private String continuationJson;
 
     /** 本镜头视频渲染随机种子；刷新后后续渲染使用新值。 */
     private Long seed;

@@ -462,8 +462,11 @@ public class DramaShotServiceImpl implements DramaShotService {
             if (dto.getDuration().compareTo(BigDecimal.ZERO) <= 0) {
                 throw new BizException(400, "分镜镜头时长必须大于 0 秒");
             }
-            if (dto.getDuration().compareTo(MAX_SHOT_DURATION) > 0) {
-                throw new BizException(400, "分镜镜头时长最长不得超过 15 秒 (当前: " + dto.getDuration() + "s)");
+            boolean continuationEnabled=false;
+            if(existing.getContinuationJson()!=null)try{continuationEnabled=objectMapper.readTree(existing.getContinuationJson()).path("enabled").asBoolean();}catch(Exception error){throw new BizException(400,"接续配置无法读取");}
+            BigDecimal durationLimit=continuationEnabled?new BigDecimal("300"):MAX_SHOT_DURATION;
+            if (dto.getDuration().compareTo(durationLimit) > 0) {
+                throw new BizException(400, continuationEnabled?"接续镜头时长超过上限":"镜头时长最长不得超过 15 秒，超过请先开启接续模式");
             }
         }
 

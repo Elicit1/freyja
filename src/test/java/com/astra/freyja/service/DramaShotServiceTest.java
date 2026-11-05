@@ -717,6 +717,13 @@ class DramaShotServiceTest {
         assertTrue(ex.getMessage().contains("镜头时长最长不得超过 15 秒"));
     }
 
+    @Test void updateAllowsLongDurationOnlyForASavedEnabledContinuation() {
+        var existing=new DramaShot();existing.setId(1000L);existing.setEpisodeId(5L);existing.setContinuationJson("{\"enabled\":true}");when(shotMapper.selectById(1000L)).thenReturn(existing);
+        var dto=new DramaShotDTO();dto.setId(1000L);dto.setDuration(new BigDecimal("60.00"));
+        assertDoesNotThrow(()->shotService.update(dto));
+        verify(shotMapper).updateById(argThat((DramaShot saved)->new BigDecimal("60.00").equals(saved.getDuration())));
+        existing.setContinuationJson("{\"enabled\":false}");assertThrows(BizException.class,()->shotService.update(dto));
+    }
     @Test void firstFrameFreezesSceneImageBeforeDispatchAndRecordsItsSnapshot() throws Exception {
         DramaShot shot = new DramaShot(); shot.setId(1000L); shot.setDramaId(1L); shot.setFirstFramePrompt("office");
         var scene = new com.astra.freyja.entity.ResScene();

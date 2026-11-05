@@ -24,6 +24,7 @@ REF_MODELS = (
     "minimax-h3-ref2va", "minimax-h3-face-refine", "minimax-h3-ref",
     "minimax-h3-ref-turbo4-face-refine", "minimax-h3-ref-turbo8",
     "minimax-h3-ref-turbo8-face-refine",
+    "pika-h3-flex-ref2va",
 )
 
 
@@ -89,7 +90,9 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
                 face = model.handler == "minimax_h3_face_refine"
                 self.assertEqual(graph["130"]["inputs"]["images"], ["165" if face else "122", 0])
                 self.assertEqual(graph["130"]["inputs"]["audio"], ["121", 0])
-                self.assertEqual(graph["124"]["inputs"]["steps"], model.default_steps)
+                if graph["124"]["class_type"]=="ManualSigmas":
+                    self.assertEqual(len(graph["124"]["inputs"]["sigmas"].split(","))-1,model.default_steps)
+                else:self.assertEqual(graph["124"]["inputs"]["steps"], model.default_steps)
                 self.assertEqual(sum(node["class_type"] == "VHS_LoadVideo" for node in graph.values()), 3)
                 self.assertEqual(graph["136"]["inputs"]["ref_audios.ref_audio_0"], ["136_ref_aud_0", 0])
                 for cond in (("136", "158") if face else ("136",)):

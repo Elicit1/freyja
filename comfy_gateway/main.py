@@ -5,6 +5,7 @@ import base64
 import asyncio
 import logging
 import hashlib
+import json
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Tuple, Any
@@ -21,6 +22,7 @@ from config import get_config, get_base_dir, GatewayConfig, NodeConfig
 from video_reference import require_verified, workflow_revision
 from reference_media import upload_reference_video
 from render_input_validation import validate_transport
+from h3_extensions import require_options, revision as h3_revision, backend_acceptance
 from schemas import (
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -260,7 +262,7 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     validate_transport(request)
     # 1. Resolve target model configuration
     video_references = request.get_all_ref_videos()
-    model_cfg = config.get_exact_model(request.model, request.node_id) if video_references else config.get_model(request.model)
+    model_cfg = config.get_exact_model(request.model, request.node_id) if video_references or request.h3_options else config.get_model(request.model)
     if not model_cfg:
         available = [m.model_name for m in config.models]
         raise ValueError(f"Model '{request.model}' not supported. Available models: {available}")
@@ -289,6 +291,22 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         client = await pool.get_client_for_node(target_node)
 
     video_capability = None
+    if request.h3_options:
+        if request.target_backend: raise ValueError("H3_BACKEND_OVERRIDE_FORBIDDEN")
+        model_cfg=config.get_exact_model(request.model,target_node.node_id)
+        if model_cfg is None:raise ValueError("H3_MODEL_NODE_MISMATCH")
+        require_options(request,model_cfg,get_base_dir())
+        accepted=await backend_acceptance(model_cfg,client)
+        if accepted["status"]!="VERIFIED":raise ValueError("H3_UNVERIFIED: backend nodes, weights or version changed")
+        if request.h3_options.context_windows.enabled and not accepted.get("contextWindows"):raise ValueError("H3_CONTEXT_UNAVAILABLE")
+        if request.h3_options.lock_context and not accepted.get("maskedContinuation"):raise ValueError("H3_MASKED_CONTINUATION_UNAVAILABLE")
+        if request.h3_options.control_net.enabled and not accepted.get("controlNet"):raise ValueError("H3_CONTROL_UNAVAILABLE")
+        if request.h3_options.control_net.enabled and request.h3_options.context_windows.enabled and not accepted.get("windowControlAdapter"):raise ValueError("H3_WINDOW_CONTROL_UNAVAILABLE")
+        if request.h3_options.control_net.enabled and request.h3_options.control_net.control_type not in accepted["controlTypes"]:raise ValueError("H3_PREPROCESSOR_UNSUPPORTED")
+        request.node_id=target_node.node_id
+        if request.h3_options.control_net.enabled and not video_references: raise ValueError("H3_CONTROL_SOURCE_MISSING")
+    elif model_cfg.handler in {"minimax_h3_fl2va","minimax_h3_ref2va","minimax_h3_face_refine"} and (request.duration and request.duration>15 or request.length and request.length>362):
+        raise ValueError("H3_CONTINUATION_REQUIRED: requests longer than 15 seconds require continuation mode")
     if video_references:
         model_cfg = config.get_exact_model(request.model, target_node.node_id)
         if not model_cfg:
@@ -365,6 +383,16 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         uploaded_audio_name = await client.load_and_upload_media(request.audio_url, default_name="input_dialogue.wav")
         uploaded_ref_audios = [uploaded_audio_name]
 
+    continuation_filename=None
+    if request.h3_options and request.h3_options.continuation:
+        from reference_prompt import ReferenceBinding, ReferenceType
+        from video_reference import ReferenceVideoCapability
+        context=request.h3_options.continuation
+        context_cap=ReferenceVideoCapability(max_videos=1,min_clip_seconds=context.frames/24,max_clip_seconds=context.frames/24,max_total_clip_seconds=context.frames/24,max_decoded_frames=context.frames,max_decode_width=4096,max_decode_height=4096)
+        hosts={host.strip().lower() for host in os.getenv("REFERENCE_MEDIA_HOSTS", "").split(",") if host.strip()}
+        binding=ReferenceBinding(referenceType=ReferenceType.REFERENCE_VIDEO,referenceId="continuation-context",referenceVideo=context.video_url,contentSha256=context.content_sha256)
+        uploaded=await upload_reference_video(client,binding,context_cap,hosts)
+        continuation_filename=uploaded["filename"]
     # 4. Assemble workflow JSON
     prompt_workflow = engine.assemble_workflow(
         request=request,
@@ -372,7 +400,8 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         uploaded_video=uploaded_video_name,
         uploaded_audio=uploaded_audio_name,
         uploaded_ref_audios=uploaded_ref_audios,
-        uploaded_ref_videos=uploaded_ref_videos
+        uploaded_ref_videos=uploaded_ref_videos,
+        continuation_filename=continuation_filename
     )
 
     # Extract the exact prompt submitted to ComfyUI
@@ -402,6 +431,29 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
 
     # 6. Generate client ID and submit prompt to target machine
     client_id = str(uuid.uuid4())
+    async_submit = http_req.headers.get("x-freyja-async-submit")=="true"
+    if async_submit:
+        if not request.task_id or not request.h3_options: raise ValueError("H3_ASYNC_REQUIRES_EXECUTION_ID")
+        redis=task_tracker._redis_client
+        if redis is None: raise RuntimeError("H3_TRACKING_UNAVAILABLE: Redis is required")
+        canonical=request.model_dump(exclude={"extra_body"})
+        for reference in canonical.get("references") or []:
+            if reference.get("content_sha256"):reference.pop("video_url",None)
+        if canonical["h3_options"].get("continuation"):canonical["h3_options"]["continuation"].pop("video_url",None)
+        fingerprint=hashlib.sha256(json.dumps(canonical,sort_keys=True).encode()).hexdigest()
+        key="comfy:submission:"+request.task_id
+        claimed=await redis.set(key,fingerprint,nx=True,ex=604800)
+        if not claimed:
+            if await redis.get(key)!=fingerprint: raise ValueError("H3_EXECUTION_CONFLICT")
+            binding=await task_tracker.find(task_id=request.task_id)
+            if not binding: raise RuntimeError("H3_SUBMISSION_UNCONFIRMED: reconcile original submission")
+            return ImageGenerationResponse(execution={"taskId":request.task_id,"promptId":binding[0],"nodeId":binding[1],"status":"QUEUED"})
+        try:prompt_id=await client.submit_prompt(prompt_workflow,client_id,execution_id=request.task_id)
+        except ValueError:
+            await redis.delete(key)
+            raise
+        await task_tracker.register(prompt_id=prompt_id,node_id=target_node_id,task_id=request.task_id,shot_id=request.shot_id,strict=True)
+        return ImageGenerationResponse(execution={"taskId":request.task_id,"promptId":prompt_id,"nodeId":target_node_id,"status":"QUEUED"})
     prompt_id = await client.submit_prompt(prompt_workflow, client_id)
 
     # 注册到 TaskTracker (Redis/内存) 与本地活跃任务映射以支持精准远程取消
@@ -507,9 +559,16 @@ async def model_capabilities(model_code: str, node_id: Optional[str] = None):
     if not model:
         raise HTTPException(status_code=404, detail="Model is not registered with this exact identifier")
     capability = model.reference_video
+    node = config.get_node(model.node_id) if model.node_id else None
+    healthy = await (await get_client_pool().get_client_for_node(node)).check_health() if node and node.enabled else False
+    h3=model.h3_extensions or {}
+    h3_public={"status":h3.get("status","UNSUPPORTED"),"revision":h3_revision(model,get_base_dir()) if h3 else None,
+               "continuation":bool(h3.get("continuation")),"maskedContinuation":bool(h3.get("masked_continuation")),"contextWindows":bool(h3.get("context_windows")),
+               "controlNet":bool(h3.get("control_net")),"windowControlAdapter":bool(h3.get("window_control_adapter"))}
+    if h3 and node and node.enabled:h3_public.update(await backend_acceptance(model,await get_client_pool().get_client_for_node(node)))
     if capability is None:
         return {"modelCode": model_code, "nodeId": model.node_id,
-                "referenceVideo": {"status": "UNSUPPORTED"}, "healthy": False}
+                "referenceVideo": {"status": "UNSUPPORTED"}, "healthy": healthy,"h3":h3_public}
     revision = workflow_revision(model, get_base_dir())
     values = capability.model_dump()
     names = {"schema_version": "schemaVersion", "max_videos": "maxVideos", "min_clip_seconds": "minClipSeconds",
@@ -526,7 +585,7 @@ async def model_capabilities(model_code: str, node_id: Optional[str] = None):
         public["status"] = "UNVERIFIED"
     healthy = await (await get_client_pool().get_client_for_node(node)).check_health() if node and node.enabled else False
     return {"modelCode": model_code, "nodeId": model.node_id, "workflowRevision": revision,
-            "referenceVideo": public, "healthy": healthy}
+            "referenceVideo": public, "healthy": healthy,"h3":h3_public}
 
 
 async def _execute_cancel(
@@ -612,8 +671,9 @@ async def cancel_task_by_id(task_id: str):
     return await _execute_cancel(task_id=task_id)
 
 
-async def tracked_task_state(task_id: str):
-    binding = await task_tracker.find(task_id=task_id)
+async def tracked_task_state(task_id: str, prompt_id: Optional[str] = None, node_id: Optional[str] = None):
+    if (prompt_id is None)!=(node_id is None): raise HTTPException(status_code=400,detail="Provide both persisted execution identifiers")
+    binding = (prompt_id,node_id) if prompt_id and node_id else await task_tracker.find(task_id=task_id)
     if not binding:
         return None, {"task_id": task_id, "status": "UNKNOWN"}
     prompt_id, node_id = binding
@@ -627,21 +687,24 @@ async def tracked_task_state(task_id: str):
 
 
 @app.get("/v1/tasks/{task_id}")
-async def get_task_state(task_id: str, request: Request):
-    _, state = await tracked_task_state(task_id)
+async def get_task_state(task_id: str, request: Request, prompt_id: Optional[str] = None, node_id: Optional[str] = None):
+    _, state = await tracked_task_state(task_id,prompt_id,node_id) if prompt_id or node_id else await tracked_task_state(task_id)
     assets = state.pop("assets", [])
     videos = [a for a in assets if Path(a.get("filename", "")).suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}]
     if state["status"] == "SUCCESS":
         if videos:
             state["video_url"] = str(request.url_for("get_task_video", task_id=task_id))
+            if prompt_id and node_id:
+                from urllib.parse import urlencode
+                state["video_url"]+="?"+urlencode({"prompt_id":prompt_id,"node_id":node_id})
         else:
             state["status"] = "UNKNOWN"
     return state
 
 
 @app.get("/v1/tasks/{task_id}/output")
-async def get_task_video(task_id: str):
-    client, state = await tracked_task_state(task_id)
+async def get_task_video(task_id: str, prompt_id: Optional[str] = None, node_id: Optional[str] = None):
+    client, state = await tracked_task_state(task_id,prompt_id,node_id) if prompt_id or node_id else await tracked_task_state(task_id)
     if state["status"] != "SUCCESS":
         raise HTTPException(status_code=409, detail="Task completion is not confirmed")
     videos = [a for a in state.get("assets", []) if Path(a.get("filename", "")).suffix.lower() in {".mp4", ".webm", ".mov", ".mkv"}]

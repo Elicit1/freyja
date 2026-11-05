@@ -34,6 +34,59 @@ models:
     description: "MiniMax H3 16GB HiFi (First/Last Frame to Video+Audio, FL2VA-Fast)"
     template_file: "comfyUIApi/minimax_h3_fl2va_fast.json"
     handler: "minimax_h3_fl2va"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '144'
+        class_type: EasyCache
+      conditioning:
+        id: '136'
+        class_type: MiniMaxH3ImageToVideo
+      video_vae:
+        id: '119'
+        class_type: VAELoader
+      audio_vae:
+        id: '120'
+        class_type: VAELoader
+      model_consumers:
+      - id: '124'
+        class_type: BasicScheduler
+        input: model
+      - id: '126'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '125'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
     default_steps: 20
     default_cfg: 1.0
     timeout_seconds: 1800
@@ -53,6 +106,59 @@ models:
     description: "Official MiniMax H3 FL2VA INT8 with 768p Turbo LoRA, fixed 4 steps"
     template_file: "comfyUIApi/minimax_h3_fl2va_official_turbo4.json"
     handler: "minimax_h3_fl2va"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '121'
+        class_type: LoraLoaderModelOnly
+      conditioning:
+        id: '104'
+        class_type: MiniMaxH3ImageToVideo
+      video_vae:
+        id: '11'
+        class_type: VAELoader
+      audio_vae:
+        id: '24'
+        class_type: VAELoader
+      model_consumers:
+      - id: '9'
+        class_type: BasicScheduler
+        input: model
+      - id: '16'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '16'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '14'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
     default_steps: 4
     default_cfg: 1.0
     timeout_seconds: 1800
@@ -72,6 +178,59 @@ models:
     description: "Official MiniMax H3 FL2VA INT8 with Turbo v1.0 LoRA, fixed 8 steps"
     template_file: "comfyUIApi/minimax_h3_fl2va_official_turbo8.json"
     handler: "minimax_h3_fl2va"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '121'
+        class_type: LoraLoaderModelOnly
+      conditioning:
+        id: '104'
+        class_type: MiniMaxH3ImageToVideo
+      video_vae:
+        id: '11'
+        class_type: VAELoader
+      audio_vae:
+        id: '24'
+        class_type: VAELoader
+      model_consumers:
+      - id: '9'
+        class_type: BasicScheduler
+        input: model
+      - id: '16'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '16'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '14'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
     default_steps: 8
     default_cfg: 1.0
     timeout_seconds: 1800
@@ -91,6 +250,59 @@ models:
     description: "MiniMax H3 16GB HiFi (Reference Images to Video+Audio, Ref2VA-Fast)"
     template_file: "comfyUIApi/minimax_h3_ref2va_fast.json"
     handler: "minimax_h3_ref2va"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '144'
+        class_type: EasyCache
+      conditioning:
+        id: '136'
+        class_type: MiniMaxH3ReferenceToVideo
+      video_vae:
+        id: '119'
+        class_type: VAELoader
+      audio_vae:
+        id: '120'
+        class_type: VAELoader
+      model_consumers:
+      - id: '124'
+        class_type: BasicScheduler
+        input: model
+      - id: '126'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '125'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
     reference_video:
       status: "UNVERIFIED"
       condition_node_id: "136"
@@ -117,6 +329,60 @@ models:
     description: "MiniMax H3 Ref2VA with H3 FaceRefine second pass"
     template_file: "comfyUIApi/minimax_h3_face_refine.json"
     handler: "minimax_h3_face_refine"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '144'
+        class_type: EasyCache
+      conditioning:
+        id: '136'
+        class_type: MiniMaxH3ReferenceToVideo
+      video_vae:
+        id: '119'
+        class_type: VAELoader
+      audio_vae:
+        id: '120'
+        class_type: VAELoader
+      model_consumers:
+      - id: '124'
+        class_type: BasicScheduler
+        input: model
+      - id: '126'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '125'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
+      refine_pass_policy: UNCHANGED_CROP_REFINEMENT
     reference_video:
       status: "UNVERIFIED"
       condition_node_id: "136"
@@ -142,6 +408,59 @@ models:
     description: "Official MiniMax H3 Ref2VA INT8 with Turbo LoRA 4 steps"
     template_file: "comfyUIApi/minimax_h3_ref2va_official_turbo4.json"
     handler: "minimax_h3_ref2va"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '145'
+        class_type: LoraLoaderModelOnly
+      conditioning:
+        id: '136'
+        class_type: MiniMaxH3ReferenceToVideo
+      video_vae:
+        id: '119'
+        class_type: VAELoader
+      audio_vae:
+        id: '120'
+        class_type: VAELoader
+      model_consumers:
+      - id: '124'
+        class_type: BasicScheduler
+        input: model
+      - id: '126'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '125'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
     reference_video:
       status: "UNVERIFIED"
       condition_node_id: "136"
@@ -166,6 +485,60 @@ models:
     description: "Official MiniMax H3 Ref2VA INT8 Turbo4 with H3 FaceRefine 4-step second pass"
     template_file: "comfyUIApi/minimax_h3_ref2va_turbo4_face_refine.json"
     handler: "minimax_h3_face_refine"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '145'
+        class_type: LoraLoaderModelOnly
+      conditioning:
+        id: '136'
+        class_type: MiniMaxH3ReferenceToVideo
+      video_vae:
+        id: '119'
+        class_type: VAELoader
+      audio_vae:
+        id: '120'
+        class_type: VAELoader
+      model_consumers:
+      - id: '124'
+        class_type: BasicScheduler
+        input: model
+      - id: '126'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '125'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
+      refine_pass_policy: UNCHANGED_CROP_REFINEMENT
     reference_video:
       status: "UNVERIFIED"
       condition_node_id: "136"
@@ -190,7 +563,59 @@ models:
     description: "Official MiniMax H3 Ref2VA INT8 with Turbo LoRA 8 steps"
     template_file: "comfyUIApi/minimax_h3_ref2va_official_turbo8.json"
     handler: "minimax_h3_ref2va"
-    # Enable only after online acceptance; set verified_revision to the capabilities revision.
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '145'
+        class_type: LoraLoaderModelOnly
+      conditioning:
+        id: '136'
+        class_type: MiniMaxH3ReferenceToVideo
+      video_vae:
+        id: '119'
+        class_type: VAELoader
+      audio_vae:
+        id: '120'
+        class_type: VAELoader
+      model_consumers:
+      - id: '124'
+        class_type: BasicScheduler
+        input: model
+      - id: '126'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '125'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
     reference_video:
       status: "UNVERIFIED"
       condition_node_id: "136"
@@ -216,6 +641,60 @@ models:
     description: "Official MiniMax H3 Ref2VA INT8 Turbo8 with H3 FaceRefine 8-step second pass"
     template_file: "comfyUIApi/minimax_h3_ref2va_turbo8_face_refine.json"
     handler: "minimax_h3_face_refine"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '145'
+        class_type: LoraLoaderModelOnly
+      conditioning:
+        id: '136'
+        class_type: MiniMaxH3ReferenceToVideo
+      video_vae:
+        id: '119'
+        class_type: VAELoader
+      audio_vae:
+        id: '120'
+        class_type: VAELoader
+      model_consumers:
+      - id: '124'
+        class_type: BasicScheduler
+        input: model
+      - id: '126'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '125'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
+      refine_pass_policy: UNCHANGED_CROP_REFINEMENT
     reference_video:
       status: "UNVERIFIED"
       condition_node_id: "136"
@@ -296,6 +775,56 @@ models:
     description: "Pika H3 Flex FL2VA，LCM + 固定六步 Sigma，原生音视频"
     template_file: "comfyUIApi/pika_h3_flex_fl2va.json"
     handler: "minimax_h3_fl2va"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '121'
+        class_type: LoraLoaderModelOnly
+      conditioning:
+        id: '104'
+        class_type: MiniMaxH3ImageToVideo
+      video_vae:
+        id: '11'
+        class_type: VAELoader
+      audio_vae:
+        id: '24'
+        class_type: VAELoader
+      model_consumers:
+      - id: '16'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '16'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '14'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
     default_steps: 6
     default_cfg: 1.0
     timeout_seconds: 1800
@@ -315,6 +844,56 @@ models:
     description: "Pika H3 Flex REF2VA，LCM + 固定六步 Sigma，原生音视频"
     template_file: "comfyUIApi/pika_h3_flex_ref2va.json"
     handler: "minimax_h3_ref2va"
+    h3_extensions:
+      status: UNVERIFIED
+      continuation: true
+      masked_continuation: true
+      context_windows: true
+      control_net: true
+      window_control_adapter: true
+      control_patch: minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors
+      model_output:
+        id: '145'
+        class_type: LoraLoaderModelOnly
+      conditioning:
+        id: '136'
+        class_type: MiniMaxH3ReferenceToVideo
+      video_vae:
+        id: '119'
+        class_type: VAELoader
+      audio_vae:
+        id: '120'
+        class_type: VAELoader
+      model_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: conditioning
+      latent_consumers:
+      - id: '125'
+        class_type: SamplerCustomAdvanced
+        input: latent_image
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
     default_steps: 6
     default_cfg: 1.0
     timeout_seconds: 1800

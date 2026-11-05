@@ -8,6 +8,7 @@ from config import GatewayConfig, ModelConfig, HandlerConfig, get_base_dir
 from schemas import ImageGenerationRequest
 from video_reference import require_verified, assert_video_paths
 from render_input_validation import validate_transport, validate_workflow
+from h3_extensions import require_options, apply_extensions
 
 logger = logging.getLogger("workflow_engine")
 
@@ -71,7 +72,8 @@ class WorkflowEngine:
         uploaded_video: Optional[str] = None,
         uploaded_audio: Optional[str] = None,
         uploaded_ref_audios: Optional[List[str]] = None,
-        uploaded_ref_videos: Optional[List[dict]] = None
+        uploaded_ref_videos: Optional[List[dict]] = None,
+        continuation_filename: Optional[str] = None
     ) -> dict:
         """
         Assemble executable ComfyUI prompt JSON from request, reference images,
@@ -79,13 +81,14 @@ class WorkflowEngine:
         """
         has_videos = bool(request.get_all_ref_videos())
         validate_transport(request)
-        model_cfg = self.config.get_exact_model(request.model, request.node_id) if has_videos else self.config.get_model(request.model)
+        model_cfg = self.config.get_exact_model(request.model, request.node_id) if has_videos or request.h3_options else self.config.get_model(request.model)
         if not model_cfg:
             available = [m.model_name for m in self.config.models]
             raise ValueError(f"Model '{request.model}' not supported. Available models: {available}")
 
         # 1. Load base template
         workflow = self.get_template(model_cfg)
+        require_options(request, model_cfg, self._base_dir)
         if has_videos:
             capability = require_verified(model_cfg, self._base_dir)
             if len(uploaded_ref_videos or []) != len(request.get_all_ref_videos()):
@@ -234,6 +237,7 @@ class WorkflowEngine:
                     workflow.pop(node_id)
 
         validate_workflow(request, workflow, model_cfg, ref_images, uploaded_ref_audios or [], uploaded_ref_videos or [])
+        apply_extensions(workflow, request, model_cfg, uploaded_ref_videos or [], continuation_filename)
         return workflow
 
     def _apply_reference_videos(self, workflow, model_cfg, videos):
@@ -380,7 +384,7 @@ class WorkflowEngine:
         # Upload order may contain only a last frame, or unrelated references before it.
         # Preserve explicit input roles instead of interpreting the first image as a first frame.
         sources = request.get_all_ref_images()
-        if request.render_input_contract:
+        if request.render_input_contract and not request.h3_options:
             if len(uploaded_ref_images) != 2:
                 raise ValueError("RENDER_INPUT_MISMATCH: first/last uploads must preserve two slots")
             first_img, last_img = uploaded_ref_images

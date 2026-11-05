@@ -34,16 +34,18 @@ def validate_transport(request):
     images = request.get_all_ref_images()
     fl = request.prompt_format == "MINIMAX_H3_FL2VA_V1"
     if fl:
-        if request.references or not request.first_frame or not request.last_frame:
+        if request.references or (not request.h3_options and (not request.first_frame or not request.last_frame)):
             fail("FL2VA requires exactly its first and last frame")
     elif request.first_frame or request.last_frame:
         fail("reference mode cannot implicitly append frame images")
     image_bindings = [b for b in (request.references or []) if b.images]
     flat_ids = [b.reference_id for b in image_bindings for _ in b.images]
     for index, source in enumerate(images):
-        role = ("FIRST_FRAME" if index == 0 else "LAST_FRAME") if fl else "REFERENCE_IMAGE"
+        frame_roles=[role for role,source in (("FIRST_FRAME",request.first_frame),("LAST_FRAME",request.last_frame)) if source]
+        role = frame_roles[index] if fl else "REFERENCE_IMAGE"
         ref_id = role if fl else flat_ids[index]
-        actual.append((f"<Picture {index + 1}>", "IMAGE", role, ref_id, digest(source)))
+        label=f"<Picture {2 if role=='LAST_FRAME' else 1}>" if fl else f"<Picture {index+1}>"
+        actual.append((label, "IMAGE", role, ref_id, digest(source)))
     audio_index = 0
     for index, video in enumerate(request.get_all_ref_videos()):
         actual.append((f"<Video {index + 1}>", "VIDEO", "REFERENCE_VIDEO", video.reference_id, digest(video.video_url)))
@@ -116,7 +118,8 @@ def validate_workflow(request, workflow, model, images, audios, videos):
         if inputs.get("prompt") != request.prompt:
             fail(f"prompt differs at conditioning node {nid}")
         if request.prompt_format == "MINIMAX_H3_FL2VA_V1":
-            if [_image_file(workflow, inputs, key) for key in ("first_frame", "last_frame")] != images:
+            keys=[key for key,source in (("first_frame",request.first_frame),("last_frame",request.last_frame)) if source]
+            if [_image_file(workflow, inputs, key) for key in keys] != images:
                 fail("first/last frame order changed")
             continue
         image_keys = _slots(inputs, "ref_images.ref_image_")

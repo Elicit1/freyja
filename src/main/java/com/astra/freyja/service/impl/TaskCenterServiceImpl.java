@@ -263,7 +263,7 @@ public class TaskCenterServiceImpl implements TaskCenterService {
 
     private TaskCenterItemVO fromAi(AiTaskDTO task) {
         String taskType = StringUtils.defaultIfBlank(task.getTaskType(), "AI_TASK");
-        Long shotId = ("SHOT_PROMPT_DERIVE".equals(taskType) || "SHOT_VISUAL_PLAN".equals(taskType)
+        Long shotId = ("SHOT_PROMPT_DERIVE".equals(taskType) || "SHOT_VISUAL_PLAN".equals(taskType) || "SHOT_CONTINUATION_PLAN".equals(taskType)
                 || "SHOT_VOICE_GENERATE".equals(taskType) || "SHOT_FRAME_GENERATE".equals(taskType)
                 || "SHOT_DECOMPOSE".equals(taskType) || "SHOT_ENRICHMENT".equals(taskType)
                 || "CONTINUITY_CHECK".equals(taskType))
@@ -384,6 +384,7 @@ public class TaskCenterServiceImpl implements TaskCenterService {
             case "SCENE_PROMPT_DERIVE" -> "场景提示词衍生";
             case "PROP_PROMPT_DERIVE" -> "道具提示词衍生";
             case "SHOT_VISUAL_PLAN" -> "分镜视觉导演规划";
+            case "SHOT_CONTINUATION_PLAN" -> "镜头接续片段规划";
             case "CHARACTER_VOICE_DESIGN" -> "角色母音设计";
             case "VOICE_PREVIEW" -> "音色试听";
             case "CHARACTER_VOICE_CLONE" -> "角色声音克隆";

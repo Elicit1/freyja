@@ -152,7 +152,8 @@
           <el-row :gutter="16">
             <el-col :span="6">
               <el-form-item label="预估时长 (秒)" prop="duration">
-                <el-input-number v-model="form.duration" :min="0.5" :max="15" :step="0.5" :precision="2" class="w-full" />
+                <el-input-number v-model="form.duration" :min="0.5" :max="shotAllowsLongDuration() ? 300 : Math.max(15, form.duration || 15)" :step="0.5" :precision="2" class="w-full" />
+                <ShotContinuationEditor v-if="form.id" :shot-id="String(form.id)" class="mt-2" @saved="refreshContinuation" />
               </el-form-item>
             </el-col>
             <el-col :span="10">
@@ -950,6 +951,7 @@
 </template>
 
 <script setup lang="ts">
+import ShotContinuationEditor from './ShotContinuationEditor.vue'
 import { sceneImageCandidates } from '@/utils/scene-image-reference'
 import { referenceImageUsageOptions, REFERENCE_AUDIO_TYPE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
 import { ref, reactive, computed, nextTick, watch } from 'vue'
@@ -1099,6 +1101,8 @@ const refAudios = ref<ShotRefAudio[]>([])
 const inheritingTail = ref(false)
 const currentDramaAspectRatio = ref<string>('')
 
+function shotAllowsLongDuration(): boolean { try { return JSON.parse(form.continuationJson || '{}').enabled === true } catch { return false } }
+async function refreshContinuation() { if (!form.id) return; const saved = await shotApi.getById(form.id); form.continuationJson = saved.continuationJson; form.duration = saved.duration }
 const form = reactive<DramaShot>({
   id: undefined,
   dramaId: 0,
@@ -1200,7 +1204,7 @@ const rules: FormRules = {
           callback(new Error('请输入预估时长'))
         } else if (Number(value) <= 0) {
           callback(new Error('镜头时长必须大于 0 秒'))
-        } else if (Number(value) > 15) {
+        } else if (Number(value) > 15 && !shotAllowsLongDuration()) {
           callback(new Error('镜头时长最长不得超过 15 秒'))
         } else {
           callback()

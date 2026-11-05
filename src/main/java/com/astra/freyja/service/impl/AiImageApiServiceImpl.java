@@ -40,6 +40,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -547,6 +548,11 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         // 3. 构造请求 Payload (全部媒体使用 Base64 Data URI)
         Map<String, Object> payload = new HashMap<>();
         payload.put("model", modelCode);
+        if(dto!=null&&dto.getH3Options()!=null){
+            var options=new LinkedHashMap<>(dto.getH3Options());Object node=options.remove("node_id");
+            payload.put("h3_options",options);if(node!=null)payload.put("node_id",node);
+            payload.put("length",options.get("length"));
+        }
 
         // 参考图模式以主 Prompt 为准；本次请求中的编辑值优先于分镜快照。
         String prompt = ShotRenderPromptUtil.resolve(
@@ -560,6 +566,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         inputSnapshot.setShot(shot);
         var inputRequest = new com.astra.freyja.dto.drama.DramaShotRenderRequestDTO();
         inputRequest.setPrompt(prompt);
+        if(dto!=null)inputRequest.setH3Options(dto.getH3Options());
         if (dto != null) inputRequest.setResolvedRefVideos(dto.getResolvedRefVideos());
         inputSnapshot.setRequest(inputRequest);
         var inputReport = com.astra.freyja.service.video.RenderInputResolver.inspect(inputSnapshot, true, objectMapper);
@@ -767,6 +774,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(requestUrl))
                     .header("X-Freyja-Deferred-Video", "true")
+                    .header("X-Freyja-Async-Submit", dto!=null&&dto.getH3Options()!=null&&Boolean.TRUE.equals(dto.getH3Options().get("continuation_enabled"))?"true":"false")
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + (apiKey != null ? apiKey : ""))
                     .timeout(Duration.ofSeconds(Math.max(videoHttpTimeoutSeconds,
@@ -791,6 +799,21 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             }
 
             JsonNode root = objectMapper.readTree(response.body());
+            if(root.path("execution").isObject()){
+                var execution=root.path("execution");
+                if(dto==null||!Objects.equals(dto.getTaskId(),execution.path("taskId").asText())||!execution.hasNonNull("promptId")||!execution.hasNonNull("nodeId"))throw new BizException(502,"异步执行身份不完整");
+                String promptId=execution.path("promptId").asText(),nodeId=execution.path("nodeId").asText();
+                com.astra.freyja.service.video.VideoExecutionState.accepted(promptId,nodeId);
+                long deadline=System.nanoTime()+Duration.ofSeconds(Math.max(videoHttpTimeoutSeconds,provider.getTimeout()==null?1800:provider.getTimeout())).toNanos();
+                while(true){
+                    if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException("视频任务已取消");
+                    if(System.nanoTime()>deadline)throw new BizException(504,"上游仍未返回结果，可从接续步骤恢复");
+                    var state=queryVideoTask(provider.getId(),dto.getTaskId(),promptId,nodeId);
+                    if("SUCCESS".equals(state.status())){root=objectMapper.createObjectNode().set("data",objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("url",state.videoUrl())));break;}
+                    if(java.util.Set.of("FAILED","CANCELLED").contains(state.status())){com.astra.freyja.service.video.VideoExecutionState.phase("REJECTED");throw new BizException(502,"上游任务已结束："+state.status());}
+                    Thread.sleep(1000);
+                }
+            }
             JsonNode dataArray = root.path("data");
             if (!dataArray.isArray() || dataArray.isEmpty()) {
                 throw new BizException(500, "视频生成返回数据为空: " + response.body());
@@ -883,13 +906,18 @@ public class AiImageApiServiceImpl implements AiImageApiService {
 
     @Override
     public com.astra.freyja.dto.render.RemoteVideoTaskVO queryVideoTask(Long providerId, String taskId) {
+        return queryVideoTask(providerId,taskId,null,null);
+    }
+    @Override
+    public com.astra.freyja.dto.render.RemoteVideoTaskVO queryVideoTask(Long providerId,String taskId,String promptId,String nodeId) {
         AiProvider provider = resolveProvider(providerId);
         String base = StringUtils.stripEnd(provider.getBaseUrl(), "/");
         if (StringUtils.isBlank(base)) throw new BizException(400, "提供商未配置网关地址");
         if (base.endsWith("/v1")) base = base.substring(0, base.length() - 3);
         String taskUrl = base + "/v1/tasks/" + java.net.URLEncoder.encode(taskId, java.nio.charset.StandardCharsets.UTF_8);
+        String query=promptId!=null&&nodeId!=null?"?prompt_id="+java.net.URLEncoder.encode(promptId,java.nio.charset.StandardCharsets.UTF_8)+"&node_id="+java.net.URLEncoder.encode(nodeId,java.nio.charset.StandardCharsets.UTF_8):"";
         try {
-            var builder = HttpRequest.newBuilder(URI.create(taskUrl)).timeout(Duration.ofSeconds(15)).GET();
+            var builder = HttpRequest.newBuilder(URI.create(taskUrl+query)).timeout(Duration.ofSeconds(15)).GET();
             if (StringUtils.isNotBlank(provider.getApiKey()))
                 builder.header("Authorization", "Bearer " + cryptoUtil.decrypt(provider.getApiKey()));
             var response = HTTP_CLIENT.send(builder.build(), HttpResponse.BodyHandlers.ofString());
@@ -898,7 +926,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             if (!taskId.equals(result.path("task_id").asText())) throw new BizException(502, "上游返回的任务标识不匹配");
             String state = result.path("status").asText("UNKNOWN");
             // Download only from the configured gateway, never an arbitrary returned URL.
-            String url = "SUCCESS".equals(state) && StringUtils.isNotBlank(result.path("video_url").asText()) ? taskUrl + "/output" : null;
+            String url = "SUCCESS".equals(state) && StringUtils.isNotBlank(result.path("video_url").asText()) ? taskUrl + "/output"+query : null;
             if ("SUCCESS".equals(state) && url == null) state = "UNKNOWN";
             return new com.astra.freyja.dto.render.RemoteVideoTaskVO(state,url,
                     result.path("prompt_id").asText(null),result.path("node_id").asText(null));

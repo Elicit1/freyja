@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class VideoBatchPreparation {
+    private final ShotContinuationPreparation continuations;
     private final com.astra.freyja.service.ShotVideoReferenceService videoReferences;
     private final com.astra.freyja.service.ShotVideoCapabilityService videoCapabilities;
     private final DramaShotMapper shots;
@@ -166,6 +167,10 @@ public class VideoBatchPreparation {
         if(cfg==null||model==null||!Objects.equals(model.getProviderId(),cfg.getProviderId())||!Objects.equals(model.getStatus(),1)||!Objects.equals(model.getModelType(),REF.equals(shot.getGenerationMode())?"TXT2VIDEO_REF":"TXT2VIDEO_FIRST_LAST")) throw new BizException(400,"请选择此模式下已启用的提供商和视频模型");
         AiProvider provider=providers.selectById(cfg.getProviderId());
         if(provider==null||!Objects.equals(provider.getStatus(),1)||StringUtils.isBlank(provider.getBaseUrl())) throw new BizException(400,"提供商未启用或缺少服务地址");
+        if(shot.getContinuationJson()!=null&&continuations.enabled(shot)) {
+            var snap=continuations.prepare(shot,model,provider,normalizeSize(size),supplied);
+            snap.setModelFingerprint(fingerprint(model,provider));snap.setAspectRatio(ratio);return snap;
+        }
         String prompt=ShotRenderPromptUtil.resolve(shot.getGenerationMode(),shot.getPrompt(),shot.getVideoPrompt(),supplied==null?null:supplied.getPrompt());
         if(StringUtils.isBlank(prompt)) throw new BizException(400,"请先保存视频提示词");
         if(shot.getSeed()==null||shot.getSeed()<=0||shot.getSeed()>ShotSeedUtil.MAX_SEED) throw new BizException(400,"请先配置有效的镜头种子");
@@ -197,6 +202,13 @@ public class VideoBatchPreparation {
             var prepared=videoReferences.forSubmission(shot,model,supplied==null?null:supplied.getPreflightId());
             dto.setPreflightId(prepared.getPreflightId());dto.setResolvedRefVideos(prepared.getReferences());
             dto.setReferenceVideoRevision(prepared.getModel().getWorkflowRevision());dto.setReferenceVideoNodeId(prepared.getModel().getNodeId());
+        }
+        if(supplied!=null&&supplied.getControlNet()!=null&&supplied.getControlNet().isEnabled()){
+            var control=supplied.getControlNet();
+            if(videos.size()==1&&control.getReferenceId()==null)control.setReferenceId(videos.getFirst().getId());
+            if(videos.stream().noneMatch(v->Objects.equals(v.getId(),control.getReferenceId())))throw new BizException(400,"请选择本次挂载的 ControlNet 视频");
+            dto.setControlNet(control);dto.setH3Options(continuations.controlOptions(shot,model,provider,control));
+            if(!Objects.equals(dto.getReferenceVideoNodeId(),dto.getH3Options().get("node_id")))throw new BizException(409,"ControlNet 与参考视频算力节点不一致");
         }
         snap.setRequest(dto);return snap;
     }

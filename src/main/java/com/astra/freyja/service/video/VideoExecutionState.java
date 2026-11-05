@@ -6,6 +6,8 @@ public final class VideoExecutionState {
     public static final class State {
         public volatile String phase="UNKNOWN";
         public volatile String recoveryUrl;
+        public volatile boolean continuationChild;
+        public java.util.function.BiConsumer<String,String> upstream;
         private java.util.function.BiConsumer<String,String> progress;
         public boolean uncertain(){return "UNKNOWN".equals(phase)||"SENT".equals(phase);}
     }
@@ -20,6 +22,7 @@ public final class VideoExecutionState {
     public static State task(String task){return ACTIVE.get(task);}
     public static State current(){return CURRENT.get();}
     public static void phase(String phase){if(CURRENT.get()!=null)CURRENT.get().phase=phase;}
-    public static void completed(String url){if(CURRENT.get()!=null){CURRENT.get().phase="ARCHIVE";CURRENT.get().recoveryUrl=url;}}
+    public static void accepted(String prompt,String node){if(CURRENT.get()!=null&&CURRENT.get().upstream!=null)CURRENT.get().upstream.accept(prompt,node);}
+    public static void completed(String url){if(CURRENT.get()!=null){CURRENT.get().phase="ARCHIVE";if(!CURRENT.get().continuationChild)CURRENT.get().recoveryUrl=url;}}
     public static void clear(String task){CURRENT.remove();ACTIVE.remove(task);}
 }

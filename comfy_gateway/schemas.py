@@ -3,9 +3,11 @@ import time
 from typing import List, Optional, Dict, Any, Tuple, Literal
 from pydantic import BaseModel, Field, StrictInt, model_validator
 from reference_prompt import ReferenceBinding, ReferenceType
+from h3_extensions import H3Options
 
 
 class ImageGenerationRequest(BaseModel):
+    h3_options: Optional[H3Options] = None
     model: str = Field(default="flux-2-klein-9b", description="Model name matching workflows or nodes")
     prompt: str = Field(..., description="Positive text prompt")
     negative_prompt: Optional[str] = Field(default=None, description="Optional negative text prompt")
@@ -319,6 +321,7 @@ class ImageData(BaseModel):
 
 
 class ImageGenerationResponse(BaseModel):
+    execution: Optional[Dict[str,Any]] = None
     created: int = Field(default_factory=lambda: int(time.time()), description="Unix timestamp")
     data: List[ImageData] = Field(default_factory=list, description="Array of generated media objects")
 

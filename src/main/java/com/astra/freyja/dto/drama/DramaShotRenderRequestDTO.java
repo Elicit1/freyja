@@ -36,4 +36,9 @@ public class DramaShotRenderRequestDTO {
     private java.util.List<ResolvedShotVideoReference> resolvedRefVideos;
     private String referenceVideoRevision;
     private String referenceVideoNodeId;
+    private ShotControlNetOptions controlNet;
+    /** Only supplied by the prepared execution snapshot. */
+    private java.util.Map<String,Object> h3Options;
+    private java.util.List<com.astra.freyja.service.video.VideoBatchModels.Snapshot> continuationSegments;
+    private ShotContinuationPlan continuationPlan;
 }

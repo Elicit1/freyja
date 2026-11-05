@@ -16,6 +16,12 @@ public final class RenderInputResolver {
                                                   ObjectMapper json) {
         DramaShot shot = snapshot.getShot();
         var request = snapshot.getRequest();
+        boolean continuationSegment=request.getH3Options()!=null&&Boolean.TRUE.equals(request.getH3Options().get("continuation_enabled"));
+        if(request.getContinuationSegments()!=null){
+            var aggregate=new RenderValidationReport();aggregate.setInputFingerprint(request.getContinuationPlan().getPlanHash());
+            for(var child:request.getContinuationSegments())aggregate.getIssues().addAll(inspect(child,dispatch,json).getIssues());
+            aggregate.setSubmissionReady(aggregate.getIssues().isEmpty());aggregate.setDispatchReady(aggregate.isSubmissionReady());return aggregate;
+        }
         List<Slot> slots = new ArrayList<>();
         List<Issue> issues = new ArrayList<>();
         boolean reference = VideoBatchPreparation.REF.equals(shot.getGenerationMode());
@@ -47,14 +53,15 @@ public final class RenderInputResolver {
                     issues.add(issue(shot, "MEDIA_SOURCE_MISSING", label, "refAudios", "素材 " + label + " 缺少音频地址", "补齐音频后重新检查"));
             }
         } else {
-            frame(slots, issues, shot, shot.getPreviewImageUrl(), snapshot.getFirstFramePlan(), true, dispatch);
-            frame(slots, issues, shot, shot.getEndFrameImageUrl(), snapshot.getLastFramePlan(), false, dispatch);
+            if(!continuationSegment||StringUtils.isNotBlank(shot.getPreviewImageUrl()))frame(slots, issues, shot, shot.getPreviewImageUrl(), snapshot.getFirstFramePlan(), true, dispatch);
+            if(!continuationSegment||StringUtils.isNotBlank(shot.getEndFrameImageUrl()))frame(slots, issues, shot, shot.getEndFrameImageUrl(), snapshot.getLastFramePlan(), false, dispatch);
             // FL2VA consumes only its frame inputs. Other media must not be silently discarded.
             if (!read(shot.getRefImagesJson(), new TypeReference<List<ShotRefImageDTO>>() {}, json).isEmpty()
                     || !read(shot.getRefAudiosJson(), new TypeReference<List<ShotRefAudioDTO>>() {}, json).isEmpty())
                 issues.add(issue(shot, "MEDIA_MODE_MISMATCH", null, "references", "首尾帧模式不挂载额外参考图片或音频", "移除额外参考素材，或切换参考生成模式"));
         }
-        var report = RenderInputValidator.validate(shot.getId(), request.getPrompt(), reference, slots);
+        var report = !continuationSegment ? RenderInputValidator.validate(shot.getId(), request.getPrompt(), reference, slots)
+                : RenderInputValidator.validateSegment(shot.getId(),request.getPrompt(),slots);
         report.getIssues().addAll(issues);
         report.setSubmissionReady(report.getIssues().isEmpty());
         report.setDispatchReady(report.isSubmissionReady() && slots.stream().noneMatch(Slot::pending));
@@ -64,7 +71,7 @@ public final class RenderInputResolver {
                     report.getRulesVersion(), shot.getGenerationMode(), request.getPrompt(), slots,
                     shot.getDuration(), request.getSize(), shot.getRefImagesJson(), shot.getRefAudiosJson(), shot.getRefVideosJson(),
                     snapshot.getModelFingerprint(), snapshot.getFirstFramePlan(), snapshot.getLastFramePlan(),
-                    request.getReferenceVideoRevision(), request.getReferenceVideoNodeId()))));
+                    request.getReferenceVideoRevision(), request.getReferenceVideoNodeId(),request.getH3Options()))));
         } catch (Exception e) { throw new IllegalStateException(e); }
         return report;
     }

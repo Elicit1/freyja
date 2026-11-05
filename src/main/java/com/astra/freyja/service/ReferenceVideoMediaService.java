@@ -139,6 +139,12 @@ public class ReferenceVideoMediaService {
         if (base == null || base.isBlank()) return transportUrl(objectPath);
         return base.replaceAll("/+$", "") + "/" + storage.getBucketName() + "/" + objectPath;
     }
+    public void downloadPrepared(String url,Path target)throws Exception{download(url,target);}
+    public record ContinuationArtifact(String objectPath,String url,String sha256){}
+    public ContinuationArtifact archiveContinuation(Path file)throws Exception{
+        String key="reference-video/continuation/"+UUID.randomUUID()+".mp4";archive(file,key,"video/mp4");
+        return new ContinuationArtifact(key,previewUrl(key),digest(file));
+    }
 
     private long clipLimit(ReferenceVideoCapability cap) { return Math.min(properties.getMaxClipBytes(), cap.getMaxDownloadBytes() == null ? Long.MAX_VALUE : cap.getMaxDownloadBytes()); }
     private static boolean validVideo(VideoProbeInfoVO info) { return info != null && info.getWidth() != null && info.getWidth() > 0 && info.getHeight() != null && info.getHeight() > 0 && info.getDuration() != null && info.getDuration().signum() > 0; }

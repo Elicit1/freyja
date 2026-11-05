@@ -132,6 +132,16 @@ public class ShotVideoReferenceService {
         return prepared;
     }
 
+    /** Freeze explicitly attached segment inputs; same resolver/limits as ordinary references. */
+    public VideoReferencePreflightVO prepareSegment(DramaShot shot,AiModel model,List<ShotRefVideoDTO> inputs) {
+        var option=capabilities.describe(model);capabilities.requireRenderable(option);
+        if(inputs.size()>option.getReferenceVideo().getMaxVideos())throw new BizException(400,"本段视频数量超过模型限制");
+        var sources=resolve(shot,inputs);var prepared=new ArrayList<ResolvedShotVideoReference>();
+        for(int i=0;i<inputs.size();i++){var ref=media.prepare(inputs.get(i),sources.get(i),option.getReferenceVideo());ref.setOrdinal(i+1);prepared.add(ref);}
+        validateSnapshot(prepared,option,shot);
+        var result=new VideoReferencePreflightVO();result.setReferences(prepared);result.setModel(option);result.setStatus("READY");return result;
+    }
+
     public void validateSnapshot(List<ResolvedShotVideoReference> references, ShotVideoModelOptionVO option, DramaShot shot) {
         capabilities.requireRenderable(option);
         var cap = option.getReferenceVideo();

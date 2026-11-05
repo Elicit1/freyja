@@ -7,6 +7,7 @@
     append-to-body
     :close-on-click-modal="false"
   >
+    <ShotContinuationEditor v-if="currentShotId" :shot-id="String(currentShotId)" class="mb-3" />
     <!-- 顶部步骤指示器 -->
     <div class="px-6 py-2 mb-4 bg-slate-50 border border-slate-100 rounded-xl">
       <el-steps :active="activeStep" finish-status="success" simple>
@@ -390,6 +391,7 @@ import { shotApi, dramaApi } from '@/api/drama'
 import { assetApi } from '@/api/res-asset'
 import { aiProviderApi } from '@/api/ai-provider'
 import ShotVideoHistoryDrawer from './ShotVideoHistoryDrawer.vue'
+import ShotContinuationEditor from './ShotContinuationEditor.vue'
 import type { AiProviderVO, AiModel } from '@/types/ai-provider'
 import type { DramaShot } from '@/types/drama'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'

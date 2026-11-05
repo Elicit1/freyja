@@ -57,6 +57,7 @@ public interface AiImageApiService {
     default com.astra.freyja.dto.render.RemoteVideoTaskVO queryVideoTask(Long providerId, String taskId) {
         throw new UnsupportedOperationException("此提供商未实现视频任务查询");
     }
+    default com.astra.freyja.dto.render.RemoteVideoTaskVO queryVideoTask(Long providerId,String taskId,String promptId,String nodeId){return queryVideoTask(providerId,taskId);}
 
     /**
      * 向远程 AI 提供商 / ComfyUI 网关发送精准任务取消与中断指令。

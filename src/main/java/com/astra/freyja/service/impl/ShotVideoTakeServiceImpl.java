@@ -454,6 +454,8 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
             map.put("resolvedRefVideos", requestDTO.getResolvedRefVideos());
             map.put("referenceVideoRevision", requestDTO.getReferenceVideoRevision());
             map.put("referenceVideoNodeId", requestDTO.getReferenceVideoNodeId());
+            map.put("continuationPlan",requestDTO.getContinuationPlan());
+            map.put("continuationSegments",requestDTO.getContinuationSegments());
             return com.astra.freyja.util.VideoReferenceSnapshotJson.write(map, objectMapper);
         } catch (Exception e) {
             log.warn("[ShotVideoTakeService] 序列化请求参数快照异常: {}", e.getMessage());

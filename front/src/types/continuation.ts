@@ -1,0 +1,37 @@
+import type { ShotRefImage, ShotRefVideo } from './drama'
+export interface ContinuationSegment {
+  id: string
+  startFrame: number
+  endFrame: number
+  prompt: string
+  locked: boolean
+  firstFrameImageUrl?: string
+  lastFrameImageUrl?: string
+  referenceImages: ShotRefImage[]
+  referenceVideos: ShotRefVideo[]
+  controlNetEnabled: boolean
+  controlVideoId?: string
+  controlType: 'CANNY' | 'POSE' | 'DEPTH' | 'PREPARED'
+  controlStrength: number
+}
+export interface ContinuationDraft {
+  schemaVersion: number
+  enabled: boolean
+  durationSeconds: number
+  segmentFrames: number
+  overlapFrames: number
+  contextWindows: boolean
+  lockContext?: boolean
+  reuseFromTaskId?: string
+  segments: ContinuationSegment[]
+}
+export interface ContinuationPlan {
+  draft: ContinuationDraft
+  outputFrames: number
+  renderFrames: number
+  segmentCount: number
+  planHash: string
+  renderable: boolean
+  issues: string[]
+  ranges: Array<{ segmentId: string; startFrame: number; endFrame: number; overlapFrames: number; keepStartFrame: number; keepEndFrame: number }>
+}

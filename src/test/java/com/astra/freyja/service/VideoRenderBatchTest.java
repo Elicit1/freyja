@@ -49,9 +49,9 @@ class VideoRenderBatchTest {
         var models=mock(AiModelMapper.class);var providers=mock(AiProviderMapper.class);var keyframes=mock(ResKeyframeMapper.class);renders=mock(RenderTaskMapper.class);
         api=mock(AiImageApiService.class);rendersService=mock(RenderTaskService.class);frames=mock(VideoBatchFrameService.class);var takes=mock(ShotVideoTakeService.class);
         store=new VideoBatchStore(jdbc);var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
-        preparation=new VideoBatchPreparation(mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,(sceneAssets=mock(ResSceneMapper.class)),renders,store,json);
+        preparation=new VideoBatchPreparation(mock(ShotContinuationPreparation.class),mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,(sceneAssets=mock(ResSceneMapper.class)),renders,store,json);
         events=mock(ApplicationEventPublisher.class);
-        service=new VideoRenderBatchService(store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,events);
+        service=new VideoRenderBatchService(mock(ShotContinuationRenderer.class),store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,events);
         when(dramas.selectById(1L)).thenReturn(new Drama());
         DramaEpisode ep=new DramaEpisode();ep.setId(10L);ep.setDramaId(1L);ep.setTitle("第一集");when(episodes.selectList(any())).thenReturn(List.of(ep));
         DramaScene sc=new DramaScene();sc.setId(20L);sc.setDramaId(1L);sc.setName("场景");when(scenes.selectList(any())).thenReturn(List.of(sc));
@@ -294,6 +294,26 @@ class VideoRenderBatchTest {
         verify(api,times(1)).generateAndArchiveVideo(eq(41L),anyLong(),any(),any());
     }
 
+    @Test void confirmedFailedContinuationCanBeCancelled() throws Exception {
+        shot(41,VideoBatchPreparation.REF,1);var batch=create(request());String task=batch.getItems().getFirst().getTaskId();
+        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenAnswer(i->{VideoExecutionState.phase("REJECTED");throw new IllegalStateException("rejected");});
+        service.runNext();markContinuation(task);
+        assertEquals("CONFIRMED",store.task(task).getUpstreamStatus());
+        service.cancel(batch.getId());assertEquals("CANCELLED",store.task(task).getStatus());assertFalse(store.occupied(41L));
+    }
+    @Test void continuationRecoveryCannotOverwriteANewerShotTask() throws Exception {
+        var shot=shot(41,VideoBatchPreparation.REF,1);var batch=create(request());String task=batch.getItems().getFirst().getTaskId();
+        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenThrow(new IllegalStateException("lost response"));
+        service.runNext();markContinuation(task);shot.setLatestTaskId("newer-task");
+        assertThrows(com.astra.freyja.common.BizException.class,()->service.recoverResult(batch.getId(),task));
+        assertEquals("FAILED",store.task(task).getStatus());assertFalse(store.occupied(41L));verify(api,never()).queryVideoTask(anyLong(),anyString());
+        shot.setLatestTaskId(task);assertEquals("QUEUED",service.recoverResult(batch.getId(),task).status());assertTrue(store.occupied(41L));
+    }
+    private void markContinuation(String task) throws Exception {
+        var snapshot=json.readValue(store.task(task).getSnapshotJson(),Snapshot.class);
+        var child=json.readValue(store.task(task).getSnapshotJson(),Snapshot.class);snapshot.getRequest().setContinuationSegments(List.of(child));
+        String saved=json.writeValueAsString(snapshot);jdbc.update("UPDATE video_render_batch_item SET snapshot_json=?,resolved_json=? WHERE task_id=?",saved,saved,task);
+    }
     @Test void recoveringOldResultCannotReplaceANewerShotTask() {
         DramaShot shot=shot(41,VideoBatchPreparation.REF,1);Batch batch=create(request());
         when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenThrow(new RuntimeException("connection lost"));

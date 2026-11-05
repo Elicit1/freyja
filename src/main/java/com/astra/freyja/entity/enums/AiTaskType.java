@@ -19,6 +19,7 @@ public enum AiTaskType {
     SCENE_PROMPT_DERIVE("场景提示词衍生"),
     PROP_PROMPT_DERIVE("道具提示词衍生"),
     SHOT_VISUAL_PLAN("分镜视觉导演规划"),
+    SHOT_CONTINUATION_PLAN("镜头接续片段规划"),
     CHARACTER_VOICE_DESIGN("角色母音设计"),
     CHARACTER_VOICE_CLONE("角色声音克隆"),
     VOICE_EFFECT_PROCESS("配音特效处理"),

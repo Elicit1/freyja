@@ -293,6 +293,7 @@ export type DramaShotSaveRequest = Omit<Partial<DramaShot>, 'resSceneId' | 'resK
 }
 
 export interface DramaShot {
+  continuationJson?: string
   directorPlanMode?: 'AUTO' | 'MANUAL'
   directorPlanRevision?: number
   directorPlanInputHash?: string
@@ -637,6 +638,7 @@ export interface DramaShotFirstFrame {
 }
 
 export interface DramaShotRenderRequest {
+  controlNet?: { enabled: boolean; referenceId?: string; controlType: string; strength: number }
   expectedRenderFingerprint?: string
   preflightId?: string
   providerId?: number | string

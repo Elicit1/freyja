@@ -56,8 +56,8 @@ public class VideoBatchStore {
         return jdbc.update("UPDATE video_render_batch_item SET execution_stage=?,stage_message=?,stage_updated_at=CURRENT_TIMESTAMP WHERE task_id=? AND status IN ('DISPATCHING','RENDERING')",stage,message,task);
     }
     public void cancelEvidence(String task, String upstream) { jdbc.update("UPDATE video_render_batch_item SET upstream_status=? WHERE task_id=?", upstream, task); }
-    public void cancelUnconfirmedFailure(String task) {
-        jdbc.update("UPDATE video_render_batch_item SET status='CANCELLED',error_message='用户取消整个任务',finished_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='FAILED' AND upstream_status='UNCONFIRMED'", task);
+    public void cancelRecoverableFailure(String task) {
+        jdbc.update("UPDATE video_render_batch_item SET status='CANCELLED',error_message='用户取消整个任务',finished_at=CURRENT_TIMESTAMP WHERE task_id=? AND status='FAILED'", task);
     }
     public List<Item> pendingReview() { return jdbc.query("SELECT * FROM video_render_batch_item WHERE status='NEEDS_REVIEW'", ITEM); }
     public void confirmRemoteFailure(String task, String status) {

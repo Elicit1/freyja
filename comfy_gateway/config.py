@@ -32,6 +32,7 @@ class HandlerConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
+    h3_extensions: Optional[Dict[str, Any]] = None
     reference_video: Optional[ReferenceVideoCapability] = None
     model_name: str = Field(..., description="OpenAI model identifier")
     description: Optional[str] = Field(default="", description="Model description")

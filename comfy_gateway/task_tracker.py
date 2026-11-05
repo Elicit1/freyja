@@ -52,7 +52,8 @@ class TaskTracker:
         node_id: str,
         task_id: Optional[str] = None,
         shot_id: Optional[str] = None,
-        ttl: int = 604800
+        ttl: int = 604800,
+        strict: bool = False
     ) -> None:
         """Register active task metadata with TTL"""
         now_ts = str(time.time())
@@ -66,6 +67,7 @@ class TaskTracker:
             "expires_at": str(time.time() + ttl)
         }
 
+        if strict and not self._redis_client: raise RuntimeError("H3_TRACKING_UNAVAILABLE: Redis is required for async submissions")
         # 1. 尝试写入 Redis
         if self._redis_client:
             try:
@@ -80,6 +82,7 @@ class TaskTracker:
                 pipe.set(p_key, task_id or prompt_id, ex=ttl)
                 await pipe.execute()
             except Exception as e:
+                if strict: raise RuntimeError("H3_TRACKING_UNAVAILABLE: execution identity was not persisted") from e
                 logger.warning(f"[TaskTracker] Redis register error ({e}), writing to memory")
 
         # 2. 内存双写兜底

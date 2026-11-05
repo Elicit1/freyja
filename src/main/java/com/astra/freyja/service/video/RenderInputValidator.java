@@ -7,6 +7,15 @@ import static com.astra.freyja.service.video.RenderValidationReport.*;
 /** Parses a closed protocol grammar. Never infers actions, identities or camera intent. */
 public final class RenderInputValidator {
     private RenderInputValidator() {}
+    /** Segment materials need no per-item prose. Explicit labels, if used, must exist. */
+    public static RenderValidationReport validateSegment(Long shotId,String prompt,List<Slot> slots){
+        var result=new RenderValidationReport();result.setSlots(new ArrayList<>(slots));
+        if(prompt==null||prompt.isBlank())add(result,shotId,"PROMPT_EMPTY",null,null,"请填写本段提示词","填写本段画面与动作");
+        Set<String> labels=new HashSet<>();slots.forEach(s->labels.add(s.label()));
+        var matcher=Pattern.compile("<(Picture|Audio|Video) [1-9][0-9]*>").matcher(prompt==null?"":prompt);
+        while(matcher.find())if(!labels.contains(matcher.group()))add(result,shotId,"REFERENCE_NOT_ATTACHED",matcher.group(),null,"本段没有挂载 "+matcher.group(),"检查本段素材编号");
+        result.setSubmissionReady(result.getIssues().isEmpty());result.setDispatchReady(result.isSubmissionReady());return result;
+    }
     private static final List<String> REF_SECTIONS = List.of("subject_definitions", "summary", "retention_analysis",
             "detailed_description", "overall_soundscape", "non_diegetic_music");
     private static final List<String> FL_SECTIONS = List.of("integrated_multimodal_description", "overall_soundscape", "non_diegetic_music");

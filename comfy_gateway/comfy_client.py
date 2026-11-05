@@ -136,13 +136,14 @@ class ComfyAsyncClient:
             logger.error(f"[{self.http_base}] Failed to upload media to ComfyUI: {e}")
             raise RuntimeError(f"ComfyUI file upload error on {self.http_base}: {e}")
 
-    async def submit_prompt(self, workflow_prompt: dict, client_id: str) -> str:
+    async def submit_prompt(self, workflow_prompt: dict, client_id: str, execution_id: Optional[str] = None) -> str:
         """Submit workflow dictionary to ComfyUI /prompt endpoint"""
         client = await self.get_http_client()
         payload = {
             "prompt": workflow_prompt,
             "client_id": client_id
         }
+        if execution_id: payload["extra_data"]={"freyja_execution_id":execution_id}
 
         try:
             resp = await client.post(f"{self.http_base}/prompt", json=payload)
