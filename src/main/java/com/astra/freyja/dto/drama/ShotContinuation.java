@@ -10,8 +10,11 @@ public class ShotContinuation {
     private int schemaVersion = 1;
     private boolean enabled;
     private double durationSeconds = 15;
-    private int segmentFrames = 362;
-    private int overlapFrames = 39;
+    private int segmentFrames = 124;
+    private int overlapFrames = 22;
+    private boolean autoSplitReferenceVideo = true;
+    /** Resource tray only. These sources never participate without explicit segment bindings. */
+    private List<ShotRefVideoDTO> videoSources = new ArrayList<>();
     private boolean contextWindows;
     private boolean lockContext;
     private String reuseFromTaskId;

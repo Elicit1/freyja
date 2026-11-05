@@ -42,18 +42,24 @@ public class ReferenceVideoMediaService {
             BigDecimal end = input.getEndSeconds() == null ? measured.getDuration() : input.getEndSeconds();
             BigDecimal duration = end.subtract(start);
             var policy = preparationPolicy(capability);
+            boolean frameCut=input.getSourceStartFrame()!=null;
+            double decodedFrames=frameCut?input.getSourceEndFrame()-input.getSourceStartFrame():duration.doubleValue()*policy.getDecodeFps();
             if (start.signum() < 0 || end.compareTo(measured.getDuration()) > 0 || duration.signum() <= 0
                     || duration.compareTo(policy.getMinClipSeconds()) < 0 || duration.compareTo(policy.getMaxClipSeconds()) > 0
-                    || duration.compareTo(policy.getMaxTotalClipSeconds()) > 0 || duration.doubleValue() * policy.getDecodeFps() > policy.getMaxDecodedFrames())
+                    || duration.compareTo(policy.getMaxTotalClipSeconds()) > 0 || decodedFrames > policy.getMaxDecodedFrames())
                 throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 片段范围或解码帧数超限，请缩短参考片段");
             if (Boolean.TRUE.equals(input.getIncludeAudio()) && !Boolean.TRUE.equals(measured.getHasAudio()))
                 throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 视频没有可供参考的音轨");
-            var command = new ArrayList<>(List.of(tools.getFfmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-                    "-i", original.toString(), "-ss", start.toPlainString(), "-t", duration.toPlainString(), "-map", "0:v:0"));
+            if(frameCut&&policy.getDecodeFps()!=24)throw new BizException(400,"接续参考视频切片要求 24fps 的预处理配置");
+            var command = new ArrayList<>(List.of(tools.getFfmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", original.toString()));
+            if(!frameCut)command.addAll(List.of("-ss",start.toPlainString(),"-t",duration.toPlainString()));
+            command.addAll(List.of("-map","0:v:0"));
             if (Boolean.TRUE.equals(input.getIncludeAudio())) command.addAll(List.of("-map", "0:a:0", "-c:a", "aac"));
             else command.add("-an");
+            if(frameCut&&Boolean.TRUE.equals(input.getIncludeAudio()))command.addAll(List.of("-af","atrim=start="+start.toPlainString()+":end="+end.toPlainString()+",asetpts=PTS-STARTPTS"));
+            String frameFilter=frameCut?",trim=start_frame="+input.getSourceStartFrame()+":end_frame="+input.getSourceEndFrame()+",setpts=PTS-STARTPTS":"";
             command.addAll(List.of("-vf", "scale=" + policy.getMaxDecodeWidth() + ":" + policy.getMaxDecodeHeight()
-                    + ":force_original_aspect_ratio=decrease:force_divisible_by=2,fps=" + policy.getDecodeFps(),
+                    + ":force_original_aspect_ratio=decrease:force_divisible_by=2,fps=" + policy.getDecodeFps()+frameFilter,
                     "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", clip.toString()));
             var execution = processes.execute(command, Duration.ofSeconds(properties.getTimeoutSeconds()), () -> {
                 if (Files.exists(clip) && Files.size(clip) > clipLimit(policy)) throw new IOException("参考视频片段文件超限");
@@ -61,6 +67,7 @@ public class ReferenceVideoMediaService {
             if (execution.timedOut() || execution.exitCode() != 0 || !Files.exists(clip)) throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 视频片段处理失败，请检查 FFmpeg 与输入格式");
             VideoProbeInfoVO output = probe.probeVideoFile(clip, true);
             validatePrepared(output, policy, input.getIncludeAudio());
+            if(frameCut&&(output.getFrameCount()==null||output.getFrameCount()!=input.getSourceEndFrame()-input.getSourceStartFrame()))throw new BizException(400,"REFERENCE_VIDEO_DECODE_FAILED: 参考视频切片帧数与分段计划不一致");
             if (output.getDuration().subtract(duration).abs().doubleValue() > 2.0 / policy.getDecodeFps()) throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 片段实际时长不符合选择范围");
             String prefix = "reference-video/" + UUID.randomUUID();
             var result = new ResolvedShotVideoReference();

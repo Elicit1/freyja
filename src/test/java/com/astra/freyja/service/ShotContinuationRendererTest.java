@@ -30,7 +30,7 @@ class ShotContinuationRendererTest {
         renderer=new ShotContinuationRenderer(jdbc,new ObjectMapper(),api,media,refs,mock(AiTaskEventStore.class));
     }
     VideoBatchModels.Snapshot snapshot(String task){
-        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(30);var plan=new ShotContinuationPlanner().plan(draft,true);
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(30);draft.setSegmentFrames(362);draft.setOverlapFrames(39);var plan=new ShotContinuationPlanner().plan(draft,true);
         var shot=new DramaShot();shot.setId(1L);shot.setDramaId(2L);shot.setRefImagesJson("[]");shot.setRefVideosJson("[]");
         var request=new DramaShotRenderRequestDTO();request.setTaskId(task);request.setProviderId(3L);request.setWorkflowTemplateId("h3");request.setSize("960x544");request.setContinuationPlan(plan);request.setContinuationSegments(new ArrayList<>());
         for(var range:plan.getRanges()){

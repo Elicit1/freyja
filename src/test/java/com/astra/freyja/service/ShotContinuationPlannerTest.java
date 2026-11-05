@@ -8,7 +8,18 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ShotContinuationPlannerTest {
     private final ShotContinuationPlanner planner=new ShotContinuationPlanner();
-    private ShotContinuation draft(double seconds){var d=new ShotContinuation();d.setEnabled(true);d.setDurationSeconds(seconds);return d;}
+    private ShotContinuation draft(double seconds){var d=new ShotContinuation();d.setEnabled(true);d.setDurationSeconds(seconds);d.setSegmentFrames(362);d.setOverlapFrames(39);return d;}
+    @Test void eachPresetLimitsEveryAutomaticSegmentAndPreservesExactOutputCoverage(){
+        for(var preset:planner.presets())for(double duration:new double[]{3,15,30,60,300}){
+            var d=new ShotContinuation();d.setEnabled(true);d.setDurationSeconds(duration);d.setSegmentFrames(preset.segmentFrames());d.setOverlapFrames(preset.overlapFrames());
+            var plan=planner.plan(d,true);int cursor=0;
+            for(var range:plan.getRanges()){assertTrue(range.getEndFrame()-range.getStartFrame()<=preset.segmentFrames());assertEquals(cursor,range.getKeepStartFrame());cursor=range.getKeepEndFrame();}
+            assertEquals((int)Math.round(duration*24),cursor);
+        }
+    }
+    @Test void shorterPresetCannotKeepAHiddenLongManualSegment(){
+        var d=draft(30);planner.plan(d,true);d.setSegmentFrames(124);d.setOverlapFrames(22);assertThrows(BizException.class,()->planner.plan(d,false));
+    }
     @Test void coversOneMinuteExactlyWithoutCountingOverlapTwice(){
         var plan=planner.plan(draft(60),true);assertEquals(5,plan.getSegmentCount());assertEquals(1440,plan.getOutputFrames());assertEquals(1450,plan.getRenderFrames());
         int cursor=0;for(var range:plan.getRanges()){assertEquals(cursor,range.getKeepStartFrame());cursor=range.getKeepEndFrame();assertEquals(5,(range.getEndFrame()-range.getStartFrame())%17);}assertEquals(1440,cursor);

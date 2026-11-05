@@ -26,7 +26,7 @@ class ReferenceVideoMediaServiceTest {
         Path fixture = folder.resolve("source.mp4");
         var encoded = processes.execute(List.of(tools.getFfmpegPath(), "-hide_banner", "-loglevel", "error", "-y",
                 "-f", "lavfi", "-i", "testsrc2=size=128x96:rate=30", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000",
-                "-t", "3", "-c:v", "libx264", "-c:a", "aac", fixture.toString()), Duration.ofSeconds(30));
+                "-t", "6", "-c:v", "libx264", "-c:a", "aac", fixture.toString()), Duration.ofSeconds(30));
         assertEquals(0, encoded.exitCode(), encoded.output());
         byte[] bytes = Files.readAllBytes(fixture);
         {
@@ -56,6 +56,13 @@ class ReferenceVideoMediaServiceTest {
             input.setEndSeconds(BigDecimal.TEN);
             assertThrows(BizException.class, () -> service.prepare(input, source, new ReferenceVideoCapability()));
             verify(minio, times(4)).putObject(any());
+            // Automatic continuation slices normalize the source before selecting absolute frames.
+            input.setSourceStartFrame(19);input.setSourceEndFrame(143);
+            input.setStartSeconds(BigDecimal.valueOf(19).divide(BigDecimal.valueOf(24),12,java.math.RoundingMode.HALF_UP));
+            input.setEndSeconds(BigDecimal.valueOf(143).divide(BigDecimal.valueOf(24),12,java.math.RoundingMode.HALF_UP));
+            var exactBudget=new ReferenceVideoCapability();exactBudget.setMaxDecodedFrames(124);
+            var frameCut=service.prepare(input,source,exactBudget);
+            assertEquals(124,frameCut.getFrameCount());assertTrue(frameCut.getMetadata().getHasAudio());assertEquals(24.0,frameCut.getMetadata().getFps());
         }
     }
 }

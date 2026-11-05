@@ -9,11 +9,20 @@ import java.util.*;
 /** Pure frame arithmetic. No prose inference or mutable asset resolution. */
 @Component
 public class ShotContinuationPlanner {
+    public record SegmentPreset(String id, String label, int segmentFrames, int overlapFrames) {}
+    public List<SegmentPreset> presets() {
+        return List.of(new SegmentPreset("5s", "5 秒 · 省显存", 124, 22),
+                new SegmentPreset("8s", "8 秒", 192, 39),
+                new SegmentPreset("10s", "10 秒", 243, 39),
+                new SegmentPreset("15s", "15 秒", 362, 39));
+    }
     public ShotContinuationPlan plan(ShotContinuation draft, boolean auto) {
         if (draft == null || draft.getSchemaVersion()!=1 || !Double.isFinite(draft.getDurationSeconds())
                 || draft.getDurationSeconds()<=0 || draft.getDurationSeconds()>300)
             throw new BizException(400,"接续时长应大于 0 且不超过 300 秒");
         if (!draft.isEnabled() && draft.getDurationSeconds()>15) throw new BizException(400,"超过 15 秒必须开启接续模式");
+        if(draft.getVideoSources()==null||draft.getVideoSources().size()>20)throw new BizException(400,"待分配视频最多 20 个");
+        com.astra.freyja.util.ShotVideoReferenceValidator.validate(draft.getVideoSources());
         int length=draft.getSegmentFrames(), overlap=draft.getOverlapFrames();
         if(length<124||length>362||(length-5)%17!=0||overlap<5||(overlap-5)%17!=0||overlap>=length)
             throw new BizException(400,"段长/重叠必须符合 H3 帧网格，段长 124～362，重叠小于段长");
@@ -41,7 +50,7 @@ public class ShotContinuationPlanner {
             var segment=draft.getSegments().get(i);int start=segment.getStartFrame(),end=segment.getEndFrame(),frames=end-start;
             if(segment.getFirstFrameImageUrl()!=null&&segment.getFirstFrameImageUrl().isBlank())segment.setFirstFrameImageUrl(null);
             if(segment.getLastFrameImageUrl()!=null&&segment.getLastFrameImageUrl().isBlank())segment.setLastFrameImageUrl(null);
-            if(segment.getId()==null||!ids.add(segment.getId())||start<0||start%17!=0||frames<22||frames>362||(frames-5)%17!=0
+            if(segment.getId()==null||!ids.add(segment.getId())||start<0||start%17!=0||frames<22||frames>length||(frames-5)%17!=0
                     || (i==0?start!=0:start>=previousEnd||end<=previousEnd)||end>total)
                 throw new BizException(400,"片段范围须连续覆盖、有真实重叠，且满足 H3 帧数与起点约束");
             int shared=i==0?0:previousEnd-start;

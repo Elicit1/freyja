@@ -14,6 +14,9 @@ public class ShotRefVideoDTO {
     private Long sourceVideoTakeId;
     private BigDecimal startSeconds;
     private BigDecimal endSeconds;
+    /** Absolute frame bounds on the normalized 24fps source, when cut from a continuation plan. */
+    private Integer sourceStartFrame;
+    private Integer sourceEndFrame;
     private Boolean includeAudio = false;
     private String referenceDescription;
 }

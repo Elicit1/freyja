@@ -20,11 +20,14 @@ export interface ContinuationDraft {
   durationSeconds: number
   segmentFrames: number
   overlapFrames: number
+  autoSplitReferenceVideo?: boolean
+  videoSources?: ShotRefVideo[]
   contextWindows: boolean
   lockContext?: boolean
   reuseFromTaskId?: string
   segments: ContinuationSegment[]
 }
+export interface ContinuationPreset { id: string; label: string; segmentFrames: number; overlapFrames: number }
 export interface ContinuationPlan {
   draft: ContinuationDraft
   outputFrames: number

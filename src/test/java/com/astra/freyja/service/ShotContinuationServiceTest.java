@@ -24,7 +24,7 @@ class ShotContinuationServiceTest {
         draft.getSegments().forEach(s->s.setPrompt("One continuous action"));
         var image=new ShotRefImageDTO();image.setId("binding");image.setImageUrl("https://archive/character.png");draft.getSegments().getFirst().setReferenceImages(List.of(image));
         var shot=shot(draft,"REFERENCE_MODE");var model=model("TXT2VIDEO_REF");var result=service().prepare(shot,model,provider(),"960x544",null);
-        var children=result.getRequest().getContinuationSegments();assertEquals(3,children.size());
+        var children=result.getRequest().getContinuationSegments();assertEquals(7,children.size());
         assertTrue(children.getFirst().getShot().getRefImagesJson().contains("binding"));
         assertEquals("[]",children.get(1).getShot().getRefImagesJson());
         for(var child:children){assertNull(child.getShot().getPreviewImageUrl());assertNull(child.getShot().getEndFrameImageUrl());assertEquals("[]",child.getShot().getRefAudiosJson());assertFalse((Boolean)((Map<?,?>)child.getRequest().getH3Options().get("control_net")).get("enabled"));}

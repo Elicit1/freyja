@@ -657,6 +657,8 @@ export interface ShotRefVideo {
   sourceVideoTakeId?: string
   startSeconds?: number
   endSeconds?: number
+    sourceStartFrame?: number
+    sourceEndFrame?: number
   includeAudio?: boolean
   referenceDescription?: string
 }

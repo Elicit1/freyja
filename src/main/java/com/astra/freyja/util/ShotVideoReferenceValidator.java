@@ -35,6 +35,13 @@ public final class ShotVideoReferenceValidator {
             }
             if (ref.getStartSeconds() != null && ref.getStartSeconds().signum() < 0) fail("参考片段起点不能小于零");
             if (ref.getEndSeconds() != null && (ref.getEndSeconds().signum() <= 0 || ref.getStartSeconds() != null && ref.getEndSeconds().compareTo(ref.getStartSeconds()) <= 0)) fail("参考片段终点必须大于起点");
+            if(ref.getSourceStartFrame()!=null||ref.getSourceEndFrame()!=null){
+                if(ref.getSourceStartFrame()==null||ref.getSourceEndFrame()==null||ref.getSourceStartFrame()<0||ref.getSourceEndFrame()<=ref.getSourceStartFrame()
+                        ||ref.getStartSeconds()==null||ref.getEndSeconds()==null
+                        ||ref.getStartSeconds().multiply(java.math.BigDecimal.valueOf(24)).subtract(java.math.BigDecimal.valueOf(ref.getSourceStartFrame())).abs().doubleValue()>1e-6
+                        ||ref.getEndSeconds().multiply(java.math.BigDecimal.valueOf(24)).subtract(java.math.BigDecimal.valueOf(ref.getSourceEndFrame())).abs().doubleValue()>1e-6)
+                    fail("参考视频帧范围与源时间不一致，请重新按分段切分");
+            }
             if (ref.getReferenceDescription() != null && ref.getReferenceDescription().length() > 1000) fail("参考视频说明不能超过 1000 字符");
         }
     }

@@ -21,7 +21,7 @@ class ShotContinuationMediaTest {
     final MediaToolProperties tools=new MediaToolProperties();
     final ObjectMapper json=new ObjectMapper();
     @Test void joinsSixtySecondsWithExactFramesAndAudioAndExtractsRealContext()throws Exception{
-        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(60);
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(60);draft.setSegmentFrames(362);draft.setOverlapFrames(39);
         var plan=new ShotContinuationPlanner().plan(draft,true);
         var sources=new HashMap<String,Path>();var urls=new ArrayList<String>();
         Path master=folder.resolve("master.mp4");run(List.of("ffmpeg","-hide_banner","-loglevel","error","-y","-f","lavfi","-i","testsrc2=size=64x64:rate=24","-f","lavfi","-i","sine=frequency=440:sample_rate=48000","-t",Double.toString(plan.getRenderFrames()/24.0),"-c:v","libx264","-pix_fmt","yuv420p","-c:a","aac",master.toString()));

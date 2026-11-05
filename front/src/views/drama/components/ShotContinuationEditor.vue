@@ -14,7 +14,9 @@
       </div>
       <template v-if="draft.enabled">
         <div class="flex flex-wrap gap-3 items-center">
-          <span>推荐段长（帧）</span><el-input-number v-model="draft.segmentFrames" :min="124" :max="362" :step="17" />
+          <span>每段时长档位</span><el-select :model-value="selectedPreset" class="!w-48" @change="applyPreset"><el-option v-for="p in presets" :key="p.id" :value="p.id" :label="p.label" /><el-option label="自定义帧数" value="custom" /></el-select>
+          <span class="text-xs text-slate-500">实际最多 {{ seconds(draft.segmentFrames) }} 秒 / 段，含 {{ seconds(draft.overlapFrames) }} 秒共享上下文</span>
+          <span>段长（帧）</span><el-input-number v-model="draft.segmentFrames" :min="124" :max="362" :step="17" />
           <span>共享上下文（帧）</span><el-input-number v-model="draft.overlapFrames" :min="5" :max="141" :step="17" />
           <el-checkbox v-model="draft.contextWindows">启用已验证的上下文窗口</el-checkbox>
           <el-checkbox v-model="draft.lockContext">锁定共享上下文</el-checkbox>
@@ -24,7 +26,8 @@
         <el-alert type="info" :closable="false" title="自动拆分后可直接编辑。图片、视频只参与明确挂载的片段；上一段的生成上下文由系统传递。" />
         <el-alert v-if="generationMode === 'FIRST_LAST_FRAME'" type="info" :closable="false" title="当前为首尾帧工作流，请按片段设置首尾帧。需要普通图片或视频参考时，请在镜头中切换为参考生成模式。" />
         <el-checkbox v-if="lastTaskId" :model-value="!!draft.reuseFromTaskId" @change="(value: boolean | string | number) => draft.reuseFromTaskId = value ? lastTaskId : undefined">复用上次任务中输入未变的片段</el-checkbox>
-        <div v-if="generationMode === 'REFERENCE_MODE'" class="flex gap-2"><el-upload :show-file-list="false" accept="video/*" :before-upload="uploadTrayVideo"><el-button>上传长参考视频到待分配素材</el-button></el-upload><el-button @click="chooseVideo()">选择分镜 / Take 到待分配素材</el-button></div>
+        <div v-if="generationMode === 'REFERENCE_MODE'" class="flex gap-2 flex-wrap items-center"><el-checkbox v-model="draft.autoSplitReferenceVideo">上传后按当前分段自动切分并挂载到全部片段</el-checkbox><el-upload :show-file-list="false" accept="video/*" :before-upload="uploadTrayVideo"><el-button>上传参考视频</el-button></el-upload><el-button @click="chooseVideo()">选择分镜 / Take 参考视频</el-button></div>
+        <div v-if="generationMode === 'REFERENCE_MODE'" class="text-xs text-slate-500">上传后展示各段源范围；渲染前后台实际裁片。切片包含真实重叠，源范围不足会提示，不拉伸、不循环。关闭自动切分后可手动选择目标片段。</div>
         <div v-if="imageTray.length || videoTray.length" class="p-3 bg-slate-50 rounded space-y-2">
           <div>待分配素材 <el-select v-model="selectedTargets" multiple placeholder="选择目标片段" class="!w-80"><el-option v-for="(s, i) in draft.segments" :key="s.id" :label="`片段 ${i + 1}`" :value="s.id" /></el-select></div>
           <div class="flex gap-2 flex-wrap" v-for="img in imageTray" :key="img.id"><span>{{ img.name || '参考图' }}</span><template v-if="generationMode === 'FIRST_LAST_FRAME'"><el-button size="small" @click="mountAnchor(img, true)">设为所选段首帧</el-button><el-button size="small" @click="mountAnchor(img, false)">设为所选段尾帧</el-button></template><el-button v-else size="small" @click="mountImage(img)">挂载图片</el-button></div>
@@ -41,11 +44,11 @@
           <div v-else class="flex gap-3 flex-wrap items-start">
             <div v-for="(img, n) in segment.referenceImages" :key="img.id" class="w-24"><el-image :src="img.imageUrl" class="w-24 h-20" fit="cover" :preview-src-list="[img.imageUrl]" preview-teleported /><div class="text-xs">Picture {{ n + 1 }} <el-button text size="small" @click="segment.referenceImages.splice(n, 1)">移除</el-button></div></div>
             <el-upload :show-file-list="false" accept="image/*" :before-upload="(file: File) => upload(file, segment, 'image')"><el-button>添加参考图</el-button></el-upload>
-            <el-upload :show-file-list="false" accept="video/*" :before-upload="(file: File) => upload(file, segment, 'video')"><el-button>上传参考视频</el-button></el-upload>
+            <el-upload :show-file-list="false" accept="video/*" :before-upload="(file: File) => upload(file, segment, 'video')"><el-button>上传本段参考视频</el-button></el-upload>
             <el-button @click="chooseVideo(segment)">选择分镜 / Take 视频</el-button>
           </div>
           <div v-for="(video, n) in segment.referenceVideos" :key="video.id" class="flex gap-2 flex-wrap items-center text-sm">
-            <span>Video {{ n + 1 }} · {{ video.name || '视频' }}</span><span>源范围（秒）</span><el-input-number v-model="video.startSeconds" :min="0" :step="0.5" /><span>至</span><el-input-number v-model="video.endSeconds" :min="0.1" :step="0.5" /><el-button text type="danger" @click="removeVideo(segment, n)">移除</el-button>
+            <span>Video {{ n + 1 }} · {{ video.name || '视频' }}</span><span>源范围（秒）</span><el-input-number v-model="video.startSeconds" :min="0" :step="0.5" @change="clearFrameRange(video)" /><span>至</span><el-input-number v-model="video.endSeconds" :min="0.1" :step="0.5" @change="clearFrameRange(video)" /><el-tag v-if="video.sourceStartFrame !== undefined" size="small">按计划精确切帧</el-tag><el-button text type="danger" @click="removeVideo(segment, n)">移除</el-button>
             <el-checkbox v-model="video.includeAudio">参考原音</el-checkbox>
           </div>
           <div v-if="segment.referenceVideos.length" class="flex gap-3 items-center flex-wrap">
@@ -62,13 +65,13 @@
         </div>
       </template>
     </div>
-    <template #footer><el-button @click="visible = false">关闭</el-button><el-button :loading="busy" @click="save">保存草稿</el-button><el-button type="primary" :loading="busy" :disabled="!draft.enabled || !plan?.renderable || busy" @click="render">开始接续渲染</el-button></template>
+    <template #footer><el-button @click="visible = false">关闭</el-button><el-button :loading="busy" :disabled="previewing" @click="save">保存草稿</el-button><el-button type="primary" :loading="busy" :disabled="!draft.enabled || !plan?.renderable || busy || previewing" @click="render">开始接续渲染</el-button></template>
     <ShotVideoPickerDialog ref="videoPicker" @selected="selectedVideo" />
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { continuationApi } from '@/api/continuation'
 import { shotApi } from '@/api/drama'
@@ -78,12 +81,14 @@ import { runAiTaskResult } from '@/api/ai-task-stream'
 import { assetApi } from '@/api/res-asset'
 import type { AiModel, AiProviderVO } from '@/types/ai-provider'
 import type { ShotRefImage, ShotRefVideo } from '@/types/drama'
-import type { ContinuationDraft, ContinuationPlan, ContinuationSegment } from '@/types/continuation'
+import type { ContinuationDraft, ContinuationPlan, ContinuationPreset, ContinuationSegment } from '@/types/continuation'
 import ShotVideoPickerDialog from '@/views/production/components/ShotVideoPickerDialog.vue'
 const props = defineProps<{ shotId: string }>()
 const emit = defineEmits<{ (event: 'saved'): void }>()
 const visible = ref(false), busy = ref(false), previewing = ref(false)
-const draft = ref<ContinuationDraft>({ schemaVersion: 1, enabled: false, durationSeconds: 15, segmentFrames: 362, overlapFrames: 39, contextWindows: false, segments: [] })
+const draft = ref<ContinuationDraft>({ schemaVersion: 1, enabled: false, durationSeconds: 15, segmentFrames: 124, overlapFrames: 22, contextWindows: false, autoSplitReferenceVideo: true, videoSources: [], segments: [] })
+const presets = ref<ContinuationPreset[]>([])
+const selectedPreset = computed(() => presets.value.find(p => p.segmentFrames === draft.value.segmentFrames && p.overlapFrames === draft.value.overlapFrames)?.id || 'custom')
 const plan = ref<ContinuationPlan>(), providerId = ref(''), modelCode = ref(''), size = ref('960x544')
 const providers = ref<AiProviderVO[]>([]), models = ref<AiModel[]>([]), imageTray = ref<ShotRefImage[]>([]), videoTray = ref<ShotRefVideo[]>([]), selectedTargets = ref<string[]>([])
 const chatModels = ref<AiModel[]>([]), chatModelId = ref('')
@@ -107,14 +112,17 @@ async function open() {
   visible.value = true; busy.value = true
   const shotId = props.shotId
   try {
-    const [saved, shot, enabled] = await Promise.all([continuationApi.get(shotId), shotApi.getById(shotId), aiProviderApi.getListEnabled()])
+    const [saved, shot, enabled, profiles] = await Promise.all([continuationApi.get(shotId), shotApi.getById(shotId), aiProviderApi.getListEnabled(), continuationApi.presets(shotId)])
     if (!visible.value || props.shotId !== shotId) return
     draft.value = saved; if (!shot.continuationJson) draft.value.durationSeconds = shot.duration || 15
+    draft.value.autoSplitReferenceVideo ??= true; draft.value.videoSources ??= []; presets.value = profiles
     generationMode.value = shot.generationMode || 'REFERENCE_MODE'
     imageTray.value = [...(shot.refImages || [])]
     if (shot.previewImageUrl) imageTray.value.push({ id: 'shot-first-frame', sourceType: 'UPLOAD', imageUrl: shot.previewImageUrl, name: '镜头原首帧' } as ShotRefImage)
     if (shot.endFrameImageUrl) imageTray.value.push({ id: 'shot-last-frame', sourceType: 'UPLOAD', imageUrl: shot.endFrameImageUrl, name: '镜头原尾帧' } as ShotRefImage)
-    videoTray.value = shot.refVideos || []; providers.value = enabled
+    videoTray.value = clone(draft.value.videoSources)
+    for (const video of shot.refVideos || []) if (!videoTray.value.some(v => v.id === video.id)) videoTray.value.push(video)
+    providers.value = enabled
     lastTaskId.value = shot.latestTaskId
     providerId.value ||= enabled[0] ? String(enabled[0].id) : ''; await loadModels()
     const chatPage = await aiModelApi.getPage({ modelType: 'CHAT', status: 1, pageSize: 100 }); chatModels.value = chatPage.records; chatModelId.value ||= chatModels.value[0] ? String(chatModels.value[0].id) : ''
@@ -122,12 +130,17 @@ async function open() {
   if (draft.value.enabled) await preview(!draft.value.segments.length)
 }
 async function loadModels() { if (!providerId.value) return; const all = await aiProviderApi.getModelList(providerId.value); const type = generationMode.value === 'FIRST_LAST_FRAME' ? 'TXT2VIDEO_FIRST_LAST' : 'TXT2VIDEO_REF'; models.value = all.filter(m => m.status === 1 && m.modelType === type); if (!models.value.some(m => m.modelCode === modelCode.value)) modelCode.value = models.value[0]?.modelCode || '' }
-async function preview(auto: boolean) {
+async function applyPreset(id: string) {
+  const value = presets.value.find(p => p.id === id); if (!value) return
+  const candidate = clone(draft.value); candidate.segmentFrames = value.segmentFrames; candidate.overlapFrames = value.overlapFrames
+  await preview(true, candidate)
+}
+async function preview(auto: boolean, candidate?: ContinuationDraft) {
   clearTimeout(previewTimer)
   if (!providerId.value || !modelCode.value) return ElMessage.warning('请选择提供商和模型')
   previewing.value = true; const before = revision, request = ++previewRequest
   try {
-    const value = await continuationApi.preview(props.shotId, clone(draft.value), auto, providerId.value, modelCode.value)
+    const value = await continuationApi.preview(props.shotId, clone(candidate || draft.value), auto, providerId.value, modelCode.value)
     if (!visible.value || before !== revision || request !== previewRequest) return
     applyingPreview = true
     try { draft.value = value.draft; plan.value = value } finally { applyingPreview = false }
@@ -152,11 +165,15 @@ function targets() { const values = draft.value.segments.filter(s => selectedTar
 function mountImage(image: ShotRefImage) { for (const s of targets()) if (!s.referenceImages.some(x => x.id === image.id)) s.referenceImages.push(clone(image)) }
 function mountAnchor(image: ShotRefImage, first: boolean) { for (const s of targets()) if (first) s.firstFrameImageUrl = image.imageUrl; else s.lastFrameImageUrl = image.imageUrl }
 function mountVideo(video: ShotRefVideo) { for (const s of targets()) if (!s.referenceVideos.some(x => x.id === video.id)) s.referenceVideos.push(clone(video)) }
-function distributeVideo(video: ShotRefVideo) {
-  const bindings = targets().map(s => { const v = clone(video); v.id = crypto.randomUUID(); v.startSeconds = (video.startSeconds || 0) + s.startFrame / 24; v.endSeconds = (video.startSeconds || 0) + Math.min(s.endFrame, Math.round(draft.value.durationSeconds * 24)) / 24; return { s, v } })
-  if (bindings.some(({ v }) => video.endSeconds !== undefined && v.endSeconds! > video.endSeconds)) { ElMessage.warning('源范围不足，请调整源范围或目标片段'); return }
-  bindings.forEach(({ s, v }) => s.referenceVideos.push(v))
+async function splitVideo(video: ShotRefVideo, targetIds?: string[]) {
+  const before = revision, shotId = props.shotId
+  const value = await continuationApi.splitReference(shotId, clone(draft.value), clone(video), targetIds)
+  if (!visible.value || props.shotId !== shotId || before !== revision) throw new Error('分段计划已变化，请重新切分参考视频')
+  draft.value = value.draft
+  return value.segmentCount
 }
+async function distributeVideo(video: ShotRefVideo) { busy.value = true; try { const count = await splitVideo(video, selectedTargets.value); ElMessage.success(`已按当前计划绑定参考视频，共 ${selectedTargets.value.length || count} 段`) } catch (e: any) { ElMessage.error(e.message || '切分参考视频失败') } finally { busy.value = false } }
+function clearFrameRange(video: ShotRefVideo) { delete video.sourceStartFrame; delete video.sourceEndFrame }
 function removeVideo(s: ContinuationSegment, index: number) { const removed = s.referenceVideos.splice(index, 1)[0]; if (removed?.id === s.controlVideoId) s.controlVideoId = undefined; if (!s.referenceVideos.length) s.controlNetEnabled = false }
 async function uploadAnchor(file: File, segment: ContinuationSegment, first: boolean) {
   busy.value = true
@@ -170,10 +187,26 @@ async function upload(file: File, segment: ContinuationSegment, kind: 'image' | 
 }
 function chooseVideo(segment?: ContinuationSegment) { videoTarget.value = segment; videoPicker.value?.open() }
 async function addVideoSource(video: ShotRefVideo, target?: ContinuationSegment) {
+  if (!target && draft.value.autoSplitReferenceVideo) {
+    videoTray.value.push(video)
+    try {
+      const count = await splitVideo(video)
+      Object.assign(video, draft.value.videoSources?.find(v => v.id === video.id))
+      ElMessage.success(`参考视频已按当前计划自动分为 ${count} 段，可在各段查看源范围`)
+    } catch (e) {
+      draft.value.videoSources ||= []; draft.value.videoSources.push(clone(video))
+      throw e
+    }
+    return
+  }
   const shotId = props.shotId; const measured = await shotVideoReferenceApi.probe(shotId, video)
   if (!visible.value || props.shotId !== shotId) return
   video.endSeconds = target ? Math.min(measured.duration || 10, (target.endFrame - target.startFrame) / 24) : measured.duration
-  if (target) target.referenceVideos.push(video); else videoTray.value.push(video)
+  if (target) target.referenceVideos.push(video)
+  else {
+    videoTray.value.push(video)
+    draft.value.videoSources ||= []; draft.value.videoSources.push(clone(video))
+  }
 }
 async function uploadTrayVideo(file: File) {
   busy.value = true

@@ -19,6 +19,8 @@ public class ShotContinuationController {
     private final AiProviderMapper providers;
     private final ShotContinuationService service;
     private final ShotContinuationPlanner planner;
+    private final ShotContinuationReferenceSplitter referenceSplitter;
+    private final com.astra.freyja.service.ShotVideoReferenceService videoReferences;
     private final ShotContinuationPreparation preparation;
     private final ShotContinuationAiService aiPlanning;
     private final com.astra.freyja.service.DramaEpisodeService episodes;
@@ -38,6 +40,15 @@ public class ShotContinuationController {
     }
     @GetMapping("/preparation/{preparationId}") public R<ShotContinuationPreparation.State> preparation(@PathVariable Long id,@PathVariable String preparationId){shot(id);return R.ok(preparation.get(id,preparationId));}
     @GetMapping public R<ShotContinuation> get(@PathVariable Long id){return R.ok(service.read(shot(id)));}
+    @GetMapping("/presets") public R<java.util.List<ShotContinuationPlanner.SegmentPreset>> presets(@PathVariable Long id){shot(id);return R.ok(planner.presets());}
+    @Data public static class SplitReferenceRequest {private ShotContinuation draft;private ShotRefVideoDTO referenceVideo;private java.util.List<String> targetSegmentIds;}
+    @PostMapping("/split-reference") public R<ShotContinuationPlan> splitReference(@PathVariable Long id,@RequestBody SplitReferenceRequest request){
+        var current=shot(id);
+        if(!"REFERENCE_MODE".equals(current.getGenerationMode()))throw new BizException(400,"参考视频切分仅用于参考生成模式");
+        planner.plan(request.getDraft(),false);
+        var measured=videoReferences.probe(id,request.getReferenceVideo());
+        return R.ok(referenceSplitter.split(request.getDraft(),request.getReferenceVideo(),measured.getDuration(),request.getTargetSegmentIds()));
+    }
     @PutMapping @org.springframework.transaction.annotation.Transactional(rollbackFor=Exception.class)
     public R<Void> save(@PathVariable Long id,@RequestBody ShotContinuation draft)throws Exception{
         var current=shot(id);if(draft.isEnabled())planner.plan(draft,false);else if(!Double.isFinite(draft.getDurationSeconds())||draft.getDurationSeconds()<=0||draft.getDurationSeconds()>300)throw new BizException(400,"时长无效");
