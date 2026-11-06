@@ -29,12 +29,13 @@ public class ShotVideoReferenceService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final Executor executor;
+    private final org.springframework.transaction.PlatformTransactionManager transactions;
 
     public ShotVideoReferenceService(DramaShotMapper shots, AiModelMapper models, VideoProcessSourceResolver sources,
             ShotVideoCapabilityService capabilities, ReferenceVideoMediaService media, ReferenceVideoProperties properties,
-            JdbcTemplate jdbc, ObjectMapper json, @Qualifier("referenceVideoPreparationExecutor") Executor executor) {
+            JdbcTemplate jdbc, ObjectMapper json, @Qualifier("referenceVideoPreparationExecutor") Executor executor, org.springframework.transaction.PlatformTransactionManager transactions) {
         this.shots = shots; this.models = models; this.sources = sources; this.capabilities = capabilities;
-        this.media = media; this.properties = properties; this.jdbc = jdbc; this.json = json; this.executor = executor;
+        this.media = media; this.properties = properties; this.jdbc = jdbc; this.json = json; this.executor = executor; this.transactions = transactions;
     }
 
     public VideoProbeInfoVO probe(Long shotId, ShotRefVideoDTO reference) {
@@ -63,11 +64,12 @@ public class ShotVideoReferenceService {
         result.setInputFingerprint(fingerprint(shot, option, inputs, resolved));
         jdbc.update("INSERT INTO shot_video_reference_preflight(preflight_id,shot_id,provider_id,model_code,input_fingerprint,status,data_json,created_at,expires_at) VALUES (?,?,?,?,?,'PREPARING',?,?,?)",
                 result.getPreflightId(), shotId, result.getProviderId(), result.getModelCode(), result.getInputFingerprint(), write(result), LocalDateTime.now(), result.getExpiresAt());
-        try {
+        Runnable dispatch = () -> { try {
             executor.execute(() -> prepare(result, inputs, resolved));
         } catch (RuntimeException e) {
             result.setStatus("FAILED"); result.setErrorCode("REFERENCE_VIDEO_PREPARATION_BUSY"); result.setErrorMessage("素材准备队列已满，请稍后重试"); persist(result);
-        }
+        }};
+        if(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){@Override public void afterCommit(){var tx=new org.springframework.transaction.support.TransactionTemplate(transactions);tx.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);tx.executeWithoutResult(status->dispatch.run());}});else dispatch.run();
         return get(shotId, result.getPreflightId());
     }
 
@@ -163,6 +165,8 @@ public class ShotVideoReferenceService {
         if (total.compareTo(cap.getMaxTotalClipSeconds()) > 0) throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 参考片段总时长超过所选模型配置");
         if (mixed > cap.getMaxMixedAssets()) throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 混合参考素材总量超过模型限制");
     }
+
+    public void validateSources(DramaShot shot,List<ShotRefVideoDTO> references){ShotVideoReferenceValidator.validate(references);resolve(shot,references);}
 
     private List<ResolvedVideoProcessSource> resolve(DramaShot target, List<ShotRefVideoDTO> references) {
         return references.stream().map(ref -> {

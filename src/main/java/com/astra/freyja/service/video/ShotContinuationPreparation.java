@@ -18,8 +18,9 @@ public class ShotContinuationPreparation {
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final Executor executor;
+    private final org.springframework.transaction.PlatformTransactionManager transactions;
     public ShotContinuationPreparation(ShotContinuationService service,JdbcTemplate jdbc,ObjectMapper json,
-            @Qualifier("referenceVideoPreparationExecutor") Executor executor){this.service=service;this.jdbc=jdbc;this.json=json;this.executor=executor;}
+            @Qualifier("referenceVideoPreparationExecutor") Executor executor, org.springframework.transaction.PlatformTransactionManager transactions){this.service=service;this.jdbc=jdbc;this.json=json;this.executor=executor;this.transactions=transactions;}
     public record State(String id,String status,String planHash,String errorMessage){}
     public boolean enabled(DramaShot shot){return service.enabled(shot);}
     public ShotControlNetOptions savedControl(DramaShot shot){return service.read(shot).getControlNet();}
@@ -31,14 +32,15 @@ public class ShotContinuationPreparation {
                 (rs,n)->new State(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4)),shot.getId(),expected,provider.getId(),model.getModelCode(),size,LocalDateTime.now().minusMinutes(30));
         if(!existing.isEmpty())return existing.getFirst();
         String id=UUID.randomUUID().toString();if(jdbc.update("INSERT INTO shot_continuation_preparation(id,shot_id,plan_hash,provider_id,model_code,size,status,updated_at) VALUES (?,?,?,?,?,?,'PREPARING',?)",id,shot.getId(),expected,provider.getId(),model.getModelCode(),size,LocalDateTime.now())!=1)throw new BizException(500,"接续素材准备任务保存失败");
-        try{executor.execute(()->{
+        Runnable dispatch=()->{try{executor.execute(()->{
             try{
                 var request=new DramaShotRenderRequestDTO();request.setExpectedRenderFingerprint(expected);
                 if(shot.getSeed()==null)shot.setSeed(1L);
                 var snapshot=service.prepare(shot,model,provider,size,request);
                 if(jdbc.update("UPDATE shot_continuation_preparation SET status='READY',snapshot_json=?,updated_at=? WHERE id=? AND status='PREPARING'",json.writeValueAsString(snapshot),LocalDateTime.now(),id)!=1)throw new IllegalStateException("接续素材快照写入失败");
             }catch(Exception e){jdbc.update("UPDATE shot_continuation_preparation SET status='FAILED',error_message=?,updated_at=? WHERE id=? AND status='PREPARING'",e.getMessage(),LocalDateTime.now(),id);}
-        });}catch(RuntimeException e){jdbc.update("UPDATE shot_continuation_preparation SET status='FAILED',error_message='准备队列繁忙',updated_at=? WHERE id=?",LocalDateTime.now(),id);}
+        });}catch(RuntimeException e){jdbc.update("UPDATE shot_continuation_preparation SET status='FAILED',error_message='准备队列繁忙',updated_at=? WHERE id=?",LocalDateTime.now(),id);}};
+        if(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(new org.springframework.transaction.support.TransactionSynchronization(){@Override public void afterCommit(){var tx=new org.springframework.transaction.support.TransactionTemplate(transactions);tx.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);tx.executeWithoutResult(status->dispatch.run());}});else dispatch.run();
         return get(shot.getId(),id);
     }
     public State get(Long shot,String id){var rows=jdbc.query("SELECT id,status,plan_hash,error_message FROM shot_continuation_preparation WHERE id=? AND shot_id=?",(rs,n)->new State(rs.getString(1),rs.getString(2),rs.getString(3),rs.getString(4)),id,shot);if(rows.isEmpty())throw new BizException(404,"准备任务不存在");return rows.getFirst();}

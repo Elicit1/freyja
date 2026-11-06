@@ -200,7 +200,8 @@ public class CapabilityCatalogService {
                 "MCP:" + McpPresignedAudioUploads.PREPARE_TOOL, "MCP:" + McpPresignedAudioUploads.COMPLETE_TOOL,
                 "MCP:search_audio_assets", "MCP:get_audio_asset", "MCP:update_audio_asset", "MCP:delete_audio_asset",
                 "MCP:" + McpVoiceTools.MODELS_TOOL, "MCP:" + McpVoiceTools.DESIGN_TOOL)
-                .contains(b.handlerKey()) || b.handlerKey().startsWith("MCP:dubbing_")).toList();
+                .contains(b.handlerKey()) || b.handlerKey().startsWith("MCP:dubbing_")
+                || McpContinuationTools.TOOL_NAMES.stream().anyMatch(name -> b.handlerKey().equals("MCP:" + name))).toList();
         Release nextActive = null;
         try {
             Release migrated = addNewBindings(migrateSnapshot(active, false), newBindings);

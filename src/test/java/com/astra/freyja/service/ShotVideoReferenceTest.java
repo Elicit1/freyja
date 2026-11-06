@@ -32,7 +32,7 @@ class ShotVideoReferenceTest {
 
     @BeforeEach void setup() throws Exception {
         jdbc.execute("CREATE TABLE shot_video_reference_preflight(preflight_id VARCHAR(64) PRIMARY KEY,shot_id BIGINT,provider_id BIGINT,model_code VARCHAR(100),input_fingerprint VARCHAR(64),status VARCHAR(20),data_json CLOB,created_at TIMESTAMP,expires_at TIMESTAMP)");
-        service = new ShotVideoReferenceService(shots, models, sources, capabilities, media, new ReferenceVideoProperties(), jdbc, json, Runnable::run);
+        service = new ShotVideoReferenceService(shots, models, sources, capabilities, media, new ReferenceVideoProperties(), jdbc, json, Runnable::run, transactions());
         shot = new DramaShot(); shot.setId(2032095628944588801L); shot.setDramaId(10L); shot.setGenerationMode("REFERENCE_MODE");
         var ref = new ShotRefVideoDTO(); ref.setId("video1"); ref.setSourceType("SHOT_CURRENT"); ref.setSourceShotId(2032095628944588802L);
         ref.setStartSeconds(new BigDecimal("1.25")); ref.setEndSeconds(new BigDecimal("5.25"));
@@ -47,6 +47,8 @@ class ShotVideoReferenceTest {
         when(capabilities.describe(model)).thenReturn(option); when(sources.resolveForProbe(any())).thenAnswer(invocation -> current);
         when(media.prepare(any(), any(), any())).thenReturn(clip); when(media.transportUrl(any())).thenReturn("https://archive/temporary-preview");
     }
+
+    private org.springframework.jdbc.support.JdbcTransactionManager transactions() { return new org.springframework.jdbc.support.JdbcTransactionManager(jdbc.getDataSource()); }
 
     private DramaShotRenderRequestDTO request() { var req = new DramaShotRenderRequestDTO(); req.setProviderId(30L); req.setWorkflowTemplateId("test-video"); return req; }
 
@@ -80,7 +82,7 @@ class ShotVideoReferenceTest {
 
     @Test void preflightSurvivesServiceRecreationAndDoesNotPersistSignedUrls() {
         var prepared = service.start(shot.getId(), request());
-        var restarted = new ShotVideoReferenceService(shots, models, sources, capabilities, media, new ReferenceVideoProperties(), jdbc, json, Runnable::run);
+        var restarted = new ShotVideoReferenceService(shots, models, sources, capabilities, media, new ReferenceVideoProperties(), jdbc, json, Runnable::run, transactions());
         assertEquals(prepared.getPreflightId(), restarted.forSubmission(shot, model, null).getPreflightId());
         String stored = jdbc.queryForObject("SELECT data_json FROM shot_video_reference_preflight", String.class);
         assertFalse(stored.contains("temporary-preview"));
@@ -111,6 +113,31 @@ class ShotVideoReferenceTest {
         var tree = json.readTree(stored).get(0);
         assertTrue(tree.path("sourceShotId").isTextual()); assertEquals("2032095628944588802", tree.path("sourceVideoTakeId").asText());
         assertEquals(2032095628944588802L, json.readValue(tree.toString(), ResolvedShotVideoReference.class).getSourceVideoTakeId());
+    }
+
+    @Test void preparationStartsOnlyAfterCommitAndNeverOnRollback() {
+        var tx = new org.springframework.transaction.support.TransactionTemplate(transactions());
+        tx.executeWithoutResult(status -> {
+            assertEquals("PREPARING", service.start(shot.getId(), request()).getStatus());
+            verify(media, never()).prepare(any(), any(), any());
+            status.setRollbackOnly();
+        });
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM shot_video_reference_preflight", Integer.class));
+        tx.executeWithoutResult(status -> {
+            assertEquals("PREPARING", service.start(shot.getId(), request()).getStatus());
+            verify(media, never()).prepare(any(), any(), any());
+        });
+        verify(media, times(1)).prepare(any(), any(), any());
+        assertEquals("READY", jdbc.queryForObject("SELECT status FROM shot_video_reference_preflight", String.class));
+    }
+
+    @Test void rejectedWorkerPersistsFailureAfterOuterCommit() {
+        var rejecting = new ShotVideoReferenceService(shots, models, sources, capabilities, media,
+                new ReferenceVideoProperties(), jdbc, json, work -> { throw new java.util.concurrent.RejectedExecutionException(); }, transactions());
+        new org.springframework.transaction.support.TransactionTemplate(transactions()).executeWithoutResult(status ->
+                assertEquals("PREPARING", rejecting.start(shot.getId(), request()).getStatus()));
+        assertEquals("FAILED", jdbc.queryForObject("SELECT status FROM shot_video_reference_preflight", String.class));
+        verify(media, never()).prepare(any(), any(), any());
     }
 
     @Test void invalidRangesAndMixedSourceFieldsAreRejectedWithoutNetwork() {

@@ -6,8 +6,8 @@
       <el-form label-position="top" class="render-fields" :disabled="submitting">
         <el-form-item label="视频提供商"><el-select v-model="config.providerId" placeholder="请选择视频提供商" @change="loadModels"><el-option v-for="p in providers" :key="String(p.id)" :value="String(p.id)" :label="p.providerName" /></el-select></el-form-item>
         <el-form-item label="视频模型"><el-select v-model="config.modelCode" placeholder="请选择视频模型" :disabled="!config.providerId || modelsLoading" :loading="modelsLoading" filterable><el-option v-for="m in models" :key="String(m.id)" :value="m.modelCode" :label="m.modelName" /></el-select></el-form-item>
-        <el-form-item label="画幅"><el-radio-group v-model="ratio" @change="setRatio"><el-radio-button value="16:9">16:9</el-radio-button><el-radio-button value="9:16">9:16</el-radio-button><el-radio-button value="1:1">1:1</el-radio-button></el-radio-group></el-form-item>
-        <el-form-item label="生成尺寸"><el-select v-model="config.size" filterable allow-create default-first-option><el-option v-for="s in sizeOptions" :key="s" :value="s" :label="s.replace('x', ' × ')" /></el-select></el-form-item>
+        <el-form-item label="画幅"><el-radio-group v-model="ratio" @change="setRatio"><el-radio-button v-for="option in ratioOptions" :key="option" :value="option">{{ option }}</el-radio-button></el-radio-group></el-form-item>
+        <el-form-item label="生成尺寸"><el-select v-model="config.size" filterable><el-option v-for="s in sizeOptions" :key="s" :value="s" :label="s.replace('x', ' × ')" /></el-select></el-form-item>
       </el-form>
       <div v-if="!continuation" class="render-assets"><div v-for="item in anchors" :key="item.label" class="render-anchor"><el-image v-if="item.url" :src="item.url" fit="cover" :preview-src-list="[item.url]" preview-teleported /><span v-else class="anchor-empty">—</span><span>{{ item.label }}</span></div><div class="render-asset-counts"><span>参考图 <b>{{ shot?.refImages?.length || 0 }}</b></span><span>视频 <b>{{ shot?.refVideos?.length || 0 }}</b></span><span>音频 <b>{{ shot?.refAudios?.length || 0 }}</b></span></div></div>
       <p class="render-note">{{ continuation ? '剧本、导演、提示词和素材来自主页面各片段；提交前校验模型能力与最新计划。' : '剧本、提示词与参考素材在镜头中配置，这里只设置本次生成参数。' }}</p>
@@ -21,7 +21,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { aiProviderApi } from '@/api/ai-provider'
 import { dramaApi, shotApi } from '@/api/drama'
@@ -38,7 +38,19 @@ const ratio = ref('16:9'), error = ref(''), status = ref(''), continuation = ref
 const config = reactive<VideoRenderConfiguration>({ providerId: '', modelCode: '', size: '960x544' })
 let submitContinuation: ((configuration: VideoRenderConfiguration) => Promise<void>) | undefined
 let session = 0, modelRequest = 0
-const sizeOptions = computed(() => ratio.value === '9:16' ? ['544x960','576x1024','736x1280','768x1344'] : ratio.value === '1:1' ? ['768x768','1024x1024'] : ['960x544','1024x576','1280x736','1344x768'])
+const presetSizes = computed(() => ratio.value === '9:16' ? ['544x960','576x1024','736x1280','768x1344'] : ratio.value === '1:1' ? ['768x768','1024x1024'] : ['960x544','1024x576','1280x736','1344x768'])
+const modelVideoOptions = computed(() => {
+  const selected = models.value.find(m => m.modelCode === config.modelCode)
+  try { return JSON.parse(selected?.paramsJson || '{}').videoGeneration || {} } catch { return { supportedSizes: [], supportedAspectRatios: [] } }
+})
+const ratioOptions = computed(() => ['16:9','9:16','1:1'].filter(v => !Array.isArray(modelVideoOptions.value.supportedAspectRatios) || modelVideoOptions.value.supportedAspectRatios.includes(v)))
+const sizeOptions = computed(() => {
+  const declared = modelVideoOptions.value.supportedSizes
+  if (!Array.isArray(declared)) return presetSizes.value
+  const [rw,rh] = ratio.value.split(':').map(Number)
+  return declared.filter((s: unknown): s is string => typeof s === 'string' && validateGenerationSize(s,'video').valid).filter((s: string) => { const [w,h] = s.split('x').map(Number); return Math.abs(w! / h! - rw! / rh!) < 0.08 })
+})
+watch([sizeOptions, ratioOptions], () => { if (!ratioOptions.value.includes(ratio.value)) ratio.value = ratioOptions.value[0] || ''; if (!sizeOptions.value.includes(config.size)) config.size = sizeOptions.value[0] || '' })
 const anchors = computed(() => shot.value?.generationMode === 'FIRST_LAST_FRAME' ? [{ label: '首帧（可选）', url: shot.value.previewImageUrl }, { label: '尾帧（可选）', url: shot.value.endFrameImageUrl }] : [])
 function editShot() { if (shot.value && !submitting.value) { visible.value = false; emit('edit', shot.value) } }
 function setRatio() { config.size = resolveGenerationSize(ratio.value, 'video') }
@@ -67,6 +79,7 @@ async function loadModels() {
 }
 async function submit() {
   if (submitting.value || !shot.value?.id || !models.value.some(m => m.modelCode === config.modelCode)) return
+  if (!providers.value.some(p => String(p.id) === config.providerId) || !ratioOptions.value.includes(ratio.value) || !sizeOptions.value.includes(config.size)) return ElMessage.warning('提供商、画幅或尺寸选项已变化，请重新选择')
   const validated = validateGenerationSize(config.size, 'video'); if (!validated.valid) return ElMessage.warning(validated.message)
   const token = session, id = String(shot.value.id), values = { ...config, size: validated.normalized! }; submitting.value = true; error.value = ''
   const current = () => token === session && visible.value

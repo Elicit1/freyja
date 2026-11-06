@@ -14,6 +14,8 @@ public class McpToolInventory {
     private McpVoiceTools voices;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private McpDubbingTools dubbing;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private McpContinuationTools continuations;
     @org.springframework.beans.factory.annotation.Autowired
     private com.astra.freyja.capability.service.CapabilityCatalogService capabilities;
     public List<McpTool<?>> all() {
@@ -24,6 +26,7 @@ public class McpToolInventory {
         skills.ifAvailable(adapter -> result.addAll(adapter.tools()));
         if (voices != null) result.addAll(voices.tools());
         if (dubbing != null) result.addAll(dubbing.tools());
+        if (continuations != null) result.addAll(continuations.tools());
         return result;
     }
 }

@@ -39,6 +39,7 @@ class ShotContinuationReferenceSplitterTest {
         var result=splitter.split(draft,source(),new BigDecimal("60"),List.of(selected));
         assertTrue(result.getDraft().getSegments().getFirst().getReferenceVideos().isEmpty());assertEquals(1,result.getDraft().getSegments().get(1).getReferenceVideos().size());
     }
+    @Test void duplicateOrStaleSegmentSelectionsFailBeforeBinding(){var d=draft();var id=d.getSegments().getFirst().getId();assertThrows(BizException.class,()->splitter.split(d,source(),new BigDecimal("60"),List.of(id,id)));assertThrows(BizException.class,()->splitter.split(d,source(),new BigDecimal("60"),List.of("removed")));assertTrue(d.getSegments().getFirst().getReferenceVideos().isEmpty());}
     @Test void insufficientSourceFailsAtomicallyWithoutLoopingOrPartialBindings(){
         var draft=draft();var source=source();source.setEndSeconds(new BigDecimal("12"));
         assertThrows(BizException.class,()->splitter.split(draft,source,new BigDecimal("60"),null));

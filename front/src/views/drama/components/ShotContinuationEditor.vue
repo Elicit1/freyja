@@ -154,10 +154,10 @@ async function selectedVideo(source: { sourceType: ShotRefVideo['sourceType']; s
   try { await addVideoSource({ id: crypto.randomUUID(), name: source.shotName, sourceType: source.sourceType, sourceVideoUrl: source.sourceType === 'DIRECT_URL' ? source.sourceVideoUrl : undefined, sourceShotId: source.sourceShotId, sourceVideoTakeId: source.sourceType === 'SHOT_VIDEO_TAKE' ? source.sourceVideoTakeId : undefined, startSeconds: 0, includeAudio: false }, target) }
   catch (e: any) { ElMessage.error(e.message || '视频读取失败') } finally { busy.value = false }
 }
-async function save(enabled = props.enabled): Promise<boolean> {
+async function save(enabled = props.enabled, control?: NonNullable<ContinuationDraft['controlNet']>): Promise<boolean> {
   if (!ready.value || busy.value) { ElMessage.warning('接续配置仍在加载或处理中，请稍后保存'); return false }
   busy.value = true
-  try { draft.value.enabled = enabled; draft.value.videoSources = clone(videoTray.value); draft.value.imageSources = clone(imageTray.value); await continuationApi.save(props.shotId, clone(draft.value)); emit('saved'); return true }
+  try { draft.value.enabled = enabled; if (control) draft.value.controlNet = clone(control); draft.value.videoSources = clone(videoTray.value); draft.value.imageSources = clone(imageTray.value); await continuationApi.save(props.shotId, clone(draft.value)); emit('saved'); return true }
   catch (e: any) { ElMessage.error(e.message || '保存失败'); return false } finally { busy.value = false }
 }
 async function openRender() {

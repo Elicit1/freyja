@@ -33,6 +33,7 @@ public class ShotContinuationReferenceSplitter {
         int availableEnd=sourceEnd.multiply(BigDecimal.valueOf(24)).setScale(0,RoundingMode.FLOOR).intValueExact();
         Set<String> selected=targetIds==null||targetIds.isEmpty()?new HashSet<>(draft.getSegments().stream().map(ShotContinuation.Segment::getId).toList()):new HashSet<>(targetIds);
         Set<String> known=new HashSet<>(draft.getSegments().stream().map(ShotContinuation.Segment::getId).toList());
+        if(targetIds!=null&&(targetIds.stream().anyMatch(Objects::isNull)||selected.size()!=targetIds.size()))throw new BizException(400,"目标片段ID不能为空或重复");
         if(!known.containsAll(selected))throw new BizException(400,"目标片段已变化，请刷新分段计划");
         for(var segment:draft.getSegments())if(selected.contains(segment.getId())){
             int start=origin+segment.getStartFrame(),end=origin+Math.min(segment.getEndFrame(),plan.getOutputFrames());

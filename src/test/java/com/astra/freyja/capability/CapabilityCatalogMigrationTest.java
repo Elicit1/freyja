@@ -121,6 +121,20 @@ class CapabilityCatalogMigrationTest {
         assertEquals(historical, mapper.release(Long.valueOf(before.id())).getPayloadJson());
     }
 
+    @Test void continuationToolsUpgradePublishesBothConsumersWithoutResettingChoices(){
+        var schema=Map.<String,Object>of("type","object","properties",Map.of(),"additionalProperties",false);
+        McpTool<McpInputs.Empty> existing=new McpTool<>("status_tool","状态",McpInputs.Empty.class,McpTool.Effect.READ,schema,(c,i)->Map.of());
+        var original=catalog(List.of(existing));original.initialize();original.switchMcpTool("status_tool",false);
+        var before=original.current();original.save(new Edit(mapper.state().getRevision(),before.bindings(),"保留说明","保留规则"));
+        var tools=new ArrayList<McpTool<?>>();tools.add(existing);
+        tools.addAll(new McpContinuationTools(null,null,null,null,new McpContinuationSchemas(json),null,null,null,new com.fasterxml.jackson.databind.ObjectMapper()).tools());
+        var upgraded=catalog(tools);upgraded.initialize();
+        for(var consumer:List.of(Consumer.MCP,Consumer.INTERNAL_AGENT))assertTrue(upgraded.current().bindings().stream().filter(b->b.consumer()==consumer).map(Binding::name).toList().containsAll(McpContinuationTools.TOOL_NAMES));
+        assertFalse(upgraded.current().bindings().stream().filter(b->b.consumer()==Consumer.MCP&&b.name().equals("status_tool")).findFirst().orElseThrow().enabled());
+        var draft=(Release)upgraded.view().get("draft");assertEquals("保留说明",draft.instructions());assertEquals("保留规则",draft.rules());
+        var release=upgraded.current().id();upgraded.initialize();assertEquals(release,upgraded.current().id());
+    }
+
     @SuppressWarnings("unchecked")
     @Test void shotContractUpgradePublishesRecordIdsFieldsAndOptionalScopeToBothConsumers() {
         var metadata = new McpSchemaMetadata(json);

@@ -1861,7 +1861,7 @@ async function handleSave(closeAfter = false): Promise<boolean> {
   const saved = await saveOrdinaryShot(false)
   if (!saved || !form.id) return false
   try {
-    if (continuationEditor.value?.isReady()) { if (!await continuationEditor.value.save(false)) return false }
+    if (continuationEditor.value?.isReady()) { if (!await continuationEditor.value.save(false, ordinaryControl.value)) return false }
     const draft = await continuationApi.get(String(form.id)); draft.enabled = false; draft.controlNet = { ...ordinaryControl.value }
     await continuationApi.save(String(form.id), draft)
     if (closeAfter) visible.value = false
