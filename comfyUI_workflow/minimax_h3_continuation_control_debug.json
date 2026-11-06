@@ -1,8 +1,8 @@
 {
   "id": "8ac239c5-4271-4c80-9c91-8661f94c6d30",
-  "revision": 1,
-  "last_node_id": 206,
-  "last_link_id": 309,
+  "revision": 2,
+  "last_node_id": 207,
+  "last_link_id": 310,
   "nodes": [
     {
       "id": 92,
@@ -174,8 +174,8 @@
           "links": [
             251,
             273,
-            295,
-            304
+            296,
+            305
           ]
         }
       ],
@@ -220,7 +220,7 @@
           "links": [
             250,
             274,
-            306
+            307
           ]
         }
       ],
@@ -383,7 +383,7 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 301
+          "link": 302
         },
         {
           "name": "steps",
@@ -457,7 +457,7 @@
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 309
+          "link": 310
         }
       ],
       "outputs": [
@@ -499,12 +499,12 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 300
+          "link": 301
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 308
+          "link": 309
         }
       ],
       "outputs": [
@@ -915,14 +915,14 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            302
+            303
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            303
+            304
           ]
         }
       ],
@@ -1413,7 +1413,7 @@
           "type": "IMAGE",
           "links": [
             292,
-            296
+            297
           ]
         },
         {
@@ -1489,7 +1489,7 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 299
+          "link": 300
         }
       ],
       "outputs": [
@@ -1497,8 +1497,8 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            300,
-            301
+            301,
+            302
           ]
         }
       ],
@@ -1537,17 +1537,17 @@
         {
           "name": "model_patch",
           "type": "MODEL_PATCH",
-          "link": 294
+          "link": 295
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 295
+          "link": 296
         },
         {
           "name": "control_video",
           "type": "IMAGE",
-          "link": 298
+          "link": 299
         }
       ],
       "outputs": [
@@ -1555,7 +1555,7 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            299
+            300
           ]
         }
       ],
@@ -1597,9 +1597,45 @@
         "Node name for S&R": "ModelPatchLoader"
       },
       "widgets_values": [
-        "minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors"
+        "minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors"
       ],
-      "title": "Union 补丁权重"
+      "title": "Union 2.0 补丁权重"
+    },
+    {
+      "id": 207,
+      "type": "FreyjaH3Union2Patch",
+      "pos": [
+        -1000,
+        6700
+      ],
+      "size": [
+        360,
+        180
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "model_patch",
+          "type": "MODEL_PATCH",
+          "link": 294
+        }
+      ],
+      "outputs": [
+        {
+          "name": "MODEL_PATCH",
+          "type": "MODEL_PATCH",
+          "links": [
+            295
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "FreyjaH3Union2Patch"
+      },
+      "widgets_values": [],
+      "title": "Union 2.0 结构校验（10 层 / post_norm）"
     },
     {
       "id": 203,
@@ -1613,13 +1649,13 @@
         180
       ],
       "flags": {},
-      "order": 34,
+      "order": 35,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 297
+          "link": 298
         }
       ],
       "outputs": [
@@ -1627,7 +1663,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            298
+            299
           ]
         }
       ],
@@ -1652,13 +1688,13 @@
         180
       ],
       "flags": {},
-      "order": 35,
+      "order": 36,
       "mode": 0,
       "inputs": [
         {
           "name": "images",
           "type": "IMAGE",
-          "link": 296
+          "link": 297
         }
       ],
       "outputs": [
@@ -1666,7 +1702,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            297
+            298
           ]
         }
       ],
@@ -1691,38 +1727,38 @@
         180
       ],
       "flags": {},
-      "order": 36,
+      "order": 37,
       "mode": 4,
       "inputs": [
         {
           "name": "positive",
           "type": "CONDITIONING",
-          "link": 302
+          "link": 303
         },
         {
           "name": "latent",
           "type": "LATENT",
-          "link": 303
+          "link": 304
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 304
+          "link": 305
         },
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 305
+          "link": 306
         },
         {
           "name": "audio_vae",
           "type": "VAE",
-          "link": 306
+          "link": 307
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 307
+          "link": 308
         }
       ],
       "outputs": [
@@ -1730,14 +1766,14 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            308
+            309
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
-            309
+            310
           ]
         }
       ],
@@ -1762,7 +1798,7 @@
         600
       ],
       "flags": {},
-      "order": 37,
+      "order": 38,
       "mode": 2,
       "inputs": [
         {
@@ -1783,7 +1819,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            305
+            306
           ]
         },
         {
@@ -1795,7 +1831,7 @@
           "name": "audio",
           "type": "AUDIO",
           "links": [
-            307
+            308
           ]
         },
         {
@@ -2072,12 +2108,20 @@
       294,
       202,
       0,
+      207,
+      0,
+      "MODEL_PATCH"
+    ],
+    [
+      295,
+      207,
+      0,
       201,
       1,
       "MODEL_PATCH"
     ],
     [
-      295,
+      296,
       119,
       0,
       201,
@@ -2085,7 +2129,7 @@
       "VAE"
     ],
     [
-      296,
+      297,
       147,
       0,
       204,
@@ -2093,7 +2137,7 @@
       "IMAGE"
     ],
     [
-      297,
+      298,
       204,
       0,
       203,
@@ -2101,7 +2145,7 @@
       "IMAGE"
     ],
     [
-      298,
+      299,
       203,
       0,
       201,
@@ -2109,7 +2153,7 @@
       "IMAGE"
     ],
     [
-      299,
+      300,
       201,
       0,
       200,
@@ -2117,7 +2161,7 @@
       "MODEL"
     ],
     [
-      300,
+      301,
       200,
       0,
       126,
@@ -2125,7 +2169,7 @@
       "MODEL"
     ],
     [
-      301,
+      302,
       200,
       0,
       124,
@@ -2133,7 +2177,7 @@
       "MODEL"
     ],
     [
-      302,
+      303,
       136,
       0,
       205,
@@ -2141,7 +2185,7 @@
       "CONDITIONING"
     ],
     [
-      303,
+      304,
       136,
       1,
       205,
@@ -2149,7 +2193,7 @@
       "LATENT"
     ],
     [
-      304,
+      305,
       119,
       0,
       205,
@@ -2157,7 +2201,7 @@
       "VAE"
     ],
     [
-      305,
+      306,
       206,
       0,
       205,
@@ -2165,7 +2209,7 @@
       "IMAGE"
     ],
     [
-      306,
+      307,
       120,
       0,
       205,
@@ -2173,7 +2217,7 @@
       "VAE"
     ],
     [
-      307,
+      308,
       206,
       2,
       205,
@@ -2181,7 +2225,7 @@
       "AUDIO"
     ],
     [
-      308,
+      309,
       205,
       0,
       126,
@@ -2189,7 +2233,7 @@
       "CONDITIONING"
     ],
     [
-      309,
+      310,
       205,
       1,
       125,

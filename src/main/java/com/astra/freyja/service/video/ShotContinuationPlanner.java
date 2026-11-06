@@ -68,7 +68,7 @@ public class ShotContinuationPlanner {
                 if(segment.getReferenceVideos().isEmpty())throw new BizException(400,"开启 ControlNet 的片段必须挂载参考视频");
                 if(segment.getReferenceVideos().size()==1&&segment.getControlVideoId()==null)segment.setControlVideoId(segment.getReferenceVideos().getFirst().getId());
                 if(segment.getReferenceVideos().stream().noneMatch(v->Objects.equals(v.getId(),segment.getControlVideoId())))throw new BizException(400,"请选择本段 ControlNet 视频源");
-                if(!Set.of("CANNY","POSE","DEPTH","PREPARED").contains(segment.getControlType()))throw new BizException(400,"ControlNet 控制类型无效");
+                if(segment.getControlType()==null||!ShotControlNetOptions.CONTROL_TYPES.contains(segment.getControlType()))throw new BizException(400,"ControlNet 控制类型无效");
             }
             var range=new ShotContinuationPlan.Range();range.setSegmentId(segment.getId());range.setStartFrame(start);range.setEndFrame(end);
             range.setOverlapFrames(shared);range.setKeepStartFrame(keepCursor);range.setKeepEndFrame(Math.min(end,output));result.getRanges().add(range);

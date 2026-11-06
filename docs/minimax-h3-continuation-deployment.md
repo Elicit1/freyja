@@ -1,6 +1,6 @@
 # MiniMax H3 接续部署与验收
 
-2026-11-05。代码已接入；目标 ComfyUI 连接超时，尚未提交真实 GPU 验收任务。配置保持 `UNVERIFIED`，接续渲染和 ControlNet 组合在验收通过前不可提交。普通短视频入口继续使用原有能力规则。
+2026-11-06。默认配置已迁移到 ControlNet Union 2.0；目标 ComfyUI 可访问，补丁清单已列出 2.0 权重，但缺项目扩展与第三方预处理节点，尚未提交真实 GPU 验收任务。配置保持 `UNVERIFIED`，接续渲染和 ControlNet 组合在验收通过前不可提交。普通短视频入口继续使用原有能力规则。
 
 ## 使用入口与实际行为
 
@@ -52,6 +52,53 @@ SQL 保存每段输入摘要、执行 ID、真实节点/prompt ID、状态和归
 
 ## 安装及配置
 
+### Union 2.0 模型与预处理器
+
+使用 [Alibaba PAI Union 2.0](https://huggingface.co/alibaba-pai/MiniMax-H3-Fun-Controlnet-Union-2.0) 的 [Comfy-Org INT8 适配权重](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/model_patches)：`minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors`，约 4.53 GB，放在 `ComfyUI/models/model_patches/`。不要将 v1 文件改名冒充 v2。
+
+需更新 ComfyUI 到支持 v2 的版本：原生 `ModelPatchLoader` 应识别 10 个控制块和权重元数据中的 `inpaint_masked_pixel_mode=post_norm`。项目的 `FreyjaH3Union2Patch` 在运行时检查实际加载对象的 10 个块、注入位置 `0,5,…45` 及 `post_norm`，不匹配会报错。无窗口时继续使用原生 Apply；有窗口时使用窗口对齐扩展，两条路径都经过检查。
+
+| 选项 | 实际处理 | 附加模型 |
+| --- | --- | --- |
+| Canny | 原生 `Canny` | 无 |
+| Depth | `DepthAnythingV2Preprocessor` | `depth_anything_v2_vitl.pth` |
+| HED | `HEDPreprocessor` | `ControlNetHED.pth` |
+| MLSD | `M-LSDPreprocessor` | `mlsd_large_512_fp32.pth` |
+| Pose | `DWPreprocessor`，显式指定 ONNX 检测器与姿态估计器 | `yolox_l.onnx`、`dw-ll_ucoco_384.onnx` |
+| Scribble | `FakeScribblePreprocessor` | 复用 HED 权重 |
+| Layout | 直接使用已制作的白底彩色目标框布局视频 | 当前不自动检测或跟踪目标 |
+| Gray | 项目扩展 `FreyjaH3GrayFrames`，逐帧灰度化 | 无 |
+| 已处理控制视频 | 跳过预处理，直接传递控制信号 | 按上传内容决定 |
+
+八种控制由同一个 Union 2.0 权重提供，不是八个 ControlNet 模型。全部自动预处理需要额外五个文件，连同 Union 共六个；Scribble 复用 HED，Canny/Gray 不需要模型。Layout 的框、颜色及轨迹须提前制作，原始实拍视频不能直接当布局信号。
+
+姿态、深度、HED、MLSD、Scribble 节点来自 [comfyui_controlnet_aux](https://github.com/Fannovel16/comfyui_controlnet_aux)，须安装到 ComfyUI 并使用实际运行 ComfyUI 的 Python 安装其依赖。下面是 Linux 远程主机的镜像下载命令；先改为实际 ComfyUI 路径。已有相同文件可跳过下载。若配置了 `AUX_ANNOTATOR_CKPTS_PATH`，将 `aux` 改为该目录。
+
+```bash
+cd /path/to/ComfyUI
+aux="${AUX_ANNOTATOR_CKPTS_PATH:-custom_nodes/comfyui_controlnet_aux/ckpts}"
+fetch() {
+  mkdir -p "$(dirname "$2")"
+  curl --fail --location --retry 3 --continue-at - --output "$2" "$1"
+}
+fetch 'https://hf-mirror.com/Comfy-Org/MiniMax-H3/resolve/main/model_patches/minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors' \
+  'models/model_patches/minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors'
+fetch 'https://hf-mirror.com/yzd-v/DWPose/resolve/main/yolox_l.onnx' \
+  "$aux/yzd-v/DWPose/yolox_l.onnx"
+fetch 'https://hf-mirror.com/yzd-v/DWPose/resolve/main/dw-ll_ucoco_384.onnx' \
+  "$aux/yzd-v/DWPose/dw-ll_ucoco_384.onnx"
+fetch 'https://hf-mirror.com/depth-anything/Depth-Anything-V2-Large/resolve/main/depth_anything_v2_vitl.pth' \
+  "$aux/depth-anything/Depth-Anything-V2-Large/depth_anything_v2_vitl.pth"
+fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/ControlNetHED.pth' \
+  "$aux/lllyasviel/Annotators/ControlNetHED.pth"
+fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/mlsd_large_512_fp32.pth' \
+  "$aux/lllyasviel/Annotators/mlsd_large_512_fp32.pth"
+```
+
+### 更新部署和重新验收
+
+默认节点、配置生成器及调试图均已切换 2.0。本地 `machine_local.yaml` 也已刷新，其余远程部署需同步更新。迁移会撤销旧的验收状态与签名，重新准备计划后方可使用；旧任务快照保持原有内容，不能把使用 v1 生成的片段视为 v2 缓存。先完成运行中的任务，再切换配置。
+
 1. 将 `comfy_gateway/comfy_extension/freyja_h3` 整个目录复制到实际算力主机的 `ComfyUI/custom_nodes/freyja_h3`，重启 ComfyUI。该扩展依赖当前 H3 原生实现，包括 `FRAME_PER_TOKEN`、`MiniMaxH3AddGuide` 与 `MiniMaxH3FunControlPatch`，升级后需重新验证。
 2. 按实际启用模块安装节点：窗口使用 `MiniMaxH3ContextWindows`，ControlNet 使用 `MiniMaxH3FunControlNetApply`、`ModelPatchLoader` 及 `models/model_patches/` 下的 Union 权重。可选姿态/深度预处理器须另行安装；Canny 使用原生节点。所选补丁必须与底模匹配。未启用的可选模块不成为基础 guide 接续的依赖；缺失模块会在能力中显示不可用。
 3. 维护实际节点 YAML 中的 `h3_extensions`。默认模板已覆盖当前 11 个 H3 生成模型，保留各自 LoRA、采样步数与 FaceRefine 裁脸修复支路。可用以下命令从现有 API 图重新生成绑定：
@@ -70,8 +117,10 @@ SQL 保存每段输入摘要、执行 ID、真实节点/prompt ID、状态和归
    python comfy_gateway/probe_h3.py --node-config comfy_gateway/nodes/machine_local.yaml --model minimax-h3-ref-turbo8
    ```
 
-   输出 `backendSignature`、缺失节点、支持的控制预处理器和 `workflowRevision`。探测本身不生成视频，也不把状态改为已验收。
+   输出 `controlVersion`、`backendSignature`、缺失节点、支持的控制预处理器和 `workflowRevision`。探测本身不生成视频，也不把状态改为已验收。
 7. 在目标 GPU 上完成下述验收后，将对应模型 `h3_extensions.status` 设为 `VERIFIED`，并保存本次 `backendSignature` 到 `verified_backend_signature`。随后重新读取能力、预览计划。引用视频还须独立满足既有 `reference_video` 的 VERIFIED、工作流 revision 与 backend 规则。
+
+2026-11-06 只读探测结果：原生 Apply、补丁加载器、上下文窗口存在，所选 Union 2.0 文件名在补丁清单中；缺 `FreyjaH3Union2Patch`、`FreyjaH3GrayFrames`、`FreyjaH3ControlFrames`、`FreyjaH3Continuation`、`FreyjaMiniMaxH3FunControlNetApply` 以及 DWPose / DepthAnythingV2 / HED / MLSD / FakeScribble 预处理节点。目前 `controlNet=false`、`windowControlAdapter=false`。先将项目扩展整个目录（包括 `control_validation.py`）部署到远端、安装 `comfyui_controlnet_aux` 及依赖，然后重启 ComfyUI、重新探测。文件名出现在清单不代表加载、模型内容或采样已验收。
 
 运行时签名检查已安装节点输入 schema、报告的 ComfyUI/PyTorch/Python 版本、后端地址和所选补丁是否在列表中；计划 revision 包含 API 图、网关装配代码和模块配置。签名不读取远端模型文件内容，不能替代模型摘要、扩展部署版本及真实渲染验收记录。
 
@@ -82,6 +131,7 @@ SQL 保存每段输入摘要、执行 ID、真实节点/prompt ID、状态和归
 - 节点 200：上下文窗口，默认旁路，Ctrl+B 启用。
 - 节点 201：窗口对齐的可选 ControlNet，默认旁路；先给原参考视频节点加载控制源。
 - 节点 202–204：补丁、Canny 和控制覆盖检查；示例生成 124 帧，真实要求 120 帧，仅技术尾部允许末帧填充。
+- 节点 207：Union 2.0 补丁结构检查，连接加载器与 Apply。
 - 节点 205：锁定 AV 上下文，首段旁路，后续段启用。
 - 节点 206：上一段实际尾部上下文，默认禁用；上传 39 帧上下文后 Ctrl+M 启用。同步设置生成帧数、真实输出帧数与上下文范围。
 
@@ -121,10 +171,12 @@ Java 为每个执行段调用现有视频生成端点，使用 `X-Freyja-Async-S
 
 ## 本地验证记录
 
+Union 2.0 增量：92 项网关测试、20 项相关 Java 测试通过；Vue TypeScript 校验与 Vite 生产构建通过。覆盖全部控制类型的图连接、窗口开关、Layout/已处理信号不重复预处理、v1/错误注入位置/pre_norm 拒绝、已安装预处理器能力发现、缺扩展时禁止控制但不影响已验收 guide 接续。11 个模板除 H3 扩展配置外保持一致，调试图更新为 39 个节点、48 条连接。实际灰度张量、第三方预处理器和 Union 2.0 GPU 采样尚待目标 ComfyUI 环境验收。
+
 分段档位与自动参考切片增量：78 项相关 Java 测试通过，包含全部档位在 3 / 15 / 30 / 60 / 300 秒下的覆盖与单段上限、自动绑定幂等、短源拒绝、按段选择和真实 FFmpeg 绝对帧切片（含原音及精确帧预算）；前端类型检查与生产构建通过。
 
 - JDK 26 + Maven wrapper：146 项受影响 Java 回归测试通过，覆盖视频提交、镜头时长、素材准备、SQL 恢复、取消、Take、片段素材隔离和真实 FFmpeg 合成。
 - `python -m unittest discover -s . -p 'test_*.py' -q`：89 项网关测试通过，覆盖可选模块、严格帧数、图连接、异步提交幂等和未启用 ControlNet 时的独立能力检查。
 - `npm run build`：Vue TypeScript 校验及 Vite 生产构建通过；存在已有构建体积提示。
 - 60 秒测试视频实际合成 1440 帧，可完整解码；从生成段提取的上下文为 39 帧。
-- UI 调试图包含 38 个节点、47 条连接，节点插槽及双向连接一致性通过静态检查。
+- UI 调试图包含 39 个节点、48 条连接，节点插槽及双向连接一致性通过静态检查。

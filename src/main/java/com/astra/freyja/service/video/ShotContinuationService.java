@@ -108,7 +108,8 @@ public class ShotContinuationService {
     public Map<String,Object> controlOptions(DramaShot shot,AiModel model,AiProvider provider,ShotControlNetOptions control){
         var cap=capabilities(model,provider);var h3=cap.path("h3");
         if(!"VERIFIED".equals(h3.path("status").asText())||!h3.path("controlNet").asBoolean()||!cap.path("healthy").asBoolean())throw new BizException(409,"ControlNet 组合尚未验收或节点离线");
-        if(!Set.of("CANNY","POSE","DEPTH","PREPARED").contains(control.getControlType())||!Double.isFinite(control.getStrength())||control.getStrength()<0||control.getStrength()>2)throw new BizException(400,"ControlNet 类型或强度无效");
+        if(control.getControlType()==null||!ShotControlNetOptions.CONTROL_TYPES.contains(control.getControlType())||!Double.isFinite(control.getStrength())||control.getStrength()<0||control.getStrength()>2)throw new BizException(400,"ControlNet 类型或强度无效");
+        if(h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->control.getControlType().equals(type.asText())))throw new BizException(409,"算力节点未安装 "+control.getControlType()+" 控制预处理器");
         var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",false);options.put("capability_revision",h3.path("revision").asText());options.put("length",ShotContinuationPlanner.align((int)Math.round(shot.getDuration().doubleValue()*24)));options.put("node_id",cap.path("nodeId").asText());
         options.put("control_required_frames",(int)Math.round(shot.getDuration().doubleValue()*24));
         options.put("control_net",Map.of("enabled",true,"reference_id",control.getReferenceId(),"control_type",control.getControlType(),"strength",control.getStrength()));return options;

@@ -343,7 +343,7 @@
       <ShotVideoReferenceEditor v-model="refVideos" :shot-id="currentShotId ? String(currentShotId) : undefined" :drama-id="dramaId" :provider-id="renderConfig.providerId" :model-code="renderConfig.modelCode" :max-videos="maxRefVideos" :option="videoModelOption" :target-duration="targetDuration" />
       <div v-if="refVideos.length" class="flex gap-3 items-center flex-wrap p-3 border rounded">
         <el-switch v-model="controlNet.enabled" active-text="ControlNet（可选）" />
-        <template v-if="controlNet.enabled"><el-select v-model="controlNet.referenceId" placeholder="选择控制视频"><el-option v-for="(v, i) in refVideos" :key="v.id" :value="v.id" :label="`Video ${i + 1}`" /></el-select><el-select v-model="controlNet.controlType"><el-option label="边缘 Canny" value="CANNY" /><el-option label="姿态 Pose" value="POSE" /><el-option label="深度 Depth" value="DEPTH" /><el-option label="已处理控制视频" value="PREPARED" /></el-select><el-input-number v-model="controlNet.strength" :min="0" :max="2" :step="0.1" /></template>
+        <template v-if="controlNet.enabled"><el-select v-model="controlNet.referenceId" placeholder="选择控制视频"><el-option v-for="(v, i) in refVideos" :key="v.id" :value="v.id" :label="`Video ${i + 1}`" /></el-select><el-select v-model="controlNet.controlType"><el-option v-for="option in H3_CONTROL_TYPES" :key="option.value" :label="option.label" :value="option.value" /></el-select><el-input-number v-model="controlNet.strength" :min="0" :max="2" :step="0.1" /></template>
       </div>
 
       <!-- 最终生成视频预览区 (若已有产物) -->
@@ -394,6 +394,7 @@
 </template>
 
 <script setup lang="ts">
+import { H3_CONTROL_TYPES } from '@/constants/h3ControlTypes'
 import ShotContinuationEditor from './ShotContinuationEditor.vue'
 import { ref, reactive, computed, watch, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'

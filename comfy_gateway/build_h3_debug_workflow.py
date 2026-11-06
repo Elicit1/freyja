@@ -29,7 +29,8 @@ def build(root):
         output["links"].append(lid)
     add(200,"MiniMaxH3ContextWindows",[("model","MODEL")],[("MODEL","MODEL")],[124,39,"pyramid",True,False],[-150,5650],"上下文窗口（默认旁路，Ctrl+B 启用）",4)
     add(201,"FreyjaMiniMaxH3FunControlNetApply",[("model","MODEL"),("model_patch","MODEL_PATCH"),("vae","VAE"),("control_video","IMAGE")],[("MODEL","MODEL")],[1.0,0.0,1.0],[-550,5850],"可选 ControlNet（先上传视频，Ctrl+B 启用）",4)
-    add(202,"ModelPatchLoader",[],[("MODEL_PATCH","MODEL_PATCH")],["minimax_h3_fun_controlnet_union_pruned_int8_convrot.safetensors"],[-1500,6250],"Union 补丁权重")
+    add(202,"ModelPatchLoader",[],[("MODEL_PATCH","MODEL_PATCH")],["minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors"],[-1500,6250],"Union 2.0 补丁权重")
+    add(207,"FreyjaH3Union2Patch",[("model_patch","MODEL_PATCH")],[("MODEL_PATCH","MODEL_PATCH")],[],[-1000,6700],"Union 2.0 结构校验（10 层 / post_norm）")
     add(203,"Canny",[("image","IMAGE")],[("IMAGE","IMAGE")],[0.4,0.8],[-1050,6400],"控制信号预处理：Canny")
     add(204,"FreyjaH3ControlFrames",[("images","IMAGE")],[("IMAGE","IMAGE")],[124,120],[-1050,6150],"控制帧覆盖（示例生成 124 帧，保留 120 帧）")
     add(205,"FreyjaH3Continuation",[("positive","CONDITIONING"),("latent","LATENT"),("vae","VAE"),("image","IMAGE"),("audio_vae","VAE"),("audio","AUDIO")],[("positive","CONDITIONING"),("LATENT","LATENT")],[0],[-150,6000],"共享上下文锁定（首段旁路，后续段启用）",4)
@@ -38,8 +39,8 @@ def build(root):
     for inp in context["inputs"]:inp["link"]=None
     for output in context["outputs"]:output["links"]=[]
     graph["nodes"].append(context);nodes[206]=context
-    for args in ((145,0,201,0,"MODEL"),(202,0,201,1,"MODEL_PATCH"),(119,0,201,2,"VAE"),(147,0,204,0,"IMAGE"),(204,0,203,0,"IMAGE"),(203,0,201,3,"IMAGE"),(201,0,200,0,"MODEL"),(200,0,126,0,"MODEL"),(200,0,124,0,"MODEL"),(136,0,205,0,"CONDITIONING"),(136,1,205,1,"LATENT"),(119,0,205,2,"VAE"),(206,0,205,3,"IMAGE"),(120,0,205,4,"VAE"),(206,2,205,5,"AUDIO"),(205,0,126,1,"CONDITIONING"),(205,1,125,4,"LATENT")):connect(*args)
-    graph["last_node_id"]=max(nodes);graph["id"]="8ac239c5-4271-4c80-9c91-8661f94c6d30";graph["revision"]=1
+    for args in ((145,0,201,0,"MODEL"),(202,0,207,0,"MODEL_PATCH"),(207,0,201,1,"MODEL_PATCH"),(119,0,201,2,"VAE"),(147,0,204,0,"IMAGE"),(204,0,203,0,"IMAGE"),(203,0,201,3,"IMAGE"),(201,0,200,0,"MODEL"),(200,0,126,0,"MODEL"),(200,0,124,0,"MODEL"),(136,0,205,0,"CONDITIONING"),(136,1,205,1,"LATENT"),(119,0,205,2,"VAE"),(206,0,205,3,"IMAGE"),(120,0,205,4,"VAE"),(206,2,205,5,"AUDIO"),(205,0,126,1,"CONDITIONING"),(205,1,125,4,"LATENT")):connect(*args)
+    graph["last_node_id"]=max(nodes);graph["id"]="8ac239c5-4271-4c80-9c91-8661f94c6d30";graph["revision"]=2
     graph.setdefault("extra",{})["freyja"]={"purpose":"H3 optional-module acceptance; default 5-second segment; not a whole-film concatenator","gateway_model":"minimax-h3-ref-turbo8"}
     target=root/"comfyUI_workflow/minimax_h3_continuation_control_debug.json"
     target.write_text(json.dumps(graph,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")

@@ -6,6 +6,7 @@ import node_helpers
 from comfy_api.latest import io, ComfyExtension
 from comfy_extras.nodes_minimax_h3 import MiniMaxH3FunControlNetApply, MiniMaxH3FunControlPatch, MiniMaxH3AddGuide, _encode_ref_audio, _resize
 from comfy.ldm.minimax.model import FRAME_PER_TOKEN
+from .control_validation import require_union2
 
 
 def window_pixel_range(indices):
@@ -67,7 +68,30 @@ class FreyjaMiniMaxH3FunControlNetApply(MiniMaxH3FunControlNetApply):
 
 
 class FreyjaH3Extension(ComfyExtension):
-    async def get_node_list(self):return [FreyjaMiniMaxH3FunControlNetApply,FreyjaH3ControlFrames,FreyjaH3Continuation]
+    async def get_node_list(self):return [FreyjaMiniMaxH3FunControlNetApply,FreyjaH3ControlFrames,FreyjaH3Continuation,FreyjaH3Union2Patch,FreyjaH3GrayFrames]
+
+
+class FreyjaH3Union2Patch(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(node_id="FreyjaH3Union2Patch",display_name="FREYJA H3 Union 2.0 Check",category="model/patch/minimax",
+                         inputs=[io.ModelPatch.Input("model_patch")],outputs=[io.ModelPatch.Output()])
+    @classmethod
+    def execute(cls,model_patch):
+        require_union2(model_patch)
+        return io.NodeOutput(model_patch)
+
+
+class FreyjaH3GrayFrames(io.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return io.Schema(node_id="FreyjaH3GrayFrames",display_name="FREYJA H3 Gray Control",category="image/preprocessors",
+                         inputs=[io.Image.Input("image")],outputs=[io.Image.Output()])
+    @classmethod
+    def execute(cls,image):
+        weights=image.new_tensor([0.299,0.587,0.114])
+        gray=(image[...,:3]*weights).sum(dim=-1,keepdim=True)
+        return io.NodeOutput(gray.expand(*gray.shape[:-1],3).contiguous())
 
 
 class FreyjaH3ControlFrames(io.ComfyNode):

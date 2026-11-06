@@ -41,6 +41,18 @@ class ShotContinuationServiceTest {
         shot.setContinuationJson(json.writeValueAsString(draft));shot.setPreviewImageUrl("https://archive/global-first.png");shot.setEndFrameImageUrl("https://archive/global-last.png");
         shot.setRefImagesJson("[{\"id\":\"global\",\"imageUrl\":\"https://archive/global.png\"}]");shot.setRefAudiosJson("[{\"id\":\"global-audio\"}]");return shot;
     }
+    @Test void ordinaryControlOptionsUseUnion2TypesAndRespectInstalledPreprocessors() throws Exception {
+        var service=service();
+        doReturn(json.readTree("{\"healthy\":true,\"h3\":{\"status\":\"VERIFIED\",\"controlNet\":true,\"controlTypes\":[\"HED\",\"MLSD\",\"SCRIBBLE\",\"LAYOUT\",\"GRAY\"]}}"))
+                .when(service).capabilities(any(),any());
+        var shot=new DramaShot();shot.setDuration(BigDecimal.valueOf(5));
+        var control=new ShotControlNetOptions();control.setEnabled(true);control.setReferenceId("v1");
+        for(String kind:List.of("HED","MLSD","SCRIBBLE","LAYOUT","GRAY")){
+            control.setControlType(kind);var options=service.controlOptions(shot,model("TXT2VIDEO_REF"),provider(),control);
+            assertEquals(kind,((Map<?,?>)options.get("control_net")).get("control_type"));
+        }
+        control.setControlType("DEPTH");assertThrows(com.astra.freyja.common.BizException.class,()->service.controlOptions(shot,model("TXT2VIDEO_REF"),provider(),control));
+    }
     private AiModel model(String type){var model=new AiModel();model.setId(3L);model.setModelCode("h3");model.setModelType(type);return model;}
     private AiProvider provider(){var provider=new AiProvider();provider.setId(4L);provider.setBaseUrl("http://gateway/v1");return provider;}
 }

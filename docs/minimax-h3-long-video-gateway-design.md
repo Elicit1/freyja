@@ -80,6 +80,8 @@
 
 ### 3.2 ControlNet Union
 
+当前实施默认采用 Union 2.0，权重为 `minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors`。前后端统一开放 Canny / Depth / HED / MLSD / Pose / Scribble / Layout / Gray，另保留已处理控制视频入口。Layout 要求上传预先制作的布局信号，不包含自动目标检测/跟踪；其他新增预处理、下载及升级验收见 [部署说明](minimax-h3-continuation-deployment.md)。加载后通过 `FreyjaH3Union2Patch` 检查 10 个控制块、每 5 层注入及 `post_norm`，防止 v1 或旧加载器混用。
+
 官方原生入口是 `ModelPatchLoader` 加 `MiniMaxH3FunControlNetApply`，作用于 MODEL 分支；补丁权重位于 `models/model_patches/`。姿态、深度、边缘等控制视频属于逐时刻控制信号，区别于 Ref2VA 的语义参考视频。
 
 依据：[官方使用说明](https://docs.comfy.org/tutorials/video/minimax/minimax-h3-fun-controlnet)。权重必须与底模的 AdaLN 形式匹配；文件存在、节点可见不足以证明组合可用。

@@ -10,6 +10,36 @@ from test_video_reference import setup_model, BASE
 
 
 class H3ExtensionsTest(unittest.TestCase):
+    def test_union2_controls_are_routed_without_destroying_original_branches(self):
+        expected={"CANNY":"Canny","POSE":"DWPreprocessor","DEPTH":"DepthAnythingV2Preprocessor",
+                  "HED":"HEDPreprocessor","MLSD":"M-LSDPreprocessor","SCRIBBLE":"FakeScribblePreprocessor","GRAY":"FreyjaH3GrayFrames",
+                  "LAYOUT":None,"PREPARED":None}
+        for kind,preprocessor in expected.items():
+            for window in (False,True):
+                with self.subTest(kind=kind,window=window):
+                    model,request,graph=self.setup_graph();original=copy.deepcopy(graph)
+                    request.h3_options.control_net.enabled=True;request.h3_options.control_net.reference_id="v"
+                    request.h3_options.control_net.control_type=kind;request.h3_options.context_windows.enabled=window
+                    apply_extensions(graph,request,model,[{"reference_id":"v","filename":"control.mp4"}])
+                    self.assertEqual(graph["h3_patch"]["inputs"]["name"],"minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors")
+                    self.assertEqual(graph["h3_control"]["inputs"]["model_patch"],["h3_union2_patch",0])
+                    if preprocessor:
+                        self.assertEqual(graph["h3_control_preprocess"]["class_type"],preprocessor)
+                        self.assertEqual(graph["h3_control_preprocess"]["inputs"]["image"],["h3_control_frames",0])
+                    else:
+                        self.assertNotIn("h3_control_preprocess",graph)
+                        self.assertEqual(graph["h3_control"]["inputs"]["control_video"],["h3_control_frames",0])
+                    self.assertEqual(graph["145"],original["145"])  # Existing LoRA chain.
+
+    def test_union2_rejects_v1_wrong_injection_layers_and_pre_norm(self):
+        import runpy
+        from types import SimpleNamespace
+        validate=runpy.run_path(str(BASE/"comfy_extension/freyja_h3/control_validation.py"))["require_union2"]
+        def inner(**changes):return SimpleNamespace(**dict({"injection_layers":tuple(range(0,50,5)),"control_blocks":[None]*10,"inpaint_post_norm":True},**changes))
+        validate(SimpleNamespace(model=inner()))
+        for invalid in (inner(control_blocks=[None]*5),inner(injection_layers=tuple(range(0,50,10))),inner(inpaint_post_norm=False),SimpleNamespace()):
+            with self.assertRaisesRegex(ValueError,"H3_UNION2_INCOMPATIBLE"):validate(SimpleNamespace(model=invalid))
+
     def setup_graph(self):
         model,config=setup_model();model.h3_extensions["status"]="VERIFIED"
         request=ImageGenerationRequest(model=model.model_name,prompt="本段人物继续行走",size="960x544",h3_options={"capability_revision":revision(model,BASE),"continuation_enabled":True,"length":362})
@@ -73,6 +103,24 @@ class H3ExtensionsTest(unittest.TestCase):
         request.duration=15;require_options(request,model,BASE)
 
 class H3AsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_union2_capabilities_only_offer_installed_preprocessors_and_require_patch_guard(self):
+        from h3_extensions import backend_acceptance
+        model,_=setup_model()
+        nodes={name:{"input":{}} for name in (model.h3_extensions["conditioning"]["class_type"],"MiniMaxH3AddGuide","MiniMaxH3FunControlNetApply","FreyjaH3ControlFrames","FreyjaH3Union2Patch","HEDPreprocessor")}
+        nodes["ModelPatchLoader"]={"input":{"required":{"name":[[model.h3_extensions["control_patch"]]]}}}
+        async def probe():
+            response=Mock();response.json.return_value=nodes
+            stats=Mock();stats.json.return_value={"system":{}}
+            http=AsyncMock();http.get.side_effect=[response,stats]
+            client=Mock();client.http_base="http://gpu";client.get_http_client=AsyncMock(return_value=http)
+            return await backend_acceptance(model,client)
+        available=await probe()
+        self.assertEqual(available["controlVersion"],"2.0");self.assertTrue(available["controlNet"])
+        self.assertEqual(set(available["controlTypes"]),{"HED","LAYOUT","PREPARED"})
+        nodes.pop("FreyjaH3Union2Patch")
+        missing=await probe();self.assertFalse(missing["controlNet"])
+        self.assertNotEqual(available["backendSignature"],missing["backendSignature"])
+
     async def test_missing_optional_control_nodes_do_not_block_accepted_guide_continuation(self):
         from h3_extensions import backend_acceptance
         model,_=setup_model();model.h3_extensions["status"]="VERIFIED"

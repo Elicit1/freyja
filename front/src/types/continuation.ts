@@ -1,4 +1,5 @@
 import type { ShotRefImage, ShotRefVideo } from './drama'
+import type { H3ControlType } from '@/constants/h3ControlTypes'
 export interface ContinuationSegment {
   id: string
   startFrame: number
@@ -11,7 +12,7 @@ export interface ContinuationSegment {
   referenceVideos: ShotRefVideo[]
   controlNetEnabled: boolean
   controlVideoId?: string
-  controlType: 'CANNY' | 'POSE' | 'DEPTH' | 'PREPARED'
+  controlType: H3ControlType
   controlStrength: number
 }
 export interface ContinuationDraft {

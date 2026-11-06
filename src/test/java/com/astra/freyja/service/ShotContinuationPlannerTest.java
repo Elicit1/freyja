@@ -38,6 +38,14 @@ class ShotContinuationPlannerTest {
         var video=new ShotRefVideoDTO();video.setId("v1");video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive.test/video.mp4");d.getSegments().getFirst().getReferenceVideos().add(video);
         assertDoesNotThrow(()->planner.plan(d,false));assertEquals("v1",d.getSegments().getFirst().getControlVideoId());
     }
+    @Test void union2ControlTypesRemainExplicitAndUnknownTypesAreRejected(){
+        var d=draft(10);planner.plan(d,true);var segment=d.getSegments().getFirst();
+        var video=new ShotRefVideoDTO();video.setId("v1");video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive.test/control.mp4");
+        segment.getReferenceVideos().add(video);segment.setControlNetEnabled(true);
+        for(String kind:ShotControlNetOptions.CONTROL_TYPES){segment.setControlType(kind);assertDoesNotThrow(()->planner.plan(d,false));}
+        segment.setControlType("UNKNOWN");assertThrows(BizException.class,()->planner.plan(d,false));
+        segment.setControlType(null);assertThrows(BizException.class,()->planner.plan(d,false));
+    }
     @Test void manualGapsAndDuplicateIdsAreRejected(){var d=draft(40);planner.plan(d,true);d.getSegments().get(1).setStartFrame(374);assertThrows(BizException.class,()->planner.plan(d,false));}
     @Test void shortEnabledShotStillUsesOnlyOneSegment(){assertEquals(1,planner.plan(draft(3),true).getSegmentCount());}
     @Test void embeddedContinuationJsonPreservesSnowflakeIds()throws Exception{
