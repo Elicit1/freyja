@@ -37,10 +37,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -66,10 +65,6 @@ models:
       - id: '126'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '125'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -106,9 +101,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -134,10 +126,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -163,10 +154,6 @@ models:
       - id: '16'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '14'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -203,9 +190,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -231,10 +215,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -260,10 +243,6 @@ models:
       - id: '16'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '14'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -300,9 +279,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -328,10 +304,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -357,10 +332,6 @@ models:
       - id: '126'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '125'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -397,9 +368,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -432,10 +400,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -461,10 +428,6 @@ models:
       - id: '126'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '125'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -501,9 +464,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -536,10 +496,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -565,10 +524,6 @@ models:
       - id: '126'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '125'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -605,9 +560,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -638,10 +590,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -667,10 +618,6 @@ models:
       - id: '126'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '125'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -707,9 +654,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -741,10 +685,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -770,10 +713,6 @@ models:
       - id: '126'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '125'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -810,9 +749,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -844,10 +780,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -873,10 +808,6 @@ models:
       - id: '126'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '125'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -913,9 +844,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -1003,10 +931,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -1029,10 +956,6 @@ models:
       - id: '16'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '14'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -1069,9 +992,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED
@@ -1097,10 +1017,9 @@ models:
     h3_extensions:
       status: UNVERIFIED
       continuation: true
-      masked_continuation: true
       context_windows: true
       control_net: true
-      window_control_adapter: true
+      context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
       model_output:
@@ -1123,10 +1042,6 @@ models:
       - id: '126'
         class_type: BasicGuider
         input: conditioning
-      latent_consumers:
-      - id: '125'
-        class_type: SamplerCustomAdvanced
-        input: latent_image
       preprocessors:
         CANNY:
           class_type: Canny
@@ -1163,9 +1078,6 @@ models:
           inputs:
             safe: enable
             resolution: 512
-        GRAY:
-          class_type: FreyjaH3GrayFrames
-          inputs: {}
       prepared_control_types:
       - LAYOUT
       - PREPARED

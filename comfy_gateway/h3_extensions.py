@@ -40,7 +40,8 @@ class H3Options(BaseModel):
     model_config = ConfigDict(extra="forbid")
     schema_version: Literal[1] = 1
     continuation_enabled: bool = False
-    lock_context: bool = False
+    # Old snapshots may contain false; true would require the removed private sampler path.
+    lock_context: Literal[False] = False
     capability_revision: str
     length: int = Field(ge=22, le=362)
     control_required_frames: Optional[int] = Field(default=None,ge=1,le=362)
@@ -63,6 +64,7 @@ def revision(model, base_dir):
     digest=hashlib.sha256(path.read_bytes())
     digest.update(Path(__file__).read_bytes())
     digest.update((base_dir/"workflow_engine.py").read_bytes())
+    digest.update((base_dir/"reference_media.py").read_bytes())
     digest.update(json.dumps(model.h3_extensions,sort_keys=True).encode())
     return digest.hexdigest()
 
@@ -74,10 +76,7 @@ async def backend_acceptance(model, client):
     baseline={cfg["conditioning"]["class_type"],"MiniMaxH3AddGuide"}
     required=set(baseline)
     if cfg.get("context_windows"):required.add("MiniMaxH3ContextWindows")
-    if cfg.get("masked_continuation"):required.add("FreyjaH3Continuation")
-    if cfg.get("control_net"):required.update(("MiniMaxH3FunControlNetApply","ModelPatchLoader","FreyjaH3ControlFrames"))
-    if cfg.get("window_control_adapter"):required.add("FreyjaMiniMaxH3FunControlNetApply")
-    if cfg.get("control_version")=="2.0":required.add("FreyjaH3Union2Patch")
+    if cfg.get("control_net"):required.update(("MiniMaxH3FunControlNetApply","ModelPatchLoader"))
     preprocessors=cfg.get("preprocessors",{})
     required.update(preset["class_type"] for preset in preprocessors.values())
     try:
@@ -85,7 +84,7 @@ async def backend_acceptance(model, client):
         nodes_response=await http.get(client.http_base+"/object_info",timeout=8);nodes_response.raise_for_status();nodes=nodes_response.json()
         stats_response=await http.get(client.http_base+"/system_stats",timeout=5);stats_response.raise_for_status();system=stats_response.json().get("system",{})
         public["missingNodes"]=sorted(required-set(nodes))
-        public["controlTypes"]=[name for name,preset in preprocessors.items() if preset["class_type"] in nodes]+cfg.get("prepared_control_types",["PREPARED"])
+        public["controlTypes"]=[name for name,preset in preprocessors.items() if preset["class_type"] in nodes]+["GRAY"]+cfg.get("prepared_control_types",["PREPARED"])
         def normalized(value):
             # File inventories change independently of a node's protocol. Check the selected patch below.
             if isinstance(value,list) and value and isinstance(value[0],list):return ["COMBO"]+value[1:]
@@ -94,10 +93,8 @@ async def backend_acceptance(model, client):
         patch_choices=nodes.get("ModelPatchLoader",{}).get("input",{}).get("required",{}).get("name",[[]])[0]
         patch_available=cfg.get("control_patch") in patch_choices
         public["contextWindows"]=bool(cfg.get("context_windows") and "MiniMaxH3ContextWindows" in nodes)
-        public["maskedContinuation"]=bool(cfg.get("masked_continuation") and "FreyjaH3Continuation" in nodes)
-        public["controlNet"]=bool(cfg.get("control_net") and patch_available and {"MiniMaxH3FunControlNetApply","ModelPatchLoader","FreyjaH3ControlFrames"}<=nodes.keys())
-        if cfg.get("control_version")=="2.0":public["controlNet"]=public["controlNet"] and "FreyjaH3Union2Patch" in nodes
-        public["windowControlAdapter"]=bool(cfg.get("window_control_adapter") and public["controlNet"] and public["contextWindows"] and "FreyjaMiniMaxH3FunControlNetApply" in nodes)
+        public["controlNet"]=bool(cfg.get("control_net") and patch_available and {"MiniMaxH3FunControlNetApply","ModelPatchLoader"}<=nodes.keys())
+        public["contextWindowsWithControlNet"]=bool(cfg.get("context_windows_with_control_net") and public["controlNet"] and public["contextWindows"])
         if cfg.get("control_net") and not patch_available:public["missingNodes"].append("weight:"+str(cfg.get("control_patch")))
         fingerprint={"backend":client.http_base,"versions":{key:system.get(key) for key in ("comfyui_version","pytorch_version","python_version")},"nodes":schemas,"controlPatch":cfg.get("control_patch"),"patchAvailable":patch_available}
         public["backendSignature"]=hashlib.sha256(json.dumps(fingerprint,sort_keys=True).encode()).hexdigest()
@@ -123,13 +120,12 @@ def require_options(request, model, base_dir):
     if not cfg or cfg.get("status")!="VERIFIED": raise ValueError("H3_UNVERIFIED: workflow requires online acceptance")
     if options.capability_revision!=revision(model,base_dir): raise ValueError("H3_REVISION_CHANGED: refresh continuation plan")
     if options.continuation_enabled and not cfg.get("continuation"): raise ValueError("H3_CONTINUATION_UNSUPPORTED")
-    if options.lock_context and not cfg.get("masked_continuation"): raise ValueError("H3_MASKED_CONTINUATION_UNVERIFIED")
     if options.context_windows.enabled and not cfg.get("context_windows"): raise ValueError("H3_CONTEXT_UNSUPPORTED")
     if options.control_net.enabled:
         if not cfg.get("control_net"): raise ValueError("H3_CONTROL_UNSUPPORTED")
         if not any(v.reference_id==options.control_net.reference_id for v in request.get_all_ref_videos()):
             raise ValueError("H3_CONTROL_SOURCE_MISSING: select an attached reference video")
-        if options.context_windows.enabled and not cfg.get("window_control_adapter"):
+        if options.context_windows.enabled and not cfg.get("context_windows_with_control_net"):
             raise ValueError("H3_WINDOW_CONTROL_UNVERIFIED")
 
 
@@ -137,6 +133,8 @@ def apply_extensions(workflow, request, model, videos, continuation_filename=Non
     options=request.h3_options
     if options is None: return
     cfg=model.h3_extensions
+    if options.control_net.enabled and options.context_windows.enabled and not cfg.get("context_windows_with_control_net"):
+        raise ValueError("H3_WINDOW_CONTROL_UNVERIFIED: use per-segment control without context windows")
     def node(key):
         binding=cfg[key]; value=workflow.get(binding["id"])
         if not value or value.get("class_type")!=binding["class_type"]: raise ValueError("H3_GRAPH_MISMATCH: "+key)
@@ -149,21 +147,20 @@ def apply_extensions(workflow, request, model, videos, continuation_filename=Non
     if options.control_net.enabled:
         control=options.control_net
         video=next(v for v in videos if v["reference_id"]==control.reference_id)
-        workflow["h3_control_video"]={"class_type":"VHS_LoadVideo","inputs":{"video":video["filename"],"force_rate":24,"custom_width":0,"custom_height":0,"frame_load_cap":options.length,"skip_first_frames":0,"select_every_nth":1,"format":"None"}}
-        workflow["h3_control_frames"]={"class_type":"FreyjaH3ControlFrames","inputs":{"images":["h3_control_video",0],"target_frames":options.length,"required_frames":options.control_required_frames or options.length}}
-        source=["h3_control_frames",0]
-        if control.control_type not in cfg.get("prepared_control_types",["PREPARED"]):
+        if video.get("frames",0)<(options.control_required_frames or options.length):
+            raise ValueError("H3_CONTROL_RANGE_INVALID: control video does not cover the requested output interval")
+        if control.control_type=="GRAY" and not video.get("control_filename"):
+            raise ValueError("H3_GRAY_SOURCE_MISSING: prepare a separate grayscale control video")
+        filename=video["control_filename"] if control.control_type=="GRAY" else video["filename"]
+        workflow["h3_control_video"]={"class_type":"VHS_LoadVideo","inputs":{"video":filename,"force_rate":24,"custom_width":0,"custom_height":0,"frame_load_cap":options.length,"skip_first_frames":0,"select_every_nth":1,"format":"None"}}
+        source=["h3_control_video",0]
+        if control.control_type!="GRAY" and control.control_type not in cfg.get("prepared_control_types",["PREPARED"]):
             preset=cfg.get("preprocessors",{}).get(control.control_type)
             if not preset: raise ValueError("H3_PREPROCESSOR_UNSUPPORTED: "+control.control_type)
             workflow["h3_control_preprocess"]={"class_type":preset["class_type"],"inputs":dict(preset.get("inputs",{}),**{preset.get("image_input","image"):source})}
             source=["h3_control_preprocess",preset.get("output_slot",0)]
         workflow["h3_patch"]={"class_type":"ModelPatchLoader","inputs":{"name":cfg["control_patch"]}}
-        patch_source=["h3_patch",0]
-        if cfg.get("control_version")=="2.0":
-            workflow["h3_union2_patch"]={"class_type":"FreyjaH3Union2Patch","inputs":{"model_patch":patch_source}}
-            patch_source=["h3_union2_patch",0]
-        apply_class="FreyjaMiniMaxH3FunControlNetApply" if options.context_windows.enabled else "MiniMaxH3FunControlNetApply"
-        workflow["h3_control"]={"class_type":apply_class,"inputs":{"model":final,"model_patch":patch_source,"vae":[vae_id,0],"strength":control.strength,"start_percent":0.0,"end_percent":1.0,"control_video":source}}
+        workflow["h3_control"]={"class_type":"MiniMaxH3FunControlNetApply","inputs":{"model":final,"model_patch":["h3_patch",0],"vae":[vae_id,0],"strength":control.strength,"start_percent":0.0,"end_percent":1.0,"control_video":source}}
         final=["h3_control",0]
     if options.context_windows.enabled:
         window=options.context_windows
@@ -178,10 +175,6 @@ def apply_extensions(workflow, request, model, videos, continuation_filename=Non
         workflow["h3_context_video"]={"class_type":"VHS_LoadVideo","inputs":{"video":continuation_filename,"force_rate":24,"custom_width":0,"custom_height":0,"frame_load_cap":options.continuation.frames,"skip_first_frames":0,"select_every_nth":1,"format":"None"}}
         # Guide conditioning is separate from reference labels and their ordered contract.
         workflow["h3_guide"]={"class_type":"MiniMaxH3AddGuide","inputs":{"positive":[cond_id,0],"latent":[cond_id,1],"vae":[vae_id,0],"image":["h3_context_video",0],"frame_idx":0}}
-        if options.lock_context:
-            workflow["h3_guide"]["class_type"]="FreyjaH3Continuation"
-            for binding in cfg["latent_consumers"]:
-                workflow[binding["id"]]["inputs"][binding["input"]]=["h3_guide",1]
         if cfg.get("audio_vae"):
             audio_id,_=node("audio_vae")
             workflow["h3_guide"]["inputs"].update({"audio_vae":[audio_id,0],"audio":["h3_context_video",2]})

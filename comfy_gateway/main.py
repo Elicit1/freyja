@@ -299,9 +299,8 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         accepted=await backend_acceptance(model_cfg,client)
         if accepted["status"]!="VERIFIED":raise ValueError("H3_UNVERIFIED: backend nodes, weights or version changed")
         if request.h3_options.context_windows.enabled and not accepted.get("contextWindows"):raise ValueError("H3_CONTEXT_UNAVAILABLE")
-        if request.h3_options.lock_context and not accepted.get("maskedContinuation"):raise ValueError("H3_MASKED_CONTINUATION_UNAVAILABLE")
         if request.h3_options.control_net.enabled and not accepted.get("controlNet"):raise ValueError("H3_CONTROL_UNAVAILABLE")
-        if request.h3_options.control_net.enabled and request.h3_options.context_windows.enabled and not accepted.get("windowControlAdapter"):raise ValueError("H3_WINDOW_CONTROL_UNAVAILABLE")
+        if request.h3_options.control_net.enabled and request.h3_options.context_windows.enabled and not accepted.get("contextWindowsWithControlNet"):raise ValueError("H3_WINDOW_CONTROL_UNAVAILABLE")
         if request.h3_options.control_net.enabled and request.h3_options.control_net.control_type not in accepted["controlTypes"]:raise ValueError("H3_PREPROCESSOR_UNSUPPORTED")
         request.node_id=target_node.node_id
         if request.h3_options.control_net.enabled and not video_references: raise ValueError("H3_CONTROL_SOURCE_MISSING")
@@ -358,7 +357,11 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     if video_capability:
         hosts = {host.strip().lower() for host in os.getenv("REFERENCE_MEDIA_HOSTS", "").split(",") if host.strip()}
         for binding in video_references:
-            uploaded_ref_videos.append(await asyncio.wait_for(upload_reference_video(client, binding, video_capability, hosts), timeout=120))
+            control_upload = {}
+            if request.h3_options and request.h3_options.control_net.enabled and binding.reference_id == request.h3_options.control_net.reference_id:
+                control_upload = {"required_frames":request.h3_options.control_required_frames or request.h3_options.length,
+                                  "grayscale":request.h3_options.control_net.control_type=="GRAY"}
+            uploaded_ref_videos.append(await asyncio.wait_for(upload_reference_video(client, binding, video_capability, hosts, **control_upload), timeout=120))
             if sum(video["duration"] for video in uploaded_ref_videos) > video_capability.max_total_clip_seconds + len(uploaded_ref_videos) / video_capability.decode_fps:
                 raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: total reference duration exceeds model configuration")
 
@@ -563,8 +566,8 @@ async def model_capabilities(model_code: str, node_id: Optional[str] = None):
     healthy = await (await get_client_pool().get_client_for_node(node)).check_health() if node and node.enabled else False
     h3=model.h3_extensions or {}
     h3_public={"status":h3.get("status","UNSUPPORTED"),"revision":h3_revision(model,get_base_dir()) if h3 else None,
-               "continuation":bool(h3.get("continuation")),"maskedContinuation":bool(h3.get("masked_continuation")),"contextWindows":bool(h3.get("context_windows")),
-               "controlNet":bool(h3.get("control_net")),"windowControlAdapter":bool(h3.get("window_control_adapter"))}
+               "continuation":bool(h3.get("continuation")),"contextWindows":bool(h3.get("context_windows")),
+               "controlNet":bool(h3.get("control_net")),"contextWindowsWithControlNet":bool(h3.get("context_windows_with_control_net"))}
     if h3 and node and node.enabled:h3_public.update(await backend_acceptance(model,await get_client_pool().get_client_for_node(node)))
     if capability is None:
         return {"modelCode": model_code, "nodeId": model.node_id,

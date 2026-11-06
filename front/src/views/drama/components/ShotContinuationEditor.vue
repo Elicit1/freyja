@@ -19,7 +19,6 @@
           <span>段长（帧）</span><el-input-number v-model="draft.segmentFrames" :min="124" :max="362" :step="17" />
           <span>共享上下文（帧）</span><el-input-number v-model="draft.overlapFrames" :min="5" :max="141" :step="17" />
           <el-checkbox v-model="draft.contextWindows">启用已验证的上下文窗口</el-checkbox>
-          <el-checkbox v-model="draft.lockContext">锁定共享上下文</el-checkbox>
           <el-button @click="preview(true)">自动拆分</el-button><el-button @click="appendSegment">手动加段</el-button><el-button @click="resetPlan">重建计划，素材退回待分配</el-button>
         </div>
         <div class="flex gap-3 items-center"><el-select v-model="chatModelId" placeholder="选择 AI 文本规划模型" class="!w-72"><el-option v-for="m in chatModels" :key="String(m.id)" :value="String(m.id)" :label="m.modelName" /></el-select><el-button :disabled="!draft.segments.length || !chatModelId" @click="planPrompts">AI 编写各段提示词</el-button></div>

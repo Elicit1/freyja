@@ -1,6 +1,6 @@
 # MiniMax H3 接续部署与验收
 
-2026-11-06。默认配置已迁移到 ControlNet Union 2.0；目标 ComfyUI 可访问，补丁清单已列出 2.0 权重，但缺项目扩展与第三方预处理节点，尚未提交真实 GPU 验收任务。配置保持 `UNVERIFIED`，接续渲染和 ControlNet 组合在验收通过前不可提交。普通短视频入口继续使用原有能力规则。
+2026-11-06。H3 接续与 Union 2.0 已统一接入官方节点，五个项目自定义节点及其安装依赖已移除。目标 ComfyUI 可访问；尚未完成真实 GPU 接缝与控制效果验收，配置保持 `UNVERIFIED`。普通短视频入口继续使用原有能力规则。
 
 ## 使用入口与实际行为
 
@@ -16,7 +16,9 @@
 
 参考生成工作流支持普通图片与视频参考；首尾帧工作流支持片段显式首尾帧，不支持 Ref2VA 视频引用。上传和素材选择不要求逐项用途说明；本段提示词按本段顺序引用 `<Picture N>` / `<Video N>`。原音是否参与条件由片段视频的「参考原音」设置控制。
 
-上一段真实生成尾部由系统作为技术上下文传递，不占普通引用编号。默认使用原生 `MiniMaxH3AddGuide`；开启锁定共享上下文后使用项目提供的 AV latent/mask 扩展，两者均须真实采样验收。
+上一段真实生成尾部由系统作为技术上下文传递，不占普通引用编号，统一使用官方 `MiniMaxH3AddGuide` 的视频与音频条件。采样 latent 保持原工作流接线，不额外写入前缀或设置噪声遮罩。「锁定共享上下文」选项已移除；旧草稿可以读取，重新保存时不再包含该字段，必须重新预览并准备任务。旧执行快照若要求 `lock_context=true` 会被拒绝，避免按不同语义继续执行。
+
+段间接续与片段内部的上下文窗口分别处理。窗口单独使用官方节点；窗口与 ControlNet 联用仅在具体模型配置 `context_windows_with_control_net: true` 且完成对应真实 GPU 验收后允许。默认关闭该组合，预览及提交均明确阻止；按 5 / 8 / 10 / 15 秒分段、逐段使用 ControlNet 不需要同时开启片段内窗口。
 
 ### 段长档位
 
@@ -41,7 +43,7 @@
 | 串行执行与恢复 | `ShotContinuationRenderer`、现有 `VideoRenderBatchService` |
 | 拼接 | `ShotContinuationMedia`，FFmpeg 精确裁重叠、24fps 合成、FFprobe 实际帧数校验 |
 | 网关装配 | `h3_extensions.py`，按显式节点绑定插入可选模块 |
-| ComfyUI 扩展 | `comfy_gateway/comfy_extension/freyja_h3/` |
+| ComfyUI H3 节点 | 官方 `MiniMaxH3AddGuide`、`MiniMaxH3FunControlNetApply`、`ModelPatchLoader`、`MiniMaxH3ContextWindows` |
 | 界面 | `ShotContinuationEditor.vue` |
 
 启动时 `ShotContinuationSchema` 以增量方式增加 `drama_shot.continuation_json`，创建 `shot_continuation_preparation` 与 `render_task_step`，缺失的执行身份列自动补充。需要正常的数据库 DDL 权限；升级失败会报错。没有改写历史任务 JSON。
@@ -56,7 +58,7 @@ SQL 保存每段输入摘要、执行 ID、真实节点/prompt ID、状态和归
 
 使用 [Alibaba PAI Union 2.0](https://huggingface.co/alibaba-pai/MiniMax-H3-Fun-Controlnet-Union-2.0) 的 [Comfy-Org INT8 适配权重](https://huggingface.co/Comfy-Org/MiniMax-H3/tree/main/model_patches)：`minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors`，约 4.53 GB，放在 `ComfyUI/models/model_patches/`。不要将 v1 文件改名冒充 v2。
 
-需更新 ComfyUI 到支持 v2 的版本：原生 `ModelPatchLoader` 应识别 10 个控制块和权重元数据中的 `inpaint_masked_pixel_mode=post_norm`。项目的 `FreyjaH3Union2Patch` 在运行时检查实际加载对象的 10 个块、注入位置 `0,5,…45` 及 `post_norm`，不匹配会报错。无窗口时继续使用原生 Apply；有窗口时使用窗口对齐扩展，两条路径都经过检查。
+需更新 ComfyUI 到支持 v2 的版本：原生 `ModelPatchLoader` 应识别 10 个控制块和权重元数据中的 `inpaint_masked_pixel_mode=post_norm`。模型结构识别、权重加载和控制应用均交给官方实现，不再增加私有检查节点。验收时记录模型摘要、ComfyUI 版本及真实加载结果，补丁清单只能证明文件名可选。
 
 | 选项 | 实际处理 | 附加模型 |
 | --- | --- | --- |
@@ -67,10 +69,12 @@ SQL 保存每段输入摘要、执行 ID、真实节点/prompt ID、状态和归
 | Pose | `DWPreprocessor`，显式指定 ONNX 检测器与姿态估计器 | `yolox_l.onnx`、`dw-ll_ucoco_384.onnx` |
 | Scribble | `FakeScribblePreprocessor` | 复用 HED 权重 |
 | Layout | 直接使用已制作的白底彩色目标框布局视频 | 当前不自动检测或跟踪目标 |
-| Gray | 项目扩展 `FreyjaH3GrayFrames`，逐帧灰度化 | 无 |
+| Gray | 网关 FFmpeg 生成独立灰度控制副本，官方 Apply 接收该视频 | 无 |
 | 已处理控制视频 | 跳过预处理，直接传递控制信号 | 按上传内容决定 |
 
 八种控制由同一个 Union 2.0 权重提供，不是八个 ControlNet 模型。全部自动预处理需要额外五个文件，连同 Union 共六个；Scribble 复用 HED，Canny/Gray 不需要模型。Layout 的框、颜色及轨迹须提前制作，原始实拍视频不能直接当布局信号。
+
+网关用 FFprobe 检查所选控制视频的真实解码帧数，必须覆盖本段真实输出范围；官方 Apply 可以补齐生成帧网格的技术尾部，不能用它掩盖真实源范围不足。Gray 使用单独的无颜色控制副本，普通语义参考保留原彩色视频与原音设置；源归档及摘要不改写。网关主机需要 FFmpeg 和 FFprobe，Docker 镜像已包含。
 
 姿态、深度、HED、MLSD、Scribble 节点来自 [comfyui_controlnet_aux](https://github.com/Fannovel16/comfyui_controlnet_aux)，须安装到 ComfyUI 并使用实际运行 ComfyUI 的 Python 安装其依赖。下面是 Linux 远程主机的镜像下载命令；先改为实际 ComfyUI 路径。已有相同文件可跳过下载。若配置了 `AUX_ANNOTATOR_CKPTS_PATH`，将 `aux` 改为该目录。
 
@@ -99,7 +103,7 @@ fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/mlsd_large_512_f
 
 默认节点、配置生成器及调试图均已切换 2.0。本地 `machine_local.yaml` 也已刷新，其余远程部署需同步更新。迁移会撤销旧的验收状态与签名，重新准备计划后方可使用；旧任务快照保持原有内容，不能把使用 v1 生成的片段视为 v2 缓存。先完成运行中的任务，再切换配置。
 
-1. 将 `comfy_gateway/comfy_extension/freyja_h3` 整个目录复制到实际算力主机的 `ComfyUI/custom_nodes/freyja_h3`，重启 ComfyUI。该扩展依赖当前 H3 原生实现，包括 `FRAME_PER_TOKEN`、`MiniMaxH3AddGuide` 与 `MiniMaxH3FunControlPatch`，升级后需重新验证。
+1. 更新 ComfyUI 到提供上述官方 H3 节点且支持 Union 2.0 加载的版本。保留现有 `ComfyUI-VideoHelperSuite` 视频读取与输出节点，按需安装 `comfyui_controlnet_aux`。不再安装项目自定义节点；若旧部署装过 `custom_nodes/freyja_h3`，可移除该目录后重启 ComfyUI，并重新导入新版调试图。此修改不会通过 ComfyUI HTTP 接口自动删除远端插件目录。
 2. 按实际启用模块安装节点：窗口使用 `MiniMaxH3ContextWindows`，ControlNet 使用 `MiniMaxH3FunControlNetApply`、`ModelPatchLoader` 及 `models/model_patches/` 下的 Union 权重。可选姿态/深度预处理器须另行安装；Canny 使用原生节点。所选补丁必须与底模匹配。未启用的可选模块不成为基础 guide 接续的依赖；缺失模块会在能力中显示不可用。
 3. 维护实际节点 YAML 中的 `h3_extensions`。默认模板已覆盖当前 11 个 H3 生成模型，保留各自 LoRA、采样步数与 FaceRefine 裁脸修复支路。可用以下命令从现有 API 图重新生成绑定：
 
@@ -120,24 +124,23 @@ fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/mlsd_large_512_f
    输出 `controlVersion`、`backendSignature`、缺失节点、支持的控制预处理器和 `workflowRevision`。探测本身不生成视频，也不把状态改为已验收。
 7. 在目标 GPU 上完成下述验收后，将对应模型 `h3_extensions.status` 设为 `VERIFIED`，并保存本次 `backendSignature` 到 `verified_backend_signature`。随后重新读取能力、预览计划。引用视频还须独立满足既有 `reference_video` 的 VERIFIED、工作流 revision 与 backend 规则。
 
-2026-11-06 只读探测结果：原生 Apply、补丁加载器、上下文窗口存在，所选 Union 2.0 文件名在补丁清单中；缺 `FreyjaH3Union2Patch`、`FreyjaH3GrayFrames`、`FreyjaH3ControlFrames`、`FreyjaH3Continuation`、`FreyjaMiniMaxH3FunControlNetApply` 以及 DWPose / DepthAnythingV2 / HED / MLSD / FakeScribble 预处理节点。目前 `controlNet=false`、`windowControlAdapter=false`。先将项目扩展整个目录（包括 `control_validation.py`）部署到远端、安装 `comfyui_controlnet_aux` 及依赖，然后重启 ComfyUI、重新探测。文件名出现在清单不代表加载、模型内容或采样已验收。
+原生路径探测不再要求任何项目私有节点。能力的 `controlTypes` 只列出已安装预处理节点支持的类型，以及网关准备的 Gray 和显式预处理视频类型。`contextWindowsWithControlNet` 单独声明原生联用验收范围，节点可见不会自动开启该组合。HED / MLSD / Pose / Depth / Scribble 缺失时，安装 `comfyui_controlnet_aux` 及依赖、对应预处理模型后重启；不影响 Canny、Gray 或已处理视频的节点可用性。
 
-运行时签名检查已安装节点输入 schema、报告的 ComfyUI/PyTorch/Python 版本、后端地址和所选补丁是否在列表中；计划 revision 包含 API 图、网关装配代码和模块配置。签名不读取远端模型文件内容，不能替代模型摘要、扩展部署版本及真实渲染验收记录。
+运行时签名检查已安装节点输入 schema、报告的 ComfyUI/PyTorch/Python 版本、后端地址和所选补丁是否在列表中；计划 revision 包含 API 图、网关装配代码、媒体准备代码和模块配置。签名不读取远端模型文件内容，不能替代模型摘要及真实渲染验收记录。升级原生路径后状态与签名须重新验收，不直接沿用旧配置。
 
 ## 调试工作流与 GPU 验收
 
 导入 `comfyUI_workflow/minimax_h3_continuation_control_debug.json`。它是现有 Turbo8 工作流的 UI 调试伴随图，默认约 5 秒，**不是整条长片的手工拼接器**。
 
 - 节点 200：上下文窗口，默认旁路，Ctrl+B 启用。
-- 节点 201：窗口对齐的可选 ControlNet，默认旁路；先给原参考视频节点加载控制源。
-- 节点 202–204：补丁、Canny 和控制覆盖检查；示例生成 124 帧，真实要求 120 帧，仅技术尾部允许末帧填充。
-- 节点 207：Union 2.0 补丁结构检查，连接加载器与 Apply。
-- 节点 205：锁定 AV 上下文，首段旁路，后续段启用。
+- 节点 201：官方可选 ControlNet Apply，默认旁路；先给原参考视频节点加载控制源。与节点 200 联用须先单独验收。
+- 节点 202–203：官方补丁加载器和 Canny；示例生成 124 帧，网关真实要求 120 帧，仅技术尾部允许末帧填充。手工运行调试图时自行确认源帧数覆盖，因为不会经过网关检查。
+- 节点 205：官方音画 Guide，首段旁路，后续段启用；仅输出条件，采样 latent 保持原接线。
 - 节点 206：上一段实际尾部上下文，默认禁用；上传 39 帧上下文后 Ctrl+M 启用。同步设置生成帧数、真实输出帧数与上下文范围。
 
-调试图的节点、输入输出插槽与双向连线已静态验证。导入时若缺原生节点或扩展节点，应先完成安装；不能据此跳过节点验收。
+调试图的节点、输入输出插槽与双向连线已静态验证，仅包含官方 H3 节点及原工作流的已有依赖。导入时若缺节点，应先更新 ComfyUI 或安装原工作流依赖；不能据此跳过节点验收。
 
-逐模板验证：接续开/关 × 有/无参考视频 × ControlNet 开/关 × 窗口开/关，另测 guide 与锁定 AV、横竖尺寸、最后一段及 FaceRefine 修复支路。使用非周期控制动作，检查第三个及后续窗口没有重播控制视频开头。先短片，再 30 秒、60 秒；记录显存、采样/解码时长、模型与扩展版本、参考上限。
+逐模板验证：接续开/关 × 有/无参考视频 × ControlNet 开/关 × 窗口开/关，测试官方 Guide 的视频和音频、横竖尺寸、最后一段及 FaceRefine 修复支路。窗口与 ControlNet 组合在验收前应被阻止；单独验收时使用非周期控制动作，检查后续窗口没有重播控制视频开头。先短片，再 30 秒、60 秒；记录显存、采样/解码时长、模型与节点版本、参考上限。
 
 模拟响应丢失、Redis/SQL 写入失败、归档中断、重启恢复与取消。未确认提交且未保存真实 prompt 时系统会停止自动重试，需人工核对原节点 queue/history；目前没有自动按 `executionId` 扫描上游历史的调解工具。
 
@@ -171,12 +174,11 @@ Java 为每个执行段调用现有视频生成端点，使用 `X-Freyja-Async-S
 
 ## 本地验证记录
 
-Union 2.0 增量：92 项网关测试、20 项相关 Java 测试通过；Vue TypeScript 校验与 Vite 生产构建通过。覆盖全部控制类型的图连接、窗口开关、Layout/已处理信号不重复预处理、v1/错误注入位置/pre_norm 拒绝、已安装预处理器能力发现、缺扩展时禁止控制但不影响已验收 guide 接续。11 个模板除 H3 扩展配置外保持一致，调试图更新为 39 个节点、48 条连接。实际灰度张量、第三方预处理器和 Union 2.0 GPU 采样尚待目标 ComfyUI 环境验收。
+2026-11-06 官方节点迁移：
 
-分段档位与自动参考切片增量：78 项相关 Java 测试通过，包含全部档位在 3 / 15 / 30 / 60 / 300 秒下的覆盖与单段上限、自动绑定幂等、短源拒绝、按段选择和真实 FFmpeg 绝对帧切片（含原音及精确帧预算）；前端类型检查与生产构建通过。
-
-- JDK 26 + Maven wrapper：146 项受影响 Java 回归测试通过，覆盖视频提交、镜头时长、素材准备、SQL 恢复、取消、Take、片段素材隔离和真实 FFmpeg 合成。
-- `python -m unittest discover -s . -p 'test_*.py' -q`：89 项网关测试通过，覆盖可选模块、严格帧数、图连接、异步提交幂等和未启用 ControlNet 时的独立能力检查。
+- `python -m unittest discover -s . -p 'test_*.py' -q`：96 项通过。包含官方 Guide 条件接线与原采样 latent 保持不变、全部控制类型路由、缺帧拒绝、未验收窗口联用拒绝、旧锁定执行快照拒绝、异步提交幂等。
+- 真实 FFmpeg 检查：Gray 控制副本与普通彩色语义参考分别上传，保留 24fps 和全部实际帧，灰度 RGB 通道一致，普通参考保留颜色；原归档内容与摘要不改写，无音轨时提供 VHS 兼容静音轨。
+- JDK 26 + Maven wrapper：26 项接续计划、素材隔离、源切片、旧草稿读取、窗口联用能力校验、执行恢复和真实 FFmpeg 合成回归通过。
 - `npm run build`：Vue TypeScript 校验及 Vite 生产构建通过；存在已有构建体积提示。
-- 60 秒测试视频实际合成 1440 帧，可完整解码；从生成段提取的上下文为 39 帧。
-- UI 调试图包含 39 个节点、48 条连接，节点插槽及双向连接一致性通过静态检查。
+- 11 个 H3 模板的非 H3 配置保持一致，本地节点配置同步刷新。UI 调试图包含 37 个节点、46 条连接，双向连接一致且没有项目自定义节点。
+- 远端只读探测：官方 Guide、ControlNet Apply、补丁加载器、窗口及 Union 2.0 文件名可用；缺第三方 DWPose / DepthAnythingV2 / HED / MLSD / FakeScribble 节点。`controlNet=true` 表示节点与文件名存在，`status=UNVERIFIED` 及 `contextWindowsWithControlNet=false` 保留；真实 GPU 接缝、预处理和控制效果仍待验收。

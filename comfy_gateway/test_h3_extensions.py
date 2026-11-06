@@ -12,33 +12,39 @@ from test_video_reference import setup_model, BASE
 class H3ExtensionsTest(unittest.TestCase):
     def test_union2_controls_are_routed_without_destroying_original_branches(self):
         expected={"CANNY":"Canny","POSE":"DWPreprocessor","DEPTH":"DepthAnythingV2Preprocessor",
-                  "HED":"HEDPreprocessor","MLSD":"M-LSDPreprocessor","SCRIBBLE":"FakeScribblePreprocessor","GRAY":"FreyjaH3GrayFrames",
+                  "HED":"HEDPreprocessor","MLSD":"M-LSDPreprocessor","SCRIBBLE":"FakeScribblePreprocessor","GRAY":None,
                   "LAYOUT":None,"PREPARED":None}
         for kind,preprocessor in expected.items():
-            for window in (False,True):
+            for window in (False,):
                 with self.subTest(kind=kind,window=window):
                     model,request,graph=self.setup_graph();original=copy.deepcopy(graph)
                     request.h3_options.control_net.enabled=True;request.h3_options.control_net.reference_id="v"
                     request.h3_options.control_net.control_type=kind;request.h3_options.context_windows.enabled=window
-                    apply_extensions(graph,request,model,[{"reference_id":"v","filename":"control.mp4"}])
+                    apply_extensions(graph,request,model,[{"reference_id":"v","filename":"color.mp4","control_filename":"gray.mp4","frames":362}])
                     self.assertEqual(graph["h3_patch"]["inputs"]["name"],"minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors")
-                    self.assertEqual(graph["h3_control"]["inputs"]["model_patch"],["h3_union2_patch",0])
+                    self.assertEqual(graph["h3_control"]["class_type"],"MiniMaxH3FunControlNetApply")
+                    self.assertEqual(graph["h3_control"]["inputs"]["model_patch"],["h3_patch",0])
+                    self.assertFalse(any(node["class_type"].startswith("Freyja") for node in graph.values()))
+                    self.assertEqual(graph["h3_control_video"]["inputs"]["video"],"gray.mp4" if kind=="GRAY" else "color.mp4")
                     if preprocessor:
                         self.assertEqual(graph["h3_control_preprocess"]["class_type"],preprocessor)
-                        self.assertEqual(graph["h3_control_preprocess"]["inputs"]["image"],["h3_control_frames",0])
+                        self.assertEqual(graph["h3_control_preprocess"]["inputs"]["image"],["h3_control_video",0])
                     else:
                         self.assertNotIn("h3_control_preprocess",graph)
-                        self.assertEqual(graph["h3_control"]["inputs"]["control_video"],["h3_control_frames",0])
+                        self.assertEqual(graph["h3_control"]["inputs"]["control_video"],["h3_control_video",0])
                     self.assertEqual(graph["145"],original["145"])  # Existing LoRA chain.
 
-    def test_union2_rejects_v1_wrong_injection_layers_and_pre_norm(self):
-        import runpy
-        from types import SimpleNamespace
-        validate=runpy.run_path(str(BASE/"comfy_extension/freyja_h3/control_validation.py"))["require_union2"]
-        def inner(**changes):return SimpleNamespace(**dict({"injection_layers":tuple(range(0,50,5)),"control_blocks":[None]*10,"inpaint_post_norm":True},**changes))
-        validate(SimpleNamespace(model=inner()))
-        for invalid in (inner(control_blocks=[None]*5),inner(injection_layers=tuple(range(0,50,10))),inner(inpaint_post_norm=False),SimpleNamespace()):
-            with self.assertRaisesRegex(ValueError,"H3_UNION2_INCOMPATIBLE"):validate(SimpleNamespace(model=invalid))
+    def test_removed_context_lock_cannot_be_reenabled_by_an_old_snapshot(self):
+        with self.assertRaises(ValidationError):H3Options.model_validate({"capability_revision":"test","length":124,"lock_context":True})
+
+    def test_control_range_is_checked_and_gray_cannot_use_color_source_silently(self):
+        model,request,graph=self.setup_graph();request.h3_options.control_net.enabled=True;request.h3_options.control_net.reference_id="v"
+        with self.assertRaisesRegex(ValueError,"CONTROL_RANGE"):apply_extensions(graph,request,model,[{"reference_id":"v","filename":"short.mp4","frames":120}])
+        request.h3_options.control_required_frames=360
+        apply_extensions(graph,request,model,[{"reference_id":"v","filename":"valid.mp4","frames":360}])
+        self.assertEqual(graph["h3_control_video"]["inputs"]["frame_load_cap"],362)
+        request.h3_options.control_net.control_type="GRAY"
+        with self.assertRaisesRegex(ValueError,"GRAY_SOURCE_MISSING"):apply_extensions(graph,request,model,[{"reference_id":"v","filename":"color.mp4","frames":360}])
 
     def setup_graph(self):
         model,config=setup_model();model.h3_extensions["status"]="VERIFIED"
@@ -55,12 +61,18 @@ class H3ExtensionsTest(unittest.TestCase):
         apply_extensions(graph,request,model,[])
         self.assertEqual(graph["126"]["inputs"]["model"],["h3_windows",0]);self.assertEqual(graph["124"]["inputs"]["model"],["h3_windows",0])
 
-    def test_control_source_is_explicit_and_window_aware(self):
-        model,request,graph=self.setup_graph();request.h3_options.control_net.enabled=True;request.h3_options.control_net.reference_id="video1";request.h3_options.context_windows.enabled=True
-        apply_extensions(graph,request,model,[{"reference_id":"video1","filename":"unique.mp4"}])
-        self.assertEqual(graph["h3_control"]["class_type"],"FreyjaMiniMaxH3FunControlNetApply")
+    def test_control_source_is_explicit_and_uses_native_apply(self):
+        model,request,graph=self.setup_graph();request.h3_options.control_net.enabled=True;request.h3_options.control_net.reference_id="video1"
+        apply_extensions(graph,request,model,[{"reference_id":"video1","filename":"unique.mp4","frames":362}])
+        self.assertEqual(graph["h3_control"]["class_type"],"MiniMaxH3FunControlNetApply")
         self.assertEqual(graph["h3_control_video"]["inputs"]["video"],"unique.mp4")
-        self.assertEqual(graph["h3_windows"]["inputs"]["model"],["h3_control",0])
+        self.assertEqual(graph["126"]["inputs"]["model"],["h3_control",0])
+
+    def test_unaccepted_native_window_control_combination_cannot_use_legacy_adapter_flag(self):
+        model,request,graph=self.setup_graph();request.h3_options.control_net.enabled=True;request.h3_options.context_windows.enabled=True
+        model.h3_extensions["window_control_adapter"]=True
+        with self.assertRaisesRegex(ValueError,"WINDOW_CONTROL_UNVERIFIED"):apply_extensions(graph,request,model,[])
+        self.assertNotIn("h3_patch",graph)
 
     def test_reference_video_does_not_implicitly_enable_control(self):
         model,request,graph=self.setup_graph();apply_extensions(graph,request,model,[{"reference_id":"v","filename":"reference.mp4"}]);self.assertNotIn("h3_control",graph)
@@ -72,13 +84,14 @@ class H3ExtensionsTest(unittest.TestCase):
         apply_extensions(graph,request,model,[],"context.mp4")
         self.assertEqual(graph["126"]["inputs"]["conditioning"],["h3_guide",0]);self.assertNotIn("ref_videos.ref_video_0",graph["136"]["inputs"])
 
-    def test_locked_context_reaches_the_sampling_latent(self):
+    def test_native_guide_keeps_the_original_sampling_latent(self):
         from h3_extensions import ContinuationInput
-        model,request,graph=self.setup_graph();request.h3_options.lock_context=True
+        model,request,graph=self.setup_graph();original=copy.deepcopy(graph["125"]["inputs"]["latent_image"])
         request.h3_options.continuation=ContinuationInput(video_url="https://archive.test/context.mp4",content_sha256="a"*64,frames=39)
         apply_extensions(graph,request,model,[],"context.mp4")
-        self.assertEqual(graph["h3_guide"]["class_type"],"FreyjaH3Continuation")
-        self.assertEqual(graph["125"]["inputs"]["latent_image"],["h3_guide",1])
+        self.assertEqual(graph["h3_guide"]["class_type"],"MiniMaxH3AddGuide")
+        self.assertEqual(graph["125"]["inputs"]["latent_image"],original)
+        self.assertEqual(graph["h3_guide"]["inputs"]["audio"],["h3_context_video",2])
 
     def test_revision_and_status_cannot_be_bypassed(self):
         model,request,_=self.setup_graph();require_options(request,model,BASE)
@@ -103,10 +116,10 @@ class H3ExtensionsTest(unittest.TestCase):
         request.duration=15;require_options(request,model,BASE)
 
 class H3AsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_union2_capabilities_only_offer_installed_preprocessors_and_require_patch_guard(self):
+    async def test_native_union2_does_not_require_private_nodes_and_only_offers_installed_preprocessors(self):
         from h3_extensions import backend_acceptance
         model,_=setup_model()
-        nodes={name:{"input":{}} for name in (model.h3_extensions["conditioning"]["class_type"],"MiniMaxH3AddGuide","MiniMaxH3FunControlNetApply","FreyjaH3ControlFrames","FreyjaH3Union2Patch","HEDPreprocessor")}
+        nodes={name:{"input":{}} for name in (model.h3_extensions["conditioning"]["class_type"],"MiniMaxH3AddGuide","MiniMaxH3FunControlNetApply","HEDPreprocessor")}
         nodes["ModelPatchLoader"]={"input":{"required":{"name":[[model.h3_extensions["control_patch"]]]}}}
         async def probe():
             response=Mock();response.json.return_value=nodes
@@ -116,8 +129,10 @@ class H3AsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
             return await backend_acceptance(model,client)
         available=await probe()
         self.assertEqual(available["controlVersion"],"2.0");self.assertTrue(available["controlNet"])
-        self.assertEqual(set(available["controlTypes"]),{"HED","LAYOUT","PREPARED"})
-        nodes.pop("FreyjaH3Union2Patch")
+        self.assertEqual(set(available["controlTypes"]),{"HED","LAYOUT","PREPARED","GRAY"})
+        self.assertFalse(any(name.startswith("Freyja") for name in available["missingNodes"]))
+        self.assertFalse(available["contextWindowsWithControlNet"])
+        nodes.pop("MiniMaxH3FunControlNetApply")
         missing=await probe();self.assertFalse(missing["controlNet"])
         self.assertNotEqual(available["backendSignature"],missing["backendSignature"])
 
@@ -163,6 +178,10 @@ class H3DebugWorkflowTests(unittest.TestCase):
             self.assertIn(link_id,nodes[source]["outputs"][slot]["links"])
         for node_id in (200,201,205):self.assertEqual(nodes[node_id]["mode"],4)
         self.assertEqual(nodes[206]["mode"],2)
+        self.assertEqual(nodes[201]["type"],"MiniMaxH3FunControlNetApply")
+        self.assertEqual(nodes[205]["type"],"MiniMaxH3AddGuide")
+        self.assertEqual(len(nodes[205]["outputs"]),1)
+        self.assertFalse(any(node["type"].startswith("Freyja") for node in nodes.values()))
 
 
 if __name__=="__main__":unittest.main()

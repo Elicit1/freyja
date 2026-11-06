@@ -47,7 +47,6 @@ public class ShotContinuationService {
         if(!cap.path("healthy").asBoolean())result.getIssues().add("算力节点离线");
         if(!h3.path("continuation").asBoolean())result.getIssues().add("此工作流未启用接续适配");
         if(draft.isContextWindows()&&!h3.path("contextWindows").asBoolean())result.getIssues().add("此工作流未验证上下文窗口");
-        if(draft.isLockContext()&&!h3.path("maskedContinuation").asBoolean())result.getIssues().add("此工作流尚未验证共享上下文锁定");
         for(var segment:draft.getSegments()) {
             if(model.getMaxImages()!=null&&segment.getReferenceImages().size()>model.getMaxImages())result.getIssues().add("片段参考图超过所选模型上限");
             if(!segment.getReferenceVideos().isEmpty()){
@@ -72,7 +71,7 @@ public class ShotContinuationService {
             if(segment.getPrompt()==null||segment.getPrompt().isBlank())result.getIssues().add("片段 "+segment.getId()+" 需要填写本段提示词");
             if(segment.isControlNetEnabled()&&!h3.path("controlNet").asBoolean())result.getIssues().add("所选工作流未验证 ControlNet");
             if(segment.isControlNetEnabled()&&h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->segment.getControlType().equals(type.asText())))result.getIssues().add("算力节点未安装 "+segment.getControlType()+" 控制预处理器");
-            if(segment.isControlNetEnabled()&&draft.isContextWindows()&&!h3.path("windowControlAdapter").asBoolean())result.getIssues().add("尚未验证窗口与 ControlNet 联用");
+            if(segment.isControlNetEnabled()&&draft.isContextWindows()&&!h3.path("contextWindowsWithControlNet").asBoolean())result.getIssues().add("官方上下文窗口与 ControlNet 联用尚未验收，请关闭片段内窗口或 ControlNet");
         }
         result.setRenderable(result.getIssues().isEmpty());
         result.setPlanHash(VideoBatchPreparation.hash(result.getPlanHash()+"|"+result.getCapabilityRevision()+"|"+model.getId()+"|"+provider.getBaseUrl()));return result;
@@ -92,7 +91,7 @@ public class ShotContinuationService {
             // Endpoint anchors must also be explicitly attached to this segment.
             child.setPreviewImageUrl(segment.getFirstFrameImageUrl());child.setEndFrameImageUrl(segment.getLastFrameImageUrl());
             var childReq=new DramaShotRenderRequestDTO();childReq.setProviderId(provider.getId());childReq.setWorkflowTemplateId(model.getModelCode());childReq.setSize(size);childReq.setPrompt(segment.getPrompt());childReq.setSeed(1+Math.floorMod(shot.getSeed()+i*104729L,9007199254740990L));
-            var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",true);options.put("lock_context",draft.isLockContext());options.put("capability_revision",plan.getCapabilityRevision());options.put("length",segment.getEndFrame()-segment.getStartFrame());
+            var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",true);options.put("capability_revision",plan.getCapabilityRevision());options.put("length",segment.getEndFrame()-segment.getStartFrame());
             options.put("control_required_frames",Math.min(segment.getEndFrame(),plan.getOutputFrames())-segment.getStartFrame());
             options.put("context_windows",Map.of("enabled",draft.isContextWindows()));
             var control=new LinkedHashMap<String,Object>();control.put("enabled",segment.isControlNetEnabled());control.put("reference_id",segment.getControlVideoId());control.put("control_type",segment.getControlType());control.put("strength",segment.getControlStrength());options.put("control_net",control);childReq.setH3Options(options);

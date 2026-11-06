@@ -24,7 +24,6 @@ export interface ContinuationDraft {
   autoSplitReferenceVideo?: boolean
   videoSources?: ShotRefVideo[]
   contextWindows: boolean
-  lockContext?: boolean
   reuseFromTaskId?: string
   segments: ContinuationSegment[]
 }

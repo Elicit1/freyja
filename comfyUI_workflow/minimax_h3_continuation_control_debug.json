@@ -1,8 +1,8 @@
 {
   "id": "8ac239c5-4271-4c80-9c91-8661f94c6d30",
-  "revision": 2,
-  "last_node_id": 207,
-  "last_link_id": 310,
+  "revision": 3,
+  "last_node_id": 206,
+  "last_link_id": 307,
   "nodes": [
     {
       "id": 92,
@@ -174,8 +174,8 @@
           "links": [
             251,
             273,
-            296,
-            305
+            295,
+            302
           ]
         }
       ],
@@ -220,7 +220,7 @@
           "links": [
             250,
             274,
-            307
+            303
           ]
         }
       ],
@@ -383,7 +383,7 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 302
+          "link": 300
         },
         {
           "name": "steps",
@@ -457,7 +457,7 @@
         {
           "name": "latent_image",
           "type": "LATENT",
-          "link": 310
+          "link": 271
         }
       ],
       "outputs": [
@@ -499,12 +499,12 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 301
+          "link": 299
         },
         {
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 309
+          "link": 307
         }
       ],
       "outputs": [
@@ -915,13 +915,14 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            303
+            301
           ]
         },
         {
           "name": "LATENT",
           "type": "LATENT",
           "links": [
+            271,
             304
           ]
         }
@@ -1413,7 +1414,7 @@
           "type": "IMAGE",
           "links": [
             292,
-            297
+            296
           ]
         },
         {
@@ -1489,7 +1490,7 @@
         {
           "name": "model",
           "type": "MODEL",
-          "link": 300
+          "link": 298
         }
       ],
       "outputs": [
@@ -1497,8 +1498,8 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            301,
-            302
+            299,
+            300
           ]
         }
       ],
@@ -1516,7 +1517,7 @@
     },
     {
       "id": 201,
-      "type": "FreyjaMiniMaxH3FunControlNetApply",
+      "type": "MiniMaxH3FunControlNetApply",
       "pos": [
         -550,
         5850
@@ -1537,17 +1538,17 @@
         {
           "name": "model_patch",
           "type": "MODEL_PATCH",
-          "link": 295
+          "link": 294
         },
         {
           "name": "vae",
           "type": "VAE",
-          "link": 296
+          "link": 295
         },
         {
           "name": "control_video",
           "type": "IMAGE",
-          "link": 299
+          "link": 297
         }
       ],
       "outputs": [
@@ -1555,19 +1556,19 @@
           "name": "MODEL",
           "type": "MODEL",
           "links": [
-            300
+            298
           ]
         }
       ],
       "properties": {
-        "Node name for S&R": "FreyjaMiniMaxH3FunControlNetApply"
+        "Node name for S&R": "MiniMaxH3FunControlNetApply"
       },
       "widgets_values": [
         1.0,
         0.0,
         1.0
       ],
-      "title": "可选 ControlNet（先上传视频，Ctrl+B 启用）"
+      "title": "官方 ControlNet（先上传视频，Ctrl+B 启用）"
     },
     {
       "id": 202,
@@ -1602,42 +1603,6 @@
       "title": "Union 2.0 补丁权重"
     },
     {
-      "id": 207,
-      "type": "FreyjaH3Union2Patch",
-      "pos": [
-        -1000,
-        6700
-      ],
-      "size": [
-        360,
-        180
-      ],
-      "flags": {},
-      "order": 34,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "model_patch",
-          "type": "MODEL_PATCH",
-          "link": 294
-        }
-      ],
-      "outputs": [
-        {
-          "name": "MODEL_PATCH",
-          "type": "MODEL_PATCH",
-          "links": [
-            295
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "FreyjaH3Union2Patch"
-      },
-      "widgets_values": [],
-      "title": "Union 2.0 结构校验（10 层 / post_norm）"
-    },
-    {
       "id": 203,
       "type": "Canny",
       "pos": [
@@ -1649,13 +1614,13 @@
         180
       ],
       "flags": {},
-      "order": 35,
+      "order": 34,
       "mode": 0,
       "inputs": [
         {
           "name": "image",
           "type": "IMAGE",
-          "link": 298
+          "link": 296
         }
       ],
       "outputs": [
@@ -1663,7 +1628,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            299
+            297
           ]
         }
       ],
@@ -1677,47 +1642,8 @@
       "title": "控制信号预处理：Canny"
     },
     {
-      "id": 204,
-      "type": "FreyjaH3ControlFrames",
-      "pos": [
-        -1050,
-        6150
-      ],
-      "size": [
-        360,
-        180
-      ],
-      "flags": {},
-      "order": 36,
-      "mode": 0,
-      "inputs": [
-        {
-          "name": "images",
-          "type": "IMAGE",
-          "link": 297
-        }
-      ],
-      "outputs": [
-        {
-          "name": "IMAGE",
-          "type": "IMAGE",
-          "links": [
-            298
-          ]
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "FreyjaH3ControlFrames"
-      },
-      "widgets_values": [
-        124,
-        120
-      ],
-      "title": "控制帧覆盖（示例生成 124 帧，保留 120 帧）"
-    },
-    {
       "id": 205,
-      "type": "FreyjaH3Continuation",
+      "type": "MiniMaxH3AddGuide",
       "pos": [
         -150,
         6000
@@ -1727,12 +1653,22 @@
         180
       ],
       "flags": {},
-      "order": 37,
+      "order": 35,
       "mode": 4,
       "inputs": [
         {
           "name": "positive",
           "type": "CONDITIONING",
+          "link": 301
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 302
+        },
+        {
+          "name": "audio_vae",
+          "type": "VAE",
           "link": 303
         },
         {
@@ -1741,24 +1677,14 @@
           "link": 304
         },
         {
-          "name": "vae",
-          "type": "VAE",
-          "link": 305
-        },
-        {
           "name": "image",
           "type": "IMAGE",
-          "link": 306
-        },
-        {
-          "name": "audio_vae",
-          "type": "VAE",
-          "link": 307
+          "link": 305
         },
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 308
+          "link": 306
         }
       ],
       "outputs": [
@@ -1766,24 +1692,17 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            309
-          ]
-        },
-        {
-          "name": "LATENT",
-          "type": "LATENT",
-          "links": [
-            310
+            307
           ]
         }
       ],
       "properties": {
-        "Node name for S&R": "FreyjaH3Continuation"
+        "Node name for S&R": "MiniMaxH3AddGuide"
       },
       "widgets_values": [
         0
       ],
-      "title": "共享上下文锁定（首段旁路，后续段启用）"
+      "title": "官方音画 Guide（首段旁路，后续段启用）"
     },
     {
       "id": 206,
@@ -1798,7 +1717,7 @@
         600
       ],
       "flags": {},
-      "order": 38,
+      "order": 36,
       "mode": 2,
       "inputs": [
         {
@@ -1819,7 +1738,7 @@
           "name": "IMAGE",
           "type": "IMAGE",
           "links": [
-            306
+            305
           ]
         },
         {
@@ -1831,7 +1750,7 @@
           "name": "audio",
           "type": "AUDIO",
           "links": [
-            308
+            306
           ]
         },
         {
@@ -1935,6 +1854,14 @@
       131,
       0,
       "FLOAT"
+    ],
+    [
+      271,
+      136,
+      1,
+      125,
+      4,
+      "LATENT"
     ],
     [
       272,
@@ -2108,20 +2035,12 @@
       294,
       202,
       0,
-      207,
-      0,
-      "MODEL_PATCH"
-    ],
-    [
-      295,
-      207,
-      0,
       201,
       1,
       "MODEL_PATCH"
     ],
     [
-      296,
+      295,
       119,
       0,
       201,
@@ -2129,23 +2048,15 @@
       "VAE"
     ],
     [
-      297,
+      296,
       147,
-      0,
-      204,
-      0,
-      "IMAGE"
-    ],
-    [
-      298,
-      204,
       0,
       203,
       0,
       "IMAGE"
     ],
     [
-      299,
+      297,
       203,
       0,
       201,
@@ -2153,7 +2064,7 @@
       "IMAGE"
     ],
     [
-      300,
+      298,
       201,
       0,
       200,
@@ -2161,7 +2072,7 @@
       "MODEL"
     ],
     [
-      301,
+      299,
       200,
       0,
       126,
@@ -2169,7 +2080,7 @@
       "MODEL"
     ],
     [
-      302,
+      300,
       200,
       0,
       124,
@@ -2177,7 +2088,7 @@
       "MODEL"
     ],
     [
-      303,
+      301,
       136,
       0,
       205,
@@ -2185,39 +2096,39 @@
       "CONDITIONING"
     ],
     [
-      304,
-      136,
-      1,
+      302,
+      119,
+      0,
       205,
       1,
-      "LATENT"
+      "VAE"
     ],
     [
-      305,
-      119,
+      303,
+      120,
       0,
       205,
       2,
       "VAE"
     ],
     [
-      306,
+      304,
+      136,
+      1,
+      205,
+      3,
+      "LATENT"
+    ],
+    [
+      305,
       206,
       0,
       205,
-      3,
+      4,
       "IMAGE"
     ],
     [
-      307,
-      120,
-      0,
-      205,
-      4,
-      "VAE"
-    ],
-    [
-      308,
+      306,
       206,
       2,
       205,
@@ -2225,20 +2136,12 @@
       "AUDIO"
     ],
     [
-      309,
+      307,
       205,
       0,
       126,
       1,
       "CONDITIONING"
-    ],
-    [
-      310,
-      205,
-      1,
-      125,
-      4,
-      "LATENT"
     ]
   ],
   "groups": [
@@ -2342,7 +2245,7 @@
     "VHS_MetadataImage": true,
     "VHS_KeepIntermediate": true,
     "freyja": {
-      "purpose": "H3 optional-module acceptance; default 5-second segment; not a whole-film concatenator",
+      "purpose": "Native H3 Guide and ControlNet acceptance; context windows + control require separate GPU acceptance; default 5-second segment",
       "gateway_model": "minimax-h3-ref-turbo8"
     }
   },

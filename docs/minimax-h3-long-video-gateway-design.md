@@ -1,12 +1,12 @@
 # MiniMax H3 长镜头、上下文窗口与 ControlNet Union 接入设计
 
-日期：2026-11-05。状态：首期代码已实现，目标 GPU 组合渲染尚未验收。
+日期：2026-11-06。状态：H3 已统一接入官方节点，自定义 ComfyUI 节点已移除，目标 GPU 组合渲染尚未验收。
 
 ## 0. 实施状态与阅读说明
 
 部署、实际接口和当前限制以 [MiniMax H3 接续部署与验收说明](minimax-h3-continuation-deployment.md) 为准。以下保留完整设计目标，不能把其中建议能力视为已通过 GPU 验收。
 
-已实现：单镜头接续开关、自动/手动分段、片段素材明确挂载、长源视频按时间轴分配、片段可选 ControlNet、窗口与 AV 上下文扩展接线、后台素材准备、SQL 分段恢复、一个最终 Take。所有当前 H3 模板已有显式模块绑定，各模板仍需独立验收。
+已实现：单镜头接续开关、自动/手动分段、片段素材明确挂载、长源视频按时间轴分配、片段可选官方 ControlNet、官方窗口及音画 Guide 接线、后台素材准备、SQL 分段恢复、一个最终 Take。所有当前 H3 模板已有显式模块绑定，各模板仍需独立验收。灰度转换与控制源帧数检查由网关完成，参考原视频保持彩色。
 
 当前手动调整直接编辑合法生成帧范围；保留区间由服务端计算。尚未提供任意成片切点编辑、自动找最佳接缝、几何/亮度修复、接口视频预览、独立母带音轨策略、窗口采样断点恢复及资源成本预测。拼接目前采用固定真实重叠裁切和 FFmpeg 帧数校验；这不能证明运动或对白已经无缝。源视频按各绑定准备，尚未实现全源一次标准化后的共享母带缓存。
 
@@ -33,7 +33,7 @@
 
 关闭开关时如果草稿时长已经超过 15 秒，保留草稿并标记不可提交，提示缩短时长或重新开启接续；不静默把时长改成 15 秒。服务端和网关均校验此条件，不能只禁用前端输入框。
 
-建议上线顺序：原生窗口单独接入 → 原生 ControlNet 单独接入 → 窗口与 ControlNet 联用适配 → 串行续接与长参考视频。30 秒、60 秒只作为验收档位，不预先宣称它们是任意 GPU 上的可用上限。
+建议上线顺序：官方 Guide 串行续接 → 按段切分参考视频与官方 ControlNet → 官方窗口单独验收 → 官方窗口与 ControlNet 联用验收。30 秒、60 秒只作为验收档位，不预先宣称它们是任意 GPU 上的可用上限。
 
 ### 1.1 接续功能的归属建议
 
@@ -80,19 +80,19 @@
 
 ### 3.2 ControlNet Union
 
-当前实施默认采用 Union 2.0，权重为 `minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors`。前后端统一开放 Canny / Depth / HED / MLSD / Pose / Scribble / Layout / Gray，另保留已处理控制视频入口。Layout 要求上传预先制作的布局信号，不包含自动目标检测/跟踪；其他新增预处理、下载及升级验收见 [部署说明](minimax-h3-continuation-deployment.md)。加载后通过 `FreyjaH3Union2Patch` 检查 10 个控制块、每 5 层注入及 `post_norm`，防止 v1 或旧加载器混用。
+当前实施默认采用 Union 2.0，权重为 `minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors`。前后端统一开放 Canny / Depth / HED / MLSD / Pose / Scribble / Layout / Gray，另保留已处理控制视频入口。Layout 要求上传预先制作的布局信号，不包含自动目标检测/跟踪；Gray 由网关 FFmpeg 生成独立控制副本。模型结构识别与加载交给官方 `ModelPatchLoader`，不增加私有检查节点。预处理、下载及升级验收见 [部署说明](minimax-h3-continuation-deployment.md)。
 
 官方原生入口是 `ModelPatchLoader` 加 `MiniMaxH3FunControlNetApply`，作用于 MODEL 分支；补丁权重位于 `models/model_patches/`。姿态、深度、边缘等控制视频属于逐时刻控制信号，区别于 Ref2VA 的语义参考视频。
 
 依据：[官方使用说明](https://docs.comfy.org/tutorials/video/minimax/minimax-h3-fun-controlnet)。权重必须与底模的 AdaLN 形式匹配；文件存在、节点可见不足以证明组合可用。
 
-### 3.3 窗口与 ControlNet 需要单独适配
+### 3.3 官方窗口与 ControlNet 需要单独验收
 
 本次检查的官方 `MiniMaxH3FunControlPatch` 按输入 target shape 准备控制 latent，缓存也依赖 shape；没有看到依据窗口绝对位置选择控制时间段的实现。由此推断：直接串联两个节点存在所有窗口重复使用控制视频开头的风险。这是静态代码判断，须对部署 commit 做非周期动作实验确认。
 
 依据：[H3 节点实现](https://github.com/Comfy-Org/ComfyUI/blob/master/comfy_extras/nodes_minimax_h3.py)、[窗口执行实现](https://github.com/Comfy-Org/ComfyUI/blob/master/comfy/context_windows.py)。
 
-因此，能力中必须独立声明 `contextWindowsWithControlNet`。网关在提交时修改 JSON 只能改变图，无法逐次模型调用改变控制数据；需要上游已修复的版本，或安装项目维护的轻量 ComfyUI 扩展。不能只改网关 YAML 就宣称联用已完成。
+能力中独立声明 `contextWindowsWithControlNet`。当前只接入官方节点，默认 `context_windows_with_control_net: false`；未通过部署版本的真实时序验收时，预览和提交均阻止联用。按段提前切好参考视频后使用普通官方 Apply，不需要启用段内窗口，也不依赖私有适配。不能只改 YAML 就宣称联用已完成。
 
 ### 3.4 长参考输入仍有独立成本
 
@@ -131,7 +131,6 @@ Java 维护唯一业务任务、步骤依赖与恢复决策。网关执行一份
 ```text
 UNET → 现有 LoRA / 采样配置
                  → [可选：MiniMaxH3FunControlNetApply]
-                 → [可选：经验收的窗口控制时间适配]
                  → [可选：MiniMaxH3ContextWindows]
                  ├→ BasicGuider.model
                  └→ BasicScheduler.model
@@ -141,20 +140,15 @@ UNET → 现有 LoRA / 采样配置
 ModelPatchLoader → model_patch
 ```
 
-图中的适配必须扩展原生 ControlNet 的窗口取段语义；它不是一个空的 MODEL 转接节点。原生版本已经正确支持时直接用原生节点，并记录已验证 commit。
+上图全部 H3 能力使用官方节点；ControlNet 与上下文窗口同时开启需满足独立联用验收，记录已验证 commit。普通按段接续只需官方 Guide，不额外修改采样 latent 或噪声遮罩。
 
 Guider、Scheduler 和其他实际消费 MODEL 的节点都接最终分支。FaceRefine 有第二阶段，不能只改第一阶段 MODEL；首期不把该组合标为已支持。没有启用的模块从最终图中去除，避免无用权重加载。
 
-### 5.2 窗口内 ControlNet 对齐实现
+### 5.2 官方 ControlNet 时间覆盖与窗口验收
 
-项目扩展暂名 `FreyjaH3ControlWindowAdapter`，版本与图一起参与验收指纹。建议通过公开 wrapper/patch 扩展点接入，不改站点级全局状态：
+全局计划保存目标帧与控制源的确定映射，Java 按段裁片、归档；网关 FFprobe 检查真实解码帧数覆盖实际输出范围。官方 Apply 负责控制编码及生成网格技术尾部的末帧补齐。Gray 在网关生成独立灰度控制视频，不改变普通语义参考视频。
 
-1. 全局计划保存目标帧与源控制视频的确定映射。
-2. 读取当前 `context_window` 的真实 latent 索引，使用当前 H3 temporal mapping 得到绝对时间区间；不能用 `latent_index * 4` 或 `window_index * seconds` 代替。
-3. 读取全局控制信号在该区间的内容；短缺策略由请求显式指定，默认报错，不静默重复末帧。
-4. 优先把控制视频按 H3 合法分块分次编码并缓存到 CPU/磁盘，再选取窗口所需 latent。需要确认 VAE 分块边界是否等价，保留编码上下文和中心有效区；不假定整段编码后随便切片一定等价。
-5. 缓存键至少包含素材内容摘要、VAE/权重版本、空间变换、绝对索引和形状；同形状的两个窗口不能复用错误时间段。
-6. mask/source video 若启用，与控制信号使用同一窗口映射；取消、异常和分支克隆后清理状态，任务之间不能串缓存。
+官方窗口与 ControlNet 的联用使用非周期控制动作、不同窗口绝对时间及不同窗口形状进行 GPU 验收，确认没有重播开头、时间偏移或跨任务缓存串用后，才允许对应模型启用联用配置。当前不维护自定义模型 wrapper 或控制缓存。
 
 ControlNet 只有在「本次请求包含有效且已解析的参考视频」且「创作者显式开启 ControlNet」时装配。没有参考视频或开关关闭时，移除 ModelPatchLoader、ControlNet 和控制预处理分支，不加载补丁权重。参考视频本身的语义条件连接独立保留。
 
@@ -215,12 +209,9 @@ ControlNet 只有在「本次请求包含有效且已解析的参考视频」且
 
 首段使用显式挂载到首段的图片、视频和可选控制输入。下一段接收上一段重叠区间对应的实际生成画面，加上显式挂载给下一段的素材；不自动继承上一段或全镜头普通参考图。需要多个片段都使用同一张角色图时，可一次选中目标片段进行批量挂载。连续性来自带运动的多帧上下文，单张尾帧只能约束外观和姿势。
 
-分两级实现：
+统一通过官方 `MiniMaxH3AddGuide` 将上一段真实尾部及可选音频作为下一段开头 guide，和明确挂载的控制片段一起使用。它输出 conditioning，采样 latent 保持原工作流来源；不增加前缀写入、噪声遮罩锁定或私有采样适配。旧草稿的锁定选项移除，重新预览后按官方路径执行；旧不可变任务快照若仍要求私有锁定路径则拒绝提交。
 
-- 基础续接：通过原生 `MiniMaxH3AddGuide` 将上一段真实尾部作为下一段开头 guide，和已映射的控制片段一起使用。这是条件约束，不能等同于输出逐像素锁定。
-- 稳定续接：增加受版本控制的 AV continuation latent 适配，把上一段重叠 video/audio latent 写入下一段前缀，并使用已验证的 denoise mask 与 H3 时序固定机制锁定对应部分。保存 latent 仅用于内部恢复，不作为公共资产入口。需要在当前 H3 实现上验证 mask、sigma 与位置编码，不能仅靠 `noise_mask=0` 就宣称完全冻结。
-
-两个级别独立标记能力；未通过接缝验收不能把基础 guide 方案宣传成无缝续接。首期若只实现基础级，应在结果里暴露接缝预览与质量状态。
+Guide 是条件约束，不能等同于输出逐像素锁定。接缝质量需要真实生成后验收，不能仅凭图连接宣称无缝。
 
 同一长镜头的执行段串行依赖。每段使用可复现的派生 seed；相同 seed 本身不保证跨段连续。第 i 段变化会使所有依赖其上下文的后续段失效，不能复用旧后半段。
 
@@ -314,8 +305,8 @@ ControlNet 只有在「本次请求包含有效且已解析的参考视频」且
 
 - `contextWindows`：状态、节点 schema 指纹、合法窗口/重叠范围与参数。
 - `controlNet`：状态、补丁权重标识/摘要、明确支持的预处理器、强度范围。
-- `contextWindowsWithControlNet`：组合验收状态和适配版本。
-- `continuation`：guide / masked AV 的独立支持与最长执行段。
+- `contextWindowsWithControlNet`：官方窗口与 ControlNet 的独立组合验收范围。
+- `continuation`：官方 Guide 支持与最长执行段。
 - `longReferenceVideo`：片段视频挂载、批量时间轴分配、输入预算与最大源范围。
 - `outputPolicy`：帧网格、FPS、已测输出范围、最终精确裁剪能力。
 
@@ -442,7 +433,7 @@ Take 快照保存计划摘要、所有输入摘要、每段 seed/版本、裁接
 | `comfy_gateway/main.py` / `comfy_client.py` | 异步提交、执行身份、状态与取消，保持精确路由 |
 | `comfy_gateway/nodes/machine_default.yaml` | Turbo8 显式模块绑定与待验收能力配置 |
 | `comfy_gateway/comfyUIApi/` + `comfyUI_workflow/` | API 图与对应 UI 图一起维护 |
-| 新增 ComfyUI 扩展目录 | 窗口控制适配、按需的 AV continuation 与流式解码；单独版本化安装 |
+| 官方 ComfyUI H3 节点 | Guide、ControlNet、窗口和权重加载；不部署项目私有节点 |
 | `ReferenceVideoMediaService` | 复用源冻结与归档，新增母带标准化、全局帧区间裁片 |
 | 新增 Java `ShotLongVideoPlanService` | 确定性帧计划、能力交集、时间映射和预算 |
 | 新增 Java `ShotLongVideoRenderService` | SQL 步骤依赖、串行续接、恢复与合成调度 |
@@ -470,7 +461,7 @@ Take 快照保存计划摘要、所有输入摘要、每段 seed/版本、裁接
 
 ### P3：长参考与串行续接
 
-验证长母带逐帧覆盖、真实动作重叠、guide 与 masked AV 两种续接、源音轨/生成音轨策略。模拟每一阶段重启、提交响应丢失、下载中断、SQL 写入失败、用户取消和修改中间段。
+验证长母带逐帧覆盖、真实动作重叠、官方 Guide 音画接续、源音轨/生成音轨策略。模拟每一阶段重启、提交响应丢失、下载中断、SQL 写入失败、用户取消和修改中间段。
 
 机械验收：实际解码帧数等于计划、单调且均匀 PTS、无重复覆盖/空洞、尺寸与色彩一致、音画时长正确、可以完整解码。
 

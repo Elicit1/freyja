@@ -16,19 +16,17 @@ def bindings(model, graph):
     model_source=main[1]["inputs"]["model"]
     consumers=[dict(binding(key),input="model") for key,node in graph.items() if node["class_type"] in ("BasicGuider","CFGGuider","BasicScheduler") and node.get("inputs",{}).get("model")==model_source]
     vae=model["mappings"]["video_vae_name"][0]
-    return {"status":"UNVERIFIED","continuation":True,"masked_continuation":True,"context_windows":True,"control_net":True,"window_control_adapter":True,
+    return {"status":"UNVERIFIED","continuation":True,"context_windows":True,"control_net":True,"context_windows_with_control_net":False,
             "control_version":"2.0",
             "control_patch":"minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors",
             "model_output":binding(model_source[0]),"conditioning":binding(condition),"video_vae":binding(vae),"audio_vae":binding(model["mappings"]["audio_vae_name"][0]),
             "model_consumers":consumers,"conditioning_consumers":[dict(binding(main[0]),input="conditioning" if main[1]["class_type"]=="BasicGuider" else "positive")],
-            "latent_consumers":[dict(binding(key),input="latent_image") for key,node in graph.items() if node.get("inputs",{}).get("latent_image")==[condition,1]],
             "preprocessors":{"CANNY":{"class_type":"Canny","inputs":{"low_threshold":0.4,"high_threshold":0.8}},
                              "POSE":{"class_type":"DWPreprocessor","inputs":{"detect_hand":"enable","detect_body":"enable","detect_face":"enable","resolution":512,"bbox_detector":"yolox_l.onnx","pose_estimator":"dw-ll_ucoco_384.onnx"}},
                              "DEPTH":{"class_type":"DepthAnythingV2Preprocessor","inputs":{"ckpt_name":"depth_anything_v2_vitl.pth","resolution":512}},
                              "HED":{"class_type":"HEDPreprocessor","inputs":{"safe":"enable","resolution":512}},
                              "MLSD":{"class_type":"M-LSDPreprocessor","inputs":{"score_threshold":0.1,"dist_threshold":0.1,"resolution":512}},
-                             "SCRIBBLE":{"class_type":"FakeScribblePreprocessor","inputs":{"safe":"enable","resolution":512}},
-                             "GRAY":{"class_type":"FreyjaH3GrayFrames","inputs":{}}},
+                             "SCRIBBLE":{"class_type":"FakeScribblePreprocessor","inputs":{"safe":"enable","resolution":512}}},
             "prepared_control_types":["LAYOUT","PREPARED"]}
 
 

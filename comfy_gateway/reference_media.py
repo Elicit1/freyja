@@ -17,7 +17,7 @@ async def _vhs_compatible_video(source, duration, max_bytes):
     kill prompt_worker. Video packets are copied, and the original archived file
     and its verified digest remain unchanged. The binding still disables audio.
     """
-    target = source.with_name("clip_vhs_compatible.mp4")
+    target = source.with_name(source.stem + "_vhs_compatible.mp4")
     process = await asyncio.create_subprocess_exec(
         os.getenv("FFMPEG_PATH", "ffmpeg"), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
         "-i", str(source), "-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo",
@@ -38,7 +38,29 @@ async def _vhs_compatible_video(source, duration, max_bytes):
     return target.read_bytes()
 
 
-async def upload_reference_video(client, binding, capability, allowed_hosts):
+async def _grayscale_video(source, max_bytes):
+    """Create a control-only derivative; semantic reference video remains in color."""
+    target = source.with_name("control_gray.mp4")
+    process = await asyncio.create_subprocess_exec(
+        os.getenv("FFMPEG_PATH", "ffmpeg"), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        "-i", str(source), "-map", "0:v:0", "-map", "0:a?", "-vf", "format=gray",
+        "-c:v", "libx264", "-crf", "18", "-pix_fmt", "yuv420p", "-c:a", "copy",
+        "-movflags", "+faststart", str(target), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    try:
+        await asyncio.wait_for(process.communicate(), timeout=60)
+    except BaseException:
+        if process.returncode is None:
+            process.kill()
+            await process.wait()
+        raise
+    if process.returncode != 0 or not target.is_file():
+        raise ValueError("H3_GRAY_PREPARATION_FAILED: could not prepare grayscale control video")
+    if target.stat().st_size > max_bytes:
+        raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: grayscale control exceeds transport size limit")
+    return target
+
+
+async def upload_reference_video(client, binding, capability, allowed_hosts, *, required_frames=None, grayscale=False):
     http = await client.get_http_client()
     url = binding.video_url
     raw = bytearray()
@@ -93,10 +115,20 @@ async def upload_reference_video(client, binding, capability, allowed_hosts):
         fps = float(rate[0]) / float(rate[1]) if len(rate) == 2 and float(rate[1]) else 0
         if abs(fps - capability.decode_fps) > 0.01:
             raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: prepared clip frame rate does not match")
+        frames = int(video["nb_read_frames"])
+        if required_frames is not None and frames < required_frames:
+            raise ValueError("H3_CONTROL_RANGE_INVALID: control video does not cover the requested output interval")
         has_audio = any(s.get("codec_type") == "audio" for s in probe.get("streams", []))
         if binding.include_audio and not has_audio:
             raise ValueError("REFERENCE_VIDEO_DECODE_FAILED: requested video audio track is missing")
         if not has_audio:
             raw = await _vhs_compatible_video(source, duration, capability.max_download_bytes)
+        control_raw = None
+        if grayscale:
+            gray = await _grayscale_video(source, capability.max_download_bytes)
+            control_raw = gray.read_bytes() if has_audio else await _vhs_compatible_video(gray, duration, capability.max_download_bytes)
     uploaded = await client.upload_file_to_comfy(bytes(raw), f"ref_video_{uuid.uuid4().hex}.mp4", preserve_subfolder=True)
-    return {"reference_id": binding.reference_id, "filename": uploaded, "include_audio": binding.include_audio, "duration": duration}
+    result = {"reference_id": binding.reference_id, "filename": uploaded, "include_audio": binding.include_audio, "duration": duration, "frames": frames}
+    if control_raw is not None:
+        result["control_filename"] = await client.upload_file_to_comfy(control_raw, f"control_gray_{uuid.uuid4().hex}.mp4", preserve_subfolder=True)
+    return result
