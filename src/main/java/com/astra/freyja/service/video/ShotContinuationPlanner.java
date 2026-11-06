@@ -29,6 +29,7 @@ public class ShotContinuationPlanner {
         int output=(int)Math.round(draft.getDurationSeconds()*24), total=align(output);
         if(output<1)throw new BizException(400,"目标时长不足一帧");
         var old=draft.getSegments()==null?List.<ShotContinuation.Segment>of():draft.getSegments();
+        if(old.stream().anyMatch(Objects::isNull))throw new BizException(400,"片段不能为空");
         if(auto||old.isEmpty()) {
             List<ShotContinuation.Segment> next=new ArrayList<>();
             for(int start=0,index=0;start<total;index++) {
@@ -40,14 +41,19 @@ public class ShotContinuationPlanner {
                 next.add(segment);if(end==total)break;start=end-overlap;
             }
             // Never silently orphan existing material or locked edits during automatic replanning.
-            if(old.stream().anyMatch(s->!next.contains(s)&&(s.isLocked()||!s.getReferenceImages().isEmpty()||!s.getReferenceVideos().isEmpty()||s.getFirstFrameImageUrl()!=null||s.getLastFrameImageUrl()!=null)))
-                throw new BizException(409,"重新拆分会影响已锁定片段或素材挂载，请先手动调整或清空对应绑定");
+            if(old.stream().anyMatch(s->!next.contains(s)&&hasContent(s)))
+                throw new BizException(409,"重新分段会影响已有片段内容或素材，请先手动调整，或使用重建计划将素材退回待分配");
             draft.setSegments(next);
         }
         var result=new ShotContinuationPlan();result.setDraft(draft);result.setOutputFrames(output);result.setRenderFrames(total);
         Set<String> ids=new HashSet<>();int previousEnd=0,keepCursor=0;
         for(int i=0;i<draft.getSegments().size();i++) {
             var segment=draft.getSegments().get(i);int start=segment.getStartFrame(),end=segment.getEndFrame(),frames=end-start;
+            if(segment.getCharacterRefs()==null||segment.getPropRefs()==null||segment.getReferenceAudios()==null||segment.getCharacterRefs().size()>30||segment.getPropRefs().size()>30)throw new BizException(400,"片段角色、道具或音频列表无效");
+            if(segment.getResSceneId()!=null&&segment.getResKeyframeId()!=null)throw new BizException(400,"本段场景与关键帧背景不能同时选择");
+            Set<Long> characters=new HashSet<>();for(var c:segment.getCharacterRefs())if(c==null||c.getCharacterId()==null||c.getCharacterId()<=0||!characters.add(c.getCharacterId()))throw new BizException(400,"片段角色应有效且不重复");
+            Set<Long> props=new HashSet<>();for(var p:segment.getPropRefs())if(p==null||p.getPropId()==null||p.getPropId()<=0||!props.add(p.getPropId()))throw new BizException(400,"片段道具应有效且不重复");
+            com.astra.freyja.util.ShotAudioReferenceValidator.validateForSave(segment.getReferenceAudios());
             if(segment.getFirstFrameImageUrl()!=null&&segment.getFirstFrameImageUrl().isBlank())segment.setFirstFrameImageUrl(null);
             if(segment.getLastFrameImageUrl()!=null&&segment.getLastFrameImageUrl().isBlank())segment.setLastFrameImageUrl(null);
             if(segment.getId()==null||!ids.add(segment.getId())||start<0||start%17!=0||frames<22||frames>length||(frames-5)%17!=0
@@ -80,4 +86,12 @@ public class ShotContinuationPlanner {
         return result;
     }
     public static int align(int n){return n+Math.floorMod(5-n,17);}
+    private boolean hasContent(ShotContinuation.Segment s){
+        return s.isLocked()||s.getPrompt()!=null&&!s.getPrompt().isBlank()||s.getScriptContent()!=null&&!s.getScriptContent().isBlank()||s.getName()!=null&&!s.getName().isBlank()
+                ||s.getFirstFrameImageUrl()!=null||s.getLastFrameImageUrl()!=null||s.getDirectorPlan()!=null||s.getResSceneId()!=null||s.getResKeyframeId()!=null
+                ||s.getFirstFramePrompt()!=null||s.getEndFramePrompt()!=null||s.getNegativePrompt()!=null||s.getActionDescription()!=null||s.getSoundEffect()!=null||s.getCustomScenePrompt()!=null
+                ||s.getShotType()!=null||s.getCameraMovement()!=null||s.isControlNetEnabled()
+                ||s.getReferenceImages()!=null&&!s.getReferenceImages().isEmpty()||s.getReferenceVideos()!=null&&!s.getReferenceVideos().isEmpty()
+                ||s.getCharacterRefs()!=null&&!s.getCharacterRefs().isEmpty()||s.getPropRefs()!=null&&!s.getPropRefs().isEmpty()||s.getReferenceAudios()!=null&&!s.getReferenceAudios().isEmpty();
+    }
 }

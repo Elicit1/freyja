@@ -22,6 +22,7 @@ public class ShotContinuationPreparation {
             @Qualifier("referenceVideoPreparationExecutor") Executor executor){this.service=service;this.jdbc=jdbc;this.json=json;this.executor=executor;}
     public record State(String id,String status,String planHash,String errorMessage){}
     public boolean enabled(DramaShot shot){return service.enabled(shot);}
+    public ShotControlNetOptions savedControl(DramaShot shot){return service.read(shot).getControlNet();}
     public Map<String,Object> controlOptions(DramaShot shot,AiModel model,AiProvider provider,ShotControlNetOptions control){return service.controlOptions(shot,model,provider,control);}
     public State start(DramaShot shot,AiModel model,AiProvider provider,String size,String expected){
         var plan=service.preview(service.read(shot),false,model,provider);

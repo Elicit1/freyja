@@ -39,6 +39,7 @@ class VideoRenderBatchTest {
     VideoBatchStore store;VideoBatchPreparation preparation;VideoRenderBatchService service;VideoBatchFrameService frames;
     ApplicationEventPublisher events;
     ResSceneMapper sceneAssets;
+    ShotContinuationPreparation continuations;
     final Map<Long,DramaShot> shotData=new LinkedHashMap<>();final Map<String,RenderTask> renderData=new HashMap<>();
     ObjectMapper json=new ObjectMapper().findAndRegisterModules();JdbcTemplate jdbc;
     @BeforeEach void setup() throws Exception {
@@ -49,7 +50,7 @@ class VideoRenderBatchTest {
         var models=mock(AiModelMapper.class);var providers=mock(AiProviderMapper.class);var keyframes=mock(ResKeyframeMapper.class);renders=mock(RenderTaskMapper.class);
         api=mock(AiImageApiService.class);rendersService=mock(RenderTaskService.class);frames=mock(VideoBatchFrameService.class);var takes=mock(ShotVideoTakeService.class);
         store=new VideoBatchStore(jdbc);var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
-        preparation=new VideoBatchPreparation(mock(ShotContinuationPreparation.class),mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,(sceneAssets=mock(ResSceneMapper.class)),renders,store,json);
+        preparation=new VideoBatchPreparation((continuations=mock(ShotContinuationPreparation.class)),mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,(sceneAssets=mock(ResSceneMapper.class)),renders,store,json);
         events=mock(ApplicationEventPublisher.class);
         service=new VideoRenderBatchService(mock(ShotContinuationRenderer.class),store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,events);
         when(dramas.selectById(1L)).thenReturn(new Drama());
@@ -72,6 +73,16 @@ class VideoRenderBatchTest {
     private VideoRenderBatchRequest request(){var req=new VideoRenderBatchRequest();req.setDramaId(1L);req.setClientRequestId(UUID.randomUUID().toString());req.setShotIds(new ArrayList<>(shotData.keySet()));req.setAspectRatio("16:9");req.setExistingVideoPolicy("CREATE_NEW_TAKE");
         var r=new VideoRenderBatchRequest.ModeConfig();r.setProviderId(100L);r.setModelId(101L);var f=new VideoRenderBatchRequest.ModeConfig();f.setProviderId(100L);f.setModelId(102L);f.setAutoUseNextVideoHeadAsLastFrame(true);req.setModeConfigs(Map.of(VideoBatchPreparation.REF,r,VideoBatchPreparation.FL,f));return req;}
     private Batch create(VideoRenderBatchRequest req){req.setExpectedPreviewHash(service.preview(req).getPreviewHash());return service.create(req);}
+
+    @Test void ordinaryRenderUsesSavedOptionalControlAndExplicitDisableOverridesIt() {
+        var shot=shot(41,VideoBatchPreparation.REF,1);var control=new ShotControlNetOptions();control.setEnabled(true);control.setReferenceId("missing-video");
+        when(continuations.savedControl(shot)).thenReturn(control);
+        var cfg=request().getModeConfigs().get(VideoBatchPreparation.REF);
+        var error=assertThrows(com.astra.freyja.common.BizException.class,()->preparation.prepare(shot,cfg,"960x544","16:9",null));
+        assertTrue(error.getMessage().contains("ControlNet 视频"));
+        var supplied=new DramaShotRenderRequestDTO();supplied.setControlNet(new ShotControlNetOptions());
+        assertDoesNotThrow(()->preparation.prepare(shot,cfg,"960x544","16:9",supplied));
+    }
 
     @Test void explicitlySelectedSizeIsSharedByBothPhasesAndFrozenAtSubmission() {
         shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);

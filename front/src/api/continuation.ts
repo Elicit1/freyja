@@ -2,6 +2,7 @@ import { request } from './request'
 import type { ContinuationDraft, ContinuationPlan, ContinuationPreset } from '@/types/continuation'
 import type { ShotRefVideo } from '@/types/drama'
 export const continuationApi = {
+  plan: (id: string, draft: ContinuationDraft, auto = false) => request<ContinuationPlan>({ url: `/drama/shot/${id}/continuation/plan`, method: 'post', data: { draft, auto } }),
   presets: (id: string) => request<ContinuationPreset[]>({ url: `/drama/shot/${id}/continuation/presets`, method: 'get' }),
   splitReference: (id: string, draft: ContinuationDraft, referenceVideo: ShotRefVideo, targetSegmentIds?: string[]) => request<ContinuationPlan>({ url: `/drama/shot/${id}/continuation/split-reference`, method: 'post', data: { draft, referenceVideo, targetSegmentIds }, timeout: 180000 }),
   prepare: (id: string, providerId: string, modelCode: string, size: string, planHash: string) => request<{ id: string; status: string; errorMessage?: string }>({ url: `/drama/shot/${id}/continuation/prepare`, method: 'post', data: { providerId, modelCode, size, planHash } }),

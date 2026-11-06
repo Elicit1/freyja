@@ -117,7 +117,7 @@
     <EpisodeModal ref="episodeModalRef" @success="handleEpisodeSuccess" />
     <SceneModal ref="sceneModalRef" @success="handleSceneSuccess" />
     <ShotPromptPreviewModal ref="promptPreviewModalRef" @success="refreshShotsAndStats" />
-    <ShotRenderStepModal ref="stepRenderModalRef" @success="refreshShotsAndStats" />
+    <ShotRenderStepModal ref="stepRenderModalRef" @success="refreshShotsAndStats" @edit="shot => handleEditShot(shot.id)" />
     <ShotVideoHistoryDrawer
       v-if="historyShot?.id"
       v-model="historyVisible"
@@ -127,8 +127,8 @@
       @selected="handleHistorySelected"
       @deleted="handleHistorySelected"
     />
-    <ShotFirstEndFrameRenderModal ref="firstEndFrameRenderModalRef" @success="refreshShotsAndStats" />
-    <ShotMultiModalRefRenderModal ref="multiModalRefRenderModalRef" @success="refreshShotsAndStats" />
+    <ShotFirstEndFrameRenderModal ref="firstEndFrameRenderModalRef" @success="refreshShotsAndStats" @edit="shot => handleEditShot(shot.id)" />
+    <ShotMultiModalRefRenderModal ref="multiModalRefRenderModalRef" @success="refreshShotsAndStats" @edit="shot => handleEditShot(shot.id)" />
     <ScriptDecomposeModal
       v-for="panel in decomposePanels"
       :key="panel.key"
@@ -761,13 +761,17 @@ function handlePreviewShotPrompt(shot: DramaShot) {
   )
 }
 
-function handleRenderShot(shotOrId: DramaShot | number | string) {
+async function handleRenderShot(shotOrId: DramaShot | number | string) {
   const shot = typeof shotOrId === 'object'
     ? shotOrId
     : shots.value.find(s => String(s.id) === String(shotOrId))
   if (!shot || !shot.id) return
 
   const dramaRatio = currentDrama.value?.aspectRatio
+  if (JSON.parse(shot.continuationJson || '{}').enabled) {
+    await shotDrawerRef.value?.openEdit(shot.id, shot.dramaId, dramaRatio)
+    return
+  }
 
   if (shot.generationMode === 'REFERENCE_MODE') {
     multiModalRefRenderModalRef.value?.open(shot, dramaRatio)

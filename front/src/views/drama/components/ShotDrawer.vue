@@ -59,6 +59,8 @@
             </el-radio-group>
           </div>
 
+          <el-switch aria-label="接续模式" class="order-last" :model-value="continuationEnabled" :disabled="loading || saving || !form.id || !continuationEditor?.isReady()" active-text="接续模式" @update:model-value="toggleContinuation(Boolean($event))" />
+          <span v-if="!form.id" class="text-xs text-[var(--text-muted)]">保存镜头后可开启接续</span>
           <!-- 首尾帧模式时的 ⚠️ 叹号提示与 Popover -->
           <el-popover
             v-if="form.generationMode === 'FIRST_LAST_FRAME'"
@@ -92,7 +94,8 @@
         </div>
       </div>
 
-      <el-tabs v-model="activeSection" class="shot-workspace-tabs shrink-0">
+      <ShotContinuationEditor v-if="form.id && !loading" :key="String(form.id)" v-show="continuationEnabled" ref="continuationEditor" :shot-id="String(form.id)" :enabled="continuationEnabled" :generation-mode="form.generationMode || 'FIRST_LAST_FRAME'" :aspect-ratio="currentDramaAspectRatio" :drama-id="form.dramaId" :characters="characterOptions" :scenes="sceneOptions" :props-options="propOptions" :keyframes="keyframeOptions" :source-images="refImages" :source-videos="form.refVideos" :source-first="form.previewImageUrl" :source-last="form.endFrameImageUrl" @saved="emit('success', form.id)" @request-render="handleRender" @request-save="handleSave(false)" />
+      <el-tabs v-show="!continuationEnabled" v-model="activeSection" class="shot-workspace-tabs shrink-0">
         <el-tab-pane v-for="(section, index) in editorSections" :key="section.name" :name="section.name">
           <template #label>
             <span class="flex items-center gap-2">
@@ -104,7 +107,7 @@
         </el-tab-pane>
       </el-tabs>
       <!-- 各分区保持挂载，切换不会丢失草稿或绕过表单校验。 -->
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" label-position="top"
+      <el-form v-show="!continuationEnabled" ref="formRef" :model="form" :rules="rules" label-width="100px" label-position="top"
         class="shot-workspace-body min-h-0 flex-1 overflow-y-auto p-4">
         <section v-show="activeSection === 'script'" aria-label="剧本与规格">
         <!-- 基础规格卡片 -->
@@ -152,8 +155,7 @@
           <el-row :gutter="16">
             <el-col :span="6">
               <el-form-item label="预估时长 (秒)" prop="duration">
-                <el-input-number v-model="form.duration" :min="0.5" :max="shotAllowsLongDuration() ? 300 : Math.max(15, form.duration || 15)" :step="0.5" :precision="2" class="w-full" />
-                <ShotContinuationEditor v-if="form.id" :shot-id="String(form.id)" class="mt-2" @saved="refreshContinuation" />
+                <el-input-number v-model="form.duration" :min="0.5" :max="15" :step="0.5" :precision="2" class="w-full" />
               </el-form-item>
             </el-col>
             <el-col :span="10">
@@ -690,6 +692,7 @@
               @update:model-value="form.refVideos = $event"
               @prepare="handleRender"
           />
+              <ShotControlNetEditor v-model="ordinaryControl" :videos="form.refVideos || []" class="mt-4" />
 
         </div>
 
@@ -855,7 +858,7 @@
         </div>
         </section>
       </el-form>
-      <div class="shot-workspace-footer shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-default)] bg-[var(--surface)] px-4 py-2">
+      <div v-show="!continuationEnabled" class="shot-workspace-footer shrink-0 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-default)] bg-[var(--surface)] px-4 py-2">
         <span class="text-xs text-[var(--text-muted)]">{{ currentSectionIndex + 1 }} / {{ editorSections.length }} · {{ editorSections[currentSectionIndex]?.hint }}</span>
         <div class="flex items-center gap-2">
           <el-button v-if="currentSectionIndex > 0" size="small" text @click="moveSection(-1)">上一步</el-button>
@@ -894,10 +897,10 @@
   />
 
   <!-- 首尾帧专属渲染工坊弹窗 -->
-  <ShotFirstEndFrameRenderModal ref="firstEndFrameRenderModalRef" @success="handleModalSuccess" />
+  <ShotFirstEndFrameRenderModal ref="firstEndFrameRenderModalRef" @success="handleModalSuccess" @edit="visible = true" />
 
   <!-- 多模态参考图与音频专属渲染工坊弹窗 -->
-  <ShotMultiModalRefRenderModal ref="multiModalRefRenderModalRef" @success="handleModalSuccess" />
+  <ShotMultiModalRefRenderModal ref="multiModalRefRenderModalRef" @success="handleModalSuccess" @edit="visible = true" />
 
   <!-- AI 分镜生图与模型调度弹窗 -->
   <ShotImageGenerateModal
@@ -951,6 +954,8 @@
 </template>
 
 <script setup lang="ts">
+import { continuationApi } from '@/api/continuation'
+import ShotControlNetEditor, { type ControlNetConfiguration } from './ShotControlNetEditor.vue'
 import ShotContinuationEditor from './ShotContinuationEditor.vue'
 import { sceneImageCandidates } from '@/utils/scene-image-reference'
 import { referenceImageUsageOptions, REFERENCE_AUDIO_TYPE_OPTIONS, REFERENCE_AUDIO_LANGUAGE_OPTIONS } from '@/constants/referenceMediaOptions'
@@ -1101,8 +1106,16 @@ const refAudios = ref<ShotRefAudio[]>([])
 const inheritingTail = ref(false)
 const currentDramaAspectRatio = ref<string>('')
 
-function shotAllowsLongDuration(): boolean { try { return JSON.parse(form.continuationJson || '{}').enabled === true } catch { return false } }
-async function refreshContinuation() { if (!form.id) return; const saved = await shotApi.getById(form.id); form.continuationJson = saved.continuationJson; form.duration = saved.duration }
+const continuationEnabled = ref(false)
+const continuationEditor = ref<InstanceType<typeof ShotContinuationEditor>>()
+const ordinaryControl = ref<ControlNetConfiguration>({ enabled: false, controlType: 'CANNY', strength: 1 })
+function shotAllowsLongDuration(): boolean { return continuationEnabled.value }
+async function toggleContinuation(enabled: boolean) {
+  if (enabled && !continuationEnabled.value) { if (!await handleSave(false)) return }
+  continuationEnabled.value = enabled
+  if (!enabled && form.duration > 15) { form.duration = 15; ElMessage.info('已回到单镜头模式，时长调整为15秒；接续草稿保留。') }
+}
+
 const form = reactive<DramaShot>({
   id: undefined,
   dramaId: 0,
@@ -1672,6 +1685,9 @@ function removeReferenceAudio(index: number) {
 
 function openCreate(dramaId: string | number, episodeId: string | number, sceneId: string | number, nextShotNo = 1, defaultResSceneId?: string | number, defaultGroupId?: string | number, dramaAspectRatio?: string, insertion?: { shotId: string | number; position: 'before' | 'after' }) {
   activeSection.value = 'script'
+  continuationEnabled.value = false
+  ordinaryControl.value = { enabled: false, controlType: 'CANNY', strength: 1 }
+  form.continuationJson = undefined
   isEdit.value = false
   insertionAnchor.value = insertion
   characterRefs.value = []
@@ -1772,6 +1788,9 @@ async function openEdit(id: string | number, dramaId: string | number, dramaAspe
     if (res) {
       await loadOptions(dramaId, res.sceneId)
       Object.assign(form, res)
+      const continuation = JSON.parse(res.continuationJson || '{}')
+      continuationEnabled.value = continuation.enabled === true
+      ordinaryControl.value = continuation.controlNet || { enabled: false, controlType: 'CANNY', strength: 1 }
       form.scriptContent = res.scriptContent ?? ''
       form.actionDescription = res.actionDescription ?? ''
       form.soundEffect = res.soundEffect ?? ''
@@ -1815,6 +1834,7 @@ async function handleRefreshSeed() {
 async function handleRender() {
   const saved = await handleSave(false)
   if (!saved) return
+  if (continuationEnabled.value) { await continuationEditor.value?.openRender(); return }
   visible.value = false
   if (form.generationMode === 'REFERENCE_MODE') {
     multiModalRefRenderModalRef.value?.open({
@@ -1828,6 +1848,27 @@ async function handleRender() {
 }
 
 async function handleSave(closeAfter = false): Promise<boolean> {
+  if (continuationEnabled.value) {
+    if (!form.id) return false
+    saving.value = true
+    try {
+      await shotApi.update({ id: form.id, generationMode: form.generationMode })
+      const saved = await continuationEditor.value?.save(true)
+      if (saved && closeAfter) visible.value = false
+      return saved === true
+    } catch (e: any) { ElMessage.error(e.message || '保存接续模式失败'); return false } finally { saving.value = false }
+  }
+  const saved = await saveOrdinaryShot(false)
+  if (!saved || !form.id) return false
+  try {
+    if (continuationEditor.value?.isReady()) { if (!await continuationEditor.value.save(false)) return false }
+    const draft = await continuationApi.get(String(form.id)); draft.enabled = false; draft.controlNet = { ...ordinaryControl.value }
+    await continuationApi.save(String(form.id), draft)
+    if (closeAfter) visible.value = false
+    return true
+  } catch (e: any) { ElMessage.error(e.message || '保存参考控制配置失败'); return false }
+}
+async function saveOrdinaryShot(closeAfter = false): Promise<boolean> {
   try { await directorEditor.value?.submit() } catch (e: any) { activeSection.value = 'direction'; ElMessage.error(e.message || '保存导演计划失败'); return false }
   if (!formRef.value) return false
   if (characterRefs.value.some(item => !item.characterId || String(item.characterId) === '0')) {

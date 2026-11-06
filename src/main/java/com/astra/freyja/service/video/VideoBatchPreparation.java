@@ -203,8 +203,8 @@ public class VideoBatchPreparation {
             dto.setPreflightId(prepared.getPreflightId());dto.setResolvedRefVideos(prepared.getReferences());
             dto.setReferenceVideoRevision(prepared.getModel().getWorkflowRevision());dto.setReferenceVideoNodeId(prepared.getModel().getNodeId());
         }
-        if(supplied!=null&&supplied.getControlNet()!=null&&supplied.getControlNet().isEnabled()){
-            var control=supplied.getControlNet();
+        var control=supplied!=null&&supplied.getControlNet()!=null?supplied.getControlNet():continuations.savedControl(shot);
+        if(control!=null&&control.isEnabled()){
             if(videos.size()==1&&control.getReferenceId()==null)control.setReferenceId(videos.getFirst().getId());
             if(videos.stream().noneMatch(v->Objects.equals(v.getId(),control.getReferenceId())))throw new BizException(400,"请选择本次挂载的 ControlNet 视频");
             dto.setControlNet(control);dto.setH3Options(continuations.controlOptions(shot,model,provider,control));

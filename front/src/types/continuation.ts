@@ -1,7 +1,25 @@
-import type { ShotRefImage, ShotRefVideo } from './drama'
+import type { ShotRefImage, ShotRefVideo, ShotRefAudio, CharacterShotRefInfo, PropShotRefInfo, DirectorPlan } from './drama'
 import type { H3ControlType } from '@/constants/h3ControlTypes'
 export interface ContinuationSegment {
   id: string
+  name?: string
+  scriptContent?: string
+  actionDescription?: string
+  soundEffect?: string
+  shotType?: string
+  cameraMovement?: string
+  shotTypeLocked?: boolean
+  cameraMovementLocked?: boolean
+  resSceneId?: string | number
+  resKeyframeId?: string | number
+  customScenePrompt?: string
+  characterRefs?: CharacterShotRefInfo[]
+  propRefs?: PropShotRefInfo[]
+  directorPlan?: DirectorPlan
+  firstFramePrompt?: string
+  endFramePrompt?: string
+  negativePrompt?: string
+  referenceAudios?: ShotRefAudio[]
   startFrame: number
   endFrame: number
   prompt: string
@@ -23,6 +41,8 @@ export interface ContinuationDraft {
   overlapFrames: number
   autoSplitReferenceVideo?: boolean
   videoSources?: ShotRefVideo[]
+  imageSources?: ShotRefImage[]
+  controlNet?: { enabled: boolean; referenceId?: string; controlType: string; strength: number }
   contextWindows: boolean
   reuseFromTaskId?: string
   segments: ContinuationSegment[]

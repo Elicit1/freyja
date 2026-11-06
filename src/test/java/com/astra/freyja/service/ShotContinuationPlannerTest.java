@@ -46,6 +46,20 @@ class ShotContinuationPlannerTest {
         segment.setControlType("UNKNOWN");assertThrows(BizException.class,()->planner.plan(d,false));
         segment.setControlType(null);assertThrows(BizException.class,()->planner.plan(d,false));
     }
+    @Test void replanningProtectsAuthoredTextAndDirectorEvenWithoutMaterials(){
+        var d=draft(40);planner.plan(d,true);d.getSegments().getFirst().setScriptContent("本段独立剧本");d.setSegmentFrames(243);
+        assertThrows(BizException.class,()->planner.plan(d,true));
+        d.getSegments().getFirst().setScriptContent(null);d.getSegments().getFirst().setDirectorPlan(new com.astra.freyja.director.model.DirectorPlan());
+        assertThrows(BizException.class,()->planner.plan(d,true));
+    }
+    @Test void segmentIdentityIdsSurviveEmbeddedJsonAndConflictsAreRejected()throws Exception{
+        var d=draft(10);planner.plan(d,true);var segment=d.getSegments().getFirst();
+        var c=new com.astra.freyja.dto.res.CharacterShotRefDTO();c.setCharacterId(2032095628944588801L);c.setLookId(2032095628944588802L);segment.getCharacterRefs().add(c);
+        var text=com.astra.freyja.util.VideoReferenceSnapshotJson.write(d,new com.fasterxml.jackson.databind.ObjectMapper());
+        assertEquals("2032095628944588801",new com.fasterxml.jackson.databind.ObjectMapper().readTree(text).path("segments").path(0).path("characterRefs").path(0).path("characterId").textValue());
+        segment.getCharacterRefs().add(c);assertThrows(BizException.class,()->planner.plan(d,false));segment.getCharacterRefs().removeLast();
+        segment.setResSceneId(1L);segment.setResKeyframeId(2L);assertThrows(BizException.class,()->planner.plan(d,false));
+    }
     @Test void manualGapsAndDuplicateIdsAreRejected(){var d=draft(40);planner.plan(d,true);d.getSegments().get(1).setStartFrame(374);assertThrows(BizException.class,()->planner.plan(d,false));}
     @Test void shortEnabledShotStillUsesOnlyOneSegment(){assertEquals(1,planner.plan(draft(3),true).getSegmentCount());}
     @Test void embeddedContinuationJsonPreservesSnowflakeIds()throws Exception{

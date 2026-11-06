@@ -1,190 +1,126 @@
 <template>
-  <el-button plain type="primary" @click="open">接续模式与片段计划</el-button>
-  <el-dialog v-model="visible" title="单镜头接续 · 片段计划" width="1000px" append-to-body :close-on-click-modal="false">
-    <div v-loading="busy" class="space-y-4">
-      <div class="flex flex-wrap items-center gap-4">
-        <el-switch v-model="draft.enabled" active-text="接续模式" />
-        <span>目标秒数</span><el-input-number v-model="draft.durationSeconds" :min="0.5" :max="draft.enabled ? 300 : Math.max(15, draft.durationSeconds)" :step="0.5" />
-        <el-tag v-if="!draft.enabled && draft.durationSeconds > 15" type="danger">普通模式最多 15 秒，请缩短或开启接续</el-tag>
-      </div>
-      <div class="grid grid-cols-3 gap-3">
-        <el-select v-model="providerId" placeholder="视频提供商" @change="loadModels"><el-option v-for="p in providers" :key="String(p.id)" :label="p.providerName" :value="String(p.id)" /></el-select>
-        <el-select v-model="modelCode" placeholder="视频模型"><el-option v-for="m in models" :key="String(m.id)" :label="m.modelName" :value="m.modelCode" /></el-select>
-        <el-input v-model="size" placeholder="实际尺寸，例如 960x544" />
-      </div>
-      <template v-if="draft.enabled">
-        <div class="flex flex-wrap gap-3 items-center">
-          <span>每段时长档位</span><el-select :model-value="selectedPreset" class="!w-48" @change="applyPreset"><el-option v-for="p in presets" :key="p.id" :value="p.id" :label="p.label" /><el-option label="自定义帧数" value="custom" /></el-select>
-          <span class="text-xs text-slate-500">实际最多 {{ seconds(draft.segmentFrames) }} 秒 / 段，含 {{ seconds(draft.overlapFrames) }} 秒共享上下文</span>
-          <span>段长（帧）</span><el-input-number v-model="draft.segmentFrames" :min="124" :max="362" :step="17" />
-          <span>共享上下文（帧）</span><el-input-number v-model="draft.overlapFrames" :min="5" :max="141" :step="17" />
-          <el-checkbox v-model="draft.contextWindows">启用已验证的上下文窗口</el-checkbox>
-          <el-button @click="preview(true)">自动拆分</el-button><el-button @click="appendSegment">手动加段</el-button><el-button @click="resetPlan">重建计划，素材退回待分配</el-button>
-        </div>
-        <div class="flex gap-3 items-center"><el-select v-model="chatModelId" placeholder="选择 AI 文本规划模型" class="!w-72"><el-option v-for="m in chatModels" :key="String(m.id)" :value="String(m.id)" :label="m.modelName" /></el-select><el-button :disabled="!draft.segments.length || !chatModelId" @click="planPrompts">AI 编写各段提示词</el-button></div>
-        <el-alert type="info" :closable="false" title="自动拆分后可直接编辑。图片、视频只参与明确挂载的片段；上一段的生成上下文由系统传递。" />
-        <el-alert v-if="generationMode === 'FIRST_LAST_FRAME'" type="info" :closable="false" title="当前为首尾帧工作流，请按片段设置首尾帧。需要普通图片或视频参考时，请在镜头中切换为参考生成模式。" />
-        <el-checkbox v-if="lastTaskId" :model-value="!!draft.reuseFromTaskId" @change="(value: boolean | string | number) => draft.reuseFromTaskId = value ? lastTaskId : undefined">复用上次任务中输入未变的片段</el-checkbox>
-        <div v-if="generationMode === 'REFERENCE_MODE'" class="flex gap-2 flex-wrap items-center"><el-checkbox v-model="draft.autoSplitReferenceVideo">上传后按当前分段自动切分并挂载到全部片段</el-checkbox><el-upload :show-file-list="false" accept="video/*" :before-upload="uploadTrayVideo"><el-button>上传参考视频</el-button></el-upload><el-button @click="chooseVideo()">选择分镜 / Take 参考视频</el-button></div>
-        <div v-if="generationMode === 'REFERENCE_MODE'" class="text-xs text-slate-500">上传后展示各段源范围；渲染前后台实际裁片。切片包含真实重叠，源范围不足会提示，不拉伸、不循环。关闭自动切分后可手动选择目标片段。</div>
-        <div v-if="imageTray.length || videoTray.length" class="p-3 bg-slate-50 rounded space-y-2">
-          <div>待分配素材 <el-select v-model="selectedTargets" multiple placeholder="选择目标片段" class="!w-80"><el-option v-for="(s, i) in draft.segments" :key="s.id" :label="`片段 ${i + 1}`" :value="s.id" /></el-select></div>
-          <div class="flex gap-2 flex-wrap" v-for="img in imageTray" :key="img.id"><span>{{ img.name || '参考图' }}</span><template v-if="generationMode === 'FIRST_LAST_FRAME'"><el-button size="small" @click="mountAnchor(img, true)">设为所选段首帧</el-button><el-button size="small" @click="mountAnchor(img, false)">设为所选段尾帧</el-button></template><el-button v-else size="small" @click="mountImage(img)">挂载图片</el-button></div>
-          <div class="flex gap-2 flex-wrap items-center" v-for="video in videoTray" :key="video.id"><span>{{ video.name || '参考视频' }}</span><span>源范围（秒）</span><el-input-number v-model="video.startSeconds" :min="0" :step="0.5" /><span>至</span><el-input-number v-model="video.endSeconds" :min="0.1" :step="0.5" /><el-button size="small" :disabled="generationMode !== 'REFERENCE_MODE'" @click="mountVideo(video)">挂载所选源片段</el-button><el-button size="small" :disabled="generationMode !== 'REFERENCE_MODE'" @click="distributeVideo(video)">按时间轴分配</el-button><span class="text-xs text-slate-500">源起点对应镜头 0 秒</span></div>
-        </div>
-        <div v-for="(segment, index) in draft.segments" :key="segment.id" class="p-4 border border-slate-200 rounded-lg space-y-3">
-          <div class="flex gap-3 items-center flex-wrap"><strong>片段 {{ index + 1 }}</strong><span>{{ seconds(segment.startFrame) }}～{{ seconds(segment.endFrame) }} 秒</span><el-checkbox v-model="segment.locked">锁定自动拆分</el-checkbox><el-button size="small" type="danger" text @click="removeSegment(index)">移除片段，素材退回待分配</el-button></div>
-          <div class="flex gap-3 items-center"><span>生成帧范围</span><el-input-number v-model="segment.startFrame" :min="0" :step="17" /><span>至</span><el-input-number v-model="segment.endFrame" :min="22" :step="17" /></div>
-          <el-input v-model="segment.prompt" type="textarea" :rows="3" placeholder="本段画面、动作与对白；可用本段 Picture / Video 标签，不需要逐项填写素材说明" />
-          <div v-if="generationMode === 'FIRST_LAST_FRAME'" class="space-y-2">
-            <div class="flex gap-2 items-center"><span>首帧 · Picture 1</span><el-input v-model="segment.firstFrameImageUrl" clearable placeholder="本段首帧地址，可从待分配素材挂载" /><el-upload :show-file-list="false" accept="image/*" :before-upload="(file: File) => uploadAnchor(file, segment, true)"><el-button>上传首帧</el-button></el-upload></div>
-            <div class="flex gap-2 items-center"><span>尾帧 · Picture 2</span><el-input v-model="segment.lastFrameImageUrl" clearable placeholder="本段尾帧地址（可选）" /><el-upload :show-file-list="false" accept="image/*" :before-upload="(file: File) => uploadAnchor(file, segment, false)"><el-button>上传尾帧</el-button></el-upload></div>
-          </div>
-          <div v-else class="flex gap-3 flex-wrap items-start">
-            <div v-for="(img, n) in segment.referenceImages" :key="img.id" class="w-24"><el-image :src="img.imageUrl" class="w-24 h-20" fit="cover" :preview-src-list="[img.imageUrl]" preview-teleported /><div class="text-xs">Picture {{ n + 1 }} <el-button text size="small" @click="segment.referenceImages.splice(n, 1)">移除</el-button></div></div>
-            <el-upload :show-file-list="false" accept="image/*" :before-upload="(file: File) => upload(file, segment, 'image')"><el-button>添加参考图</el-button></el-upload>
-            <el-upload :show-file-list="false" accept="video/*" :before-upload="(file: File) => upload(file, segment, 'video')"><el-button>上传本段参考视频</el-button></el-upload>
-            <el-button @click="chooseVideo(segment)">选择分镜 / Take 视频</el-button>
-          </div>
-          <div v-for="(video, n) in segment.referenceVideos" :key="video.id" class="flex gap-2 flex-wrap items-center text-sm">
-            <span>Video {{ n + 1 }} · {{ video.name || '视频' }}</span><span>源范围（秒）</span><el-input-number v-model="video.startSeconds" :min="0" :step="0.5" @change="clearFrameRange(video)" /><span>至</span><el-input-number v-model="video.endSeconds" :min="0.1" :step="0.5" @change="clearFrameRange(video)" /><el-tag v-if="video.sourceStartFrame !== undefined" size="small">按计划精确切帧</el-tag><el-button text type="danger" @click="removeVideo(segment, n)">移除</el-button>
-            <el-checkbox v-model="video.includeAudio">参考原音</el-checkbox>
-          </div>
-          <div v-if="segment.referenceVideos.length" class="flex gap-3 items-center flex-wrap">
-            <el-switch v-model="segment.controlNetEnabled" active-text="ControlNet（可选）" />
-            <template v-if="segment.controlNetEnabled"><el-select v-model="segment.controlVideoId" placeholder="本段控制视频"><el-option v-for="(v, n) in segment.referenceVideos" :key="v.id" :value="v.id" :label="`Video ${n + 1}`" /></el-select><el-select v-model="segment.controlType"><el-option v-for="option in H3_CONTROL_TYPES" :key="option.value" :label="option.label" :value="option.value" /></el-select><el-input-number v-model="segment.controlStrength" :min="0" :max="2" :step="0.1" /></template>
-          </div>
-          <div v-if="index > 0" class="text-xs text-slate-500">接续上下文：来自片段 {{ index }} 的实际生成尾部，不计入本段参考素材编号。</div>
-        </div>
-        <el-button :loading="previewing" @click="preview(false)">校验并预览当前计划</el-button>
-        <div v-if="plan" class="p-3 bg-sky-50 rounded space-y-2">
-          <strong>共 {{ plan.segmentCount }} 段，{{ Math.max(0, plan.segmentCount - 1) }} 个接续点，最终 {{ seconds(plan.outputFrames) }} 秒</strong>
-          <div v-for="(r, i) in plan.ranges" :key="r.segmentId" class="text-sm">片段 {{ i + 1 }}：生成 {{ seconds(r.startFrame) }}～{{ seconds(r.endFrame) }} 秒 · 共享 {{ r.overlapFrames }} 帧 · 成片保留 {{ seconds(r.keepStartFrame) }}～{{ seconds(r.keepEndFrame) }} 秒</div>
-          <el-alert v-for="issue in plan.issues" :key="issue" :title="issue" type="warning" :closable="false" />
-        </div>
-      </template>
+  <div class="continuation-workbench" v-loading="busy || !ready">
+    <div class="continuation-scroll">
+      <section class="continuation-master">
+        <div class="master-heading"><div><span class="eyebrow">单镜头 · 接续创作</span><h2>接续总控</h2><p>先规划时间轴，再逐段编写内容和挂载参考。</p></div><div class="flex gap-2"><el-button :disabled="!draft.segments.length" @click="planningDialog?.open()">✦ AI 自动规划</el-button><el-button type="primary" plain :loading="previewing" @click="preview(true)">自动分段</el-button></div></div>
+        <div class="master-fields"><label>成片总时长（秒）<el-input-number v-model="draft.durationSeconds" :min="0.5" :max="300" :step="0.5" /></label><label>每段生成时长<el-select :model-value="selectedPreset" @change="applyPreset"><el-option v-for="p in presets" :key="p.id" :value="p.id" :label="p.label" /><el-option value="custom" label="自定义帧数" /></el-select></label><label>段长（帧）<el-input-number v-model="draft.segmentFrames" :min="124" :max="362" :step="17" /></label><label>共享上下文（帧）<el-input-number v-model="draft.overlapFrames" :min="5" :max="141" :step="17" /></label></div>
+        <div class="timeline" aria-label="接续片段时间轴"><button v-for="(s,i) in draft.segments" :key="s.id" :class="{selected:activeId===s.id}" :style="{flex: Math.max(1,s.endFrame-s.startFrame)}" @click="activeId=s.id"><b>{{ String(i+1).padStart(2,'0') }}</b><span>{{ seconds(s.startFrame) }}–{{ seconds(s.endFrame) }}s</span></button><p v-if="!draft.segments.length">点击自动分段，预览接续计划</p></div>
+        <div class="master-summary"><span>{{ draft.segments.length }} 个片段 · {{ Math.max(0,draft.segments.length-1) }} 个接续点 · {{ draft.durationSeconds }} 秒成片</span><div class="flex gap-2"><el-button text size="small" @click="appendSegment">＋ 手动加段</el-button><el-button text size="small" @click="preview(false)">校验时间轴</el-button><el-button text size="small" @click="resetPlan">重建</el-button></div></div>
+        <el-alert v-if="planError" :title="planError" type="warning" :closable="false" /><el-alert v-for="issue in plan?.issues || []" :key="issue" :title="issue" type="warning" :closable="false" />
+        <el-collapse><el-collapse-item title="参考素材分配与接续选项" name="sources"><div class="space-y-3"><div class="flex gap-3 flex-wrap"><el-checkbox v-model="draft.contextWindows">启用上下文窗口（渲染时校验模型支持）</el-checkbox><el-checkbox v-if="lastTaskId" :model-value="!!draft.reuseFromTaskId" @change="(value: boolean | string | number) => draft.reuseFromTaskId = value ? lastTaskId : undefined">复用输入未变的已生成片段</el-checkbox></div><div v-if="generationMode === 'REFERENCE_MODE'" class="flex gap-3 flex-wrap items-center"><el-checkbox v-model="draft.autoSplitReferenceVideo">上传后按当前时间轴自动切分参考视频</el-checkbox><el-upload :show-file-list="false" accept="video/*" :before-upload="uploadTrayVideo"><el-button size="small">上传完整参考视频</el-button></el-upload><el-button size="small" @click="chooseVideo()">选择分镜 / Take 视频</el-button></div><p class="text-xs text-[var(--text-muted)]">素材只用于明确指定的片段；长视频按各段真实重叠范围切分，源时长不足会提示。</p><div v-if="imageTray.length || videoTray.length"><el-select v-model="selectedTargets" multiple placeholder="选择素材目标片段（未选时视频按全时间轴分配）" class="w-full"><el-option v-for="(s,i) in draft.segments" :key="s.id" :value="s.id" :label="`片段 ${i+1} · ${s.name || '未命名'}`" /></el-select><div v-for="img in imageTray" :key="img.id || img.imageUrl" class="tray-row"><el-image :src="img.imageUrl" fit="cover" class="w-10 h-10 rounded" /><span>{{ img.name }}</span><template v-if="generationMode === 'FIRST_LAST_FRAME'"><el-button size="small" @click="mountAnchor(img,true)">设为首帧</el-button><el-button size="small" @click="mountAnchor(img,false)">设为尾帧</el-button></template><el-button v-else size="small" @click="mountImage(img)">挂载所选段</el-button></div><div v-for="video in videoTray" :key="video.id" class="tray-row"><span>{{ video.name || '参考视频' }}</span><el-input-number v-model="video.startSeconds" :min="0" :step="0.5" /><span>至</span><el-input-number v-model="video.endSeconds" :min="0.1" :step="0.5" /><el-button size="small" :disabled="generationMode !== 'REFERENCE_MODE'" @click="mountVideo(video)">挂载所选源范围</el-button><el-button size="small" :disabled="generationMode !== 'REFERENCE_MODE'" @click="distributeVideo(video)">按时间轴切分挂载</el-button></div></div></div></el-collapse-item></el-collapse>
+      </section>
+      <div class="continuation-editors"><aside class="segment-nav"><div class="nav-heading">接续片段 <span>{{ draft.segments.length }}</span></div><button v-for="(s,i) in draft.segments" :key="s.id" :class="{active:activeId===s.id}" @click="activeId=s.id"><span class="segment-no">{{ String(i+1).padStart(2,'0') }}</span><div><strong>{{ s.name || `片段 ${i+1}` }}</strong><small>{{ seconds(s.startFrame) }}–{{ seconds(s.endFrame) }} 秒</small><small>{{ s.locked ? '已锁定' : s.scriptContent ? '已编写剧本' : '待完善内容' }}</small></div></button></aside><main class="segment-panel"><template v-if="activeSegment"><div class="segment-panel-heading"><strong>{{ activeSegment.name || `片段 ${draft.segments.indexOf(activeSegment)+1}` }}</strong><div><el-checkbox v-model="activeSegment.locked">锁定自动规划</el-checkbox><el-button text type="danger" size="small" @click="confirmRemove(draft.segments.indexOf(activeSegment))">移除</el-button></div></div><ContinuationSegmentEditor :key="activeSegment.id" :segment="activeSegment" :index="draft.segments.indexOf(activeSegment)" :range="plan?.ranges.find(r=>r.segmentId===activeId)" :generation-mode="generationMode" :shot-id="shotId" :drama-id="dramaId" :characters="characters" :scenes="scenes" :props-options="propsOptions" :keyframes="keyframes" :active-section="sections[activeId] || 'script'" @update:active-section="sections[activeId]=$event" @plan="planOne" /></template><el-empty v-else description="先自动分段或添加片段" /></main></div>
     </div>
-    <template #footer><el-button @click="visible = false">关闭</el-button><el-button :loading="busy" :disabled="previewing" @click="save">保存草稿</el-button><el-button type="primary" :loading="busy" :disabled="!draft.enabled || !plan?.renderable || busy || previewing" @click="render">开始接续渲染</el-button></template>
-    <ShotVideoPickerDialog ref="videoPicker" @selected="selectedVideo" />
-  </el-dialog>
+    <footer class="continuation-footer"><span>每个片段独立配置 · 上一段尾部作为接续上下文</span><div><el-button :disabled="!ready" @click="emit('request-save')">保存接续草稿</el-button><el-button type="primary" :disabled="!draft.segments.length" @click="emit('request-render')">配置并渲染</el-button></div></footer>
+    <ShotVideoPickerDialog ref="videoPicker" @selected="selectedVideo" /><ShotContinuationPlanDialog ref="planningDialog" :segments="draft.segments" :busy="busy" @submit="planPrompts" /><ShotVideoRenderDialog ref="renderDialog" />
+  </div>
 </template>
 
 <script setup lang="ts">
-import { H3_CONTROL_TYPES } from '@/constants/h3ControlTypes'
 import { computed, ref, watch, onBeforeUnmount } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { continuationApi } from '@/api/continuation'
 import { shotApi } from '@/api/drama'
 import { shotVideoReferenceApi } from '@/api/shot-video-reference'
-import { aiProviderApi, aiModelApi } from '@/api/ai-provider'
 import { runAiTaskResult } from '@/api/ai-task-stream'
 import { assetApi } from '@/api/res-asset'
-import type { AiModel, AiProviderVO } from '@/types/ai-provider'
-import type { ShotRefImage, ShotRefVideo } from '@/types/drama'
+import type { DramaShot, ShotRefImage, ShotRefVideo } from '@/types/drama'
 import type { ContinuationDraft, ContinuationPlan, ContinuationPreset, ContinuationSegment } from '@/types/continuation'
+import type { ResCharacterOption, ResSceneOption, ResPropOption, ResKeyframeOption } from '@/types/resource'
+import ContinuationSegmentEditor from './ContinuationSegmentEditor.vue'
+import ShotContinuationPlanDialog from './ShotContinuationPlanDialog.vue'
+import ShotVideoRenderDialog, { type VideoRenderConfiguration } from './ShotVideoRenderDialog.vue'
 import ShotVideoPickerDialog from '@/views/production/components/ShotVideoPickerDialog.vue'
-const props = defineProps<{ shotId: string }>()
-const emit = defineEmits<{ (event: 'saved'): void }>()
-const visible = ref(false), busy = ref(false), previewing = ref(false)
-const draft = ref<ContinuationDraft>({ schemaVersion: 1, enabled: false, durationSeconds: 15, segmentFrames: 124, overlapFrames: 22, contextWindows: false, autoSplitReferenceVideo: true, videoSources: [], segments: [] })
+const props = defineProps<{ shotId: string; enabled: boolean; generationMode: string; aspectRatio?: string; dramaId?: string | number; characters: ResCharacterOption[]; scenes: ResSceneOption[]; propsOptions: ResPropOption[]; keyframes: ResKeyframeOption[]; sourceImages?: ShotRefImage[]; sourceVideos?: ShotRefVideo[]; sourceFirst?: string; sourceLast?: string }>()
+const emit = defineEmits<{ (event: 'saved' | 'request-render' | 'request-save'): void }>()
+const busy = ref(false), previewing = ref(false), ready = ref(false), planError = ref('')
+const draft = ref<ContinuationDraft>({ schemaVersion: 1, enabled: true, durationSeconds: 15, segmentFrames: 124, overlapFrames: 22, contextWindows: false, autoSplitReferenceVideo: true, videoSources: [], segments: [] })
 const presets = ref<ContinuationPreset[]>([])
 const selectedPreset = computed(() => presets.value.find(p => p.segmentFrames === draft.value.segmentFrames && p.overlapFrames === draft.value.overlapFrames)?.id || 'custom')
-const plan = ref<ContinuationPlan>(), providerId = ref(''), modelCode = ref(''), size = ref('960x544')
-const providers = ref<AiProviderVO[]>([]), models = ref<AiModel[]>([]), imageTray = ref<ShotRefImage[]>([]), videoTray = ref<ShotRefVideo[]>([]), selectedTargets = ref<string[]>([])
-const chatModels = ref<AiModel[]>([]), chatModelId = ref('')
-const lastTaskId = ref<string>()
-const generationMode = ref('REFERENCE_MODE')
+const plan = ref<ContinuationPlan>(), imageTray = ref<ShotRefImage[]>([]), videoTray = ref<ShotRefVideo[]>([]), selectedTargets = ref<string[]>([])
+const lastTaskId = ref<string>(), activeId = ref(''), sections = ref<Record<string,string>>({})
+const activeSegment = computed(() => draft.value.segments.find(s => s.id === activeId.value))
+const generationMode = computed(() => props.generationMode)
 const videoPicker = ref<InstanceType<typeof ShotVideoPickerDialog>>(), videoTarget = ref<ContinuationSegment>()
-let revision = 0
-let previewRequest = 0, applyingPreview = false
+const planningDialog = ref<InstanceType<typeof ShotContinuationPlanDialog>>(), renderDialog = ref<InstanceType<typeof ShotVideoRenderDialog>>()
+let alive = true, revision = 0, previewRequest = 0, applyingPreview = false
 let previewTimer: ReturnType<typeof setTimeout> | undefined
-watch(() => props.shotId, () => { visible.value = false; revision++; plan.value = undefined; selectedTargets.value = []; clearTimeout(previewTimer) })
-watch([draft, providerId, modelCode, size], () => {
-  if (applyingPreview) return
-  revision++; plan.value = undefined; clearTimeout(previewTimer)
-  if (visible.value && !busy.value && draft.value.enabled && providerId.value && modelCode.value) previewTimer = setTimeout(() => preview(!draft.value.segments.length), 700)
+function normalize(value: ContinuationDraft) { value.videoSources ??= []; value.autoSplitReferenceVideo ??= true; value.segments.forEach(s => { s.characterRefs ??= []; s.propRefs ??= []; s.referenceAudios ??= []; s.referenceImages ??= []; s.referenceVideos ??= [] }); return value }
+watch(draft, () => {
+  if (applyingPreview || !ready.value) return
+  revision++; plan.value = undefined; planError.value = ''; clearTimeout(previewTimer)
+  if (props.enabled && !busy.value) previewTimer = setTimeout(() => preview(false), 650)
 }, { deep: true, flush: 'sync' })
-watch(busy, value => { if (!value && visible.value && !plan.value && draft.value.enabled && providerId.value && modelCode.value) { clearTimeout(previewTimer); previewTimer = setTimeout(() => preview(!draft.value.segments.length), 700) } })
-onBeforeUnmount(() => clearTimeout(previewTimer))
-const seconds = (frames: number) => (frames / 24).toFixed(3)
-const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
-async function open() {
-  visible.value = true; busy.value = true
-  const shotId = props.shotId
-  try {
-    const [saved, shot, enabled, profiles] = await Promise.all([continuationApi.get(shotId), shotApi.getById(shotId), aiProviderApi.getListEnabled(), continuationApi.presets(shotId)])
-    if (!visible.value || props.shotId !== shotId) return
-    draft.value = saved; if (!shot.continuationJson) draft.value.durationSeconds = shot.duration || 15
-    draft.value.autoSplitReferenceVideo ??= true; draft.value.videoSources ??= []; presets.value = profiles
-    generationMode.value = shot.generationMode || 'REFERENCE_MODE'
-    imageTray.value = [...(shot.refImages || [])]
-    if (shot.previewImageUrl) imageTray.value.push({ id: 'shot-first-frame', sourceType: 'UPLOAD', imageUrl: shot.previewImageUrl, name: '镜头原首帧' } as ShotRefImage)
-    if (shot.endFrameImageUrl) imageTray.value.push({ id: 'shot-last-frame', sourceType: 'UPLOAD', imageUrl: shot.endFrameImageUrl, name: '镜头原尾帧' } as ShotRefImage)
-    videoTray.value = clone(draft.value.videoSources)
-    for (const video of shot.refVideos || []) if (!videoTray.value.some(v => v.id === video.id)) videoTray.value.push(video)
-    providers.value = enabled
-    lastTaskId.value = shot.latestTaskId
-    providerId.value ||= enabled[0] ? String(enabled[0].id) : ''; await loadModels()
-    const chatPage = await aiModelApi.getPage({ modelType: 'CHAT', status: 1, pageSize: 100 }); chatModels.value = chatPage.records; chatModelId.value ||= chatModels.value[0] ? String(chatModels.value[0].id) : ''
-  } catch (e: any) { ElMessage.error(e.message || '读取接续配置失败') } finally { busy.value = false }
-  if (draft.value.enabled) await preview(!draft.value.segments.length)
+watch(busy, value => { if (!value && alive && ready.value && props.enabled && !plan.value) { clearTimeout(previewTimer); previewTimer = setTimeout(() => preview(false), 650) } })
+watch(() => props.enabled, value => {
+  draft.value.enabled = value
+  if (value && ready.value) { syncParentSources(); void preview(!draft.value.segments.length) }
+})
+function syncParentSources() {
+  for (const image of props.sourceImages || []) if (!imageTray.value.some(v => v.id === image.id || v.imageUrl === image.imageUrl)) imageTray.value.push(clone(image))
+  for (const video of props.sourceVideos || []) if (!videoTray.value.some(v => v.id === video.id)) videoTray.value.push(clone(video))
+  for (const [url,name] of [[props.sourceFirst,'镜头原首帧'],[props.sourceLast,'镜头原尾帧']]) if (url && !imageTray.value.some(v => v.imageUrl === url)) imageTray.value.push({ id: crypto.randomUUID(), sourceType: 'UPLOAD', imageUrl: url, name: name! })
 }
-async function loadModels() { if (!providerId.value) return; const all = await aiProviderApi.getModelList(providerId.value); const type = generationMode.value === 'FIRST_LAST_FRAME' ? 'TXT2VIDEO_FIRST_LAST' : 'TXT2VIDEO_REF'; models.value = all.filter(m => m.status === 1 && m.modelType === type); if (!models.value.some(m => m.modelCode === modelCode.value)) modelCode.value = models.value[0]?.modelCode || '' }
+watch(() => props.generationMode, () => { revision++; plan.value = undefined })
+onBeforeUnmount(() => { alive = false; revision++; clearTimeout(previewTimer) })
+const seconds = (frames: number) => (frames / 24).toFixed(2)
+const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
+async function load() {
+  busy.value = true
+  try {
+    const [saved, shot, profiles] = await Promise.all([continuationApi.get(props.shotId), shotApi.getById(props.shotId), continuationApi.presets(props.shotId)])
+    if (!alive) return
+    draft.value = normalize(saved); draft.value.enabled = props.enabled; presets.value = profiles
+    imageTray.value = clone(saved.imageSources || shot.refImages || [])
+    if (shot.previewImageUrl && !imageTray.value.some(i => i.imageUrl === shot.previewImageUrl)) imageTray.value.push({ id: 'shot-first-frame', sourceType: 'UPLOAD', imageUrl: shot.previewImageUrl, name: '镜头原首帧' })
+    if (shot.endFrameImageUrl && !imageTray.value.some(i => i.imageUrl === shot.endFrameImageUrl)) imageTray.value.push({ id: 'shot-last-frame', sourceType: 'UPLOAD', imageUrl: shot.endFrameImageUrl, name: '镜头原尾帧' })
+    videoTray.value = clone(saved.videoSources || [])
+    for (const video of shot.refVideos || []) if (!videoTray.value.some(v => v.id === video.id)) videoTray.value.push(clone(video))
+    syncParentSources(); lastTaskId.value = shot.latestTaskId; activeId.value = saved.segments[0]?.id || ''; ready.value = true
+  } catch (e: any) { ElMessage.error(e.message || '读取接续配置失败') } finally { busy.value = false }
+  if (props.enabled && ready.value) await preview(!draft.value.segments.length)
+}
+void load()
 async function applyPreset(id: string) {
   const value = presets.value.find(p => p.id === id); if (!value) return
   const candidate = clone(draft.value); candidate.segmentFrames = value.segmentFrames; candidate.overlapFrames = value.overlapFrames
   await preview(true, candidate)
 }
 async function preview(auto: boolean, candidate?: ContinuationDraft) {
-  clearTimeout(previewTimer)
-  if (!providerId.value || !modelCode.value) return ElMessage.warning('请选择提供商和模型')
+  clearTimeout(previewTimer); if (!ready.value) return
   previewing.value = true; const before = revision, request = ++previewRequest
   try {
-    const value = await continuationApi.preview(props.shotId, clone(candidate || draft.value), auto, providerId.value, modelCode.value)
-    if (!visible.value || before !== revision || request !== previewRequest) return
+    const value = await continuationApi.plan(props.shotId, clone(candidate || draft.value), auto)
+    if (!alive || before !== revision || request !== previewRequest) return
     applyingPreview = true
-    try { draft.value = value.draft; plan.value = value } finally { applyingPreview = false }
-  }
-  catch (e: any) { if (before === revision && request === previewRequest) ElMessage.error(e.message || '计划校验失败') }
+    try { draft.value = normalize(value.draft); plan.value = value; if (!draft.value.segments.some(s => s.id === activeId.value)) activeId.value = draft.value.segments[0]?.id || '' } finally { applyingPreview = false }
+  } catch (e: any) { if (before === revision && request === previewRequest) { planError.value = e.message || '计划校验失败'; if (auto) ElMessage.error(planError.value) } }
   finally { if (request === previewRequest) previewing.value = false }
 }
-async function planPrompts() {
-  const model = chatModels.value.find(m => String(m.id) === chatModelId.value); if (!model) return
+async function planPrompts(options: { providerId: string; modelCode: string; selectedSegmentIds?: string[]; requirements: string }) {
   const before = revision; busy.value = true
   try {
-    const result = await runAiTaskResult<ContinuationDraft>(`/drama/shot/${props.shotId}/continuation/plan-task`, { draft: clone(draft.value), providerId: String(model.providerId), modelCode: model.modelCode })
-    if (!visible.value || before !== revision) throw new Error('计划已修改；AI 结果保留在任务中心，本次未覆盖编辑')
-    draft.value = result
+    const result = await runAiTaskResult<ContinuationDraft>(`/drama/shot/${props.shotId}/continuation/plan-task`, { draft: clone(draft.value), ...options })
+    if (!alive || before !== revision) throw new Error('计划已修改；AI 结果保留在任务中心，本次未覆盖编辑')
+    draft.value = normalize(result); planningDialog.value?.close()
   } catch (e: any) { ElMessage.error(e.message || 'AI 规划失败') } finally { busy.value = false }
-  if (visible.value) await preview(false)
+  if (alive) await preview(false)
 }
-function appendSegment() { const start = draft.value.segments.length ? draft.value.segments.at(-1)!.endFrame - draft.value.overlapFrames : 0; draft.value.segments.push({ id: crypto.randomUUID(), startFrame: start, endFrame: start + draft.value.segmentFrames, prompt: '', locked: false, referenceImages: [], referenceVideos: [], controlNetEnabled: false, controlType: 'CANNY', controlStrength: 1 }) }
+function appendSegment() { const start = draft.value.segments.length ? draft.value.segments.at(-1)!.endFrame - draft.value.overlapFrames : 0; draft.value.segments.push({ id: crypto.randomUUID(), startFrame: start, endFrame: start + draft.value.segmentFrames, prompt: '', locked: false, characterRefs: [], propRefs: [], referenceAudios: [], referenceImages: [], referenceVideos: [], controlNetEnabled: false, controlType: 'CANNY', controlStrength: 1 }) }
 function removeSegment(index: number) { const s = draft.value.segments.splice(index, 1)[0]; if (!s) return; for (const image of s.referenceImages) if (!imageTray.value.some(x => x.id === image.id)) imageTray.value.push(image); for (const url of [s.firstFrameImageUrl, s.lastFrameImageUrl]) if (url && !imageTray.value.some(x => x.imageUrl === url)) imageTray.value.push({ id: crypto.randomUUID(), sourceType: 'UPLOAD', imageUrl: url, name: '片段锚点' } as ShotRefImage); for (const video of s.referenceVideos) if (!videoTray.value.some(x => x.id === video.id)) videoTray.value.push(video) }
-async function resetPlan() { while (draft.value.segments.length) removeSegment(0); selectedTargets.value = []; await preview(true) }
+async function resetPlan() { try { await ElMessageBox.confirm('重建会清除各段剧本、导演与绑定，图片和视频退回待分配。是否继续？', '重建分段计划', { type: 'warning' }) } catch { return }; while (draft.value.segments.length) removeSegment(0); selectedTargets.value = []; await preview(true) }
 function targets() { const values = draft.value.segments.filter(s => selectedTargets.value.includes(s.id)); if (!values.length) ElMessage.warning('请先选择目标片段'); return values }
-function mountImage(image: ShotRefImage) { for (const s of targets()) if (!s.referenceImages.some(x => x.id === image.id)) s.referenceImages.push(clone(image)) }
+function mountImage(image: ShotRefImage) { for (const s of targets()) if (!s.referenceImages.some(x => x.id === image.id)) s.referenceImages.push({ ...clone(image), bindingMode: 'SNAPSHOT' }) }
 function mountAnchor(image: ShotRefImage, first: boolean) { for (const s of targets()) if (first) s.firstFrameImageUrl = image.imageUrl; else s.lastFrameImageUrl = image.imageUrl }
 function mountVideo(video: ShotRefVideo) { for (const s of targets()) if (!s.referenceVideos.some(x => x.id === video.id)) s.referenceVideos.push(clone(video)) }
 async function splitVideo(video: ShotRefVideo, targetIds?: string[]) {
   const before = revision, shotId = props.shotId
   const value = await continuationApi.splitReference(shotId, clone(draft.value), clone(video), targetIds)
-  if (!visible.value || props.shotId !== shotId || before !== revision) throw new Error('分段计划已变化，请重新切分参考视频')
-  draft.value = value.draft
+  if (!alive || props.shotId !== shotId || before !== revision) throw new Error('分段计划已变化，请重新切分参考视频')
+  draft.value = normalize(value.draft)
   return value.segmentCount
 }
 async function distributeVideo(video: ShotRefVideo) { busy.value = true; try { const count = await splitVideo(video, selectedTargets.value); ElMessage.success(`已按当前计划绑定参考视频，共 ${selectedTargets.value.length || count} 段`) } catch (e: any) { ElMessage.error(e.message || '切分参考视频失败') } finally { busy.value = false } }
-function clearFrameRange(video: ShotRefVideo) { delete video.sourceStartFrame; delete video.sourceEndFrame }
-function removeVideo(s: ContinuationSegment, index: number) { const removed = s.referenceVideos.splice(index, 1)[0]; if (removed?.id === s.controlVideoId) s.controlVideoId = undefined; if (!s.referenceVideos.length) s.controlNetEnabled = false }
-async function uploadAnchor(file: File, segment: ContinuationSegment, first: boolean) {
-  busy.value = true
-  try { const result = await assetApi.upload(file, 'continuation'); if (first) segment.firstFrameImageUrl = result.url; else segment.lastFrameImageUrl = result.url }
-  catch (e: any) { ElMessage.error(e.message || '上传失败') } finally { busy.value = false } return false
-}
-async function upload(file: File, segment: ContinuationSegment, kind: 'image' | 'video') {
-  busy.value = true
-  try { const result = await assetApi.upload(file, 'continuation'); if (kind === 'image') segment.referenceImages.push({ id: crypto.randomUUID(), sourceType: 'UPLOAD', imageUrl: result.url, name: file.name } as ShotRefImage); else segment.referenceVideos.push({ id: crypto.randomUUID(), name: file.name, sourceType: 'DIRECT_URL', sourceVideoUrl: result.url, startSeconds: 0, endSeconds: Math.min(15, (segment.endFrame - segment.startFrame) / 24), includeAudio: false }) }
-  catch (e: any) { ElMessage.error(e.message || '上传失败') } finally { busy.value = false } return false
-}
 function chooseVideo(segment?: ContinuationSegment) { videoTarget.value = segment; videoPicker.value?.open() }
 async function addVideoSource(video: ShotRefVideo, target?: ContinuationSegment) {
   if (!target && draft.value.autoSplitReferenceVideo) {
@@ -200,7 +136,7 @@ async function addVideoSource(video: ShotRefVideo, target?: ContinuationSegment)
     return
   }
   const shotId = props.shotId; const measured = await shotVideoReferenceApi.probe(shotId, video)
-  if (!visible.value || props.shotId !== shotId) return
+  if (!alive || props.shotId !== shotId) return
   video.endSeconds = target ? Math.min(measured.duration || 10, (target.endFrame - target.startFrame) / 24) : measured.duration
   if (target) target.referenceVideos.push(video)
   else {
@@ -218,24 +154,42 @@ async function selectedVideo(source: { sourceType: ShotRefVideo['sourceType']; s
   try { await addVideoSource({ id: crypto.randomUUID(), name: source.shotName, sourceType: source.sourceType, sourceVideoUrl: source.sourceType === 'DIRECT_URL' ? source.sourceVideoUrl : undefined, sourceShotId: source.sourceShotId, sourceVideoTakeId: source.sourceType === 'SHOT_VIDEO_TAKE' ? source.sourceVideoTakeId : undefined, startSeconds: 0, includeAudio: false }, target) }
   catch (e: any) { ElMessage.error(e.message || '视频读取失败') } finally { busy.value = false }
 }
-async function save() { busy.value = true; try { await continuationApi.save(props.shotId, clone(draft.value)); emit('saved'); ElMessage.success('接续草稿已保存') } catch (e: any) { ElMessage.error(e.message || '保存失败') } finally { busy.value = false } }
-async function render() {
-  const accepted = plan.value; if (!accepted?.renderable) return
+async function save(enabled = props.enabled): Promise<boolean> {
+  if (!ready.value || busy.value) { ElMessage.warning('接续配置仍在加载或处理中，请稍后保存'); return false }
+  busy.value = true
+  try { draft.value.enabled = enabled; draft.value.videoSources = clone(videoTray.value); draft.value.imageSources = clone(imageTray.value); await continuationApi.save(props.shotId, clone(draft.value)); emit('saved'); return true }
+  catch (e: any) { ElMessage.error(e.message || '保存失败'); return false } finally { busy.value = false }
+}
+async function openRender() {
+  if (!ready.value || !draft.value.segments.length) return ElMessage.warning('请先生成分段计划')
+  const shot = await shotApi.getById(props.shotId)
+  renderDialog.value?.open({ ...shot, generationMode: props.generationMode as DramaShot['generationMode'], duration: draft.value.durationSeconds }, props.aspectRatio, render, draft.value.segments.length)
+}
+async function render(config: VideoRenderConfiguration) {
+  if (!await save(true)) throw new Error('请先保存接续计划')
   busy.value = true
   try {
-    const inputs = JSON.stringify([props.shotId, draft.value, providerId.value, modelCode.value, size.value])
-    await continuationApi.save(props.shotId, clone(draft.value))
-    let prepared = await continuationApi.prepare(props.shotId, providerId.value, modelCode.value, size.value, accepted.planHash)
+    const before = revision
+    const accepted = await continuationApi.preview(props.shotId, clone(draft.value), false, config.providerId, config.modelCode)
+    if (before !== revision || !alive || !props.enabled) throw new Error('计划已变化，请重新提交')
+    if (!accepted.renderable) throw new Error(accepted.issues.join('；') || '当前模型不支持此计划')
+    let prepared = await continuationApi.prepare(props.shotId, config.providerId, config.modelCode, config.size, accepted.planHash)
     const deadline = Date.now() + 15 * 60 * 1000
     while (prepared.status === 'PREPARING') {
-      if (!visible.value || inputs !== JSON.stringify([props.shotId, draft.value, providerId.value, modelCode.value, size.value])) throw new Error('配置已变化，准备结果保留，请重新预览后提交')
+      if (!alive || before !== revision || !props.enabled) throw new Error('配置已变化，准备结果保留，请重新提交')
       if (Date.now() > deadline) throw new Error('素材仍在后台准备，可稍后重新提交复用准备结果')
-      await new Promise(resolve => window.setTimeout(resolve, 1200)); prepared = await continuationApi.preparation(props.shotId, prepared.id)
+      await new Promise(resolve => setTimeout(resolve, 1200)); prepared = await continuationApi.preparation(props.shotId, prepared.id)
     }
     if (prepared.status !== 'READY') throw new Error(prepared.errorMessage || '素材准备失败')
-    if (!visible.value || inputs !== JSON.stringify([props.shotId, draft.value, providerId.value, modelCode.value, size.value])) throw new Error('配置已变化，请重新预览')
-    const result = await shotApi.submitRender(props.shotId, { providerId: providerId.value, workflowTemplateId: modelCode.value, size: size.value, expectedRenderFingerprint: accepted.planHash }); emit('saved'); ElMessage.success(`接续任务 ${result.taskId} 已加入任务中心`); visible.value = false
-  }
-  catch (e: any) { ElMessage.error(e.message || '提交失败') } finally { busy.value = false }
+    if (!alive || before !== revision || !props.enabled) throw new Error('配置已变化，请重新提交')
+    await shotApi.submitRender(props.shotId, { providerId: config.providerId, workflowTemplateId: config.modelCode, size: config.size, expectedRenderFingerprint: accepted.planHash }); emit('saved')
+  } finally { busy.value = false }
 }
+defineExpose({ save, openRender, isReady: () => ready.value })
+
+async function confirmRemove(index: number) { try { await ElMessageBox.confirm('移除此段会清除本段文字、导演与音频配置，图片和视频退回待分配。', '移除片段', { type: 'warning' }); removeSegment(index); activeId.value = draft.value.segments[Math.max(0,index-1)]?.id || '' } catch {} }
+function planOne() { planningDialog.value?.open(activeId.value) }
 </script>
+<style scoped>
+.continuation-workbench{display:flex;flex:1;min-height:0;flex-direction:column;background:var(--surface-muted,#f7f8fb)}.continuation-scroll{flex:1;min-height:0;overflow:auto;padding:20px}.continuation-master{background:var(--surface,#fff);border:1px solid var(--border-default,#e5e7eb);border-radius:12px;padding:20px;margin-bottom:18px}.master-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}.eyebrow{font-size:10px;color:var(--brand);letter-spacing:1px}h2{font-size:19px;font-weight:650;margin:5px 0}.master-heading p{font-size:12px;color:var(--text-muted);margin:0}.master-fields{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px;margin:22px 0}.master-fields label{display:grid;gap:8px;font-size:12px;color:var(--text-secondary)}.master-fields .el-input-number,.master-fields .el-select{width:100%}.timeline{display:flex;gap:5px;overflow:auto}.timeline button{min-width:88px;background:var(--brand-soft,#f3efff);border:1px solid #ded6f7;color:var(--brand,#7c3aed);border-radius:7px;display:grid;gap:5px;padding:10px}.timeline button.selected{background:var(--brand,#7c3aed);color:white}.timeline span{font-size:10px;white-space:nowrap}.master-summary{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:10px 0;color:var(--text-secondary);font-size:12px}.continuation-editors{display:grid;grid-template-columns:210px minmax(0,1fr);gap:18px;align-items:start}.segment-nav,.segment-panel{background:var(--surface,#fff);border:1px solid var(--border-default,#e5e7eb);border-radius:12px;overflow:hidden}.nav-heading{font-size:12px;font-weight:600;padding:18px;border-bottom:1px solid var(--border-default)}.nav-heading span{float:right;color:var(--text-muted)}.segment-nav button{display:flex;gap:12px;padding:16px;width:100%;text-align:left;border-left:3px solid transparent;border-bottom:1px solid var(--border-default)}.segment-nav button.active{background:var(--brand-soft,#f5f1ff);border-left-color:var(--brand)}.segment-no{font-family:monospace;color:var(--brand);font-size:13px}.segment-nav strong{display:block;font-size:12px}.segment-nav small{display:block;font-size:10px;color:var(--text-muted);margin-top:6px}.segment-panel-heading{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border-default);font-size:13px}.continuation-footer{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--surface);border-top:1px solid var(--border-default);font-size:12px;color:var(--text-muted)}.tray-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0;font-size:12px}.tray-row .el-input-number{width:135px}@media(max-width:900px){.master-fields{grid-template-columns:repeat(2,1fr)}.continuation-editors{grid-template-columns:1fr}.segment-nav{display:flex;overflow:auto}.segment-nav button{min-width:160px}.nav-heading{display:none}.master-heading,.master-summary{flex-wrap:wrap}}@media(max-width:600px){.continuation-scroll{padding:10px}.continuation-footer>span{display:none}.master-fields{grid-template-columns:1fr}}
+</style>

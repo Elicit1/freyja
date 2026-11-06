@@ -26,7 +26,7 @@ public class ShotContinuationService {
 
     public ShotContinuation read(DramaShot shot){
         if(shot.getContinuationJson()==null){var draft=new ShotContinuation();if(shot.getDuration()!=null)draft.setDurationSeconds(shot.getDuration().doubleValue());return draft;}
-        try{var draft=json.readValue(shot.getContinuationJson(),ShotContinuation.class);if(shot.getDuration()!=null)draft.setDurationSeconds(shot.getDuration().doubleValue());return draft;}catch(Exception e){throw new BizException(400,"接续配置无法读取");}
+        try{var draft=json.readValue(shot.getContinuationJson(),ShotContinuation.class);if(draft.isEnabled()&&shot.getDuration()!=null)draft.setDurationSeconds(shot.getDuration().doubleValue());return draft;}catch(Exception e){throw new BizException(400,"接续配置无法读取");}
     }
     public boolean enabled(DramaShot shot){return shot.getContinuationJson()!=null&&read(shot).isEnabled();}
     public JsonNode capabilities(AiModel model,AiProvider provider){
@@ -48,6 +48,9 @@ public class ShotContinuationService {
         if(!h3.path("continuation").asBoolean())result.getIssues().add("此工作流未启用接续适配");
         if(draft.isContextWindows()&&!h3.path("contextWindows").asBoolean())result.getIssues().add("此工作流未验证上下文窗口");
         for(var segment:draft.getSegments()) {
+            if(segment.getDirectorPlan()!=null)try{
+                new com.astra.freyja.director.service.DirectorPlanValidator().validateManual(segment.getDirectorPlan(),BigDecimal.valueOf((segment.getEndFrame()-segment.getStartFrame())/24.0).setScale(3,java.math.RoundingMode.HALF_UP),segment.getShotType(),segment.getCameraMovement(),segment.isShotTypeLocked(),segment.isCameraMovementLocked());
+            }catch(BizException e){result.getIssues().add("片段 "+segment.getId()+" · 导演计划："+e.getMessage());}
             if(model.getMaxImages()!=null&&segment.getReferenceImages().size()>model.getMaxImages())result.getIssues().add("片段参考图超过所选模型上限");
             if(!segment.getReferenceVideos().isEmpty()){
                 var videoCap=cap.path("referenceVideo");
@@ -65,7 +68,7 @@ public class ShotContinuationService {
                 }
                 if(totalSeconds>Math.min(referenceLimits.getMaxClipSeconds(),videoCap.path("maxTotalClipSeconds").asDouble(referenceLimits.getMaxClipSeconds()))+1e-6)result.getIssues().add("片段参考视频总时长超过预算");
             }
-            if("TXT2VIDEO_FIRST_LAST".equals(model.getModelType())&&(!segment.getReferenceImages().isEmpty()||!segment.getReferenceVideos().isEmpty()))result.getIssues().add("首尾帧工作流请明确设置片段首尾帧；普通图片/视频参考需选择参考生成模式");
+            if("TXT2VIDEO_FIRST_LAST".equals(model.getModelType())&&(!segment.getReferenceImages().isEmpty()||!segment.getReferenceVideos().isEmpty()||!segment.getReferenceAudios().isEmpty()))result.getIssues().add("首尾帧工作流请明确设置片段首尾帧；普通图片/视频参考需选择参考生成模式");
             if("TXT2VIDEO_REF".equals(model.getModelType())&&(segment.getFirstFrameImageUrl()!=null||segment.getLastFrameImageUrl()!=null))result.getIssues().add("参考生成工作流请挂载普通参考图，不使用首尾帧锚点");
             if(segment.getLastFrameImageUrl()!=null&&segment.getEndFrame()>result.getOutputFrames())result.getIssues().add("末段尾帧位于网格补齐区，请将时长调整为 "+(result.getRenderFrames()/24.0)+" 秒，或移除该尾帧，避免锚点被裁掉");
             if(segment.getPrompt()==null||segment.getPrompt().isBlank())result.getIssues().add("片段 "+segment.getId()+" 需要填写本段提示词");
@@ -86,7 +89,13 @@ public class ShotContinuationService {
         req.setContinuationSegments(new ArrayList<>());
         for(int i=0;i<draft.getSegments().size();i++){
             var segment=draft.getSegments().get(i);var child=copy(shot);child.setContinuationJson(null);child.setDuration(BigDecimal.valueOf((segment.getEndFrame()-segment.getStartFrame())/24.0));
-            child.setRefImagesJson(write(segment.getReferenceImages()));child.setRefVideosJson(write(segment.getReferenceVideos()));child.setRefAudiosJson("[]");
+            child.setRefImagesJson(write(segment.getReferenceImages()));child.setRefVideosJson(write(segment.getReferenceVideos()));child.setRefAudiosJson(write(segment.getReferenceAudios()));
+            child.setShotName(segment.getName());child.setScriptContent(segment.getScriptContent());child.setActionDescription(segment.getActionDescription());child.setSoundEffect(segment.getSoundEffect());
+            child.setShotType(segment.getShotType());child.setCameraMovement(segment.getCameraMovement());child.setShotTypeLocked(segment.isShotTypeLocked());child.setCameraMovementLocked(segment.isCameraMovementLocked());
+            child.setResSceneId(segment.getResSceneId());child.setResKeyframeId(segment.getResKeyframeId());child.setCustomScenePrompt(segment.getCustomScenePrompt());
+            child.setCharacterRefsJson(write(segment.getCharacterRefs()));child.setPropRefsJson(write(segment.getPropRefs()));
+            child.setFirstFramePrompt(segment.getFirstFramePrompt());child.setEndFramePrompt(segment.getEndFramePrompt());child.setNegativePrompt(segment.getNegativePrompt());
+            child.setDirectorPlanJson(segment.getDirectorPlan()==null?null:write(segment.getDirectorPlan()));child.setDirectorPlanMode(segment.getDirectorPlan()==null?"AUTO":"MANUAL");child.setDirectorPlanRevision(0);child.setDirectorPlanInputHash(null);
             child.setPrompt(segment.getPrompt());child.setVideoPrompt(segment.getPrompt());
             // Endpoint anchors must also be explicitly attached to this segment.
             child.setPreviewImageUrl(segment.getFirstFrameImageUrl());child.setEndFrameImageUrl(segment.getLastFrameImageUrl());

@@ -25,12 +25,16 @@ public class ShotContinuationController {
     private final ShotContinuationAiService aiPlanning;
     private final com.astra.freyja.service.DramaEpisodeService episodes;
     private final ObjectMapper json;
-    @Data public static class PreviewRequest {private ShotContinuation draft;private boolean auto;private Long providerId;private String modelCode;}
+    @Data public static class PreviewRequest {private ShotContinuation draft;private boolean auto;private Long providerId;private String modelCode;private java.util.List<String> selectedSegmentIds;private String requirements;}
+    /** Editing and frame planning never require a render provider or an online GPU. */
+    @PostMapping("/plan") public R<ShotContinuationPlan> plan(@PathVariable Long id,@RequestBody PreviewRequest request){
+        shot(id);return R.ok(planner.plan(request.getDraft(),request.isAuto()));
+    }
     @PostMapping("/plan-task") public R<String> planTask(@PathVariable Long id,@RequestBody PreviewRequest request)throws Exception{
         if(request.getProviderId()==null||request.getModelCode()==null)throw new BizException(400,"请选择文本规划模型");
         var model=models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId,request.getProviderId()).eq(AiModel::getModelCode,request.getModelCode()).eq(AiModel::getModelType,"CHAT").eq(AiModel::getStatus,1));
         if(model==null)throw new BizException(400,"文本规划模型不可用");
-        return R.ok(aiPlanning.start(shot(id),request.getDraft(),request.getProviderId(),request.getModelCode()));
+        return R.ok(aiPlanning.start(shot(id),request.getDraft(),request.getProviderId(),request.getModelCode(),request.getSelectedSegmentIds(),request.getRequirements()));
     }
     @Data public static class PrepareRequest {private Long providerId;private String modelCode;private String size;private String planHash;}
     @PostMapping("/prepare") public R<ShotContinuationPreparation.State> prepare(@PathVariable Long id,@RequestBody PrepareRequest request){
@@ -52,7 +56,10 @@ public class ShotContinuationController {
     @PutMapping @org.springframework.transaction.annotation.Transactional(rollbackFor=Exception.class)
     public R<Void> save(@PathVariable Long id,@RequestBody ShotContinuation draft)throws Exception{
         var current=shot(id);if(draft.isEnabled())planner.plan(draft,false);else if(!Double.isFinite(draft.getDurationSeconds())||draft.getDurationSeconds()<=0||draft.getDurationSeconds()>300)throw new BizException(400,"时长无效");
-        if(shots.update(null,new UpdateWrapper<DramaShot>().eq("id",id).set("continuation_json",com.astra.freyja.util.VideoReferenceSnapshotJson.write(draft,json)).set("duration",draft.getDurationSeconds()))!=1)throw new BizException(409,"镜头配置保存失败");
+        var update=new UpdateWrapper<DramaShot>().eq("id",id).set("continuation_json",com.astra.freyja.util.VideoReferenceSnapshotJson.write(draft,json));
+        if(draft.isEnabled())update.set("duration",draft.getDurationSeconds());
+        else if(current.getDuration()!=null&&current.getDuration().compareTo(new java.math.BigDecimal("15"))>0)update.set("duration",15);
+        if(shots.update(null,update)!=1)throw new BizException(409,"镜头配置保存失败");
         if(current.getEpisodeId()!=null)episodes.recalculateEpisodeDuration(current.getEpisodeId());return R.ok();
     }
     @PostMapping("/preview") public R<ShotContinuationPlan> preview(@PathVariable Long id,@RequestBody PreviewRequest request){

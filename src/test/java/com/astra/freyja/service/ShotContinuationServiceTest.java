@@ -36,6 +36,20 @@ class ShotContinuationServiceTest {
         var children=result.getRequest().getContinuationSegments();assertNull(children.getFirst().getShot().getPreviewImageUrl());
         assertEquals("https://archive/explicit.png",children.get(1).getShot().getPreviewImageUrl());assertNull(children.getLast().getShot().getEndFrameImageUrl());
     }
+    @Test void segmentMetadataIsExplicitAndParentIdentityDoesNotLeak()throws Exception{
+        var d=new ShotContinuation();d.setEnabled(true);d.setDurationSeconds(10);new ShotContinuationPlanner().plan(d,true);d.getSegments().forEach(s->s.setPrompt("Continuous walk"));
+        var segment=d.getSegments().getFirst();segment.setName("独立片段");segment.setScriptContent("本段剧本");segment.setResSceneId(2032095628944588801L);
+        var c=new com.astra.freyja.dto.res.CharacterShotRefDTO();c.setCharacterId(2032095628944588802L);segment.getCharacterRefs().add(c);
+        var shot=shot(d,"REFERENCE_MODE");shot.setResSceneId(99L);shot.setScriptContent("parent");shot.setCharacterRefsJson("[{\"characterId\":\"99\"}]");
+        var children=service().prepare(shot,model("TXT2VIDEO_REF"),provider(),"960x544",null).getRequest().getContinuationSegments();
+        assertEquals("独立片段",children.getFirst().getShot().getShotName());assertEquals("本段剧本",children.getFirst().getShot().getScriptContent());assertEquals(segment.getResSceneId(),children.getFirst().getShot().getResSceneId());
+        assertTrue(children.getFirst().getShot().getCharacterRefsJson().contains("\"2032095628944588802\""));
+        assertNull(children.get(1).getShot().getResSceneId());assertNull(children.get(1).getShot().getScriptContent());assertEquals("[]",children.get(1).getShot().getCharacterRefsJson());
+    }
+    @Test void inactiveLongDraftSurvivesOrdinaryDuration()throws Exception{
+        var d=new ShotContinuation();d.setDurationSeconds(60);var shot=shot(d,"REFERENCE_MODE");shot.setDuration(BigDecimal.valueOf(5));
+        assertEquals(60,service().read(shot).getDurationSeconds());
+    }
     private DramaShot shot(ShotContinuation draft,String mode) throws Exception {
         var shot=new DramaShot();shot.setId(1L);shot.setDramaId(2L);shot.setGenerationMode(mode);shot.setSeed(123L);shot.setDuration(BigDecimal.valueOf(draft.getDurationSeconds()));
         shot.setContinuationJson(json.writeValueAsString(draft));shot.setPreviewImageUrl("https://archive/global-first.png");shot.setEndFrameImageUrl("https://archive/global-last.png");
