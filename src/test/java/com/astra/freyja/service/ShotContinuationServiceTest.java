@@ -107,6 +107,24 @@ class ShotContinuationServiceTest {
         assertEquals(409,assertThrows(com.astra.freyja.common.BizException.class,
                 ()->service.prepare(shot(draft,"REFERENCE_MODE"),model,provider,"960x544",request)).getCode());
     }
+    @Test void allSegmentsShareOnePreparationAndVersionChangesBeforePreparationAreRejected() throws Exception {
+        var videos=mock(ShotVideoReferenceService.class);var batch=mock(ShotVideoReferenceService.SegmentPreparation.class);
+        var option=new ShotVideoModelOptionVO();option.setWorkflowRevision("video-v1");option.setNodeId("gpu");
+        when(batch.model()).thenReturn(option);when(videos.openSegmentPreparation(any())).thenReturn(batch);
+        when(batch.prepare(any(),anyList())).thenAnswer(call->{var result=new VideoReferencePreflightVO();result.setModel(option);result.setReferences(List.of());return result;});
+        var service=spy(new ShotContinuationService(new ShotContinuationPlanner(),videos,json,mock(CryptoUtil.class),new com.astra.freyja.config.ReferenceVideoProperties()));
+        doReturn(json.readTree("{\"healthy\":true,\"nodeId\":\"gpu\",\"workflowRevision\":\"video-v1\",\"referenceVideo\":{\"adapter\":\"MINIMAX_H3_REF_VIDEO_V1\",\"maxVideos\":1},\"h3\":{\"revision\":\"h3-v1\",\"continuation\":true}}"))
+                .when(service).capabilities(any(),any());
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(30);new ShotContinuationPlanner().plan(draft,true);
+        for(var segment:draft.getSegments()){segment.setPrompt("Continuous action");var video=new ShotRefVideoDTO();video.setId(segment.getId());video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive.test/reference.mp4");segment.getReferenceVideos().add(video);}
+        var progress=new ArrayList<Integer>();var shot=shot(draft,"REFERENCE_MODE");var model=model("TXT2VIDEO_REF");
+        var snapshot=service.prepare(shot,model,provider(),"960x544",null,(done,total)->{assertEquals(7,total);progress.add(done);});
+        assertEquals(List.of(0,1,2,3,4,5,6,7),progress);assertEquals(7,snapshot.getRequest().getContinuationSegments().size());
+        verify(videos,times(1)).openSegmentPreparation(model);verify(batch,times(7)).prepare(any(),anyList());verify(batch).close();
+        option.setWorkflowRevision("video-v2");
+        assertEquals(409,assertThrows(com.astra.freyja.common.BizException.class,()->service.prepare(shot,model,provider(),"960x544",null)).getCode());
+        verify(batch,times(7)).prepare(any(),anyList());verify(batch,times(2)).close();
+    }
     private DramaShot shot(ShotContinuation draft,String mode) throws Exception {
         var shot=new DramaShot();shot.setId(1L);shot.setDramaId(2L);shot.setGenerationMode(mode);shot.setSeed(123L);shot.setDuration(BigDecimal.valueOf(draft.getDurationSeconds()));
         shot.setContinuationJson(json.writeValueAsString(draft));shot.setPreviewImageUrl("https://archive/global-first.png");shot.setEndFrameImageUrl("https://archive/global-last.png");

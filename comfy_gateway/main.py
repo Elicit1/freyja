@@ -563,12 +563,19 @@ async def model_capabilities(model_code: str, node_id: Optional[str] = None):
         raise HTTPException(status_code=404, detail="Model is not registered with this exact identifier")
     capability = model.reference_video
     node = config.get_node(model.node_id) if model.node_id else None
-    healthy = await (await get_client_pool().get_client_for_node(node)).check_health() if node and node.enabled else False
+    healthy = False
     h3=model.h3_extensions or {}
     h3_public={"revision":h3_revision(model,get_base_dir()) if h3 else None,
                "continuation":bool(h3.get("continuation")),"contextWindows":bool(h3.get("context_windows")),
                "controlNet":bool(h3.get("control_net")),"contextWindowsWithControlNet":bool(h3.get("context_windows_with_control_net"))}
-    if h3 and node and node.enabled:h3_public.update(await inspect_backend(model,await get_client_pool().get_client_for_node(node)))
+    if node and node.enabled:
+        client=await get_client_pool().get_client_for_node(node)
+        if h3:
+            h3_public.update(await inspect_backend(model,client))
+            # inspect_backend already checked both node schemas and system stats.
+            healthy="backend-unreachable" not in h3_public.get("missingNodes",[])
+        else:
+            healthy=await client.check_health()
     if capability is None:
         return {"modelCode": model_code, "nodeId": model.node_id,
                 "referenceVideo": {}, "healthy": healthy,"h3":h3_public}
@@ -581,7 +588,6 @@ async def model_capabilities(model_code: str, node_id: Optional[str] = None):
              "supports_video_audio": "supportsVideoAudio", "max_download_bytes": "maxDownloadBytes"}
     public = {names.get(key, key): value for key, value in values.items()
               if key not in ("condition_node_id", "output_node_ids")}
-    healthy = await (await get_client_pool().get_client_for_node(node)).check_health() if node and node.enabled else False
     return {"modelCode": model_code, "nodeId": model.node_id, "workflowRevision": revision,
             "referenceVideo": public, "healthy": healthy,"h3":h3_public}
 

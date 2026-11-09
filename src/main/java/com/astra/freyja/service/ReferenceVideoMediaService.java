@@ -29,65 +29,130 @@ public class ReferenceVideoMediaService {
     private final java.util.concurrent.Semaphore permits = new java.util.concurrent.Semaphore(2);
 
     public ResolvedShotVideoReference prepare(ShotRefVideoDTO input, ResolvedVideoProcessSource source, ReferenceVideoCapability capability) {
-        if (!permits.tryAcquire()) throw new BizException(429, "参考视频准备繁忙，请稍后重试");
-        Path folder = null;
-        try {
-            folder = Files.createTempDirectory("freyja_video_reference_");
-            Path original = folder.resolve("source.media"), clip = folder.resolve("clip.mp4");
-            download(source.getVideoUrl(), original);
-            VideoProbeInfoVO measured = probe.probeVideoFile(original, false);
-            if (!validVideo(measured) || measured.getDuration().compareTo(BigDecimal.valueOf(properties.getMaxSourceSeconds())) > 0)
-                throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 源视频无有效视频轨或时长超限");
-            BigDecimal start = input.getStartSeconds() == null ? BigDecimal.ZERO : input.getStartSeconds();
-            BigDecimal end = input.getEndSeconds() == null ? measured.getDuration() : input.getEndSeconds();
-            BigDecimal duration = end.subtract(start);
-            var policy = preparationPolicy(capability);
-            boolean frameCut=input.getSourceStartFrame()!=null;
-            double decodedFrames=frameCut?input.getSourceEndFrame()-input.getSourceStartFrame():duration.doubleValue()*policy.getDecodeFps();
-            if (start.signum() < 0 || end.compareTo(measured.getDuration()) > 0 || duration.signum() <= 0
-                    || duration.compareTo(policy.getMinClipSeconds()) < 0 || duration.compareTo(policy.getMaxClipSeconds()) > 0
-                    || duration.compareTo(policy.getMaxTotalClipSeconds()) > 0 || decodedFrames > policy.getMaxDecodedFrames())
-                throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 片段范围或解码帧数超限，请缩短参考片段");
-            if (Boolean.TRUE.equals(input.getIncludeAudio()) && !Boolean.TRUE.equals(measured.getHasAudio()))
-                throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 视频没有可供参考的音轨");
-            if(frameCut&&policy.getDecodeFps()!=24)throw new BizException(400,"接续参考视频切片要求 24fps 的预处理配置");
-            var command = new ArrayList<>(List.of(tools.getFfmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", original.toString()));
-            if(!frameCut)command.addAll(List.of("-ss",start.toPlainString(),"-t",duration.toPlainString()));
-            command.addAll(List.of("-map","0:v:0"));
-            if (Boolean.TRUE.equals(input.getIncludeAudio())) command.addAll(List.of("-map", "0:a:0", "-c:a", "aac"));
-            else command.add("-an");
-            if(frameCut&&Boolean.TRUE.equals(input.getIncludeAudio()))command.addAll(List.of("-af","atrim=start="+start.toPlainString()+":end="+end.toPlainString()+",asetpts=PTS-STARTPTS"));
-            String frameFilter=frameCut?",trim=start_frame="+input.getSourceStartFrame()+":end_frame="+input.getSourceEndFrame()+",setpts=PTS-STARTPTS":"";
-            command.addAll(List.of("-vf", "scale=" + policy.getMaxDecodeWidth() + ":" + policy.getMaxDecodeHeight()
-                    + ":force_original_aspect_ratio=decrease:force_divisible_by=2,fps=" + policy.getDecodeFps()+frameFilter,
-                    "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", clip.toString()));
-            var execution = processes.execute(command, Duration.ofSeconds(properties.getTimeoutSeconds()), () -> {
-                if (Files.exists(clip) && Files.size(clip) > clipLimit(policy)) throw new IOException("参考视频片段文件超限");
-            });
-            if (execution.timedOut() || execution.exitCode() != 0 || !Files.exists(clip)) throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 视频片段处理失败，请检查 FFmpeg 与输入格式");
-            VideoProbeInfoVO output = probe.probeVideoFile(clip, true);
-            validatePrepared(output, policy, input.getIncludeAudio());
-            if(frameCut&&(output.getFrameCount()==null||output.getFrameCount()!=input.getSourceEndFrame()-input.getSourceStartFrame()))throw new BizException(400,"REFERENCE_VIDEO_DECODE_FAILED: 参考视频切片帧数与分段计划不一致");
-            if (output.getDuration().subtract(duration).abs().doubleValue() > 2.0 / policy.getDecodeFps()) throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 片段实际时长不符合选择范围");
-            String prefix = "reference-video/" + UUID.randomUUID();
+        try (var session = openPreparation()) { return session.prepare(input, source, capability); }
+    }
+
+    /** Reuse immutable source bytes and clips within one preparation, never across jobs. */
+    public PreparationSession openPreparation() { return new PreparationSession(); }
+
+    public final class PreparationSession implements AutoCloseable {
+        private final Map<String, SourceMedia> sources = new LinkedHashMap<>(4, 0.75f, true);
+        private final Map<String, String> archivedSources = new HashMap<>();
+        private final Map<ClipKey, ResolvedShotVideoReference> clips = new HashMap<>();
+        private boolean closed;
+
+        private record SourceMedia(Path path, VideoProbeInfoVO metadata, String sha256) {}
+        private record ClipKey(String sourceHash, BigDecimal start, BigDecimal end, Integer startFrame,
+                               Integer endFrame, boolean audio, ReferenceVideoCapability policy) {}
+
+        private SourceMedia source(String url) throws Exception {
+            var existing = sources.get(url);
+            if (existing != null) return existing;
+            // Keep at most two source downloads on disk per job.
+            if (sources.size() == 2) {
+                var iterator = sources.entrySet().iterator();
+                Files.deleteIfExists(iterator.next().getValue().path()); iterator.remove();
+            }
+            Path path = Files.createTempFile("freyja_reference_source_", ".media");
+            try {
+                download(url, path);
+                var measured = probe.probeVideoFile(path, false);
+                if (!validVideo(measured) || measured.getDuration().compareTo(BigDecimal.valueOf(properties.getMaxSourceSeconds())) > 0)
+                    throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 源视频无有效视频轨或时长超限");
+                var loaded = new SourceMedia(path, measured, digest(path)); sources.put(url, loaded); return loaded;
+            } catch (Exception e) { Files.deleteIfExists(path); throw e; }
+        }
+
+        private ResolvedShotVideoReference bind(ResolvedShotVideoReference prepared, ShotRefVideoDTO input, ResolvedVideoProcessSource source) {
             var result = new ResolvedShotVideoReference();
-            result.setId(input.getId()); result.setName(input.getName()); result.setOrdinal(1); result.setSourceType(input.getSourceType());
+            org.springframework.beans.BeanUtils.copyProperties(prepared, result);
+            var metadata = new VideoProbeInfoVO();
+            org.springframework.beans.BeanUtils.copyProperties(prepared.getMetadata(), metadata); result.setMetadata(metadata);
+            var sourceMetadata = new VideoProbeInfoVO();
+            org.springframework.beans.BeanUtils.copyProperties(prepared.getSourceMetadata(), sourceMetadata); result.setSourceMetadata(sourceMetadata);
+            result.setId(input.getId()); result.setName(input.getName()); result.setSourceType(input.getSourceType());
             result.setSourceShotId(source.getShotId()); result.setSourceVideoTakeId(source.getVideoTakeId());
-            result.setSourceUrl(withoutQuery(source.getVideoUrl())); result.setSourceMetadata(measured);
-            result.setSourceSha256(digest(original)); result.setSourceObjectPath(prefix + "/source.media");
-            result.setStartSeconds(start); result.setEndSeconds(end); result.setIncludeAudio(Boolean.TRUE.equals(input.getIncludeAudio()));
-            result.setReferenceDescription(input.getReferenceDescription()); result.setMetadata(output); result.setFrameCount(output.getFrameCount().intValue());
-            result.setObjectPath(prefix + "/clip.mp4"); result.setContentSha256(digest(clip));
-            archive(original, result.getSourceObjectPath(), "application/octet-stream");
-            archive(clip, result.getObjectPath(), "video/mp4");
+            result.setSourceUrl(withoutQuery(source.getVideoUrl())); result.setReferenceDescription(input.getReferenceDescription());
             return result;
-        } catch (BizException e) { throw e; }
-        catch (Exception e) { throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 参考视频无法读取、归档或处理：" + e.getClass().getSimpleName()); }
-        finally {
-            if (folder != null) try (var files = Files.list(folder)) { for (Path file : files.toList()) Files.deleteIfExists(file); }
-            catch (IOException ignored) { }
-            if (folder != null) try { Files.deleteIfExists(folder); } catch (IOException ignored) { }
-            permits.release();
+        }
+
+        public ResolvedShotVideoReference prepare(ShotRefVideoDTO input, ResolvedVideoProcessSource source, ReferenceVideoCapability capability) {
+            if (closed) throw new IllegalStateException("素材准备会话已关闭");
+            if (!permits.tryAcquire()) throw new BizException(429, "参考视频准备繁忙，请稍后重试");
+            Path folder = null;
+            try {
+                folder = Files.createTempDirectory("freyja_video_reference_");
+                var loaded = source(source.getVideoUrl());
+                Path original = loaded.path(), clip = folder.resolve("clip.mp4");
+                VideoProbeInfoVO measured = loaded.metadata();
+                BigDecimal start = input.getStartSeconds() == null ? BigDecimal.ZERO : input.getStartSeconds();
+                BigDecimal end = input.getEndSeconds() == null ? measured.getDuration() : input.getEndSeconds();
+                BigDecimal duration = end.subtract(start);
+                var policy = preparationPolicy(capability);
+                boolean frameCut=input.getSourceStartFrame()!=null;
+                double decodedFrames=frameCut?input.getSourceEndFrame()-input.getSourceStartFrame():duration.doubleValue()*policy.getDecodeFps();
+                if (start.signum() < 0 || end.compareTo(measured.getDuration()) > 0 || duration.signum() <= 0
+                        || duration.compareTo(policy.getMinClipSeconds()) < 0 || duration.compareTo(policy.getMaxClipSeconds()) > 0
+                        || duration.compareTo(policy.getMaxTotalClipSeconds()) > 0 || decodedFrames > policy.getMaxDecodedFrames())
+                    throw new BizException(400, "REFERENCE_VIDEO_LIMIT_EXCEEDED: 片段范围或解码帧数超限，请缩短参考片段");
+                if (Boolean.TRUE.equals(input.getIncludeAudio()) && !Boolean.TRUE.equals(measured.getHasAudio()))
+                    throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 视频没有可供参考的音轨");
+                if(frameCut&&policy.getDecodeFps()!=24)throw new BizException(400,"接续参考视频切片要求 24fps 的预处理配置");
+                var key = new ClipKey(loaded.sha256(), start.stripTrailingZeros(), end.stripTrailingZeros(),
+                        input.getSourceStartFrame(), input.getSourceEndFrame(), Boolean.TRUE.equals(input.getIncludeAudio()), policy);
+                var cached = clips.get(key);
+                if (cached != null) return bind(cached, input, source);
+                var command = new ArrayList<>(List.of(tools.getFfmpegPath(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", original.toString()));
+                if(!frameCut)command.addAll(List.of("-ss",start.toPlainString(),"-t",duration.toPlainString()));
+                command.addAll(List.of("-map","0:v:0"));
+                if (Boolean.TRUE.equals(input.getIncludeAudio())) command.addAll(List.of("-map", "0:a:0", "-c:a", "aac"));
+                else command.add("-an");
+                if(frameCut&&Boolean.TRUE.equals(input.getIncludeAudio()))command.addAll(List.of("-af","atrim=start="+start.toPlainString()+":end="+end.toPlainString()+",asetpts=PTS-STARTPTS"));
+                if(frameCut)command.addAll(List.of("-frames:v",String.valueOf(input.getSourceEndFrame()-input.getSourceStartFrame())));
+                String frameFilter=frameCut?",trim=start_frame="+input.getSourceStartFrame()+":end_frame="+input.getSourceEndFrame()+",setpts=PTS-STARTPTS":"";
+                command.addAll(List.of("-vf", "scale=" + policy.getMaxDecodeWidth() + ":" + policy.getMaxDecodeHeight()
+                        + ":force_original_aspect_ratio=decrease:force_divisible_by=2,fps=" + policy.getDecodeFps()+frameFilter,
+                        "-c:v", "libx264", "-preset", "fast", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart", clip.toString()));
+                var execution = processes.execute(command, Duration.ofSeconds(properties.getTimeoutSeconds()), () -> {
+                    if (Files.exists(clip) && Files.size(clip) > clipLimit(policy)) throw new IOException("参考视频片段文件超限");
+                });
+                if (execution.timedOut() || execution.exitCode() != 0 || !Files.exists(clip)) throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 视频片段处理失败，请检查 FFmpeg 与输入格式");
+                VideoProbeInfoVO output = probe.probeVideoFile(clip, true);
+                validatePrepared(output, policy, input.getIncludeAudio());
+                if(frameCut&&(output.getFrameCount()==null||output.getFrameCount()!=input.getSourceEndFrame()-input.getSourceStartFrame()))throw new BizException(400,"REFERENCE_VIDEO_DECODE_FAILED: 参考视频切片帧数与分段计划不一致");
+                if (output.getDuration().subtract(duration).abs().doubleValue() > 2.0 / policy.getDecodeFps()) throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 片段实际时长不符合选择范围");
+                String prefix = "reference-video/" + UUID.randomUUID();
+                var result = new ResolvedShotVideoReference();
+                result.setId(input.getId()); result.setName(input.getName()); result.setOrdinal(1); result.setSourceType(input.getSourceType());
+                result.setSourceShotId(source.getShotId()); result.setSourceVideoTakeId(source.getVideoTakeId());
+                result.setSourceUrl(withoutQuery(source.getVideoUrl())); result.setSourceMetadata(measured);
+                result.setSourceSha256(loaded.sha256());
+                result.setStartSeconds(start); result.setEndSeconds(end); result.setIncludeAudio(Boolean.TRUE.equals(input.getIncludeAudio()));
+                result.setReferenceDescription(input.getReferenceDescription()); result.setMetadata(output); result.setFrameCount(output.getFrameCount().intValue());
+                result.setObjectPath(prefix + "/clip.mp4"); result.setContentSha256(digest(clip));
+                String sourceObject = archivedSources.get(loaded.sha256());
+                if (sourceObject == null) {
+                    sourceObject = prefix + "/source.media"; archive(original, sourceObject, "application/octet-stream");
+                    archivedSources.put(loaded.sha256(), sourceObject);
+                }
+                result.setSourceObjectPath(sourceObject);
+                archive(clip, result.getObjectPath(), "video/mp4");
+                clips.put(key, result);
+                return bind(result, input, source);
+            } catch (BizException e) { throw e; }
+            catch (Exception e) { throw new BizException(400, "REFERENCE_VIDEO_DECODE_FAILED: 参考视频无法读取、归档或处理：" + e.getClass().getSimpleName()); }
+            finally {
+                if (folder != null) try (var files = Files.list(folder)) { for (Path file : files.toList()) Files.deleteIfExists(file); }
+                catch (IOException ignored) { }
+                if (folder != null) try { Files.deleteIfExists(folder); } catch (IOException ignored) { }
+                permits.release();
+            }
+        }
+
+        @Override public void close() {
+            closed = true;
+            for (var source : sources.values()) try { Files.deleteIfExists(source.path()); } catch (IOException ignored) {}
+            sources.clear(); archivedSources.clear(); clips.clear();
         }
     }
 

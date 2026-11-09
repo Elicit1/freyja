@@ -12,6 +12,7 @@ public class ShotContinuationPlan {
     private int segmentCount;
     private String planHash;
     private String capabilityRevision;
+    private String referenceVideoRevision;
     private String nodeId;
     private boolean renderable;
     private List<String> issues = new ArrayList<>();

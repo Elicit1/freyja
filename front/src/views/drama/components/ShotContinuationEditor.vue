@@ -165,23 +165,28 @@ async function openRender() {
   const shot = await shotApi.getById(props.shotId)
   renderDialog.value?.open({ ...shot, generationMode: props.generationMode as DramaShot['generationMode'], duration: draft.value.durationSeconds }, props.aspectRatio, render, draft.value.segments.length)
 }
-async function render(config: VideoRenderConfiguration) {
+async function render(config: VideoRenderConfiguration, onProgress: (message: string) => void) {
+  onProgress('正在保存接续计划…')
   if (!await save(true)) throw new Error('请先保存接续计划')
   busy.value = true
   try {
     const before = revision
+    onProgress('正在检查模型与接续计划…')
     const accepted = await continuationApi.preview(props.shotId, clone(draft.value), false, config.providerId, config.modelCode)
     if (before !== revision || !alive || !props.enabled) throw new Error('计划已变化，请重新提交')
     if (!accepted.renderable) throw new Error(accepted.issues.join('；') || '当前模型不支持此计划')
+    onProgress('正在准备接续素材…')
     let prepared = await continuationApi.prepare(props.shotId, config.providerId, config.modelCode, config.size, accepted.planHash)
     const deadline = Date.now() + 15 * 60 * 1000
     while (prepared.status === 'PREPARING') {
+      onProgress(prepared.progressMessage || '正在准备接续素材…')
       if (!alive || before !== revision || !props.enabled) throw new Error('配置已变化，准备结果保留，请重新提交')
       if (Date.now() > deadline) throw new Error('素材仍在后台准备，可稍后重新提交复用准备结果')
       await new Promise(resolve => setTimeout(resolve, 1200)); prepared = await continuationApi.preparation(props.shotId, prepared.id)
     }
     if (prepared.status !== 'READY') throw new Error(prepared.errorMessage || '素材准备失败')
     if (!alive || before !== revision || !props.enabled) throw new Error('配置已变化，请重新提交')
+    onProgress('素材已就绪，正在提交渲染任务…')
     await shotApi.submitRender(props.shotId, { providerId: config.providerId, workflowTemplateId: config.modelCode, size: config.size, expectedRenderFingerprint: accepted.planHash }); emit('saved')
   } finally { busy.value = false }
 }

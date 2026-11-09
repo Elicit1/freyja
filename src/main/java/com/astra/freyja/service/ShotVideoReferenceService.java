@@ -136,12 +136,28 @@ public class ShotVideoReferenceService {
 
     /** Freeze explicitly attached segment inputs; same resolver/limits as ordinary references. */
     public VideoReferencePreflightVO prepareSegment(DramaShot shot,AiModel model,List<ShotRefVideoDTO> inputs) {
+        try(var batch=openSegmentPreparation(model)){return batch.prepare(shot,inputs);}
+    }
+
+    public SegmentPreparation openSegmentPreparation(AiModel model) {
         var option=capabilities.describe(model);capabilities.requireRenderable(option);
-        if(inputs.size()>option.getReferenceVideo().getMaxVideos())throw new BizException(400,"本段视频数量超过模型限制");
-        var sources=resolve(shot,inputs);var prepared=new ArrayList<ResolvedShotVideoReference>();
-        for(int i=0;i<inputs.size();i++){var ref=media.prepare(inputs.get(i),sources.get(i),option.getReferenceVideo());ref.setOrdinal(i+1);prepared.add(ref);}
-        validateSnapshot(prepared,option,shot);
-        var result=new VideoReferencePreflightVO();result.setReferences(prepared);result.setModel(option);result.setStatus("READY");return result;
+        return new SegmentPreparation(option,media.openPreparation());
+    }
+
+    /** One live capability snapshot and one source download session for all segments. */
+    public final class SegmentPreparation implements AutoCloseable {
+        private final ShotVideoModelOptionVO option;
+        private final ReferenceVideoMediaService.PreparationSession session;
+        private SegmentPreparation(ShotVideoModelOptionVO option,ReferenceVideoMediaService.PreparationSession session){this.option=option;this.session=session;}
+        public ShotVideoModelOptionVO model(){return option;}
+        public VideoReferencePreflightVO prepare(DramaShot shot,List<ShotRefVideoDTO> inputs){
+            if(inputs.size()>option.getReferenceVideo().getMaxVideos())throw new BizException(400,"本段视频数量超过模型限制");
+            var sources=resolve(shot,inputs);var prepared=new ArrayList<ResolvedShotVideoReference>();
+            for(int i=0;i<inputs.size();i++){var ref=session.prepare(inputs.get(i),sources.get(i),option.getReferenceVideo());ref.setOrdinal(i+1);prepared.add(ref);}
+            validateSnapshot(prepared,option,shot);
+            var result=new VideoReferencePreflightVO();result.setReferences(prepared);result.setModel(option);result.setStatus("READY");return result;
+        }
+        @Override public void close(){session.close();}
     }
 
     public void validateSnapshot(List<ResolvedShotVideoReference> references, ShotVideoModelOptionVO option, DramaShot shot) {

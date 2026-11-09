@@ -31,12 +31,13 @@ import type { AiModel, AiProviderVO } from '@/types/ai-provider'
 import type { DramaShot } from '@/types/drama'
 import ShotVideoHistoryDrawer from './ShotVideoHistoryDrawer.vue'
 export interface VideoRenderConfiguration { providerId: string; modelCode: string; size: string }
+export type ContinuationSubmit = (configuration: VideoRenderConfiguration, onProgress: (message: string) => void) => Promise<void>
 const emit = defineEmits<{ success: [shotId: string | number]; edit: [shot: DramaShot] }>()
 const visible = ref(false), loading = ref(false), submitting = ref(false), modelsLoading = ref(false), historyVisible = ref(false)
 const shot = ref<DramaShot>(), providers = ref<AiProviderVO[]>([]), models = ref<AiModel[]>([])
 const ratio = ref('16:9'), error = ref(''), status = ref(''), continuation = ref(false), segmentCount = ref(0)
 const config = reactive<VideoRenderConfiguration>({ providerId: '', modelCode: '', size: '960x544' })
-let submitContinuation: ((configuration: VideoRenderConfiguration) => Promise<void>) | undefined
+let submitContinuation: ContinuationSubmit | undefined
 let session = 0, modelRequest = 0
 const presetSizes = computed(() => ratio.value === '9:16' ? ['544x960','576x1024','736x1280','768x1344'] : ratio.value === '1:1' ? ['768x768','1024x1024'] : ['960x544','1024x576','1280x736','1344x768'])
 const modelVideoOptions = computed(() => {
@@ -54,7 +55,7 @@ watch([sizeOptions, ratioOptions], () => { if (!ratioOptions.value.includes(rati
 const anchors = computed(() => shot.value?.generationMode === 'FIRST_LAST_FRAME' ? [{ label: '首帧（可选）', url: shot.value.previewImageUrl }, { label: '尾帧（可选）', url: shot.value.endFrameImageUrl }] : [])
 function editShot() { if (shot.value && !submitting.value) { visible.value = false; emit('edit', shot.value) } }
 function setRatio() { config.size = resolveGenerationSize(ratio.value, 'video') }
-async function open(value: DramaShot, aspectRatio?: string, onSubmit?: (configuration: VideoRenderConfiguration) => Promise<void>, count = 0) {
+async function open(value: DramaShot, aspectRatio?: string, onSubmit?: ContinuationSubmit, count = 0) {
   const token = ++session; shot.value = JSON.parse(JSON.stringify(value)); visible.value = true; loading.value = true; error.value = ''; status.value = ''
   continuation.value = Boolean(onSubmit); segmentCount.value = count; submitContinuation = onSubmit; models.value = []; config.providerId = ''; config.modelCode = ''
   ratio.value = ['16:9','9:16','1:1'].includes(aspectRatio || '') ? aspectRatio! : '16:9'; setRatio()
@@ -84,7 +85,7 @@ async function submit() {
   const token = session, id = String(shot.value.id), values = { ...config, size: validated.normalized! }; submitting.value = true; error.value = ''
   const current = () => token === session && visible.value
   try {
-    if (submitContinuation) await submitContinuation(values)
+    if (submitContinuation) await submitContinuation(values, message => { if (current()) status.value = message })
     else {
       const fresh = await shotApi.getById(id); if (!current()) return
       if (JSON.parse(fresh.continuationJson || '{}').enabled) throw new Error('此镜头已开启接续，请从镜头接续工作台提交。')

@@ -1,5 +1,6 @@
 """Explicit H3 graph bindings. A feature is never inferred from a model name."""
 import hashlib
+import asyncio
 import json
 import math
 from pathlib import Path
@@ -81,8 +82,11 @@ async def inspect_backend(model, client):
     required.update(preset["class_type"] for preset in preprocessors.values())
     try:
         http=await client.get_http_client()
-        nodes_response=await http.get(client.http_base+"/object_info",timeout=8);nodes_response.raise_for_status();nodes=nodes_response.json()
-        stats_response=await http.get(client.http_base+"/system_stats",timeout=5);stats_response.raise_for_status();system=stats_response.json().get("system",{})
+        nodes_response,stats_response=await asyncio.gather(
+            http.get(client.http_base+"/object_info",timeout=8),
+            http.get(client.http_base+"/system_stats",timeout=5))
+        nodes_response.raise_for_status();nodes=nodes_response.json()
+        stats_response.raise_for_status();system=stats_response.json().get("system",{})
         public["missingNodes"]=sorted(required-set(nodes))
         public["continuation"]=bool(cfg.get("continuation") and baseline<=nodes.keys())
         public["controlTypes"]=[name for name,preset in preprocessors.items() if preset["class_type"] in nodes]+["GRAY"]+cfg.get("prepared_control_types",["PREPARED"])

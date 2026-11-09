@@ -45,6 +45,20 @@ class TestGatewayAPI(unittest.TestCase):
         self.assertIn("minimax-h3-ref-turbo8-face-refine", model_ids)
         self.assertIn("minimax-h3-ref2va", model_ids)
 
+    def test_h3_capabilities_reuse_backend_inspection_without_extra_health_probes(self):
+        import main
+        model=main.config.get_exact_model("minimax-h3-ref-turbo8")
+        client=Mock();client.check_health=AsyncMock()
+        pool=Mock();pool.get_client_for_node=AsyncMock(return_value=client)
+        for missing,healthy in (([],True),(["backend-unreachable"],False)):
+            inspect=AsyncMock(return_value={"missingNodes":missing,"continuation":healthy})
+            with patch.object(main,"get_client_pool",return_value=pool),patch.object(main,"inspect_backend",inspect):
+                response=self.client.get(f"/v1/models/{model.model_name}/capabilities")
+            self.assertEqual(response.status_code,200)
+            self.assertEqual(response.json()["healthy"],healthy)
+            inspect.assert_awaited_once()
+        client.check_health.assert_not_awaited()
+
     def test_videos_generations_endpoint(self):
         """Test /v1/videos/generations endpoint validation"""
         resp = self.client.post("/v1/videos/generations", json={"model": "minimax-h3-fl2va"})

@@ -88,9 +88,13 @@ public class ShotContinuationService {
         // Reference adapters have a separate revision from H3 continuation options.
         // Include both so media prepared before an adapter update cannot be reused.
         String referenceRevision=hasVideos?cap.path("workflowRevision").asText(""):"";
+        result.setReferenceVideoRevision(referenceRevision);
         result.setPlanHash(VideoBatchPreparation.hash(result.getPlanHash()+"|"+result.getCapabilityRevision()+"|"+model.getId()+"|"+provider.getBaseUrl()+"|"+result.getNodeId()+"|"+referenceRevision));return result;
     }
     public VideoBatchModels.Snapshot prepare(DramaShot shot,AiModel model,AiProvider provider,String size,DramaShotRenderRequestDTO supplied){
+        return prepare(shot,model,provider,size,supplied,(completed,total)->{});
+    }
+    public VideoBatchModels.Snapshot prepare(DramaShot shot,AiModel model,AiProvider provider,String size,DramaShotRenderRequestDTO supplied,java.util.function.BiConsumer<Integer,Integer> progress){
         var draft=read(shot);var plan=preview(draft,false,model,provider);
         if(!plan.isRenderable())throw new BizException(409,String.join("；",plan.getIssues()));
         if(supplied!=null&&!Objects.equals(supplied.getExpectedRenderFingerprint(),plan.getPlanHash()))throw new BizException(409,"接续计划已变化，请先预览最新分段计划");
@@ -98,31 +102,38 @@ public class ShotContinuationService {
         var parent=new VideoBatchModels.Snapshot();parent.setShot(copy(shot));parent.setRequest(new DramaShotRenderRequestDTO());
         var req=parent.getRequest();req.setProviderId(provider.getId());req.setWorkflowTemplateId(model.getModelCode());req.setSize(size);req.setPrompt(draft.getSegments().getFirst().getPrompt());req.setSeed(shot.getSeed());req.setContinuationPlan(plan);
         req.setContinuationSegments(new ArrayList<>());
-        for(int i=0;i<draft.getSegments().size();i++){
-            var segment=draft.getSegments().get(i);var child=copy(shot);child.setContinuationJson(null);child.setDuration(BigDecimal.valueOf((segment.getEndFrame()-segment.getStartFrame())/24.0));
-            child.setRefImagesJson(write(segment.getReferenceImages()));child.setRefVideosJson(write(segment.getReferenceVideos()));child.setRefAudiosJson(write(segment.getReferenceAudios()));
-            child.setShotName(segment.getName());child.setScriptContent(segment.getScriptContent());child.setActionDescription(segment.getActionDescription());child.setSoundEffect(segment.getSoundEffect());
-            child.setShotType(segment.getShotType());child.setCameraMovement(segment.getCameraMovement());child.setShotTypeLocked(segment.isShotTypeLocked());child.setCameraMovementLocked(segment.isCameraMovementLocked());
-            child.setResSceneId(segment.getResSceneId());child.setResKeyframeId(segment.getResKeyframeId());child.setCustomScenePrompt(segment.getCustomScenePrompt());
-            child.setCharacterRefsJson(write(segment.getCharacterRefs()));child.setPropRefsJson(write(segment.getPropRefs()));
-            child.setFirstFramePrompt(segment.getFirstFramePrompt());child.setEndFramePrompt(segment.getEndFramePrompt());child.setNegativePrompt(segment.getNegativePrompt());
-            child.setDirectorPlanJson(segment.getDirectorPlan()==null?null:write(segment.getDirectorPlan()));child.setDirectorPlanMode(segment.getDirectorPlan()==null?"AUTO":"MANUAL");child.setDirectorPlanRevision(0);child.setDirectorPlanInputHash(null);
-            child.setPrompt(segment.getPrompt());child.setVideoPrompt(segment.getPrompt());
-            // Endpoint anchors must also be explicitly attached to this segment.
-            child.setPreviewImageUrl(segment.getFirstFrameImageUrl());child.setEndFrameImageUrl(segment.getLastFrameImageUrl());
-            var childReq=new DramaShotRenderRequestDTO();childReq.setProviderId(provider.getId());childReq.setWorkflowTemplateId(model.getModelCode());childReq.setSize(size);childReq.setPrompt(segment.getPrompt());childReq.setSeed(1+Math.floorMod(shot.getSeed()+i*104729L,9007199254740990L));
-            var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",true);options.put("capability_revision",plan.getCapabilityRevision());options.put("length",segment.getEndFrame()-segment.getStartFrame());
-            options.put("control_required_frames",Math.min(segment.getEndFrame(),plan.getOutputFrames())-segment.getStartFrame());
-            options.put("context_windows",Map.of("enabled",draft.isContextWindows()));
-            var control=new LinkedHashMap<String,Object>();control.put("enabled",segment.isControlNetEnabled());control.put("reference_id",segment.getControlVideoId());control.put("control_type",segment.getControlType());control.put("strength",segment.getControlStrength());options.put("control_net",control);childReq.setH3Options(options);
-            if(!segment.getReferenceVideos().isEmpty()){
-                var prepared=videoReferences.prepareSegment(child,model,segment.getReferenceVideos());childReq.setResolvedRefVideos(prepared.getReferences());childReq.setReferenceVideoRevision(prepared.getModel().getWorkflowRevision());childReq.setReferenceVideoNodeId(prepared.getModel().getNodeId());
-                if(!Objects.equals(plan.getNodeId(),prepared.getModel().getNodeId()))throw new BizException(409,"片段素材与接续计划的算力节点不一致");
+        boolean hasVideos=draft.getSegments().stream().anyMatch(s->!s.getReferenceVideos().isEmpty());
+        try(var preparation=hasVideos?videoReferences.openSegmentPreparation(model):null){
+            if(preparation!=null&&(!Objects.equals(plan.getNodeId(),preparation.model().getNodeId())||!Objects.equals(plan.getReferenceVideoRevision(),preparation.model().getWorkflowRevision())))
+                throw new BizException(409,"参考视频工作流已变化，请重新预览接续计划");
+            progress.accept(0,draft.getSegments().size());
+            for(int i=0;i<draft.getSegments().size();i++){
+                var segment=draft.getSegments().get(i);var child=copy(shot);child.setContinuationJson(null);child.setDuration(BigDecimal.valueOf((segment.getEndFrame()-segment.getStartFrame())/24.0));
+                child.setRefImagesJson(write(segment.getReferenceImages()));child.setRefVideosJson(write(segment.getReferenceVideos()));child.setRefAudiosJson(write(segment.getReferenceAudios()));
+                child.setShotName(segment.getName());child.setScriptContent(segment.getScriptContent());child.setActionDescription(segment.getActionDescription());child.setSoundEffect(segment.getSoundEffect());
+                child.setShotType(segment.getShotType());child.setCameraMovement(segment.getCameraMovement());child.setShotTypeLocked(segment.isShotTypeLocked());child.setCameraMovementLocked(segment.isCameraMovementLocked());
+                child.setResSceneId(segment.getResSceneId());child.setResKeyframeId(segment.getResKeyframeId());child.setCustomScenePrompt(segment.getCustomScenePrompt());
+                child.setCharacterRefsJson(write(segment.getCharacterRefs()));child.setPropRefsJson(write(segment.getPropRefs()));
+                child.setFirstFramePrompt(segment.getFirstFramePrompt());child.setEndFramePrompt(segment.getEndFramePrompt());child.setNegativePrompt(segment.getNegativePrompt());
+                child.setDirectorPlanJson(segment.getDirectorPlan()==null?null:write(segment.getDirectorPlan()));child.setDirectorPlanMode(segment.getDirectorPlan()==null?"AUTO":"MANUAL");child.setDirectorPlanRevision(0);child.setDirectorPlanInputHash(null);
+                child.setPrompt(segment.getPrompt());child.setVideoPrompt(segment.getPrompt());
+                // Endpoint anchors must also be explicitly attached to this segment.
+                child.setPreviewImageUrl(segment.getFirstFrameImageUrl());child.setEndFrameImageUrl(segment.getLastFrameImageUrl());
+                var childReq=new DramaShotRenderRequestDTO();childReq.setProviderId(provider.getId());childReq.setWorkflowTemplateId(model.getModelCode());childReq.setSize(size);childReq.setPrompt(segment.getPrompt());childReq.setSeed(1+Math.floorMod(shot.getSeed()+i*104729L,9007199254740990L));
+                var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",true);options.put("capability_revision",plan.getCapabilityRevision());options.put("length",segment.getEndFrame()-segment.getStartFrame());
+                options.put("control_required_frames",Math.min(segment.getEndFrame(),plan.getOutputFrames())-segment.getStartFrame());
+                options.put("context_windows",Map.of("enabled",draft.isContextWindows()));
+                var control=new LinkedHashMap<String,Object>();control.put("enabled",segment.isControlNetEnabled());control.put("reference_id",segment.getControlVideoId());control.put("control_type",segment.getControlType());control.put("strength",segment.getControlStrength());options.put("control_net",control);childReq.setH3Options(options);
+                if(!segment.getReferenceVideos().isEmpty()){
+                    var prepared=preparation.prepare(child,segment.getReferenceVideos());childReq.setResolvedRefVideos(prepared.getReferences());childReq.setReferenceVideoRevision(prepared.getModel().getWorkflowRevision());childReq.setReferenceVideoNodeId(prepared.getModel().getNodeId());
+                    if(!Objects.equals(plan.getNodeId(),prepared.getModel().getNodeId()))throw new BizException(409,"片段素材与接续计划的算力节点不一致");
+                }
+                options.put("node_id",plan.getNodeId()); // Removed from transport; retained here to pin execution routing.
+                var snap=new VideoBatchModels.Snapshot();snap.setShot(child);snap.setRequest(childReq);snap.setModelFingerprint(parent.getModelFingerprint());req.getContinuationSegments().add(snap);
+                progress.accept(i+1,draft.getSegments().size());
             }
-            options.put("node_id",plan.getNodeId()); // Removed from transport; retained here to pin execution routing.
-            var snap=new VideoBatchModels.Snapshot();snap.setShot(child);snap.setRequest(childReq);snap.setModelFingerprint(parent.getModelFingerprint());req.getContinuationSegments().add(snap);
+            return parent;
         }
-        return parent;
     }
     public Map<String,Object> controlOptions(DramaShot shot,AiModel model,AiProvider provider,ShotControlNetOptions control){
         var cap=capabilities(model,provider);var h3=cap.path("h3");

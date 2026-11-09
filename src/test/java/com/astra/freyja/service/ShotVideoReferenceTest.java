@@ -52,6 +52,16 @@ class ShotVideoReferenceTest {
 
     private DramaShotRenderRequestDTO request() { var req = new DramaShotRenderRequestDTO(); req.setProviderId(30L); req.setWorkflowTemplateId("test-video"); return req; }
 
+    @Test void segmentBatchQueriesCapabilitiesOnceAndClosesSharedMediaSession() throws Exception {
+        var session=mock(ReferenceVideoMediaService.PreparationSession.class);when(media.openPreparation()).thenReturn(session);
+        doAnswer(call->media.prepare(call.getArgument(0),call.getArgument(1),call.getArgument(2))).when(session).prepare(any(),any(),any());
+        var inputs=ShotVideoReferenceValidator.parse(shot.getRefVideosJson(),json);
+        try(var batch=service.openSegmentPreparation(model)){
+            for(int i=0;i<7;i++)assertEquals(option,batch.prepare(shot,inputs).getModel());
+        }
+        verify(capabilities,times(1)).describe(model);verify(media,times(1)).openPreparation();verify(session,times(7)).prepare(any(),any(),any());verify(session).close();
+    }
+
     @Test void multipleVideosFollowModelCountPreserveOrdinalsAndCheckTotalDuration() throws Exception {
         var first = ShotVideoReferenceValidator.parse(shot.getRefVideosJson(), json).getFirst();
         var second = json.readValue(json.writeValueAsString(first), ShotRefVideoDTO.class); second.setId("video2");

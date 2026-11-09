@@ -20,7 +20,7 @@ class ShotContinuationPreparationTest {
     final DramaShot shot=new DramaShot(); final AiModel model=new AiModel(); final AiProvider provider=new AiProvider();
     final List<Runnable> pending=new ArrayList<>();
     @BeforeEach void setup(){
-        jdbc.execute("CREATE TABLE shot_continuation_preparation(id VARCHAR(36) PRIMARY KEY,shot_id BIGINT,plan_hash CHAR(64),provider_id BIGINT,model_code VARCHAR(200),size VARCHAR(40),status VARCHAR(24),snapshot_json CLOB,error_message CLOB,updated_at TIMESTAMP)");
+        jdbc.execute("CREATE TABLE shot_continuation_preparation(id VARCHAR(36) PRIMARY KEY,shot_id BIGINT,plan_hash CHAR(64),provider_id BIGINT,model_code VARCHAR(200),size VARCHAR(40),status VARCHAR(24),snapshot_json CLOB,error_message CLOB,progress_message VARCHAR(200),updated_at TIMESTAMP)");
         shot.setId(1L);provider.setId(2L);model.setModelCode("h3");
         var draft=new ShotContinuation();when(service.read(shot)).thenReturn(draft);
         var plan=new ShotContinuationPlan();plan.setRenderable(true);plan.setPlanHash("a".repeat(64));
@@ -47,6 +47,17 @@ class ShotContinuationPreparationTest {
         var fresh=preparation.start(shot,model,provider,"960x544",revised.getPlanHash());
         assertNotEquals(old.id(),fresh.id());assertEquals("PREPARING",fresh.status());
         assertEquals(2,pending.size());
+    }
+    @Test void segmentProgressIsPersistedForPollingBeforeReady() throws Exception {
+        var preparation=preparation(pending::add);var started=start(preparation);
+        when(service.prepare(eq(shot),eq(model),eq(provider),eq("960x544"),any(),any())).thenAnswer(call->{
+            java.util.function.BiConsumer<Integer,Integer> progress=call.getArgument(5);
+            progress.accept(0,7);assertEquals("正在准备片段 1 / 7",preparation.get(shot.getId(),started.id()).progressMessage());
+            progress.accept(6,7);assertEquals("正在准备片段 7 / 7",preparation.get(shot.getId(),started.id()).progressMessage());
+            progress.accept(7,7);return new VideoBatchModels.Snapshot();
+        });
+        pending.getFirst().run();var ready=preparation.get(shot.getId(),started.id());
+        assertEquals("READY",ready.status());assertEquals("素材准备完成",ready.progressMessage());
     }
     @Test void queueRejectionCommitsFailedStateInSeparateTransaction(){
         var preparation=preparation(work->{throw new java.util.concurrent.RejectedExecutionException();});
