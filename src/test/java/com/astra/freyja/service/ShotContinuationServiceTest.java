@@ -92,6 +92,21 @@ class ShotContinuationServiceTest {
         assertEquals(7,preview.getSegmentCount());assertTrue(preview.isRenderable(),preview.getIssues().toString());
         assertTrue(preview.getIssues().isEmpty());
     }
+    @Test void referenceAdapterRevisionInvalidatesPreparedPlanWithoutChangingH3Revision() throws Exception {
+        var service=service();var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(5);
+        new ShotContinuationPlanner().plan(draft,true);draft.getSegments().forEach(s->s.setPrompt("Continuous action"));
+        var video=new ShotRefVideoDTO();video.setId("v1");video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive.test/reference.mp4");
+        draft.getSegments().getFirst().getReferenceVideos().add(video);
+        var cap=(com.fasterxml.jackson.databind.node.ObjectNode)json.readTree("{\"healthy\":true,\"nodeId\":\"gpu\",\"workflowRevision\":\"video-v1\",\"referenceVideo\":{\"adapter\":\"MINIMAX_H3_REF_VIDEO_V1\",\"maxVideos\":1},\"h3\":{\"revision\":\"h3-v1\",\"continuation\":true}}");
+        doReturn(cap).when(service).capabilities(any(),any());var model=model("TXT2VIDEO_REF");var provider=provider();
+        var before=service.preview(draft,false,model,provider);assertTrue(before.isRenderable());
+        assertEquals(before.getPlanHash(),service.preview(draft,false,model,provider).getPlanHash());
+        cap.put("workflowRevision","video-v2");var after=service.preview(draft,false,model,provider);
+        assertEquals(before.getCapabilityRevision(),after.getCapabilityRevision());assertNotEquals(before.getPlanHash(),after.getPlanHash());
+        var request=new DramaShotRenderRequestDTO();request.setExpectedRenderFingerprint(before.getPlanHash());
+        assertEquals(409,assertThrows(com.astra.freyja.common.BizException.class,
+                ()->service.prepare(shot(draft,"REFERENCE_MODE"),model,provider,"960x544",request)).getCode());
+    }
     private DramaShot shot(ShotContinuation draft,String mode) throws Exception {
         var shot=new DramaShot();shot.setId(1L);shot.setDramaId(2L);shot.setGenerationMode(mode);shot.setSeed(123L);shot.setDuration(BigDecimal.valueOf(draft.getDurationSeconds()));
         shot.setContinuationJson(json.writeValueAsString(draft));shot.setPreviewImageUrl("https://archive/global-first.png");shot.setEndFrameImageUrl("https://archive/global-last.png");

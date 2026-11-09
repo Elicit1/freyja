@@ -36,6 +36,18 @@ class ShotContinuationPreparationTest {
         assertEquals(1,pending.size());
         start(preparation);assertEquals(1,pending.size());
     }
+    @Test void revisedPlanCannotSubmitOrReuseOldReadyPreparation(){
+        var preparation=preparation(pending::add);var old=start(preparation);
+        jdbc.update("UPDATE shot_continuation_preparation SET status='READY',snapshot_json='{}' WHERE id=?",old.id());
+        var revised=new ShotContinuationPlan();revised.setRenderable(true);revised.setPlanHash("b".repeat(64));
+        when(service.preview(service.read(shot),false,model,provider)).thenReturn(revised);
+        var request=new DramaShotRenderRequestDTO();request.setExpectedRenderFingerprint(revised.getPlanHash());
+        assertEquals(409,assertThrows(com.astra.freyja.common.BizException.class,
+                ()->preparation.prepare(shot,model,provider,"960x544",request)).getCode());
+        var fresh=preparation.start(shot,model,provider,"960x544",revised.getPlanHash());
+        assertNotEquals(old.id(),fresh.id());assertEquals("PREPARING",fresh.status());
+        assertEquals(2,pending.size());
+    }
     @Test void queueRejectionCommitsFailedStateInSeparateTransaction(){
         var preparation=preparation(work->{throw new java.util.concurrent.RejectedExecutionException();});
         new TransactionTemplate(transactions).executeWithoutResult(status->assertEquals("PREPARING",start(preparation).status()));

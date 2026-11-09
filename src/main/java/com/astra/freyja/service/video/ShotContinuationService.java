@@ -85,7 +85,10 @@ public class ShotContinuationService {
                 +(videoLimit==0?"，请检查模型中心的参考视频数量配置":""));
         result.setIssues(new ArrayList<>(new LinkedHashSet<>(result.getIssues())));
         result.setRenderable(result.getIssues().isEmpty());
-        result.setPlanHash(VideoBatchPreparation.hash(result.getPlanHash()+"|"+result.getCapabilityRevision()+"|"+model.getId()+"|"+provider.getBaseUrl()));return result;
+        // Reference adapters have a separate revision from H3 continuation options.
+        // Include both so media prepared before an adapter update cannot be reused.
+        String referenceRevision=hasVideos?cap.path("workflowRevision").asText(""):"";
+        result.setPlanHash(VideoBatchPreparation.hash(result.getPlanHash()+"|"+result.getCapabilityRevision()+"|"+model.getId()+"|"+provider.getBaseUrl()+"|"+result.getNodeId()+"|"+referenceRevision));return result;
     }
     public VideoBatchModels.Snapshot prepare(DramaShot shot,AiModel model,AiProvider provider,String size,DramaShotRenderRequestDTO supplied){
         var draft=read(shot);var plan=preview(draft,false,model,provider);
