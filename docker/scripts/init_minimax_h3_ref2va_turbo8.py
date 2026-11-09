@@ -59,7 +59,10 @@ def initialize_models(base_url, provider_id):
             raise RuntimeError(f"Duplicate model code: {code}")
         payload = {
             "providerId": str(provider_id), "modelCode": code, "modelName": name,
-            "modelType": "TXT2VIDEO_REF", "maxImages": 5, "maxAudios": 3, "maxVideos": 0,
+            "modelType": "TXT2VIDEO_REF", "maxImages": 5, "maxAudios": 3,
+            # Register reference slots without asserting online acceptance. Preserve
+            # an administrator's existing limit when rerunning this initializer.
+            "maxVideos": existing[0].get("maxVideos") if existing else 1,
             "status": 1, "remark": remark, "sortOrder": existing[0].get("sortOrder", 0) if existing else 0,
         }
         if existing:

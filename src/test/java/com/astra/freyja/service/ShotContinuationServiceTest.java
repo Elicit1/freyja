@@ -50,6 +50,49 @@ class ShotContinuationServiceTest {
         var d=new ShotContinuation();d.setDurationSeconds(60);var shot=shot(d,"REFERENCE_MODE");shot.setDuration(BigDecimal.valueOf(5));
         assertEquals(60,service().read(shot).getDurationSeconds());
     }
+    @Test void globalAcceptanceErrorsAreReportedOnceAndZeroModelLimitIdentifiesEveryAffectedSegment()throws Exception{
+        var service=service();
+        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"status\":\"UNVERIFIED\",\"maxVideos\":3},\"h3\":{\"status\":\"UNVERIFIED\",\"continuation\":true}}"))
+                .when(service).capabilities(any(),any());
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(30);new ShotContinuationPlanner().plan(draft,true);
+        for(var segment:draft.getSegments()){
+            segment.setPrompt("Continuous action");var video=new ShotRefVideoDTO();video.setId("video-"+segment.getId());video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive.test/reference.mp4");segment.getReferenceVideos().add(video);
+        }
+        var model=model("TXT2VIDEO_REF");model.setMaxVideos(0);
+        var preview=service.preview(draft,false,model,provider());
+        assertFalse(preview.isRenderable());assertEquals(3,preview.getIssues().size());
+        assertEquals(1,preview.getIssues().stream().filter(i->i.equals("此工作流的参考视频能力尚未验收")).count());
+        assertTrue(preview.getIssues().getLast().contains("片段 1、2、3、4、5、6、7"));
+        assertTrue(preview.getIssues().getLast().contains("模型中心：0，网关：3"));
+        model.setMaxVideos(1);var corrected=service.preview(draft,false,model,provider());
+        assertEquals(2,corrected.getIssues().size());assertFalse(corrected.isRenderable());
+    }
+    @Test void verifiedReferenceCountLimitStillBlocksOnlyAffectedSegments()throws Exception{
+        var service=service();
+        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"status\":\"VERIFIED\",\"maxVideos\":1},\"h3\":{\"status\":\"VERIFIED\",\"continuation\":true}}"))
+                .when(service).capabilities(any(),any());
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(8);new ShotContinuationPlanner().plan(draft,true);
+        for(var segment:draft.getSegments())segment.setPrompt("Continuous action");
+        for(int i=0;i<2;i++){var v=new ShotRefVideoDTO();v.setId("v"+i);v.setSourceType("DIRECT_URL");v.setSourceVideoUrl("https://archive.test/"+i+".mp4");draft.getSegments().getLast().getReferenceVideos().add(v);}
+        var model=model("TXT2VIDEO_REF");model.setMaxVideos(3);
+        var result=service.preview(draft,false,model,provider());
+        assertFalse(result.isRenderable());assertEquals(1,result.getIssues().size());assertTrue(result.getIssues().getFirst().contains("片段 2 的参考视频数量超过上限 1"));
+    }
+    @Test void sevenContinuationSlicesDoNotConsumeOneSharedVideoCountOrDurationBudget()throws Exception{
+        var service=service();
+        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"status\":\"VERIFIED\",\"maxVideos\":1,\"maxClipSeconds\":6,\"maxTotalClipSeconds\":6,\"maxDecodedFrames\":144},\"h3\":{\"status\":\"VERIFIED\",\"continuation\":true}}"))
+                .when(service).capabilities(any(),any());
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(30);new ShotContinuationPlanner().plan(draft,true);
+        for(var segment:draft.getSegments()){
+            segment.setPrompt("Continuous action from <Video 1>");var video=new ShotRefVideoDTO();video.setId("slice-"+segment.getId());video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive.test/source.mp4");
+            video.setStartSeconds(BigDecimal.valueOf(segment.getStartFrame()).divide(BigDecimal.valueOf(24),12,java.math.RoundingMode.HALF_UP));
+            video.setEndSeconds(BigDecimal.valueOf(Math.min(segment.getEndFrame(),720)).divide(BigDecimal.valueOf(24),12,java.math.RoundingMode.HALF_UP));segment.getReferenceVideos().add(video);
+        }
+        var model=model("TXT2VIDEO_REF");model.setMaxVideos(1);
+        var preview=service.preview(draft,false,model,provider());
+        assertEquals(7,preview.getSegmentCount());assertTrue(preview.isRenderable(),preview.getIssues().toString());
+        assertTrue(preview.getIssues().isEmpty());
+    }
     private DramaShot shot(ShotContinuation draft,String mode) throws Exception {
         var shot=new DramaShot();shot.setId(1L);shot.setDramaId(2L);shot.setGenerationMode(mode);shot.setSeed(123L);shot.setDuration(BigDecimal.valueOf(draft.getDurationSeconds()));
         shot.setContinuationJson(json.writeValueAsString(draft));shot.setPreviewImageUrl("https://archive/global-first.png");shot.setEndFrameImageUrl("https://archive/global-last.png");

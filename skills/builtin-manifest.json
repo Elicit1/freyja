@@ -228,31 +228,41 @@
     {
       "name": "freyja-platform-guide",
       "displayName": "FREYJA 平台使用指南",
-      "description": "FREYJA 平台创作、叙事层级、视觉参考、配音与声音空间指南，引导读取运镜拆镜和音乐画面制作 Skill。",
+      "description": "FREYJA 平台创作、叙事层级、视觉参考、接续模式与视频动作控制、配音及声音空间指南，引导读取摄影和音乐制作 Skill。",
       "source": "repository:skills/freyja-platform-guide",
       "sourceRevision": null,
       "package": "freyja-platform-guide.zip",
-      "sha256": "20393572b4a09482233edd730a23a711425a898c92c86cd0e7ae1c347c13a5e7",
+      "sha256": "3813df0f404577b05082c72925bd5481aa0401acd7a537bba4c6e104d23a7d15",
       "files": [
         {
+          "path": "SKILL.md",
+          "sha256": "c68bbd86c4549fe54b0c0b5c3ac99b6096d3c55236f7c174d1e09c17611c8310",
+          "size": 73093
+        },
+        {
           "path": "references/architecture.md",
-          "sha256": "c0e5a84c7f52a91167dc6fa67fcae1b8f5c037250e96521e20c0b88d235843c2",
-          "size": 10261
+          "sha256": "e0e66bb838f476496dbe5a4928bb707a6656b97dee4d2c810b8631ce9f3ca1d2",
+          "size": 10181
+        },
+        {
+          "path": "references/continuation-mode.md",
+          "sha256": "68cdc5f2f4070c34f4d69f8b0fdf115d4a07316c1024d832c182beb651ad9d3e",
+          "size": 9618
         },
         {
           "path": "references/dubbing-center.md",
-          "sha256": "c43181c2bca62cce5cb3f74cd8692f5104263c9c9f749e382e14503ffecd5080",
-          "size": 11516
+          "sha256": "07e4a11907c6700179c2f61583592093d13a74f3960e23b67781ff73da9a235c",
+          "size": 11444
         },
         {
           "path": "references/h3-integration.md",
-          "sha256": "eebc5bbe12b2b7be62d08abc19108d86083be52f11045fa361164a01f27832ad",
-          "size": 9543
+          "sha256": "5ba8e2ed89b39de32ef882cb3a358355c83a0b2644ce263ee7220019a9eb7eb8",
+          "size": 10085
         },
         {
           "path": "references/reference-video.md",
-          "sha256": "ab58765d84d3ad655c92b2a82159c7e263b1aa40109ba975a14d462c33d9f623",
-          "size": 4534
+          "sha256": "278294ab871e1d1786d4039e6474ff1a3211e6109c5d1e077f9d909909a8eeea",
+          "size": 12698
         },
         {
           "path": "references/sound-design.md",
@@ -261,18 +271,13 @@
         },
         {
           "path": "references/storyboard-workflow.md",
-          "sha256": "0a0a0f6b89639c927645041cfd7d05d8db33b3a07967806b1a71111e4faa9e37",
-          "size": 25237
+          "sha256": "991e60ccaed27cdb2a433d7cb0883bc66cb70cdfb910da8e1dccc203d85b3c96",
+          "size": 26721
         },
         {
           "path": "references/visual-references.md",
-          "sha256": "176eca4442a8967d01884b4830a4df15346a3269b76be6d846fbd1636d9150df",
-          "size": 56930
-        },
-        {
-          "path": "SKILL.md",
-          "sha256": "bf1c28307dff702442093788d98080211228ec2c7afc66250fe5ff93e6cc3718",
-          "size": 71365
+          "sha256": "f48477855ad392e469925ddbd5f9d67e0e836b967c124a832f73bd8feea9bb8e",
+          "size": 56487
         }
       ]
     },

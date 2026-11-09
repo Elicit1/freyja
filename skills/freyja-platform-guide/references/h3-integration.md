@@ -9,7 +9,7 @@
 | 平台模式 | 当前输入与用途 | 提示词字段与结构 |
 | --- | --- | --- |
 | `FIRST_LAST_FRAME` | 首帧/尾帧约束；实际支持单首帧、双帧还是其他组合，以所选模型、工具及工作流为准 | `videoPrompt`；基础三段式 |
-| `REFERENCE_MODE` | 按有序素材定义人物、场景、道具与音频参考关系 | `prompt`；参考六段式。当前服务会同步 `videoPrompt` 别名，不能分别填写矛盾内容 |
+| `REFERENCE_MODE` | 按有序图片、视频和音频定义人物、场景、道具、动作与声音参考关系 | `prompt`；参考六段式。当前服务会同步 `videoPrompt` 别名，不能分别填写矛盾内容 |
 
 - H3 的 T2VA、I2VA、FL2VA、L2VA、Ref2VA 是模型输入模式，不能仅凭平台 `generationMode` 枚举推断当前工作流开放了所有组合。
 - H3 基础图生视频模式可以生成原生对白。闭嘴首尾图不意味着整个镜头不能说话；首尾状态、中间表演和台词须在时长内相容，并验收口型。
@@ -81,7 +81,9 @@ The woman (S1) says in an off-screen voiceover: <d>[Chinese] 我还记得那条�
 
 ## 依据与维护
 
-视频作为参考条件时，另读 [视频参考流程](reference-video.md)：`refVideos` 使用明确来源、秒级范围、原音开关与参考说明，按 `<Video 1>` 对齐；实际生成需要片段预检与模型在线验收，不能只上传视频就声称它已参与生成。
+视频作为参考条件时，另读 [视频参考与特征提取](reference-video.md)：`refVideos` 使用明确来源、秒级范围、原音开关与参考说明，按 `<Video 1>` 对齐；普通语义参考可关闭 ControlNet，需要姿态、深度或边缘等结构控制时按目标和实时能力选择类型。帧率归一化不等于 ControlNet 提取，上传成功不代表素材已参与生成。
+
+同一分镜要跨段连续生成时，读 [接续模式流程](continuation-mode.md)。接续段的正文写在各段 `prompt`，素材逐段绑定并重新编号；工作流模式决定使用基础三段或参考六段。段间 Guide、片段内部窗口和 ControlNet 是独立功能，按实际预览、准备及渲染接口执行，不因总时长较长就在提示词内制造切镜。
 
 - [MiniMax H3 官方项目与提示词技能](https://github.com/MiniMax-AI/MiniMax-H3)
 - [官方基础模式规范](https://github.com/MiniMax-AI/MiniMax-H3/blob/main/skills/h3-prompt-writing/references/base-en.txt)

@@ -47,16 +47,21 @@ public class ShotContinuationService {
         if(!cap.path("healthy").asBoolean())result.getIssues().add("算力节点离线");
         if(!h3.path("continuation").asBoolean())result.getIssues().add("此工作流未启用接续适配");
         if(draft.isContextWindows()&&!h3.path("contextWindows").asBoolean())result.getIssues().add("此工作流未验证上下文窗口");
+        var videoCap=cap.path("referenceVideo");
+        int gatewayVideoLimit=videoCap.path("maxVideos").asInt(3);
+        int videoLimit=model.getMaxVideos()==null?gatewayVideoLimit:Math.min(gatewayVideoLimit,model.getMaxVideos());
+        boolean hasVideos=draft.getSegments().stream().anyMatch(s->!s.getReferenceVideos().isEmpty());
+        if(hasVideos&&!"VERIFIED".equals(videoCap.path("status").asText()))result.getIssues().add("此工作流的参考视频能力尚未验收");
+        List<String> excessiveVideoSegments=new ArrayList<>();
+        int segmentNumber=0;
         for(var segment:draft.getSegments()) {
+            segmentNumber++;
             if(segment.getDirectorPlan()!=null)try{
                 new com.astra.freyja.director.service.DirectorPlanValidator().validateManual(segment.getDirectorPlan(),BigDecimal.valueOf((segment.getEndFrame()-segment.getStartFrame())/24.0).setScale(3,java.math.RoundingMode.HALF_UP),segment.getShotType(),segment.getCameraMovement(),segment.isShotTypeLocked(),segment.isCameraMovementLocked());
             }catch(BizException e){result.getIssues().add("片段 "+segment.getId()+" · 导演计划："+e.getMessage());}
             if(model.getMaxImages()!=null&&segment.getReferenceImages().size()>model.getMaxImages())result.getIssues().add("片段参考图超过所选模型上限");
             if(!segment.getReferenceVideos().isEmpty()){
-                var videoCap=cap.path("referenceVideo");
-                if(!"VERIFIED".equals(videoCap.path("status").asText()))result.getIssues().add("此工作流的参考视频能力尚未验收");
-                int maxVideos=videoCap.path("maxVideos").asInt(3);if(model.getMaxVideos()!=null)maxVideos=Math.min(maxVideos,model.getMaxVideos());
-                if(segment.getReferenceVideos().size()>maxVideos)result.getIssues().add("片段参考视频超过所选模型上限");
+                if(segment.getReferenceVideos().size()>videoLimit)excessiveVideoSegments.add(String.valueOf(segmentNumber));
                 double maxSeconds=Math.min(referenceLimits.getMaxClipSeconds(),videoCap.path("maxClipSeconds").asDouble(referenceLimits.getMaxClipSeconds()));
                 int maxFrames=Math.min(referenceLimits.getMaxDecodedFrames(),videoCap.path("maxDecodedFrames").asInt(referenceLimits.getMaxDecodedFrames()));
                 double totalSeconds=0;
@@ -76,6 +81,10 @@ public class ShotContinuationService {
             if(segment.isControlNetEnabled()&&h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->segment.getControlType().equals(type.asText())))result.getIssues().add("算力节点未安装 "+segment.getControlType()+" 控制预处理器");
             if(segment.isControlNetEnabled()&&draft.isContextWindows()&&!h3.path("contextWindowsWithControlNet").asBoolean())result.getIssues().add("官方上下文窗口与 ControlNet 联用尚未验收，请关闭片段内窗口或 ControlNet");
         }
+        if(!excessiveVideoSegments.isEmpty())result.getIssues().add("片段 "+String.join("、",excessiveVideoSegments)+" 的参考视频数量超过上限 "+videoLimit
+                +"（模型中心："+Objects.toString(model.getMaxVideos(),"未设置")+"，网关："+gatewayVideoLimit+"）"
+                +(videoLimit==0?"，请检查模型中心的参考视频数量配置":""));
+        result.setIssues(new ArrayList<>(new LinkedHashSet<>(result.getIssues())));
         result.setRenderable(result.getIssues().isEmpty());
         result.setPlanHash(VideoBatchPreparation.hash(result.getPlanHash()+"|"+result.getCapabilityRevision()+"|"+model.getId()+"|"+provider.getBaseUrl()));return result;
     }
