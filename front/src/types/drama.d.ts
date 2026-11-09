@@ -664,7 +664,6 @@ export interface ShotRefVideo {
 }
 
 export interface ReferenceVideoCapability {
-  status: 'UNSUPPORTED' | 'UNVERIFIED' | 'VERIFIED'
   maxVideos?: number
   minClipSeconds?: number
   maxClipSeconds?: number

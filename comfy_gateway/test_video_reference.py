@@ -14,7 +14,7 @@ from comfy_client import ComfyAsyncClient
 from reference_media import upload_reference_video
 from reference_prompt import ReferenceBinding
 from schemas import ImageGenerationRequest
-from video_reference import ReferenceVideoCapability, workflow_revision, require_verified
+from video_reference import ReferenceVideoCapability, workflow_revision, require_supported
 from workflow_engine import WorkflowEngine
 from test_render_input_validation import bind_contract
 
@@ -28,7 +28,7 @@ REF_MODELS = (
 )
 
 
-def setup_model(verified=True, model_name="minimax-h3-ref-turbo8"):
+def setup_model(model_name="minimax-h3-ref-turbo8"):
     node = NodeConfig(**yaml.safe_load((BASE / "nodes/machine_default.yaml").read_text(encoding="utf-8")))
     model = next(m for m in node.models if m.model_name == model_name)
     model.node_id = node.node_id
@@ -36,10 +36,6 @@ def setup_model(verified=True, model_name="minimax-h3-ref-turbo8"):
         max_videos=1, min_clip_seconds=0.1, max_clip_seconds=5, max_total_clip_seconds=5,
         max_decoded_frames=120, max_decode_width=768, max_decode_height=768,
         max_mixed_assets=12, supports_video_audio=True)
-    if verified:
-        model.reference_video.verified_backend = node.http_url
-        model.reference_video.verified_revision = workflow_revision(model, BASE)
-        model.reference_video.status = "VERIFIED"
     config = GatewayConfig(models=[model], nodes={node.node_id: node}, model_to_nodes={model.model_name: [node.node_id]})
     return model, config
 
@@ -53,7 +49,7 @@ def request(model, audio=False, **extra):
     return bind_contract(ImageGenerationRequest(model=model.model_name, size="960x544", prompt="Reference <Video 1>",
                                   references=[binding(audio)], node_id=model.node_id,
                                   prompt_format="MINIMAX_H3_REF2VA_VIDEO_V1",
-                                  reference_video_revision=model.reference_video.verified_revision, **extra))
+                                  reference_video_revision=workflow_revision(model, BASE), **extra))
 
 
 class VideoReferenceAssemblyTests(unittest.TestCase):
@@ -65,7 +61,7 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
         for name, model in models.items():
             with self.subTest(model=name):
                 self.assertIsNotNone(model.reference_video)
-                self.assertEqual(model.reference_video.status, "UNVERIFIED")
+                self.assertNotIn("status", model.reference_video.model_dump())
                 self.assertEqual(model.reference_video.max_videos, 3)
 
     def test_all_ref_models_bind_three_videos_through_each_pass_to_final_output(self):
@@ -73,7 +69,6 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
             with self.subTest(model=name):
                 model, config = setup_model(model_name=name)
                 model.reference_video.max_videos = 3
-                model.reference_video.verified_revision = workflow_revision(model, BASE)
                 refs = [{**binding(index == 1), "referenceId": f"video{index + 1}",
                          "referenceVideo": f"https://archive.test/{index}.mp4"} for index in range(3)]
                 req = request(model)
@@ -113,12 +108,12 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
                 for cond in (("136", "158") if face else ("136",)):
                     self.assertFalse(any(key.startswith(("ref_videos.", "ref_video_audios.")) for key in empty[cond]["inputs"]))
 
-    def test_every_ref_variant_still_requires_its_own_acceptance(self):
+    def test_every_ref_variant_can_bind_video_without_manual_acceptance(self):
         for name in REF_MODELS:
             with self.subTest(model=name):
-                model, config = setup_model(False, name)
-                with self.assertRaisesRegex(ValueError, "UNVERIFIED"):
-                    WorkflowEngine(config).assemble_workflow(request(model))
+                model, config = setup_model(model_name=name)
+                graph = WorkflowEngine(config).assemble_workflow(request(model), uploaded_ref_videos=[{"filename":"clip.mp4","include_audio":False}])
+                self.assertEqual(graph["136"]["inputs"]["ref_videos.ref_video_0"],["136_ref_vid_0",0])
 
     def test_face_refine_disconnected_second_pass_is_rejected(self):
         model, config = setup_model(model_name="minimax-h3-ref-turbo8-face-refine")
@@ -132,17 +127,15 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
     def test_other_handlers_cannot_opt_in_by_copying_ref_configuration(self):
         model, _ = setup_model()
         model.handler = "standard"
-        model.reference_video.verified_revision = workflow_revision(model, BASE)
-        with self.assertRaisesRegex(ValueError, "handler has not been accepted"):
-            require_verified(model, BASE)
+        with self.assertRaisesRegex(ValueError, "handler does not support"):
+            require_supported(model, BASE)
 
     def test_multiple_videos_use_the_configured_model_limit_and_separate_inputs(self):
         model, config = setup_model()
         model.reference_video.max_videos = 2
-        model.reference_video.verified_revision = workflow_revision(model, BASE)
         refs = [binding(), {**binding(True), "referenceId": "video2", "referenceVideo": "https://archive.test/second.mp4"}]
         req = ImageGenerationRequest(model=model.model_name, size="960x544", prompt="Reference <Video 1> and <Video 2>", references=refs,
-                                     prompt_format="MINIMAX_H3_REF2VA_VIDEO_V1", reference_video_revision=model.reference_video.verified_revision)
+                                     prompt_format="MINIMAX_H3_REF2VA_VIDEO_V1", reference_video_revision=workflow_revision(model, BASE))
         bind_contract(req)
         uploaded = [{"reference_id": "video1", "filename": "one.mp4", "include_audio": False}, {"reference_id": "video2", "filename": "two.mp4", "include_audio": True}]
         graph = WorkflowEngine(config).assemble_workflow(req, uploaded_ref_videos=uploaded)
@@ -150,7 +143,7 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
         self.assertEqual(graph["136"]["inputs"]["ref_video_audios.ref_video_audio_1"], ["136_ref_vid_1", 2])
         self.assertEqual(graph["136_ref_vid_1"]["inputs"]["video"], "two.mp4")
         model.reference_video.max_videos = 1
-        model.reference_video.verified_revision = workflow_revision(model, BASE)
+        req.reference_video_revision = workflow_revision(model, BASE)
         with self.assertRaisesRegex(ValueError, "too many videos"):
             WorkflowEngine(config).assemble_workflow(req, uploaded_ref_videos=uploaded)
 
@@ -171,14 +164,14 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
         self.assertFalse(any(key.startswith("136_ref_vid_") for key in empty))
         self.assertNotIn("ref_videos.ref_video_0", empty["136"]["inputs"])
 
-    def test_unverified_and_changed_adapter_are_rejected(self):
-        model, config = setup_model(False)
-        with self.assertRaisesRegex(ValueError, "UNVERIFIED"):
-            WorkflowEngine(config).assemble_workflow(request(model))
+    def test_manual_status_does_not_block_but_changed_preparation_is_rejected(self):
         model, config = setup_model()
+        self.assertIs(require_supported(model,BASE),model.reference_video)
+        model, config = setup_model()
+        prepared = request(model)
         model.reference_video.decode_fps = 30
         with self.assertRaisesRegex(ValueError, "WORKFLOW_MISMATCH"):
-            WorkflowEngine(config).assemble_workflow(request(model))
+            WorkflowEngine(config).assemble_workflow(prepared)
 
     def test_missing_upload_and_model_partial_match_fail(self):
         model, config = setup_model()
@@ -189,12 +182,15 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not supported"):
             WorkflowEngine(config).assemble_workflow(req)
 
-    def test_backend_change_and_unknown_contract_version_require_acceptance(self):
+    def test_historical_backend_stamp_does_not_block_and_unknown_schema_still_fails(self):
         model, _ = setup_model()
-        with self.assertRaisesRegex(ValueError, "backend has not been accepted"):
-            require_verified(model, BASE, "http://another-node:8188")
+        self.assertIs(require_supported(model, BASE, "http://another-node:8188"),model.reference_video)
         with self.assertRaises(ValidationError):
             ReferenceVideoCapability(schema_version=2)
+
+    def test_legacy_acceptance_stamps_are_ignored_and_not_returned(self):
+        capability=ReferenceVideoCapability(max_videos=1,status="UNVERIFIED",verified_revision="old",verified_backend="http://old")
+        self.assertTrue({"status","verified_revision","verified_backend"}.isdisjoint(capability.model_dump()))
 
     def test_top_level_reference_conflicts_and_local_video_paths_fail(self):
         with self.assertRaises(ValidationError):
@@ -267,17 +263,18 @@ class VideoTransportTests(unittest.IsolatedAsyncioTestCase):
         finally:
             await client.close()
 
-    async def test_unverified_request_does_not_upload_any_media(self):
+    async def test_stale_preparation_does_not_upload_any_media(self):
         import main
-        model, config = setup_model(False)
+        model, config = setup_model()
         client = AsyncMock()
         pool = MagicMock()
         pool.get_client_for_node = AsyncMock(return_value=client)
         scope = {"type": "http", "method": "POST", "path": "/v1/videos/generations", "headers": [], "scheme": "http"}
         with patch.object(main, "config", config), patch.object(main, "get_client_pool", return_value=pool), \
                 patch.object(main, "get_workflow_engine", return_value=WorkflowEngine(config)):
-            with self.assertRaisesRegex(ValueError, "UNVERIFIED"):
-                await main.generate_images(request(model), Request(scope))
+            stale=request(model);stale.reference_video_revision="stale"
+            with self.assertRaisesRegex(ValueError, "WORKFLOW_MISMATCH"):
+                await main.generate_images(stale, Request(scope))
         client.load_and_upload_ref_image.assert_not_called()
         client.load_and_upload_media.assert_not_called()
         client.upload_file_to_comfy.assert_not_called()

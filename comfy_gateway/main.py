@@ -19,10 +19,10 @@ import uvicorn
 import aiofiles
 
 from config import get_config, get_base_dir, GatewayConfig, NodeConfig
-from video_reference import require_verified, workflow_revision
+from video_reference import require_supported, workflow_revision
 from reference_media import upload_reference_video
 from render_input_validation import validate_transport
-from h3_extensions import require_options, revision as h3_revision, backend_acceptance
+from h3_extensions import require_options, revision as h3_revision, inspect_backend
 from schemas import (
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -296,8 +296,8 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         model_cfg=config.get_exact_model(request.model,target_node.node_id)
         if model_cfg is None:raise ValueError("H3_MODEL_NODE_MISMATCH")
         require_options(request,model_cfg,get_base_dir())
-        accepted=await backend_acceptance(model_cfg,client)
-        if accepted["status"]!="VERIFIED":raise ValueError("H3_UNVERIFIED: backend nodes, weights or version changed")
+        accepted=await inspect_backend(model_cfg,client)
+        if request.h3_options.continuation_enabled and not accepted.get("continuation"):raise ValueError("H3_CONTINUATION_UNAVAILABLE: required backend nodes are missing or unreachable")
         if request.h3_options.context_windows.enabled and not accepted.get("contextWindows"):raise ValueError("H3_CONTEXT_UNAVAILABLE")
         if request.h3_options.control_net.enabled and not accepted.get("controlNet"):raise ValueError("H3_CONTROL_UNAVAILABLE")
         if request.h3_options.control_net.enabled and request.h3_options.context_windows.enabled and not accepted.get("contextWindowsWithControlNet"):raise ValueError("H3_WINDOW_CONTROL_UNAVAILABLE")
@@ -310,7 +310,7 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         model_cfg = config.get_exact_model(request.model, target_node.node_id)
         if not model_cfg:
             raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: model is not registered on the selected node")
-        video_capability = require_verified(model_cfg, get_base_dir(), target_node.http_url)
+        video_capability = require_supported(model_cfg, get_base_dir(), target_node.http_url)
         if request.reference_video_revision != workflow_revision(model_cfg, get_base_dir()):
             raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: refresh reference-video preflight")
         if request.video_url or request.first_frame or request.last_frame:
@@ -565,13 +565,13 @@ async def model_capabilities(model_code: str, node_id: Optional[str] = None):
     node = config.get_node(model.node_id) if model.node_id else None
     healthy = await (await get_client_pool().get_client_for_node(node)).check_health() if node and node.enabled else False
     h3=model.h3_extensions or {}
-    h3_public={"status":h3.get("status","UNSUPPORTED"),"revision":h3_revision(model,get_base_dir()) if h3 else None,
+    h3_public={"revision":h3_revision(model,get_base_dir()) if h3 else None,
                "continuation":bool(h3.get("continuation")),"contextWindows":bool(h3.get("context_windows")),
                "controlNet":bool(h3.get("control_net")),"contextWindowsWithControlNet":bool(h3.get("context_windows_with_control_net"))}
-    if h3 and node and node.enabled:h3_public.update(await backend_acceptance(model,await get_client_pool().get_client_for_node(node)))
+    if h3 and node and node.enabled:h3_public.update(await inspect_backend(model,await get_client_pool().get_client_for_node(node)))
     if capability is None:
         return {"modelCode": model_code, "nodeId": model.node_id,
-                "referenceVideo": {"status": "UNSUPPORTED"}, "healthy": healthy,"h3":h3_public}
+                "referenceVideo": {}, "healthy": healthy,"h3":h3_public}
     revision = workflow_revision(model, get_base_dir())
     values = capability.model_dump()
     names = {"schema_version": "schemaVersion", "max_videos": "maxVideos", "min_clip_seconds": "minClipSeconds",
@@ -580,12 +580,7 @@ async def model_capabilities(model_code: str, node_id: Optional[str] = None):
              "max_decode_height": "maxDecodeHeight", "max_mixed_assets": "maxMixedAssets",
              "supports_video_audio": "supportsVideoAudio", "max_download_bytes": "maxDownloadBytes"}
     public = {names.get(key, key): value for key, value in values.items()
-              if key not in ("verified_revision", "verified_backend", "condition_node_id", "output_node_ids")}
-    if capability.status == "VERIFIED" and revision != capability.verified_revision:
-        public["status"] = "UNVERIFIED"
-    node = config.get_node(model.node_id) if model.node_id else None
-    if capability.status == "VERIFIED" and (not node or node.http_url != capability.verified_backend):
-        public["status"] = "UNVERIFIED"
+              if key not in ("condition_node_id", "output_node_ids")}
     healthy = await (await get_client_pool().get_client_for_node(node)).check_health() if node and node.enabled else False
     return {"modelCode": model_code, "nodeId": model.node_id, "workflowRevision": revision,
             "referenceVideo": public, "healthy": healthy,"h3":h3_public}

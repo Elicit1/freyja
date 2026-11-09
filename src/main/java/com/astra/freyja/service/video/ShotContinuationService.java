@@ -43,7 +43,6 @@ public class ShotContinuationService {
         try{cap=capabilities(model,provider);}catch(BizException e){result.getIssues().add(e.getMessage());return result;}
         var h3=cap.path("h3");
         result.setCapabilityRevision(h3.path("revision").asText());result.setNodeId(cap.path("nodeId").asText());
-        if(!"VERIFIED".equals(h3.path("status").asText()))result.getIssues().add("此工作流的接续组合尚未完成算力节点验收");
         if(!cap.path("healthy").asBoolean())result.getIssues().add("算力节点离线");
         if(!h3.path("continuation").asBoolean())result.getIssues().add("此工作流未启用接续适配");
         if(draft.isContextWindows()&&!h3.path("contextWindows").asBoolean())result.getIssues().add("此工作流未验证上下文窗口");
@@ -51,7 +50,7 @@ public class ShotContinuationService {
         int gatewayVideoLimit=videoCap.path("maxVideos").asInt(3);
         int videoLimit=model.getMaxVideos()==null?gatewayVideoLimit:Math.min(gatewayVideoLimit,model.getMaxVideos());
         boolean hasVideos=draft.getSegments().stream().anyMatch(s->!s.getReferenceVideos().isEmpty());
-        if(hasVideos&&!"VERIFIED".equals(videoCap.path("status").asText()))result.getIssues().add("此工作流的参考视频能力尚未验收");
+        if(hasVideos&&!"MINIMAX_H3_REF_VIDEO_V1".equals(videoCap.path("adapter").asText()))result.getIssues().add("此工作流不支持参考视频输入");
         List<String> excessiveVideoSegments=new ArrayList<>();
         int segmentNumber=0;
         for(var segment:draft.getSegments()) {
@@ -124,7 +123,7 @@ public class ShotContinuationService {
     }
     public Map<String,Object> controlOptions(DramaShot shot,AiModel model,AiProvider provider,ShotControlNetOptions control){
         var cap=capabilities(model,provider);var h3=cap.path("h3");
-        if(!"VERIFIED".equals(h3.path("status").asText())||!h3.path("controlNet").asBoolean()||!cap.path("healthy").asBoolean())throw new BizException(409,"ControlNet 组合尚未验收或节点离线");
+        if(!h3.path("controlNet").asBoolean()||!cap.path("healthy").asBoolean())throw new BizException(409,"ControlNet 所需节点或权重不可用，或算力节点离线");
         if(control.getControlType()==null||!ShotControlNetOptions.CONTROL_TYPES.contains(control.getControlType())||!Double.isFinite(control.getStrength())||control.getStrength()<0||control.getStrength()>2)throw new BizException(400,"ControlNet 类型或强度无效");
         if(h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->control.getControlType().equals(type.asText())))throw new BizException(409,"算力节点未安装 "+control.getControlType()+" 控制预处理器");
         var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",false);options.put("capability_revision",h3.path("revision").asText());options.put("length",ShotContinuationPlanner.align((int)Math.round(shot.getDuration().doubleValue()*24)));options.put("node_id",cap.path("nodeId").asText());

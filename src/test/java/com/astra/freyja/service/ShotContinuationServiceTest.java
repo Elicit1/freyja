@@ -50,9 +50,9 @@ class ShotContinuationServiceTest {
         var d=new ShotContinuation();d.setDurationSeconds(60);var shot=shot(d,"REFERENCE_MODE");shot.setDuration(BigDecimal.valueOf(5));
         assertEquals(60,service().read(shot).getDurationSeconds());
     }
-    @Test void globalAcceptanceErrorsAreReportedOnceAndZeroModelLimitIdentifiesEveryAffectedSegment()throws Exception{
+    @Test void legacyAcceptanceFieldsDoNotBlockAndZeroModelLimitIdentifiesEveryAffectedSegment()throws Exception{
         var service=service();
-        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"status\":\"UNVERIFIED\",\"maxVideos\":3},\"h3\":{\"status\":\"UNVERIFIED\",\"continuation\":true}}"))
+        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"adapter\":\"MINIMAX_H3_REF_VIDEO_V1\",\"status\":\"UNVERIFIED\",\"maxVideos\":3},\"h3\":{\"status\":\"UNVERIFIED\",\"continuation\":true}}"))
                 .when(service).capabilities(any(),any());
         var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(30);new ShotContinuationPlanner().plan(draft,true);
         for(var segment:draft.getSegments()){
@@ -60,16 +60,15 @@ class ShotContinuationServiceTest {
         }
         var model=model("TXT2VIDEO_REF");model.setMaxVideos(0);
         var preview=service.preview(draft,false,model,provider());
-        assertFalse(preview.isRenderable());assertEquals(3,preview.getIssues().size());
-        assertEquals(1,preview.getIssues().stream().filter(i->i.equals("此工作流的参考视频能力尚未验收")).count());
+        assertFalse(preview.isRenderable());assertEquals(1,preview.getIssues().size());
         assertTrue(preview.getIssues().getLast().contains("片段 1、2、3、4、5、6、7"));
         assertTrue(preview.getIssues().getLast().contains("模型中心：0，网关：3"));
         model.setMaxVideos(1);var corrected=service.preview(draft,false,model,provider());
-        assertEquals(2,corrected.getIssues().size());assertFalse(corrected.isRenderable());
+        assertTrue(corrected.getIssues().isEmpty());assertTrue(corrected.isRenderable());
     }
     @Test void verifiedReferenceCountLimitStillBlocksOnlyAffectedSegments()throws Exception{
         var service=service();
-        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"status\":\"VERIFIED\",\"maxVideos\":1},\"h3\":{\"status\":\"VERIFIED\",\"continuation\":true}}"))
+        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"adapter\":\"MINIMAX_H3_REF_VIDEO_V1\",\"status\":\"VERIFIED\",\"maxVideos\":1},\"h3\":{\"status\":\"VERIFIED\",\"continuation\":true}}"))
                 .when(service).capabilities(any(),any());
         var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(8);new ShotContinuationPlanner().plan(draft,true);
         for(var segment:draft.getSegments())segment.setPrompt("Continuous action");
@@ -80,7 +79,7 @@ class ShotContinuationServiceTest {
     }
     @Test void sevenContinuationSlicesDoNotConsumeOneSharedVideoCountOrDurationBudget()throws Exception{
         var service=service();
-        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"status\":\"VERIFIED\",\"maxVideos\":1,\"maxClipSeconds\":6,\"maxTotalClipSeconds\":6,\"maxDecodedFrames\":144},\"h3\":{\"status\":\"VERIFIED\",\"continuation\":true}}"))
+        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"adapter\":\"MINIMAX_H3_REF_VIDEO_V1\",\"status\":\"VERIFIED\",\"maxVideos\":1,\"maxClipSeconds\":6,\"maxTotalClipSeconds\":6,\"maxDecodedFrames\":144},\"h3\":{\"status\":\"VERIFIED\",\"continuation\":true}}"))
                 .when(service).capabilities(any(),any());
         var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(30);new ShotContinuationPlanner().plan(draft,true);
         for(var segment:draft.getSegments()){
@@ -119,7 +118,7 @@ class ShotContinuationServiceTest {
     }
     @Test void nativeWindowControlNeedsItsOwnAcceptanceButControlAloneDoesNot() throws Exception {
         var service=service();
-        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"status\":\"VERIFIED\"},\"h3\":{\"status\":\"VERIFIED\",\"continuation\":true,\"contextWindows\":true,\"controlNet\":true,\"contextWindowsWithControlNet\":false}}"))
+        doReturn(json.readTree("{\"healthy\":true,\"referenceVideo\":{\"adapter\":\"MINIMAX_H3_REF_VIDEO_V1\",\"status\":\"VERIFIED\"},\"h3\":{\"status\":\"VERIFIED\",\"continuation\":true,\"contextWindows\":true,\"controlNet\":true,\"contextWindowsWithControlNet\":false}}"))
                 .when(service).capabilities(any(),any());
         var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(5);new ShotContinuationPlanner().plan(draft,true);
         var segment=draft.getSegments().getFirst();segment.setPrompt("Continue walking");segment.setControlNetEnabled(true);

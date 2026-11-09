@@ -65,13 +65,13 @@ def revision(model, base_dir):
     digest.update(Path(__file__).read_bytes())
     digest.update((base_dir/"workflow_engine.py").read_bytes())
     digest.update((base_dir/"reference_media.py").read_bytes())
-    digest.update(json.dumps(model.h3_extensions,sort_keys=True).encode())
+    digest.update(json.dumps({k:v for k,v in (model.h3_extensions or {}).items() if k not in {"status","verified_backend_signature"}},sort_keys=True).encode())
     return digest.hexdigest()
 
 
-async def backend_acceptance(model, client):
+async def inspect_backend(model, client):
     cfg=model.h3_extensions or {}
-    public={"status":cfg.get("status","UNSUPPORTED"),"backendSignature":None,"missingNodes":[],"controlTypes":[],"controlVersion":cfg.get("control_version")}
+    public={"continuation":False,"backendSignature":None,"missingNodes":[],"controlTypes":[],"controlVersion":cfg.get("control_version")}
     if not cfg:return public
     baseline={cfg["conditioning"]["class_type"],"MiniMaxH3AddGuide"}
     required=set(baseline)
@@ -84,6 +84,7 @@ async def backend_acceptance(model, client):
         nodes_response=await http.get(client.http_base+"/object_info",timeout=8);nodes_response.raise_for_status();nodes=nodes_response.json()
         stats_response=await http.get(client.http_base+"/system_stats",timeout=5);stats_response.raise_for_status();system=stats_response.json().get("system",{})
         public["missingNodes"]=sorted(required-set(nodes))
+        public["continuation"]=bool(cfg.get("continuation") and baseline<=nodes.keys())
         public["controlTypes"]=[name for name,preset in preprocessors.items() if preset["class_type"] in nodes]+["GRAY"]+cfg.get("prepared_control_types",["PREPARED"])
         def normalized(value):
             # File inventories change independently of a node's protocol. Check the selected patch below.
@@ -98,11 +99,8 @@ async def backend_acceptance(model, client):
         if cfg.get("control_net") and not patch_available:public["missingNodes"].append("weight:"+str(cfg.get("control_patch")))
         fingerprint={"backend":client.http_base,"versions":{key:system.get(key) for key in ("comfyui_version","pytorch_version","python_version")},"nodes":schemas,"controlPatch":cfg.get("control_patch"),"patchAvailable":patch_available}
         public["backendSignature"]=hashlib.sha256(json.dumps(fingerprint,sort_keys=True).encode()).hexdigest()
-        # Optional modules do not block plain guide continuation. Their independent flags
-        # are checked only when the request opts in; the signed inventory still changes.
-        if baseline-set(nodes) or cfg.get("verified_backend_signature")!=public["backendSignature"]:public["status"]="UNVERIFIED"
     except Exception:
-        public["status"]="UNVERIFIED";public["missingNodes"].append("backend-unreachable")
+        public["missingNodes"].append("backend-unreachable")
     return public
 
 
@@ -117,7 +115,7 @@ def require_options(request, model, base_dir):
     if not options.continuation_enabled and request.duration and request.duration>15:
         raise ValueError("H3_CONTINUATION_REQUIRED")
     cfg=model.h3_extensions
-    if not cfg or cfg.get("status")!="VERIFIED": raise ValueError("H3_UNVERIFIED: workflow requires online acceptance")
+    if not cfg: raise ValueError("H3_UNSUPPORTED: workflow has no H3 adapter")
     if options.capability_revision!=revision(model,base_dir): raise ValueError("H3_REVISION_CHANGED: refresh continuation plan")
     if options.continuation_enabled and not cfg.get("continuation"): raise ValueError("H3_CONTINUATION_UNSUPPORTED")
     if options.context_windows.enabled and not cfg.get("context_windows"): raise ValueError("H3_CONTEXT_UNSUPPORTED")

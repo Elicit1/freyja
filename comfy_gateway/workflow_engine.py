@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from config import GatewayConfig, ModelConfig, HandlerConfig, get_base_dir
 from schemas import ImageGenerationRequest
-from video_reference import require_verified, assert_video_paths
+from video_reference import require_supported, assert_video_paths, workflow_revision
 from render_input_validation import validate_transport, validate_workflow
 from h3_extensions import require_options, apply_extensions
 
@@ -90,7 +90,9 @@ class WorkflowEngine:
         workflow = self.get_template(model_cfg)
         require_options(request, model_cfg, self._base_dir)
         if has_videos:
-            capability = require_verified(model_cfg, self._base_dir)
+            capability = require_supported(model_cfg, self._base_dir)
+            if request.reference_video_revision != workflow_revision(model_cfg, self._base_dir):
+                raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: refresh reference-video preflight")
             if len(uploaded_ref_videos or []) != len(request.get_all_ref_videos()):
                 raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: missing uploaded reference clips")
             for path in model_cfg.mappings.values():
@@ -264,7 +266,7 @@ class WorkflowEngine:
                 workflow.pop(node_id)
         if not videos:
             return
-        require_verified(model_cfg, self._base_dir)
+        require_supported(model_cfg, self._base_dir)
         if len(videos) > capability.max_videos:
             raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: too many videos")
         loaders = []

@@ -1,6 +1,6 @@
 # 视频作为生成参考
 
-在 `REFERENCE_MODE` 中，参考视频与参考图、独立参考音频并列。普通镜头输入列表名为 `refVideos`，接续片段为 `draft.segments[].referenceVideos`。数量、每段/总时长、帧数和像素预算，以所选模型及服务端有效限制为准，不把上传源文件的长度上限当作模型可直接参考的长度。支持保存草稿；实际生成需要先完成服务端片段预检，并使用已通过在线验收的模型。节点离线、能力未验证和片段非法是不同原因，不能声称已完成生图或生视频。
+在 `REFERENCE_MODE` 中，参考视频与参考图、独立参考音频并列。普通镜头输入列表名为 `refVideos`，接续片段为 `draft.segments[].referenceVideos`。数量、每段/总时长、帧数和像素预算，以所选模型及服务端有效限制为准，不把上传源文件的长度上限当作模型可直接参考的长度。支持保存草稿；实际生成需要先完成服务端片段预检，并使用当前节点实际支持的模型。节点离线、缺少对应能力和片段非法是不同原因，不能声称已完成生图或生视频。
 
 ## 什么时候需要提取特征
 
@@ -24,12 +24,12 @@ ControlNet 是结构约束，不保证逐帧复刻、确定性换脸或任意运
 
 ## 查询当前支持与配置位置
 
-调用 `get_shot_continuation_options`，传真实 `dramaId/shotId` 及配套 `providerId/modelCode`，读取实际 `controlTypes`、节点健康、`h3` 与 `referenceVideo` 的验收状态。仅不带模型返回的完整枚举，不能证明某预处理器当前可用。Pose 需要 DWPose，Depth/HED/MLSD/Scribble 需要相应预处理器及权重；部署缺失时报告具体类型不可用。不要默默改用 Canny，或把安装节点说成已完成 GPU 效果验收。
+调用 `get_shot_continuation_options`，传真实 `dramaId/shotId` 及配套 `providerId/modelCode`，读取实际 `controlTypes`、节点健康、`h3` 功能与 `referenceVideo` 媒体限制。仅不带模型返回的完整枚举，不能证明某预处理器当前可用。Pose 需要 DWPose，Depth/HED/MLSD/Scribble 需要相应预处理器及权重；部署缺失时报告具体类型不可用。不要默默改用 Canny，或把安装节点说成已完成 GPU 效果验收。
 
 - **普通镜头**：通过 `update_shot` 等工具保存 `refVideos`；读取完整接续草稿，在保持 `draft.enabled=false` 的情况下用 `save_shot_continuation` 保存 `draft.controlNet`，字段为 `enabled/referenceId/controlType/strength`。`referenceId` 必须匹配已保存参考视频的一项 `id`。
 - **接续镜头**：在目标 `draft.segments[]` 中保存 `referenceVideos` 与 `controlNetEnabled/controlVideoId/controlType/controlStrength`。`controlVideoId` 必须是本段挂载视频的 `id`，不能用资源托盘或另一段的 ID；按 [接续模式流程](continuation-mode.md) 准备和提交。
 - 多视频时显式选择唯一控制源，其他视频可继续作语义参考；没有参考视频不能启用 ControlNet。特征在渲染时由后台预处理并应用，目前没有独立的 MCP“提取并导出控制视频”工具，不虚构 `extract_features` 等接口或已提取的文件地址。
-- 仅打开接续不需要 ControlNet；段间实际尾部由系统 Guide 接续，不能误用源视频 Pose 代替上一段生成上下文。`contextWindows` 是片段内部独立能力，默认关闭；与 ControlNet 联用须有 `contextWindowsWithControlNet=true` 的组合验收。
+- 仅打开接续不需要 ControlNet；段间实际尾部由系统 Guide 接续，不能误用源视频 Pose 代替上一段生成上下文。`contextWindows` 是片段内部独立能力，默认关闭；与 ControlNet 联用须有 `contextWindowsWithControlNet=true` 的组合能力。
 
 ## 明确来源和片段
 
@@ -70,10 +70,10 @@ H3 参考模式继续使用六段结构，按实际清单引用各个 `<Video N>
 
 1. 读取真实镜头、已有 `refVideos` 和当前指纹，查询所选模型的实时参考能力。先保存有序素材和最终提示词；需要 ControlNet 时按上节保存完整草稿，读回检查设置和新的 `editFingerprint`。关闭接续的普通请求最多 15 秒，并受模型更小范围和实际资源限制。
 2. 调用 `prepare_shot_reference_video`，传 `dramaId/shotId/providerId/modelCode`、稳定 `requestId` 和最新 `expectedFingerprint`，取得 `preflightId`。用 `get_shot_reference_video_preparation` 轮询至 `READY`，核对实际片段元信息。
-3. 生成已获授权且模型在线、参考能力已验收时，调用 `render_shot_video`，使用同一提供商与模型、有效 `size`、该 `preflightId`、最新指纹及独立稳定请求 ID；已开启接续的镜头使用 `render_shot_continuation`。
+3. 生成已获授权且模型在线、支持参考输入时，调用 `render_shot_video`，使用同一提供商与模型、有效 `size`、该 `preflightId`、最新指纹及独立稳定请求 ID；已开启接续的镜头使用 `render_shot_continuation`。
 4. 用 `get_shot_continuation_render` 查询返回的真实任务 ID，此查询也支持普通镜头视频任务。检查成功状态和输出，再实际观看动作时序、姿态、手脚接触、身份、背景与声音；不能以任务提交成功声称动作已迁移。
 
-保存、预检、渲染是不同步骤。修改视频内容、来源 Take、范围、顺序、原音、提示词或模型后重新准备；重试同一写请求沿用原请求 ID 和相同输入。`UNVERIFIED`、离线或缺预处理器时报告具体阻断，不修改验收标记绕过保护。
+保存、预检、渲染是不同步骤。修改视频内容、来源 Take、范围、顺序、原音、提示词或模型后重新准备；重试同一写请求沿用原请求 ID 和相同输入。人工验收状态字段已移除，旧 UNVERIFIED 值不会阻止生成；离线、缺预处理器、输入不兼容或任务版本过期时按实际原因处理。
 
 ## 通过 MCP 上传参考视频
 

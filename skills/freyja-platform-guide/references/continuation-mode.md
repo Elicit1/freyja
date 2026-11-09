@@ -18,7 +18,7 @@
 
 只使用当前已发布工具，所有业务 ID 保持十进制字符串。先确认授权项目与真实镜头，读取 `get_shot` 的当前内容；MCP 不替外部 AI 再调用内部提示词规划模型。
 
-1. 调用 `get_shot_continuation(dramaId, shotId)` 取得完整 `draft` 和 `editFingerprint`。调用 `get_shot_continuation_options` 查询档位、提供商与匹配当前模式的视频模型；再带配套的 `providerId + modelCode` 查询实时能力、`controlTypes`、`outputSizes` 和 `aspectRatios`。不带模型时的类型枚举只表示协议选项，不证明节点已安装或验收。
+1. 调用 `get_shot_continuation(dramaId, shotId)` 取得完整 `draft` 和 `editFingerprint`。调用 `get_shot_continuation_options` 查询档位、提供商与匹配当前模式的视频模型；再带配套的 `providerId + modelCode` 查询实时能力、`controlTypes`、`outputSizes` 和 `aspectRatios`。不带模型时的类型枚举只表示协议选项，不证明节点已安装或能执行。
 2. 在读取的完整草稿上调整 `enabled`、`durationSeconds`、`segmentFrames` 和 `overlapFrames`，调用 `plan_shot_continuation(auto=true)`。它只做帧规划，不调用 AI/GPU、不保存。需要保留手工范围时用 `auto=false` 校验；自动重分段若影响已有内容、锁定或绑定会拒绝，不能清空草稿绕过保护。关闭接续可保留草稿；读回普通镜头的实际时长，不能据长草稿向普通渲染提交超过 15 秒的请求。
 3. 外部 AI 按已确认剧本编写返回的 `draft.segments[]`，逐段指定人物/造型、场景或关键图、道具、提示词及真实素材。需要长视频参考时，调用 `split_shot_reference_video`，传当前完整草稿和明确的 `referenceVideo`；`targetSegmentIds` 省略为全部片段，显式选择须是当前有效且不重复的片段 ID。它探测源视频并返回范围绑定，不实际生成裁片、不保存。
 4. 调用 `save_shot_continuation` 保存完整草稿，带稳定 `requestId` 和最新 `expectedFingerprint`。这是完整草稿保存，不是只传变化字段的补丁。读回核对保存内容并取得新指纹。
@@ -53,7 +53,7 @@
 | `contextWindows` | 片段内部的采样窗口 | 是独立可选能力；普通串行接续可关闭，不能当成开启接续的必需项 |
 | 片段 `controlNetEnabled` | 从本段明确选择的参考源提取控制信号并应用 | 根据 [视频参考与特征提取](reference-video.md) 选择；无视频也能接续，有视频也可不提取 |
 
-窗口与 ControlNet 同时启用时，必须确认实时 `contextWindowsWithControlNet=true`；未验收时不要联用。预览的 `UNVERIFIED`、离线、缺节点、素材超预算分别处理，不把类型枚举、文件名存在或单次提交成功当成整条链路已验收。
+窗口与 ControlNet 同时启用时，必须确认实时 `contextWindowsWithControlNet=true`。人工验收状态字段已移除，旧 UNVERIFIED/VERIFIED 值不再影响调用；按实际在线状态、缺失节点、工作流版本及素材预算处理预览问题，不虚构能力或生成结果。
 
 ## 输出与恢复
 

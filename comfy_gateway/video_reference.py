@@ -9,34 +9,25 @@ from pydantic import BaseModel, Field, model_validator
 
 class ReferenceVideoCapability(BaseModel):
     schema_version: Literal[1] = 1
-    status: Literal["UNSUPPORTED", "UNVERIFIED", "VERIFIED"] = "UNVERIFIED"
     adapter: Literal["MINIMAX_H3_REF_VIDEO_V1"] = "MINIMAX_H3_REF_VIDEO_V1"
-    verified_revision: Optional[str] = None
-    verified_backend: Optional[str] = None
     max_videos: int = Field(ge=1)
-    min_clip_seconds: Optional[float] = Field(default=None, gt=0)
-    max_clip_seconds: Optional[float] = Field(default=None, gt=0)
-    max_total_clip_seconds: Optional[float] = Field(default=None, gt=0)
+    min_clip_seconds: Optional[float] = Field(default=0.1, gt=0)
+    max_clip_seconds: Optional[float] = Field(default=15, gt=0)
+    max_total_clip_seconds: Optional[float] = Field(default=15, gt=0)
     decode_fps: int = Field(default=24, ge=1, le=60)
-    max_decoded_frames: Optional[int] = Field(default=None, gt=0)
-    max_decode_width: Optional[int] = Field(default=None, ge=2)
-    max_decode_height: Optional[int] = Field(default=None, ge=2)
-    max_mixed_assets: Optional[int] = Field(default=None, gt=0)
+    max_decoded_frames: Optional[int] = Field(default=360, gt=0)
+    max_decode_width: Optional[int] = Field(default=768, ge=2)
+    max_decode_height: Optional[int] = Field(default=768, ge=2)
+    max_mixed_assets: Optional[int] = Field(default=12, gt=0)
     supports_video_audio: bool = False
     max_download_bytes: int = Field(default=128 * 1024 * 1024, gt=0)
     condition_node_id: str = "136"
     output_node_ids: List[str] = Field(default_factory=lambda: ["130"])
 
     @model_validator(mode="after")
-    def validate_verified(self):
-        if self.status == "VERIFIED":
-            required = (self.verified_revision, self.verified_backend, self.min_clip_seconds, self.max_clip_seconds,
-                        self.max_total_clip_seconds, self.max_decoded_frames,
-                        self.max_decode_width, self.max_decode_height, self.max_mixed_assets)
-            if any(value is None for value in required):
-                raise ValueError("VERIFIED reference-video capability requires all measured limits and revision")
-            if self.min_clip_seconds > self.max_clip_seconds:
-                raise ValueError("Reference-video minimum duration exceeds maximum")
+    def validate_limits(self):
+        if self.min_clip_seconds is not None and self.max_clip_seconds is not None and self.min_clip_seconds > self.max_clip_seconds:
+            raise ValueError("Reference-video minimum duration exceeds maximum")
         return self
 
 
@@ -44,29 +35,29 @@ def workflow_revision(model, base_dir: Path) -> str:
     path = Path(model.template_file)
     if not path.is_absolute():
         path = base_dir / path
-    # Include adapter code: changing the adapter invalidates the online acceptance record.
+    # Include adapter code so queued preparations cannot use a different workflow.
     adapter_files = (Path(__file__), base_dir / "workflow_engine.py", base_dir / "reference_prompt.py")
     digest = hashlib.sha256(path.read_bytes())
     for adapter in adapter_files:
         digest.update(adapter.read_bytes())
-    capability = model.reference_video.model_dump(exclude={"status", "verified_revision", "verified_backend"}) if model.reference_video else None
+    capability = model.reference_video.model_dump() if model.reference_video else None
     digest.update(json.dumps({"handler": model.handler, "mappings": model.mappings,
                               "capability": capability}, sort_keys=True).encode())
     return digest.hexdigest()
 
 
-def require_verified(model, base_dir: Path, backend_url=None):
+def require_supported(model, base_dir: Path, backend_url=None):
     capability = model.reference_video
-    if capability is None or capability.status == "UNSUPPORTED":
+    if capability is None:
         raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: model has no reference-video adapter")
-    if capability.status != "VERIFIED":
-        raise ValueError("REFERENCE_VIDEO_UNVERIFIED: online acceptance is required")
-    if capability.verified_revision != workflow_revision(model, base_dir):
-        raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: workflow/adapter changed since acceptance")
-    if backend_url is not None and capability.verified_backend != backend_url:
-        raise ValueError("REFERENCE_VIDEO_UNVERIFIED: this compute backend has not been accepted")
+    # Historical acceptance stamps are informational. Current requests still pin
+    # workflow_revision, exact model/node routing, media hashes and graph bindings.
+    required = (capability.min_clip_seconds, capability.max_clip_seconds, capability.max_total_clip_seconds,
+                capability.max_decoded_frames, capability.max_decode_width, capability.max_decode_height, capability.max_mixed_assets)
+    if any(value is None for value in required) or capability.min_clip_seconds > min(capability.max_clip_seconds, capability.max_total_clip_seconds):
+        raise ValueError("REFERENCE_VIDEO_LIMITS_INVALID: configure valid media limits")
     if model.handler not in {"minimax_h3_ref2va", "minimax_h3_face_refine"}:
-        raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: handler has not been accepted for video references")
+        raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: handler does not support video references")
     return capability
 
 

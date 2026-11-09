@@ -55,9 +55,17 @@ class ShotVideoCapabilityServiceTest {
             model.setMaxVideos(2);
             remote.put("status", "UNVERIFIED");
             responseBody.set(json.writeValueAsString(Map.of("nodeId", "node1", "workflowRevision", "a".repeat(64), "healthy", true, "referenceVideo", remote)));
-            assertFalse(service.describe(model, provider).getRenderable());
+            assertTrue(service.describe(model, provider).getRenderable());
             remote.put("status", "VERIFIED");
             responseBody.set(json.writeValueAsString(Map.of("nodeId", "node1", "workflowRevision", "b".repeat(64), "healthy", true, "referenceVideo", remote)));
+            var refreshed=service.describe(model, provider);
+            assertTrue(refreshed.getRenderable());assertEquals("b".repeat(64),refreshed.getWorkflowRevision());
+            assertFalse(json.readTree(json.writeValueAsString(refreshed.getReferenceVideo())).has("status"));
+            model.setParamsJson(null);
+            assertTrue(service.describe(model, provider).getRenderable(),"live gateway contract is sufficient without duplicated platform acceptance JSON");
+            responseBody.set(json.writeValueAsString(Map.of("nodeId", "node1", "workflowRevision", "b".repeat(64), "healthy", false, "referenceVideo", remote)));
+            assertEquals("COMPUTE_NODE_OFFLINE",service.describe(model, provider).getErrorCode());
+            local.put("adapter","OTHER_ADAPTER");model.setParamsJson(json.writeValueAsString(Map.of("videoGeneration", Map.of("referenceVideo", local))));
             assertEquals("REFERENCE_VIDEO_WORKFLOW_MISMATCH", service.describe(model, provider).getErrorCode());
         } finally { server.stop(0); }
     }

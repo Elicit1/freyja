@@ -93,12 +93,13 @@ class H3ExtensionsTest(unittest.TestCase):
         self.assertEqual(graph["125"]["inputs"]["latent_image"],original)
         self.assertEqual(graph["h3_guide"]["inputs"]["audio"],["h3_context_video",2])
 
-    def test_revision_and_status_cannot_be_bypassed(self):
+    def test_manual_status_does_not_block_but_stale_revision_still_fails(self):
         model,request,_=self.setup_graph();require_options(request,model,BASE)
         request.h3_options.capability_revision="stale"
         with self.assertRaisesRegex(ValueError,"REVISION"):require_options(request,model,BASE)
         model.h3_extensions["status"]="UNVERIFIED"
-        with self.assertRaisesRegex(ValueError,"UNVERIFIED"):require_options(request,model,BASE)
+        request.h3_options.capability_revision=revision(model,BASE)
+        require_options(request,model,BASE)
 
     def test_invalid_frame_grid_and_invented_options_rejected(self):
         for change in ({"length":360},{"surprise_override":True},{"context_windows":{"context_length":124,"context_overlap":124}}):
@@ -117,7 +118,7 @@ class H3ExtensionsTest(unittest.TestCase):
 
 class H3AsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
     async def test_native_union2_does_not_require_private_nodes_and_only_offers_installed_preprocessors(self):
-        from h3_extensions import backend_acceptance
+        from h3_extensions import inspect_backend
         model,_=setup_model()
         nodes={name:{"input":{}} for name in (model.h3_extensions["conditioning"]["class_type"],"MiniMaxH3AddGuide","MiniMaxH3FunControlNetApply","HEDPreprocessor")}
         nodes["ModelPatchLoader"]={"input":{"required":{"name":[[model.h3_extensions["control_patch"]]]}}}
@@ -126,7 +127,7 @@ class H3AsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
             stats=Mock();stats.json.return_value={"system":{}}
             http=AsyncMock();http.get.side_effect=[response,stats]
             client=Mock();client.http_base="http://gpu";client.get_http_client=AsyncMock(return_value=http)
-            return await backend_acceptance(model,client)
+            return await inspect_backend(model,client)
         available=await probe()
         self.assertEqual(available["controlVersion"],"2.0");self.assertTrue(available["controlNet"])
         self.assertEqual(set(available["controlTypes"]),{"HED","LAYOUT","PREPARED","GRAY"})
@@ -137,16 +138,16 @@ class H3AsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(available["backendSignature"],missing["backendSignature"])
 
     async def test_missing_optional_control_nodes_do_not_block_accepted_guide_continuation(self):
-        from h3_extensions import backend_acceptance
+        from h3_extensions import inspect_backend
         model,_=setup_model();model.h3_extensions["status"]="VERIFIED"
         nodes={model.h3_extensions["conditioning"]["class_type"]:{"input":{}},"MiniMaxH3AddGuide":{"input":{}}}
         response=Mock();response.json.return_value=nodes
         stats=Mock();stats.json.return_value={"system":{"comfyui_version":"test"}}
         http=AsyncMock();http.get.side_effect=[response,stats,response,stats]
         client=Mock();client.http_base="http://gpu";client.get_http_client=AsyncMock(return_value=http)
-        probe=await backend_acceptance(model,client);model.h3_extensions["verified_backend_signature"]=probe["backendSignature"]
-        accepted=await backend_acceptance(model,client)
-        self.assertEqual(accepted["status"],"VERIFIED");self.assertFalse(accepted["controlNet"]);self.assertFalse(accepted["contextWindows"])
+        probe=await inspect_backend(model,client);model.h3_extensions["verified_backend_signature"]=probe["backendSignature"]
+        accepted=await inspect_backend(model,client)
+        self.assertNotIn("status",accepted);self.assertTrue(accepted["continuation"]);self.assertFalse(accepted["controlNet"]);self.assertFalse(accepted["contextWindows"])
         self.assertIn("MiniMaxH3FunControlNetApply",accepted["missingNodes"])
 
     async def test_submission_returns_persistable_identity_and_duplicate_does_not_generate_again(self):
@@ -158,7 +159,7 @@ class H3AsyncSubmissionTests(unittest.IsolatedAsyncioTestCase):
         redis=AsyncMock();redis.set.side_effect=[True,False]
         def request():return ImageGenerationRequest(model=model.model_name,size="960x544",prompt="one continuous shot",task_id="segment-original",h3_options={"capability_revision":revision(model,BASE),"continuation_enabled":True,"length":124})
         http=Request({"type":"http","headers":[(b"x-freyja-async-submit",b"true")]})
-        with patch.object(main,"config",config),patch.object(main,"get_workflow_engine",return_value=engine),patch.object(main,"get_client_pool",return_value=pool),patch.object(main,"backend_acceptance",AsyncMock(return_value={"status":"VERIFIED","controlTypes":["CANNY"]})),patch.object(main.task_tracker,"_redis_client",redis),patch.object(main.task_tracker,"register",AsyncMock()) as register,patch.object(main.task_tracker,"find",AsyncMock(return_value=("prompt-original",model.node_id))):
+        with patch.object(main,"config",config),patch.object(main,"get_workflow_engine",return_value=engine),patch.object(main,"get_client_pool",return_value=pool),patch.object(main,"inspect_backend",AsyncMock(return_value={"status":"UNVERIFIED","continuation":True,"controlTypes":["CANNY"]})),patch.object(main.task_tracker,"_redis_client",redis),patch.object(main.task_tracker,"register",AsyncMock()) as register,patch.object(main.task_tracker,"find",AsyncMock(return_value=("prompt-original",model.node_id))):
             result=await main.generate_images(request(),http)
             self.assertEqual(result.execution["promptId"],"prompt-original");self.assertEqual(result.execution["nodeId"],model.node_id)
             redis.get.return_value=redis.set.await_args.args[1]

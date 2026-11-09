@@ -228,7 +228,7 @@ curl -X POST http://127.0.0.1:8000/v1/images/generations \
 
 FaceRefine 两个阶段共享同一组 `<Video N>` 输入及可选原音，不重复创建视频加载节点；原有参考图片、独立音频、采样步数和最终精修输出保持各模板约定。
 
-每个模型分别配置 `reference_video`。默认及本机节点配置均登记为 `UNVERIFIED`，节点声明的视频槽位上限为 3；平台模型中心的 `maxVideos` 可以进一步限制数量。实际使用前须逐模型实测片段范围、解码尺寸/帧数、混合素材与原音能力，填写实测限制、`verified_backend`、`verified_revision` 并完成验收；Turbo8 的验收记录不能直接复制到其他模型。详细配置见 [参考视频设计说明](../docs/reference-video-generation-design.md#113-在线验收后的能力配置)。
+每个模型分别配置 `reference_video` 的媒体限制。人工验收状态及其签名字段已移除，旧配置字段会被忽略；节点声明的视频槽位上限为 3，模型中心的 `maxVideos` 可进一步限制每个生成片段的数量。默认限制为 24fps、每段/总计最多 15 秒、360 帧、768×768 解码范围和 12 个混合素材，模型显式配置可覆盖这些值。Java 读取网关实时能力，并保留模型中心设置的更小预算；工作流、节点路由、媒体摘要、真实帧数和快照版本仍校验。详细流程见 [接续部署说明](../docs/minimax-h3-continuation-deployment.md)。
 
 部署时同步更新实际使用的节点 YAML（私有 `machine_local.yaml` 会覆盖默认配置），重启网关，并同步平台模型中心的参考视频配置和工作流 revision。修改适配代码会改变 revision，原有验收记录需要重新核对。
 

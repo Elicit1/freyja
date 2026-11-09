@@ -8,7 +8,6 @@ import java.math.BigDecimal;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class ReferenceVideoCapability {
     private Integer schemaVersion = 1;
-    private String status = "UNSUPPORTED";
     private String adapter;
     private String workflowRevision;
     private Integer maxVideos;

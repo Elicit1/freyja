@@ -54,7 +54,7 @@
 
 `referenceId` 必须属于该镜头已保存的参考视频；多视频时必须明确选择控制源。普通模式保存后使用 `prepare_shot_reference_video`，准备完成后把 `preflightId` 传给 `render_shot_video`。普通素材选择仍通过现有镜头编辑工具保存。
 
-协议类型包括 `CANNY`、`DEPTH`、`POSE`、`HED`、`MLSD`、`SCRIBBLE`、`LAYOUT`、`GRAY`、`PREPARED`。指定提供商与模型后返回的 `controlTypes` 才表示当前节点支持的类型。`LAYOUT` 需要预先制作的布局视频；`PREPARED` 表示已处理的控制视频。安装节点不等于完成组合验收，`UNVERIFIED`、离线或未支持的组合仍会阻止渲染。
+协议类型包括 `CANNY`、`DEPTH`、`POSE`、`HED`、`MLSD`、`SCRIBBLE`、`LAYOUT`、`GRAY`、`PREPARED`。指定提供商与模型后返回的 `controlTypes` 才表示当前节点支持的类型。`LAYOUT` 需要预先制作的布局视频；`PREPARED` 表示已处理的控制视频。人工验收标记已移除；旧 UNVERIFIED/VERIFIED 状态不再控制提交。节点离线、缺少所选节点/权重或未支持的组合仍按实际能力检查。
 
 分段视频绑定只作用于指定片段，原始资源托盘不参与渲染。切分保留真实重叠，不拉伸或循环不足的源视频。`targetSegmentIds` 可省略以作用于全部片段；显式传入时必须来自当前草稿且不重复。片段参考图需显式选择 `usageRole`，不通过文字猜用途。
 

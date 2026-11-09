@@ -1,6 +1,6 @@
 # MiniMax H3 接续部署与验收
 
-2026-11-06。H3 接续与 Union 2.0 已统一接入官方节点，五个项目自定义节点及其安装依赖已移除。目标 ComfyUI 可访问；尚未完成真实 GPU 接缝与控制效果验收，配置保持 `UNVERIFIED`。普通短视频入口继续使用原有能力规则。
+2026-11-09。H3 接续与参考视频的人工验收标记已移除；不再配置或返回 `status: UNVERIFIED/VERIFIED`、`verified_backend`、`verified_revision`、`verified_backend_signature`。提交依据当前节点、工作流接线、媒体预算和准备快照检查。生成后的接缝与控制效果检查仍有价值，但不再是人工放行门槛。H3 与 Union 2.0 统一使用官方节点。
 
 ## 使用入口与实际行为
 
@@ -101,9 +101,9 @@ fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/mlsd_large_512_f
   "$aux/lllyasviel/Annotators/mlsd_large_512_fp32.pth"
 ```
 
-### 更新部署和重新验收
+### 更新部署和能力检查
 
-默认节点、配置生成器及调试图均已切换 2.0。本地 `machine_local.yaml` 也已刷新，其余远程部署需同步更新。迁移会撤销旧的验收状态与签名，重新准备计划后方可使用；旧任务快照保持原有内容，不能把使用 v1 生成的片段视为 v2 缓存。先完成运行中的任务，再切换配置。
+默认节点、配置生成器及调试图均已切换 2.0。本地 `machine_local.yaml` 也已刷新，其余远程部署需同步更新。工作流变化后重新预览和准备，旧任务快照保持原有内容，不能把使用 v1 生成的片段视为 v2 缓存。先完成运行中的任务，再切换配置。
 
 1. 更新 ComfyUI 到提供上述官方 H3 节点且支持 Union 2.0 加载的版本。保留现有 `ComfyUI-VideoHelperSuite` 视频读取与输出节点，按需安装 `comfyui_controlnet_aux`。不再安装项目自定义节点；若旧部署装过 `custom_nodes/freyja_h3`，可移除该目录后重启 ComfyUI，并重新导入新版调试图。此修改不会通过 ComfyUI HTTP 接口自动删除远端插件目录。
 2. 按实际启用模块安装节点：窗口使用 `MiniMaxH3ContextWindows`，ControlNet 使用 `MiniMaxH3FunControlNetApply`、`ModelPatchLoader` 及 `models/model_patches/` 下的 Union 权重。可选姿态/深度预处理器须另行安装；Canny 使用原生节点。所选补丁必须与底模匹配。未启用的可选模块不成为基础 guide 接续的依赖；缺失模块会在能力中显示不可用。
@@ -113,7 +113,7 @@ fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/mlsd_large_512_f
    python comfy_gateway/configure_h3_extensions.py comfy_gateway/nodes/machine_local.yaml --refresh
    ```
 
-   此命令把组合状态重置为 `UNVERIFIED`，不修改服务地址、凭证等其他字段。执行前保留验收记录。
+   此命令生成显式图绑定，不创建人工验收标记，不修改服务地址、凭证等其他字段。
 
 4. 网关异步接续需要可写 Redis。媒体归档域名须在 `REFERENCE_MEDIA_HOSTS` 中允许，网关须能访问 Java 生成的归档运输地址。Java 运行环境需要 FFmpeg、FFprobe 和现有 MinIO 配置。
 5. 参考预算独立配置。Java 默认单参考片段最长 15 秒、360 帧；362 帧的生成段约 15.083 秒。可采用 345 帧段长保持默认参考预算；若要用满 362 帧的 ControlNet，先实测，再将 Java `freyja.reference-video.max-clip-seconds` 至少设为 16、`max-decoded-frames` 至少设为 362，并在网关 `reference_video` 中声明实测的每段/总时长、帧数及像素预算。不要只扩大一侧配置。
@@ -123,12 +123,12 @@ fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/mlsd_large_512_f
    python comfy_gateway/probe_h3.py --node-config comfy_gateway/nodes/machine_local.yaml --model minimax-h3-ref-turbo8
    ```
 
-   输出 `controlVersion`、`backendSignature`、缺失节点、支持的控制预处理器和 `workflowRevision`。探测本身不生成视频，也不把状态改为已验收。
-7. 在目标 GPU 上完成下述验收后，将对应模型 `h3_extensions.status` 设为 `VERIFIED`，并保存本次 `backendSignature` 到 `verified_backend_signature`。随后重新读取能力、预览计划。引用视频还须独立满足既有 `reference_video` 的 VERIFIED、工作流 revision 与 backend 规则。
+   输出 `controlVersion`、`backendSignature`、缺失节点、支持的控制预处理器和 `workflowRevision`。探测本身不生成视频。
+7. 重新读取当前能力并预览计划。参考视频使用网关实时媒体限制；模型中心可以设置更小的限制，无需重复录入能力 JSON 或设置验收状态。准备快照仍绑定实际工作流版本与节点，过期输入不能继续提交。
 
 原生路径探测不再要求任何项目私有节点。能力的 `controlTypes` 只列出已安装预处理节点支持的类型，以及网关准备的 Gray 和显式预处理视频类型。`contextWindowsWithControlNet` 单独声明原生联用验收范围，节点可见不会自动开启该组合。HED / MLSD / Pose / Depth / Scribble 缺失时，安装 `comfyui_controlnet_aux` 及依赖、对应预处理模型后重启；不影响 Canny、Gray 或已处理视频的节点可用性。
 
-运行时签名检查已安装节点输入 schema、报告的 ComfyUI/PyTorch/Python 版本、后端地址和所选补丁是否在列表中；计划 revision 包含 API 图、网关装配代码、媒体准备代码和模块配置。签名不读取远端模型文件内容，不能替代模型摘要及真实渲染验收记录。升级原生路径后状态与签名须重新验收，不直接沿用旧配置。
+运行时探测检查已安装节点与所选补丁是否在列表中；诊断指纹反映节点 schema 与版本，计划 revision 绑定 API 图、网关装配代码、媒体准备代码和模块配置。无需保存诊断指纹作为人工验收标记；工作流或素材变化仍需重新准备快照。
 
 ## 调试工作流与 GPU 验收
 

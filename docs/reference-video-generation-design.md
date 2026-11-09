@@ -4,7 +4,7 @@
 
 原始需求：让 Freyja 平台可以使用参考视频生成视频；允许修改 ComfyGateway 与 ComfyUI 工作流；当前 ComfyUI 离线。
 
-本文记录已落地的功能设计与部署契约。分镜素材、片段准备、输入快照、网关接线、前端及提示词入口已实现；代码与离线检查不代表 GPU 推理、模型效果或目标机器节点兼容性已经验证。在线能力默认保持 `UNVERIFIED`。部署与当前验证范围见第 11 节。
+本文记录已落地的功能设计与部署契约。分镜素材、片段准备、输入快照、网关接线、前端及提示词入口已实现；代码与离线检查不代表 GPU 推理、模型效果或目标机器节点兼容性已经验证。2026-11-09 起已移除人工验收状态及签名标记，当前提交规则以实时能力与输入快照为准；生成效果验证不再是接口放行门槛。
 
 ## 1. 功能决策
 
@@ -107,25 +107,23 @@
 
 ### 5.1 复用模型中心
 
-继续使用 `AiModel.paramsJson.videoGeneration`，增加 `referenceVideo` 子对象。以下为结构示意，`null` 代表待实测补齐，不能以该配置开启生成：
+继续使用 `AiModel.paramsJson.videoGeneration`，增加 `referenceVideo` 子对象。以下为可选的模型中心预算示意；未配置该子对象时直接使用网关实时限制：
 
 ```json
 {
   "videoGeneration": {
     "referenceVideo": {
       "schemaVersion": 1,
-      "status": "UNVERIFIED",
       "adapter": "MINIMAX_H3_REF_VIDEO_V1",
-      "workflowRevision": null,
       "maxVideos": 1,
-      "minClipSeconds": null,
-      "maxClipSeconds": null,
-      "maxTotalClipSeconds": null,
+      "minClipSeconds": 0.1,
+      "maxClipSeconds": 15,
+      "maxTotalClipSeconds": 15,
       "decodeFps": 24,
-      "maxDecodedFrames": null,
-      "maxDecodeWidth": null,
-      "maxDecodeHeight": null,
-      "maxMixedAssets": null,
+      "maxDecodedFrames": 360,
+      "maxDecodeWidth": 768,
+      "maxDecodeHeight": 768,
+      "maxMixedAssets": 12,
       "supportsVideoAudio": false
     }
   }
@@ -134,9 +132,9 @@
 
 `24` FPS 来自当前 H3 工程的采样设置，最终由具体工作流验收确认。其余帧数、时长、尺寸不能把 UI 示例的 120 帧或 768 宽直接当成模型官方上限。
 
-新增同构的网关 `ModelConfig` 能力配置。Java 控制业务上限，网关声明实际接线和节点约束；不能把 Java 配置设成 true 就默认网关支持。有效数量取产品上限、`AiModel.maxVideos`、模型契约和网关契约的最小值；缺失关键限制、状态未验证或契约版本不一致时拒绝视频渲染。
+新增同构的网关 `ModelConfig` 能力配置。Java 控制业务上限，网关声明实际接线和节点约束；不能把 Java 配置设成 true 就默认网关支持。有效数量取产品上限、`AiModel.maxVideos`、模型契约和网关契约的最小值；缺失实际适配、输入超出预算或任务准备版本过期时拒绝视频渲染。
 
-能力状态建议为 `UNSUPPORTED / UNVERIFIED / VERIFIED`。只有对应工作流版本与目标节点验收后才能标记 `VERIFIED`；节点健康状态单独记录。旧模型没有新配置时视为本功能未启用，不影响其原有图片/音频业务。
+人工验收状态字段已移除。模型中心开放 maxVideos 后，Java 使用网关实时契约；可选的本地预算只能缩小有效范围。节点健康、适配器兼容性和每个准备快照绑定的实际版本继续校验。
 
 建议新增接口：
 
@@ -275,7 +273,7 @@ H3 参考模式维持六段式结构，为视频新增稳定 `Video 1` 标签，
 
 批量任务接受时冻结所有视频来源；不在首期增加“等待本批另一分镜尚未生成的视频”依赖。可用历史 Take 才能作为来源，避免未实现的依赖环。任务重启恢复、远程取消与断线取回沿用既有 task/shot/prompt 关联。
 
-新设计的错误应带 `code`、`referenceId`、`field` 与中文原因，便于定位卡片：`REFERENCE_VIDEO_UNSUPPORTED`、`REFERENCE_VIDEO_UNVERIFIED`、`REFERENCE_VIDEO_LIMIT_EXCEEDED`、`REFERENCE_VIDEO_SOURCE_CHANGED`、`REFERENCE_VIDEO_DECODE_FAILED`、`REFERENCE_VIDEO_WORKFLOW_MISMATCH`。节点离线单独使用 `COMPUTE_NODE_OFFLINE`，不与输入参数错误混淆。
+新设计的错误应带 `code`、`referenceId`、`field` 与中文原因，便于定位卡片：`REFERENCE_VIDEO_UNSUPPORTED`、`REFERENCE_VIDEO_LIMIT_EXCEEDED`、`REFERENCE_VIDEO_SOURCE_CHANGED`、`REFERENCE_VIDEO_DECODE_FAILED`、`REFERENCE_VIDEO_WORKFLOW_MISMATCH`。节点离线单独使用 `COMPUTE_NODE_OFFLINE`，不与输入参数错误混淆。
 
 ## 9. 数据迁移与实施清单
 
@@ -354,7 +352,7 @@ Java 的 `freyja.reference-video` 默认准备限制为：源文件 256 MiB、�
 
 ### 11.3 在线验收后的能力配置
 
-现有 6 个 H3 REF 模型均登记参考视频适配：`minimax-h3-ref2va`、`minimax-h3-ref`、`minimax-h3-ref-turbo8`，以及各自的 FaceRefine 版本（`minimax-h3-face-refine`、`minimax-h3-ref-turbo4-face-refine`、`minimax-h3-ref-turbo8-face-refine`）。每个模型独立维护验收状态、revision 和限制。节点私有 YAML 会覆盖默认节点配置：部署使用 `machine_local.yaml` 时，应在该文件的对应模型维护 `reference_video`，不能只改 `machine_default.yaml`。
+现有 6 个 H3 REF 模型均登记参考视频适配：`minimax-h3-ref2va`、`minimax-h3-ref`、`minimax-h3-ref-turbo8`，以及各自的 FaceRefine 版本（`minimax-h3-face-refine`、`minimax-h3-ref-turbo4-face-refine`、`minimax-h3-ref-turbo8-face-refine`）。每个模型独立维护接线与媒体限制，实际任务绑定当前 revision。节点私有 YAML 会覆盖默认节点配置：部署使用 `machine_local.yaml` 时，应在该文件的对应模型维护 `reference_video`，不能只改 `machine_default.yaml`。
 
 普通 REF 将参考视频连接到 `136`；FaceRefine 在首阶段 `136` 和精修阶段 `158` 共享同一组有序视频加载节点及可选原音，两个阶段的 `<Video N>` 对应关系一致。精修阶段继续使用首阶段生成的独立音频条件，保留各模板原有采样步数和最终拼接输出 `130`；装配时检查每个阶段到最终输出的连通性。
 
@@ -365,27 +363,24 @@ Java 的 `freyja.reference-video` 默认准备限制为：源文件 256 MiB、�
 ```yaml
 reference_video:
   schema_version: 1
-  status: UNVERIFIED
   adapter: MINIMAX_H3_REF_VIDEO_V1
   max_videos: 3
-  min_clip_seconds: null
-  max_clip_seconds: null
-  max_total_clip_seconds: null
+  min_clip_seconds: 0.1
+  max_clip_seconds: 15
+  max_total_clip_seconds: 15
   decode_fps: 24
-  max_decoded_frames: null
-  max_decode_width: null
-  max_decode_height: null
-  max_mixed_assets: null
+  max_decoded_frames: 360
+  max_decode_width: 768
+  max_decode_height: 768
+  max_mixed_assets: 12
   supports_video_audio: false
   condition_node_id: "136"
   output_node_ids: ["130"]
-  verified_backend: null
-  verified_revision: null
 ```
 
-上面的 `null` 必须由实测值替换。先保持 `UNVERIFIED` 填好限制并重启网关，从 capabilities 读取 `workflowRevision`。验收记录确认后，将 `verified_backend` 设为实际节点 `http_url`，`verified_revision` 设为该 revision，再设置网关状态。工作流、适配代码、映射或实测限制变更会改变 revision；切换后端地址也会使旧验收失效。
+上例是服务端默认媒体预算，可按实际需要调整。无需设置人工验收状态或保存验收签名；工作流、适配代码、映射或限制变化会改变 revision，后续必须重新预览和准备任务。
 
-平台模型中心按实际模型能力设置 `maxVideos`，在已有 `paramsJson.videoGeneration` 中合并第 5.1 节的 `referenceVideo` 子对象：使用相同的 adapter、`workflowRevision` 和实测限制。平台配置也须明确为 `VERIFIED`，且网关报告同版本已验收、节点健康时，生成入口才会启用。不要替换原有比例、尺寸与时长配置。可先在验收环境验证网关 API，平台生成入口保持未验证，完成联调后再启用平台配置。
+模型中心设置每个执行片段的 `maxVideos`。`paramsJson.videoGeneration.referenceVideo` 为可选预算覆盖，不必重复配置网关能力或验收状态；不得替换原有比例、尺寸和时长配置。生成按当前在线节点、媒体限制与快照一致性判断。
 
 ### 11.4 指引与验证边界
 

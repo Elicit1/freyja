@@ -46,13 +46,10 @@ public class ShotVideoCapabilityService {
         var local = new ReferenceVideoCapability();
         result.setReferenceVideo(local);
         try {
-            var root = json.readTree(model.getParamsJson() == null ? "{}" : model.getParamsJson()).path("videoGeneration").path("referenceVideo");
-            if (root.isMissingNode() || root.isNull() || model.getMaxVideos() == null || model.getMaxVideos() < 1) {
-                result.setErrorCode("REFERENCE_VIDEO_UNSUPPORTED"); result.setReason("该模型尚未配置参考视频能力；仍可保存素材草稿"); return result;
+            var root = json.readTree(model.getParamsJson() == null || model.getParamsJson().isBlank() ? "{}" : model.getParamsJson()).path("videoGeneration").path("referenceVideo");
+            if (model.getMaxVideos() == null || model.getMaxVideos() < 1) {
+                result.setErrorCode("REFERENCE_VIDEO_UNSUPPORTED"); result.setReason("模型中心未开放参考视频数量；仍可保存素材草稿"); return result;
             }
-            local = json.treeToValue(root, ReferenceVideoCapability.class); result.setReferenceVideo(local);
-            // Model-center maxVideos is the platform count setting; the verified gateway may narrow it.
-            local.setMaxVideos(model.getMaxVideos());
             String base = apiRoot(provider.getBaseUrl());
             var request = HttpRequest.newBuilder(URI.create(base + "/models/" + URLEncoder.encode(model.getModelCode(), StandardCharsets.UTF_8) + "/capabilities"))
                     .timeout(Duration.ofSeconds(5)).GET().header("Accept", "application/json");
@@ -64,20 +61,25 @@ public class ShotVideoCapabilityService {
             result.setNodeId(remote.path("nodeId").asText(null)); result.setWorkflowRevision(remote.path("workflowRevision").asText(null));
             result.setHealthy(remote.path("healthy").asBoolean(false));
             var capability = json.treeToValue(remote.path("referenceVideo"), ReferenceVideoCapability.class);
-            if (!complete(local) || !complete(capability)) { result.setReason("参考视频能力尚未完成在线验证"); return result; }
-            if (!java.util.Objects.equals(local.getWorkflowRevision(), result.getWorkflowRevision()) || !java.util.Objects.equals(local.getAdapter(), capability.getAdapter()) || result.getNodeId() == null) {
-                result.setErrorCode("REFERENCE_VIDEO_WORKFLOW_MISMATCH"); result.setReason("模型与网关的参考视频版本不一致，请重新验收配置"); return result;
+            if (!complete(capability)) { result.setErrorCode("REFERENCE_VIDEO_UNSUPPORTED"); result.setReason("网关不支持参考视频或媒体限制配置不完整"); return result; }
+            if (result.getNodeId() == null || result.getWorkflowRevision() == null
+                    || root.hasNonNull("adapter") && !root.path("adapter").asText().equals(capability.getAdapter())
+                    || root.hasNonNull("decodeFps") && root.path("decodeFps").asInt() != capability.getDecodeFps()) {
+                result.setErrorCode("REFERENCE_VIDEO_WORKFLOW_MISMATCH"); result.setReason("模型与网关的参考视频适配器或帧率配置不一致"); return result;
             }
-            local.setMaxVideos(Math.min(model.getMaxVideos(), Math.min(local.getMaxVideos(), capability.getMaxVideos())));
-            local.setMinClipSeconds(local.getMinClipSeconds().max(capability.getMinClipSeconds()));
-            local.setMaxClipSeconds(local.getMaxClipSeconds().min(capability.getMaxClipSeconds()));
-            local.setMaxTotalClipSeconds(local.getMaxTotalClipSeconds().min(capability.getMaxTotalClipSeconds()));
-            local.setMaxDecodedFrames(Math.min(local.getMaxDecodedFrames(), capability.getMaxDecodedFrames()));
-            local.setMaxDecodeWidth(Math.min(local.getMaxDecodeWidth(), capability.getMaxDecodeWidth()));
-            local.setMaxDecodeHeight(Math.min(local.getMaxDecodeHeight(), capability.getMaxDecodeHeight()));
-            local.setMaxMixedAssets(Math.min(local.getMaxMixedAssets(), capability.getMaxMixedAssets()));
-            if (!local.getDecodeFps().equals(capability.getDecodeFps())) { result.setReason("模型与网关的参考视频帧率约定不一致"); return result; }
-            local.setSupportsVideoAudio(Boolean.TRUE.equals(local.getSupportsVideoAudio()) && Boolean.TRUE.equals(capability.getSupportsVideoAudio()));
+            // Use the live contract. Optional model-center limits may narrow it;
+            // historical acceptance stamps/revisions do not prevent fresh preparation.
+            var effective = (com.fasterxml.jackson.databind.node.ObjectNode) json.valueToTree(capability);
+            for(String field:List.of("maxDecodedFrames","maxDecodeWidth","maxDecodeHeight","maxMixedAssets"))
+                if(root.hasNonNull(field))effective.put(field,Math.min(root.path(field).asInt(),effective.path(field).asInt()));
+            for(String field:List.of("maxClipSeconds","maxTotalClipSeconds"))
+                if(root.hasNonNull(field))effective.put(field,root.path(field).decimalValue().min(effective.path(field).decimalValue()));
+            if(root.hasNonNull("minClipSeconds"))effective.put("minClipSeconds",root.path("minClipSeconds").decimalValue().max(capability.getMinClipSeconds()));
+            if(root.hasNonNull("maxDownloadBytes"))effective.put("maxDownloadBytes",Math.min(root.path("maxDownloadBytes").asLong(),capability.getMaxDownloadBytes()==null?Long.MAX_VALUE:capability.getMaxDownloadBytes()));
+            if(root.hasNonNull("supportsVideoAudio"))effective.put("supportsVideoAudio",root.path("supportsVideoAudio").asBoolean()&&Boolean.TRUE.equals(capability.getSupportsVideoAudio()));
+            local=json.treeToValue(effective,ReferenceVideoCapability.class);result.setReferenceVideo(local);
+            local.setMaxVideos(Math.min(model.getMaxVideos(),capability.getMaxVideos()));
+            local.setWorkflowRevision(result.getWorkflowRevision());
             if (!complete(local)) { result.setErrorCode("REFERENCE_VIDEO_WORKFLOW_MISMATCH"); result.setReason("平台与网关的参考视频限制没有有效交集"); return result; }
             if (capability.getMaxDownloadBytes() != null) local.setMaxDownloadBytes(local.getMaxDownloadBytes() == null ? capability.getMaxDownloadBytes() : Math.min(local.getMaxDownloadBytes(), capability.getMaxDownloadBytes()));
             result.setRenderable(Boolean.TRUE.equals(result.getHealthy()));
@@ -102,7 +104,7 @@ public class ShotVideoCapabilityService {
     }
 
     public static boolean complete(ReferenceVideoCapability cap) {
-        return cap != null && "VERIFIED".equals(cap.getStatus()) && Integer.valueOf(1).equals(cap.getSchemaVersion())
+        return cap != null && Integer.valueOf(1).equals(cap.getSchemaVersion())
                 && "MINIMAX_H3_REF_VIDEO_V1".equals(cap.getAdapter()) && cap.getMaxVideos() != null && cap.getMaxVideos() > 0
                 && positive(cap.getMinClipSeconds()) && positive(cap.getMaxClipSeconds()) && positive(cap.getMaxTotalClipSeconds())
                 && cap.getMaxClipSeconds().compareTo(cap.getMinClipSeconds()) >= 0 && cap.getDecodeFps() != null && cap.getDecodeFps() > 0

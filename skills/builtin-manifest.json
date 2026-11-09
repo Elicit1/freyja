@@ -232,12 +232,12 @@
       "source": "repository:skills/freyja-platform-guide",
       "sourceRevision": null,
       "package": "freyja-platform-guide.zip",
-      "sha256": "3813df0f404577b05082c72925bd5481aa0401acd7a537bba4c6e104d23a7d15",
+      "sha256": "fcded07d9fb4a18bc375fc9b8d201a49ecb4c630fcc592efd912d1c3c1582b28",
       "files": [
         {
           "path": "SKILL.md",
-          "sha256": "c68bbd86c4549fe54b0c0b5c3ac99b6096d3c55236f7c174d1e09c17611c8310",
-          "size": 73093
+          "sha256": "52c1cf32dc67a5eb15d3bc1b99f199847fcbcb5bbb20338a73958ac3bf5460b4",
+          "size": 73117
         },
         {
           "path": "references/architecture.md",
@@ -246,8 +246,8 @@
         },
         {
           "path": "references/continuation-mode.md",
-          "sha256": "68cdc5f2f4070c34f4d69f8b0fdf115d4a07316c1024d832c182beb651ad9d3e",
-          "size": 9618
+          "sha256": "a3dae7038eb202a9af288201706f2dd1a9eccf998d3871fef0a2958be41bf682",
+          "size": 9638
         },
         {
           "path": "references/dubbing-center.md",
@@ -261,8 +261,8 @@
         },
         {
           "path": "references/reference-video.md",
-          "sha256": "278294ab871e1d1786d4039e6474ff1a3211e6109c5d1e077f9d909909a8eeea",
-          "size": 12698
+          "sha256": "b265642a237d75e2bd4c5d0e5da3337ea2364cb04b520863255f1ab8772d8289",
+          "size": 12770
         },
         {
           "path": "references/sound-design.md",

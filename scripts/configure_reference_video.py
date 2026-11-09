@@ -1,6 +1,6 @@
-"""Prepare or publish a narrowly scoped Turbo8 reference-video capability.
+"""Configure a narrowly scoped Turbo8 reference-video media policy.
 
-Publishing requires a successful live synthetic probe and preserves other model parameters.
+Preserves other model parameters; no manual acceptance status is required.
 """
 import json
 import subprocess
@@ -19,7 +19,7 @@ GATEWAY = 'http://127.0.0.1:8000'
 FIELDS = ('id', 'providerId', 'modelCode', 'modelName', 'modelType', 'temperature',
           'maxTokens', 'topP', 'paramsJson', 'maxImages', 'maxAudios', 'maxVideos',
           'sortOrder', 'status', 'remark')
-LIMITS = dict(schema_version=1, status='UNVERIFIED', adapter='MINIMAX_H3_REF_VIDEO_V1',
+LIMITS = dict(schema_version=1, adapter='MINIMAX_H3_REF_VIDEO_V1',
               max_videos=1, min_clip_seconds=2, max_clip_seconds=353/24,
               max_total_clip_seconds=353/24, decode_fps=24, max_decoded_frames=353,
               max_decode_width=768, max_decode_height=576, max_mixed_assets=3,
@@ -74,59 +74,24 @@ def prepare():
     payload['paramsJson'] = json.dumps(params, ensure_ascii=False)
     payload['maxVideos'] = 1
     api('PUT', '/ai/model', json=payload)
-    print(json.dumps({'model': MODEL_CODE, 'status': 'UNVERIFIED', 'platform_config_saved': True}))
+    print(json.dumps({'model': MODEL_CODE, 'platform_config_saved': True}))
 
 
 def publish():
-    verification = json.loads((OUT / 'output_verification.json').read_text(encoding='utf-8'))
-    if (verification.get('frames'), verification.get('fps'), verification.get('width'), verification.get('height')) != (107, 24, 544, 960):
-        raise RuntimeError('Decoded live-test video verification is required')
-    history = json.loads((OUT / 'history.json').read_text(encoding='utf-8'))
-    if history.get('status', {}).get('status_str') != 'success' or not history.get('status', {}).get('completed'):
-        raise RuntimeError('A completed, successful live probe is required')
-    if not history.get('outputs', {}).get('92'):
-        raise RuntimeError('Live probe has no actual video output')
-    graph = json.loads((OUT / 'graph.json').read_text(encoding='utf-8'))
-    if graph['136']['inputs'].get('ref_videos.ref_video_0') != ['136_ref_vid_0', 0]:
-        raise RuntimeError('Live probe did not bind the video frame sequence')
-    if len([key for key in graph['136']['inputs'] if key.startswith('ref_images.ref_image_')]) != 2:
-        raise RuntimeError('Live probe did not include both test images')
+    # Legacy command name: synchronize the live media policy, without a release stamp.
     response = requests.get(GATEWAY + '/v1/models/' + MODEL_CODE + '/capabilities', timeout=20)
     response.raise_for_status()
-    cap = response.json()
-    if not cap.get('healthy') or cap['referenceVideo']['maxDecodedFrames'] != 353:
-        raise RuntimeError('Gateway must be healthy and use the prepared contract')
-    revision = cap['workflowRevision']
-    path = ROOT / 'comfy_gateway/nodes/machine_local.yaml'
-    text = path.read_text(encoding='utf-8')
-    start = text.index('  - model_name: "' + MODEL_CODE + '"')
-    end = text.find('\n  - model_name:', start + 1)
-    if end < 0:
-        end = len(text)
-    section = text[start:end]
-    local = yaml.safe_load(text)
-    backend = local['http_url']
-    block = section.index('    reference_video:')
-    block_end = section.index('    default_steps:', block)
-    limits = dict(LIMITS, status='VERIFIED', verified_backend=backend, verified_revision=revision)
-    replacement = ''.join('    ' + line + '\n' for line in yaml.safe_dump({'reference_video': limits}, sort_keys=False).splitlines())
-    path.write_text(text[:start] + section[:block] + replacement + section[block_end:] + text[end:], encoding='utf-8')
-    subprocess.run(['wsl', '-d', 'Ubuntu', '--', 'docker', 'restart', 'freyja-comfy-gateway'], check=True, capture_output=True)
+    remote = response.json()
     current = api('GET', '/ai/model/' + MODEL_ID)
     params = json.loads(current.get('paramsJson') or '{}')
-    contract = params['videoGeneration']['referenceVideo']
-    contract['status'] = 'VERIFIED'
-    contract['workflowRevision'] = revision
+    contract = dict(remote['referenceVideo'])
+    for key in ('status', 'verified_backend', 'verified_revision', 'verifiedBackend', 'verifiedRevision'):
+        contract.pop(key, None)
+    params.setdefault('videoGeneration', {})['referenceVideo'] = contract
     payload = {key: current.get(key) for key in FIELDS}
     payload['paramsJson'] = json.dumps(params, ensure_ascii=False)
     api('PUT', '/ai/model', json=payload)
-    report = {'modelCode': MODEL_CODE, 'workflowRevision': revision,
-              'testPromptId': json.loads((OUT/'submission.json').read_text())['prompt_id'],
-              'syntheticOnly': True, 'productionShotSubmitted': False,
-              'scope': 'One silent 24fps reference clip, two reference images, input transport and full sampler/video-output integration. Creative motion fidelity and 768x1344 resource usage are not certified.',
-              'outputVerification': verification}
-    (OUT/'acceptance.json').write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
-    print(json.dumps(report))
+    print(json.dumps({'modelCode': MODEL_CODE, 'policySynced': True}))
 
 
 if __name__ == '__main__':

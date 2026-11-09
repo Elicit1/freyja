@@ -99,11 +99,11 @@ class ShotVideoReferenceTest {
         assertThrows(BizException.class, () -> service.forSubmission(shot, model, prepared.getPreflightId()));
     }
 
-    @Test void unverifiedModelCanPrepareDraftButCannotSubmit() {
+    @Test void offlineModelCanPrepareDraftButCannotSubmit() {
         option.setRenderable(false);
         var prepared = service.start(shot.getId(), request());
         assertEquals("READY", prepared.getStatus());
-        doThrow(new BizException(409, "REFERENCE_VIDEO_UNVERIFIED")).when(capabilities).requireRenderable(option);
+        doThrow(new BizException(409, "COMPUTE_NODE_OFFLINE")).when(capabilities).requireRenderable(option);
         assertThrows(BizException.class, () -> service.forSubmission(shot, model, prepared.getPreflightId()));
     }
 

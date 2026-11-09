@@ -35,7 +35,6 @@ models:
     template_file: "comfyUIApi/minimax_h3_fl2va_fast.json"
     handler: "minimax_h3_fl2va"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -124,7 +123,6 @@ models:
     template_file: "comfyUIApi/minimax_h3_fl2va_official_turbo4.json"
     handler: "minimax_h3_fl2va"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -213,7 +211,6 @@ models:
     template_file: "comfyUIApi/minimax_h3_fl2va_official_turbo8.json"
     handler: "minimax_h3_fl2va"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -302,7 +299,6 @@ models:
     template_file: "comfyUIApi/minimax_h3_ref2va_fast.json"
     handler: "minimax_h3_ref2va"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -372,7 +368,6 @@ models:
       - LAYOUT
       - PREPARED
     reference_video:
-      status: "UNVERIFIED"
       condition_node_id: "136"
       output_node_ids: ["130"]
       max_videos: 3
@@ -398,7 +393,6 @@ models:
     template_file: "comfyUIApi/minimax_h3_face_refine.json"
     handler: "minimax_h3_face_refine"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -469,7 +463,6 @@ models:
       - PREPARED
       refine_pass_policy: UNCHANGED_CROP_REFINEMENT
     reference_video:
-      status: "UNVERIFIED"
       condition_node_id: "136"
       output_node_ids: ["130"]
       max_videos: 3
@@ -494,7 +487,6 @@ models:
     template_file: "comfyUIApi/minimax_h3_ref2va_official_turbo4.json"
     handler: "minimax_h3_ref2va"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -564,7 +556,6 @@ models:
       - LAYOUT
       - PREPARED
     reference_video:
-      status: "UNVERIFIED"
       condition_node_id: "136"
       output_node_ids: ["130"]
       max_videos: 3
@@ -588,7 +579,6 @@ models:
     template_file: "comfyUIApi/minimax_h3_ref2va_turbo4_face_refine.json"
     handler: "minimax_h3_face_refine"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -659,7 +649,6 @@ models:
       - PREPARED
       refine_pass_policy: UNCHANGED_CROP_REFINEMENT
     reference_video:
-      status: "UNVERIFIED"
       condition_node_id: "136"
       output_node_ids: ["130"]
       max_videos: 3
@@ -683,7 +672,6 @@ models:
     template_file: "comfyUIApi/minimax_h3_ref2va_official_turbo8.json"
     handler: "minimax_h3_ref2va"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -753,7 +741,6 @@ models:
       - LAYOUT
       - PREPARED
     reference_video:
-      status: "UNVERIFIED"
       condition_node_id: "136"
       output_node_ids: ["130"]
       # Reference input slots declared by this model/node; platform maxVideos may be lower.
@@ -778,7 +765,6 @@ models:
     template_file: "comfyUIApi/minimax_h3_ref2va_turbo8_face_refine.json"
     handler: "minimax_h3_face_refine"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -849,7 +835,6 @@ models:
       - PREPARED
       refine_pass_policy: UNCHANGED_CROP_REFINEMENT
     reference_video:
-      status: "UNVERIFIED"
       condition_node_id: "136"
       output_node_ids: ["130"]
       max_videos: 3
@@ -929,7 +914,6 @@ models:
     template_file: "comfyUIApi/pika_h3_flex_fl2va.json"
     handler: "minimax_h3_fl2va"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -1015,7 +999,6 @@ models:
     template_file: "comfyUIApi/pika_h3_flex_ref2va.json"
     handler: "minimax_h3_ref2va"
     h3_extensions:
-      status: UNVERIFIED
       continuation: true
       context_windows: true
       control_net: true
@@ -1085,7 +1068,6 @@ models:
     default_cfg: 1.0
     timeout_seconds: 1800
     reference_video:
-      status: "UNVERIFIED"
       condition_node_id: "136"
       output_node_ids: ["130"]
       max_videos: 3

@@ -4,6 +4,7 @@ Verifies OpenAPI routing, model listing, input validation, and OpenAI standard r
 """
 
 import unittest
+from unittest.mock import AsyncMock, Mock, patch
 from starlette.testclient import TestClient
 from main import app
 
@@ -23,8 +24,11 @@ class TestGatewayAPI(unittest.TestCase):
         self.assertIn("minimax-h3-fl2va", data["available_models"])
         self.assertIn("minimax-h3-ref2va", data["available_models"])
 
-        resp_health = self.client.get("/health")
+        pool=Mock();pool.check_all_health=AsyncMock(return_value={"default":True})
+        with patch("main.get_client_pool",return_value=pool):
+            resp_health = self.client.get("/health")
         self.assertEqual(resp_health.status_code, 200)
+        self.assertEqual(resp_health.json()["status"],"healthy")
 
     def test_list_models(self):
         """Test GET /v1/models conforms to OpenAI spec"""

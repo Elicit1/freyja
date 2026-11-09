@@ -4,7 +4,7 @@ import logging
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from video_reference import ReferenceVideoCapability
 
 logger = logging.getLogger("config")
@@ -47,6 +47,13 @@ class ModelConfig(BaseModel):
     handler_config: Optional[HandlerConfig] = Field(default=None, description="Handler specific parameters")
     timeout_seconds: Optional[float] = Field(default=None, description="Per-model execution timeout override in seconds")
     node_id: Optional[str] = Field(default=None, description="Bound compute node ID")
+
+    @field_validator("h3_extensions", mode="before")
+    @classmethod
+    def remove_legacy_acceptance(cls, value):
+        if isinstance(value, dict):
+            return {k:v for k,v in value.items() if k not in {"status", "verified_backend_signature"}}
+        return value
 
 
 class NodeConfig(BaseModel):

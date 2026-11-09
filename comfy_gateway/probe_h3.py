@@ -7,7 +7,7 @@ import httpx
 import yaml
 from config import NodeConfig,get_base_dir
 from comfy_client import ComfyAsyncClient
-from h3_extensions import backend_acceptance,revision
+from h3_extensions import inspect_backend,revision
 
 
 async def probe(path,model_name):
@@ -17,7 +17,7 @@ async def probe(path,model_name):
     client=ComfyAsyncClient(node.http_url,node.get_ws_url())
     client._http_client=httpx.AsyncClient(trust_env=False,timeout=10)
     try:
-        result=await backend_acceptance(model,client)
+        result=await inspect_backend(model,client)
         result.update(modelCode=model_name,nodeId=node.node_id,workflowRevision=revision(model,get_base_dir()))
         print(json.dumps(result,ensure_ascii=False,indent=2))
     finally:await client._http_client.aclose()
