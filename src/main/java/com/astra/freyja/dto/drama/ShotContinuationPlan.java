@@ -12,12 +12,18 @@ public class ShotContinuationPlan {
     private int segmentCount;
     private String planHash;
     private String capabilityRevision;
+    private String backendSignature;
     private String referenceVideoRevision;
     private String nodeId;
     private boolean renderable;
     private List<String> issues = new ArrayList<>();
+    private java.util.Map<String,Object> continuationModes;
     private List<Range> ranges = new ArrayList<>();
     @Data public static class Range {
+        private ShotContinuityOptions effectiveContinuity;
+        private boolean saveLatent;
+        private String contextRequirement;
+        private String anchorSourceSegmentId;
         private String segmentId;
         private int startFrame;
         private int endFrame;

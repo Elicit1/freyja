@@ -1,6 +1,15 @@
 import type { ShotRefImage, ShotRefVideo, ShotRefAudio, CharacterShotRefInfo, PropShotRefInfo, DirectorPlan } from './drama'
 import type { H3ControlType } from '@/constants/h3ControlTypes'
+export type ContinuityMode = 'GUIDE' | 'GUIDE_CHROMA' | 'LATENT_REDRAW' | 'LATENT_PROTECTED'
+export interface ContinuityOptions {
+  mode: ContinuityMode
+  chroma?: { strength: number; seamStrength: number; taperFrames: number }
+  redraw?: { strength: number }
+  protection?: { noiseStrength: number; useFirstFrameAnchor: boolean; useTailAnchor: boolean; tailAnchorStartFraction: number; anchorSourceSegmentId?: string }
+}
+export interface ContinuityCapability { available: boolean; reason?: string }
 export interface ContinuationSegment {
+  continuityOverride?: ContinuityOptions | null
   id: string
   name?: string
   scriptContent?: string
@@ -34,6 +43,7 @@ export interface ContinuationSegment {
   controlStrength: number
 }
 export interface ContinuationDraft {
+  continuity?: ContinuityOptions
   schemaVersion: number
   enabled: boolean
   durationSeconds: number
@@ -56,5 +66,6 @@ export interface ContinuationPlan {
   planHash: string
   renderable: boolean
   issues: string[]
-  ranges: Array<{ segmentId: string; startFrame: number; endFrame: number; overlapFrames: number; keepStartFrame: number; keepEndFrame: number }>
+  continuationModes?: Partial<Record<ContinuityMode, ContinuityCapability>>
+  ranges: Array<{ segmentId: string; startFrame: number; endFrame: number; overlapFrames: number; keepStartFrame: number; keepEndFrame: number; effectiveContinuity?: ContinuityOptions; saveLatent?: boolean; contextRequirement?: string; anchorSourceSegmentId?: string }>
 }

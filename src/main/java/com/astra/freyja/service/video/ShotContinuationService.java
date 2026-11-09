@@ -42,9 +42,19 @@ public class ShotContinuationService {
         var result=planner.plan(draft,auto);JsonNode cap;
         try{cap=capabilities(model,provider);}catch(BizException e){result.getIssues().add(e.getMessage());return result;}
         var h3=cap.path("h3");
+        if(h3.path("continuationModes").isObject())result.setContinuationModes(json.convertValue(h3.path("continuationModes"),Map.class));
         result.setCapabilityRevision(h3.path("revision").asText());result.setNodeId(cap.path("nodeId").asText());
+        result.setBackendSignature(h3.path("backendSignature").asText(null));
         if(!cap.path("healthy").asBoolean())result.getIssues().add("算力节点离线");
         if(!h3.path("continuation").asBoolean())result.getIssues().add("此工作流未启用接续适配");
+        for(var range:result.getRanges()){
+            var mode=range.getEffectiveContinuity().getMode();
+            if(range.getEffectiveContinuity().requiresLatent()&&draft.isContextWindows())result.getIssues().add("原始 latent 接续暂不支持片段内窗口，请关闭上下文窗口");
+            if(mode==ShotContinuityOptions.Mode.LATENT_PROTECTED&&range.getEffectiveContinuity().getProtection().isUseTailAnchor()&&draft.getSegments().stream().anyMatch(s->Objects.equals(s.getId(),range.getSegmentId())&&s.isControlNetEnabled()))result.getIssues().add("延迟尾部锚定暂不支持 ControlNet；可关闭尾锚并保留首帧锚定和上下文噪声");
+            if((mode!=ShotContinuityOptions.Mode.GUIDE || h3.path("continuationModes").isObject()) && !h3.path("continuationModes").path(mode.name()).path("available").asBoolean())
+                result.getIssues().add("接续方式 "+mode+" 不可用："+h3.path("continuationModes").path(mode.name()).path("reason").asText("请安装 FREYJA H3 接续节点包并刷新能力"));
+            if(range.getEffectiveContinuity().requiresLatent()&&range.getOverlapFrames()>0&&draft.getSegments().stream().anyMatch(s->Objects.equals(s.getId(),range.getSegmentId())&&s.getFirstFrameImageUrl()!=null))result.getIssues().add("原始 latent 接续由上一段上下文决定开头，请移除续段首帧或改用画面引导");
+        }
         if(draft.isContextWindows()&&!h3.path("contextWindows").asBoolean())result.getIssues().add("此工作流未验证上下文窗口");
         var videoCap=cap.path("referenceVideo");
         int gatewayVideoLimit=videoCap.path("maxVideos").asInt(3);
@@ -89,7 +99,7 @@ public class ShotContinuationService {
         // Include both so media prepared before an adapter update cannot be reused.
         String referenceRevision=hasVideos?cap.path("workflowRevision").asText(""):"";
         result.setReferenceVideoRevision(referenceRevision);
-        result.setPlanHash(VideoBatchPreparation.hash(result.getPlanHash()+"|"+result.getCapabilityRevision()+"|"+model.getId()+"|"+provider.getBaseUrl()+"|"+result.getNodeId()+"|"+referenceRevision));return result;
+        result.setPlanHash(VideoBatchPreparation.hash(result.getPlanHash()+"|"+result.getCapabilityRevision()+"|"+model.getId()+"|"+provider.getBaseUrl()+"|"+result.getNodeId()+"|"+referenceRevision+"|"+Objects.toString(result.getBackendSignature(),"")));return result;
     }
     public VideoBatchModels.Snapshot prepare(DramaShot shot,AiModel model,AiProvider provider,String size,DramaShotRenderRequestDTO supplied){
         return prepare(shot,model,provider,size,supplied,(completed,total)->{});
@@ -121,6 +131,13 @@ public class ShotContinuationService {
                 child.setPreviewImageUrl(segment.getFirstFrameImageUrl());child.setEndFrameImageUrl(segment.getLastFrameImageUrl());
                 var childReq=new DramaShotRenderRequestDTO();childReq.setProviderId(provider.getId());childReq.setWorkflowTemplateId(model.getModelCode());childReq.setSize(size);childReq.setPrompt(segment.getPrompt());childReq.setSeed(1+Math.floorMod(shot.getSeed()+i*104729L,9007199254740990L));
                 var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",true);options.put("capability_revision",plan.getCapabilityRevision());options.put("length",segment.getEndFrame()-segment.getStartFrame());
+                var range=plan.getRanges().get(i);
+                if(draft.getSchemaVersion()>=2 || range.getEffectiveContinuity().getMode()!=ShotContinuityOptions.Mode.GUIDE || range.isSaveLatent()){
+                    options.put("schema_version",2);
+                    options.put("continuity",json.convertValue(range.getEffectiveContinuity(),Map.class));
+                    options.put("save_latent",range.isSaveLatent());
+                    if(plan.getBackendSignature()!=null)options.put("backend_signature",plan.getBackendSignature());
+                }
                 options.put("control_required_frames",Math.min(segment.getEndFrame(),plan.getOutputFrames())-segment.getStartFrame());
                 options.put("context_windows",Map.of("enabled",draft.isContextWindows()));
                 var control=new LinkedHashMap<String,Object>();control.put("enabled",segment.isControlNetEnabled());control.put("reference_id",segment.getControlVideoId());control.put("control_type",segment.getControlType());control.put("strength",segment.getControlStrength());options.put("control_net",control);childReq.setH3Options(options);

@@ -366,12 +366,14 @@ class ComfyAsyncClient:
                     return {"status": "FAILED", "assets": []}
                 if status.get("completed"):
                     assets = []
+                    latents = []
                     for output in item.get("outputs", {}).values():
+                        if isinstance(output.get("latents"),list):latents.extend(output["latents"])
                         for key in ("videos", "gifs", "images", "video"):
                             if isinstance(output.get(key), list):
                                 assets.extend(output[key])
                     if assets:
-                        return {"status": "SUCCESS", "assets": assets}
+                        return {"status": "SUCCESS", "assets": assets,"latents":latents}
             response = await client.get(f"{self.http_base}/queue", timeout=5.0)
             response.raise_for_status()
             queue = response.json()

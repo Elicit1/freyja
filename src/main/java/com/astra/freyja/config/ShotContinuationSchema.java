@@ -22,6 +22,8 @@ public class ShotContinuationSchema implements SmartInitializingSingleton {
                     boolean exists;try(var columns=c.getMetaData().getColumns(c.getCatalog(),null,"render_task_step",column)){exists=columns.next();}
                     if(!exists)sql.executeUpdate("ALTER TABLE render_task_step ADD COLUMN "+column+" VARCHAR(128) NULL");
                 }
+                boolean manifest;try(var columns=c.getMetaData().getColumns(c.getCatalog(),null,"render_task_step","result_manifest_json")){manifest=columns.next();}
+                if(!manifest)sql.executeUpdate("ALTER TABLE render_task_step ADD COLUMN result_manifest_json JSON NULL");
             }
         }catch(java.sql.SQLException e){throw new IllegalStateException("接续任务结构升级失败",e);}
     }

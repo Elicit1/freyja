@@ -17,7 +17,7 @@ public class ShotContinuationPlanner {
                 new SegmentPreset("15s", "15 秒", 362, 39));
     }
     public ShotContinuationPlan plan(ShotContinuation draft, boolean auto) {
-        if (draft == null || draft.getSchemaVersion()!=1 || !Double.isFinite(draft.getDurationSeconds())
+        if (draft == null || (draft.getSchemaVersion()!=1 && draft.getSchemaVersion()!=2) || !Double.isFinite(draft.getDurationSeconds())
                 || draft.getDurationSeconds()<=0 || draft.getDurationSeconds()>300)
             throw new BizException(400,"接续时长应大于 0 且不超过 300 秒");
         if (!draft.isEnabled() && draft.getDurationSeconds()>15) throw new BizException(400,"超过 15 秒必须开启接续模式");
@@ -77,17 +77,38 @@ public class ShotContinuationPlanner {
                 if(segment.getControlType()==null||!ShotControlNetOptions.CONTROL_TYPES.contains(segment.getControlType()))throw new BizException(400,"ControlNet 控制类型无效");
             }
             var range=new ShotContinuationPlan.Range();range.setSegmentId(segment.getId());range.setStartFrame(start);range.setEndFrame(end);
+            var configured=segment.getContinuityOverride()!=null?segment.getContinuityOverride():draft.getContinuity();
+            var strategy=(configured==null?new ShotContinuityOptions():configured).resolved(i==0?overlap:shared);
+            range.setEffectiveContinuity(strategy);
+            range.setContextRequirement(i==0?"NONE":strategy.requiresLatent()?"AV_LATENT":"PIXELS");
+            if(strategy.getMode()==ShotContinuityOptions.Mode.LATENT_PROTECTED && i>0 && (strategy.getProtection().isUseFirstFrameAnchor()||strategy.getProtection().isUseTailAnchor())){
+                String source=strategy.getProtection().getAnchorSourceSegmentId();
+                if(source==null)source=draft.getSegments().getFirst().getId();
+                final String anchor=source;
+                if(draft.getSegments().subList(0,i).stream().noneMatch(s->anchor.equals(s.getId())))throw new BizException(400,"抗劣化锚点必须来自已完成的前序片段");
+                range.setAnchorSourceSegmentId(source);
+            }
             range.setOverlapFrames(shared);range.setKeepStartFrame(keepCursor);range.setKeepEndFrame(Math.min(end,output));result.getRanges().add(range);
             keepCursor=Math.min(end,output);previousEnd=end;
         }
         if(previousEnd!=total||draft.getSegments().size()>100)throw new BizException(400,"片段必须完整覆盖目标时长，且不超过 100 段");
         result.setSegmentCount(draft.getSegments().size());
-        try{result.setPlanHash(VideoBatchPreparation.hash(new ObjectMapper().writeValueAsString(draft)));}catch(Exception e){throw new IllegalStateException(e);}
+        // Save the first pass for every segment when any boundary needs native latent handoff.
+        // This also supports mixed modes and an earlier clean anchor without re-encoding MP4.
+        boolean latent=result.getRanges().stream().anyMatch(r->r.getEffectiveContinuity().requiresLatent());
+        result.getRanges().forEach(r->r.setSaveLatent(latent));
+        try{
+            var mapper=new ObjectMapper();var canonical=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.valueToTree(draft);
+            canonical.set("continuity",mapper.valueToTree((draft.getContinuity()==null?new ShotContinuityOptions():draft.getContinuity()).resolved(overlap)));
+            for(int i=0;i<draft.getSegments().size();i++)if(draft.getSegments().get(i).getContinuityOverride()!=null)
+                ((com.fasterxml.jackson.databind.node.ObjectNode)canonical.path("segments").get(i)).set("continuityOverride",mapper.valueToTree(result.getRanges().get(i).getEffectiveContinuity()));
+            result.setPlanHash(VideoBatchPreparation.hash(mapper.writeValueAsString(canonical)));
+        }catch(Exception e){throw new IllegalStateException(e);}
         return result;
     }
     public static int align(int n){return n+Math.floorMod(5-n,17);}
     private boolean hasContent(ShotContinuation.Segment s){
-        return s.isLocked()||s.getPrompt()!=null&&!s.getPrompt().isBlank()||s.getScriptContent()!=null&&!s.getScriptContent().isBlank()||s.getName()!=null&&!s.getName().isBlank()
+        return s.isLocked()||s.getContinuityOverride()!=null||s.getPrompt()!=null&&!s.getPrompt().isBlank()||s.getScriptContent()!=null&&!s.getScriptContent().isBlank()||s.getName()!=null&&!s.getName().isBlank()
                 ||s.getFirstFrameImageUrl()!=null||s.getLastFrameImageUrl()!=null||s.getDirectorPlan()!=null||s.getResSceneId()!=null||s.getResKeyframeId()!=null
                 ||s.getFirstFramePrompt()!=null||s.getEndFramePrompt()!=null||s.getNegativePrompt()!=null||s.getActionDescription()!=null||s.getSoundEffect()!=null||s.getCustomScenePrompt()!=null
                 ||s.getShotType()!=null||s.getCameraMovement()!=null||s.isControlNetEnabled()

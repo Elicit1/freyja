@@ -11,6 +11,7 @@ import java.util.List;
 public class ShotContinuation {
     private int schemaVersion = 1;
     private boolean enabled;
+    private ShotContinuityOptions continuity = new ShotContinuityOptions();
     /** Ordinary-shot ControlNet configuration is authored with the shot, never in the render dialog. */
     private ShotControlNetOptions controlNet = new ShotControlNetOptions();
     private double durationSeconds = 15;
@@ -24,6 +25,7 @@ public class ShotContinuation {
     private String reuseFromTaskId;
     private List<Segment> segments = new ArrayList<>();
     @Data public static class Segment {
+        private ShotContinuityOptions continuityOverride;
         private String id;
         private String name;
         private String scriptContent;

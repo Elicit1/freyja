@@ -37,6 +37,37 @@
 - 每段剧本与提示词只安排本时间范围内的动作和对白。共享范围承接上一段已有状态，不把全镜动作、整段台词逐段重播，也不额外写入新的剪辑切镜。源视频名和描述不能替代实际观察或创作者说明。
 - `segment.locked` 对应“锁定自动规划”：工作台的 AI 规划跳过该段，仍可用其作为上下文；它不阻止手动编辑或渲染，也不是上游视频缓存锁。外部 AI 同样保留已锁定内容；只有用户明确要求修改该段时才改。自动重分段会保护锁定内容，手动移除/重建仍会清除它，不擅自执行。
 
+## 四种接续方式
+
+新草稿可用 `schemaVersion=2`。`draft.continuity` 是全局设置，片段
+`continuityOverride=null` 表示完整继承；有覆盖时提供完整模式设置，不逐字段叠加。
+缺少新字段的历史配置按 `GUIDE` 读取，不能擅自升级历史不可变任务。
+
+| `mode` | 用途与参数 |
+| --- | --- |
+| `GUIDE` | 干净尾部通过 AddGuide 引导；兼容现有行为 |
+| `GUIDE_CHROMA` | 临时上下文画面加色度噪声，尾部渐弱；`chroma={strength:0.45,seamStrength:0.10,taperFrames:3}` 为 FREYJA 配方初始值 |
+| `LATENT_REDRAW` | 继承原始 AV latent 并受控重绘；`redraw={strength:0.10}`，不等同整段 denoise |
+| `LATENT_PROTECTED` | latent 上下文噪声与干净帧锚定；`protection={noiseStrength:1,useFirstFrameAnchor:true,useTailAnchor:false,tailAnchorStartFraction:0.75}` |
+
+先通过带提供商和模型的选项查询读取 `capabilities.h3.continuationModes`。
+新模式需要 FREYJA H3 节点包；`available=false` 按具体缺失节点处理，不通过
+修改人工验收标记绕过。普通编辑器能保存策略不等于当前节点已支持渲染。
+
+首段没有前驱，但链中使用 latent 模式时系统会保存各段主采样器的一采 AV
+latent 到 MinIO。后续段及锚点只能使用兼容画布、底模、VAE、LoRA和调度配置的
+原始产物；缺少历史 latent 时可重生成前驱或显式改用画面引导，不把 MP4 重编码
+说成原始 latent，也不静默降级。`anchorSourceSegmentId` 只能指向前序段，省略为首段。
+
+两个 latent 模式目前关闭片段内 `contextWindows`。默认首帧保护可与 ControlNet
+联用；可选尾部锚定暂不与 ControlNet 联用。彩噪、重绘、上下文噪声是不同配方，
+不要互换强度值或叠加多个前缀执行器；视觉噪声不作用于动作参考、控制特征或音频。
+
+`ranges[].effectiveContinuity/contextRequirement/saveLatent/anchorSourceSegmentId`
+给出实际策略与产物依赖。模式、参数或锚点来源变化后重新保存、预览、准备。
+`ARCHIVING` 表示已有视频正在归档交接产物，失败优先恢复归档，不提交新生成任务。
+锁定自动规划同样保护用户选择的模式与参数。社区研究和离线检查不能作为实际画质保证。
+
 ## 时间轴、源范围与 24fps
 
 服务端用 24fps 和 H3 帧网格计算半开区间 `[startFrame,endFrame)`；优先使用规划返回值，手工调整后再次校验。成片请求帧数、实际生成帧数和各段保留范围分别读取 `outputFrames/renderFrames/ranges`。例如 5 秒请求可能生成 124 帧，最终按目标裁剪，不能把 124 帧当作恰好 5 秒。
@@ -49,7 +80,7 @@
 
 | 设置 | 用途 | 使用条件 |
 | --- | --- | --- |
-| 接续 `enabled` + 段间重叠 | 上一段真实生成尾部的视频及音频经官方 Guide 传入下一段 | 同一镜头的跨段连续；系统自动处理，不占普通 `<Video N>` 编号，无需用户再挂一份尾部视频 |
+| 接续 `enabled` + 段间重叠 | 根据所选策略交接上一段实际画面或原始 AV latent | 同一镜头的跨段连续；系统自动处理，不占普通 `<Video N>` 编号，无需用户再挂一份尾部视频 |
 | `contextWindows` | 片段内部的采样窗口 | 是独立可选能力；普通串行接续可关闭，不能当成开启接续的必需项 |
 | 片段 `controlNetEnabled` | 从本段明确选择的参考源提取控制信号并应用 | 根据 [视频参考与特征提取](reference-video.md) 选择；无视频也能接续，有视频也可不提取 |
 

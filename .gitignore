@@ -74,6 +74,7 @@ front/dist/
 !/docs/pika-h3-flex.md
 !/docs/minimax-h3-long-video-gateway-design.md
 !/docs/minimax-h3-continuation-deployment.md
+!/docs/minimax-h3-continuation-modes-design.md
 
 outputs/
 

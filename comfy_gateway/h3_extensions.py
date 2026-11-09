@@ -6,6 +6,7 @@ import math
 from pathlib import Path
 from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from h3_continuation import Continuity, LatentContext, mode_capabilities, apply_native
 
 
 class ContextOptions(BaseModel):
@@ -39,7 +40,11 @@ class ContinuationInput(BaseModel):
 
 class H3Options(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1,2] = 1
+    continuity: Continuity = Field(default_factory=Continuity)
+    save_latent: bool = False
+    backend_signature: Optional[str] = None
+    latent_context: Optional[LatentContext] = None
     continuation_enabled: bool = False
     # Old snapshots may contain false; true would require the removed private sampler path.
     lock_context: Literal[False] = False
@@ -56,6 +61,13 @@ class H3Options(BaseModel):
         if self.continuation and (not self.continuation_enabled or self.continuation.frames >= self.length):
             raise ValueError("H3_CONTINUATION_INVALID")
         if self.control_required_frames is not None and self.control_required_frames>self.length:raise ValueError("H3_CONTROL_RANGE_INVALID")
+        native=self.continuity.mode in {"LATENT_REDRAW","LATENT_PROTECTED"}
+        if self.latent_context and (not native or not self.continuation_enabled or self.latent_context.frames>=self.length or (self.latent_context.frames-5)%17):raise ValueError("H3_LATENT_CONTEXT_INVALID")
+        if native and self.continuation:raise ValueError("H3_NATIVE_NO_COND_PIN")
+        if self.latent_context and self.continuation:raise ValueError("H3_CONTEXT_SOURCE_CONFLICT")
+        if self.continuation and self.continuity.mode=="GUIDE_CHROMA" and self.continuity.chroma.taperFrames>self.continuation.frames:raise ValueError("H3_CHROMA_TAPER_INVALID")
+        if self.schema_version==1 and (native or self.save_latent or self.continuity.mode!="GUIDE"):raise ValueError("H3_STRATEGY_REQUIRES_V2")
+        if native and self.context_windows.enabled:raise ValueError("H3_NATIVE_WINDOWS_UNSUPPORTED")
         return self
 
 
@@ -66,6 +78,7 @@ def revision(model, base_dir):
     digest.update(Path(__file__).read_bytes())
     digest.update((base_dir/"workflow_engine.py").read_bytes())
     digest.update((base_dir/"reference_media.py").read_bytes())
+    digest.update((base_dir/"h3_continuation.py").read_bytes())
     digest.update(json.dumps({k:v for k,v in (model.h3_extensions or {}).items() if k not in {"status","verified_backend_signature"}},sort_keys=True).encode())
     return digest.hexdigest()
 
@@ -88,13 +101,15 @@ async def inspect_backend(model, client):
         nodes_response.raise_for_status();nodes=nodes_response.json()
         stats_response.raise_for_status();system=stats_response.json().get("system",{})
         public["missingNodes"]=sorted(required-set(nodes))
+        public["continuationModes"]=mode_capabilities(nodes)
         public["continuation"]=bool(cfg.get("continuation") and baseline<=nodes.keys())
         public["controlTypes"]=[name for name,preset in preprocessors.items() if preset["class_type"] in nodes]+["GRAY"]+cfg.get("prepared_control_types",["PREPARED"])
         def normalized(value):
             # File inventories change independently of a node's protocol. Check the selected patch below.
             if isinstance(value,list) and value and isinstance(value[0],list):return ["COMBO"]+value[1:]
             return value
-        schemas={name:{kind:{key:normalized(value) for key,value in inputs.items()} for kind,inputs in nodes[name].get("input",{}).items() if kind in ("required","optional")} for name in sorted(required) if name in nodes}
+        signature_nodes=required|{"FreyjaH3ChromaNoise","FreyjaH3Continue","FreyjaH3Restore","FreyjaH3SaveLatent"}
+        schemas={name:{kind:{key:normalized(value) for key,value in inputs.items()} for kind,inputs in nodes[name].get("input",{}).items() if kind in ("required","optional")} for name in sorted(signature_nodes) if name in nodes}
         patch_choices=nodes.get("ModelPatchLoader",{}).get("input",{}).get("required",{}).get("name",[[]])[0]
         patch_available=cfg.get("control_patch") in patch_choices
         public["contextWindows"]=bool(cfg.get("context_windows") and "MiniMaxH3ContextWindows" in nodes)
@@ -121,6 +136,7 @@ def require_options(request, model, base_dir):
     cfg=model.h3_extensions
     if not cfg: raise ValueError("H3_UNSUPPORTED: workflow has no H3 adapter")
     if options.capability_revision!=revision(model,base_dir): raise ValueError("H3_REVISION_CHANGED: refresh continuation plan")
+    if options.latent_context and request.first_frame:raise ValueError("H3_NATIVE_FIRST_FRAME_CONFLICT: native context owns the opening; remove the segment first frame")
     if options.continuation_enabled and not cfg.get("continuation"): raise ValueError("H3_CONTINUATION_UNSUPPORTED")
     if options.context_windows.enabled and not cfg.get("context_windows"): raise ValueError("H3_CONTEXT_UNSUPPORTED")
     if options.control_net.enabled:
@@ -131,7 +147,7 @@ def require_options(request, model, base_dir):
             raise ValueError("H3_WINDOW_CONTROL_UNVERIFIED")
 
 
-def apply_extensions(workflow, request, model, videos, continuation_filename=None):
+def apply_extensions(workflow, request, model, videos, continuation_filename=None, latent_filename=None, anchor_filename=None):
     options=request.h3_options
     if options is None: return
     cfg=model.h3_extensions
@@ -175,10 +191,17 @@ def apply_extensions(workflow, request, model, videos, continuation_filename=Non
     if options.continuation:
         if not continuation_filename: raise ValueError("H3_CONTINUATION_MISSING")
         workflow["h3_context_video"]={"class_type":"VHS_LoadVideo","inputs":{"video":continuation_filename,"force_rate":24,"custom_width":0,"custom_height":0,"frame_load_cap":options.continuation.frames,"skip_first_frames":0,"select_every_nth":1,"format":"None"}}
+        images=["h3_context_video",0]
+        if options.continuity.mode=="GUIDE_CHROMA":
+            chroma=options.continuity.chroma
+            workflow["h3_chroma"]={"class_type":"FreyjaH3ChromaNoise","inputs":{"images":images,"strength":chroma.strength,"seam_strength":chroma.seamStrength,"taper_frames":chroma.taperFrames,"seed":request.seed or 1}}
+            images=["h3_chroma",0]
         # Guide conditioning is separate from reference labels and their ordered contract.
         workflow["h3_guide"]={"class_type":"MiniMaxH3AddGuide","inputs":{"positive":[cond_id,0],"latent":[cond_id,1],"vae":[vae_id,0],"image":["h3_context_video",0],"frame_idx":0}}
+        workflow["h3_guide"]["inputs"]["image"]=images
         if cfg.get("audio_vae"):
             audio_id,_=node("audio_vae")
             workflow["h3_guide"]["inputs"].update({"audio_vae":[audio_id,0],"audio":["h3_context_video",2]})
         for binding in cfg["conditioning_consumers"]:
             workflow[binding["id"]]["inputs"][binding.get("input","conditioning")]=["h3_guide",0]
+    apply_native(workflow,request,cfg,final,latent_filename,anchor_filename)

@@ -4,6 +4,7 @@
     <div class="segment-content">
       <div class="segment-main">
         <section v-show="section === 'script'" class="form-stack">
+          <div v-if="index > 0" class="segment-continuity"><el-checkbox :model-value="!segment.continuityOverride" @update:model-value="setInherit(!!$event)">继承全局接续方式</el-checkbox><ContinuationModeSelector v-if="segment.continuityOverride" v-model="segment.continuityOverride" compact :overlap-frames="range?.overlapFrames" :capabilities="continuationModes" :anchor-segments="anchorSegments" /><p v-else class="helper">本接续点使用全局设置；关闭继承可单独调整。</p></div>
           <label>片段名称<el-input v-model="segment.name" placeholder="为本段命名" /></label>
           <div class="grid grid-cols-2 gap-4"><label>景别<DictSelect v-model="segment.shotType" dict-type="shot_type" placeholder="AUTO · 自动规划" /><el-checkbox v-model="segment.shotTypeLocked" :disabled="!segment.shotType || segment.shotType === 'AUTO'">明确锁定景别</el-checkbox></label><label>运镜<DictSelect v-model="segment.cameraMovement" dict-type="camera_movement" placeholder="AUTO · 自动规划" /><el-checkbox v-model="segment.cameraMovementLocked" :disabled="!segment.cameraMovement || segment.cameraMovement === 'AUTO'">明确锁定运镜</el-checkbox></label></div>
           <label>本段剧本<el-input v-model="segment.scriptContent" type="textarea" :rows="7" placeholder="本段发生的动作、情绪、对白与叙事内容" /></label>
@@ -61,12 +62,14 @@ import VoiceAudioPicker from '@/views/assets/components/AudioReferencePicker.vue
 import { assetApi } from '@/api/res-asset'
 import { shotVideoReferenceApi } from '@/api/shot-video-reference'
 import { REFERENCE_AUDIO_TYPE_OPTIONS, referenceImageUsageOptions } from '@/constants/referenceMediaOptions'
-import type { ContinuationSegment, ContinuationPlan } from '@/types/continuation'
+import ContinuationModeSelector from './ContinuationModeSelector.vue'
+import type { ContinuationSegment, ContinuationPlan, ContinuityOptions, ContinuityMode, ContinuityCapability } from '@/types/continuation'
 import type { CharacterShotRefInfo, ShotRefImage, ShotRefVideo } from '@/types/drama'
 import type { ResCharacterOption, ResSceneOption, ResPropOption } from '@/types/resource'
-const props = defineProps<{ segment: ContinuationSegment; index: number; range?: ContinuationPlan['ranges'][number]; generationMode: string; shotId: string; dramaId?: string | number; characters: ResCharacterOption[]; scenes: ResSceneOption[]; propsOptions: ResPropOption[]; keyframes: Array<{ id: string | number; name: string }>; activeSection: string }>()
+const props = defineProps<{ segment: ContinuationSegment; index: number; continuity?: ContinuityOptions; continuationModes?: Partial<Record<ContinuityMode, ContinuityCapability>>; anchorSegments?: ContinuationSegment[]; range?: ContinuationPlan['ranges'][number]; generationMode: string; shotId: string; dramaId?: string | number; characters: ResCharacterOption[]; scenes: ResSceneOption[]; propsOptions: ResPropOption[]; keyframes: Array<{ id: string | number; name: string }>; activeSection: string }>()
 const emit = defineEmits<{ 'update:activeSection': [value: string]; plan: [] }>()
 const section = computed({ get: () => props.activeSection, set: value => emit('update:activeSection', value) })
+function setInherit(inherit: boolean) { props.segment.continuityOverride = inherit ? null : JSON.parse(JSON.stringify(props.continuity || { mode: 'GUIDE' })) }
 const duration = computed(() => Math.round((props.segment.endFrame - props.segment.startFrame) / 24 * 1000) / 1000)
 const selectedScene = computed(() => props.scenes.find(s => String(s.id) === String(props.segment.resSceneId)))
 const newCharacter = ref(''), newProp = ref(''), uploading = ref(false), audioVisible = ref(false)

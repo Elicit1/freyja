@@ -297,7 +297,13 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         if model_cfg is None:raise ValueError("H3_MODEL_NODE_MISMATCH")
         require_options(request,model_cfg,get_base_dir())
         accepted=await inspect_backend(model_cfg,client)
+        if request.h3_options.backend_signature and request.h3_options.backend_signature!=accepted.get("backendSignature"):raise ValueError("H3_BACKEND_SIGNATURE_CHANGED: refresh continuation preview")
         if request.h3_options.continuation_enabled and not accepted.get("continuation"):raise ValueError("H3_CONTINUATION_UNAVAILABLE: required backend nodes are missing or unreachable")
+        strategy=request.h3_options.continuity.mode
+        if (strategy!="GUIDE" or "continuationModes" in accepted) and not accepted.get("continuationModes",{}).get(strategy,{}).get("available"):
+            raise ValueError("H3_STRATEGY_UNAVAILABLE: "+accepted.get("continuationModes",{}).get(strategy,{}).get("reason",strategy))
+        if request.h3_options.save_latent and not accepted.get("continuationModes",{}).get("LATENT_REDRAW",{}).get("available"):
+            raise ValueError("H3_LATENT_OUTPUT_UNAVAILABLE: install FREYJA H3 node package")
         if request.h3_options.context_windows.enabled and not accepted.get("contextWindows"):raise ValueError("H3_CONTEXT_UNAVAILABLE")
         if request.h3_options.control_net.enabled and not accepted.get("controlNet"):raise ValueError("H3_CONTROL_UNAVAILABLE")
         if request.h3_options.control_net.enabled and request.h3_options.context_windows.enabled and not accepted.get("contextWindowsWithControlNet"):raise ValueError("H3_WINDOW_CONTROL_UNAVAILABLE")
@@ -396,6 +402,13 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         binding=ReferenceBinding(referenceType=ReferenceType.REFERENCE_VIDEO,referenceId="continuation-context",referenceVideo=context.video_url,contentSha256=context.content_sha256)
         uploaded=await upload_reference_video(client,binding,context_cap,hosts)
         continuation_filename=uploaded["filename"]
+    latent_filename=None;anchor_filename=None
+    if request.h3_options and request.h3_options.latent_context:
+        from continuation_artifacts import upload_latent
+        context=request.h3_options.latent_context
+        latent_filename=await upload_latent(client,context)
+        if context.anchor:
+            anchor_filename=latent_filename if context.anchor.content_sha256==context.content_sha256 else await upload_latent(client,context.anchor)
     # 4. Assemble workflow JSON
     prompt_workflow = engine.assemble_workflow(
         request=request,
@@ -404,7 +417,9 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         uploaded_audio=uploaded_audio_name,
         uploaded_ref_audios=uploaded_ref_audios,
         uploaded_ref_videos=uploaded_ref_videos,
-        continuation_filename=continuation_filename
+        continuation_filename=continuation_filename,
+        latent_filename=latent_filename,
+        anchor_filename=anchor_filename
     )
 
     # Extract the exact prompt submitted to ComfyUI
@@ -443,6 +458,12 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         for reference in canonical.get("references") or []:
             if reference.get("content_sha256"):reference.pop("video_url",None)
         if canonical["h3_options"].get("continuation"):canonical["h3_options"]["continuation"].pop("video_url",None)
+        if canonical["h3_options"].get("latent_context"):
+            canonical["h3_options"]["latent_context"].pop("url",None)
+            if canonical["h3_options"]["latent_context"].get("anchor"):canonical["h3_options"]["latent_context"]["anchor"].pop("url",None)
+        if canonical["h3_options"].get("schema_version",1)==1:
+            # Preserve idempotency hashes for immutable pre-v2 task snapshots.
+            for field in ("continuity","save_latent","latent_context","backend_signature"):canonical["h3_options"].pop(field,None)
         fingerprint=hashlib.sha256(json.dumps(canonical,sort_keys=True).encode()).hexdigest()
         key="comfy:submission:"+request.task_id
         claimed=await redis.set(key,fingerprint,nx=True,ex=604800)
@@ -704,6 +725,17 @@ async def get_task_state(task_id: str, request: Request, prompt_id: Optional[str
         else:
             state["status"] = "UNKNOWN"
     return state
+
+
+@app.get("/v1/tasks/{task_id}/latent")
+async def get_task_latent(task_id: str, prompt_id: Optional[str] = None, node_id: Optional[str] = None):
+    client,state=await tracked_task_state(task_id,prompt_id,node_id)
+    if state["status"]!="SUCCESS":raise HTTPException(status_code=409,detail="Task completion is not confirmed")
+    assets=state.get("latents",[])
+    if len(assets)!=1:raise HTTPException(status_code=409,detail="Native H3 latent output is missing; do not rerender automatically")
+    from continuation_artifacts import cache_output_latent
+    path=await cache_output_latent(client,assets[0],config.server.output_dir,f"{state['node_id']}:{state['prompt_id']}:latent")
+    return FileResponse(path,media_type="application/octet-stream")
 
 
 @app.get("/v1/tasks/{task_id}/output")

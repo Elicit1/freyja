@@ -73,7 +73,9 @@ class WorkflowEngine:
         uploaded_audio: Optional[str] = None,
         uploaded_ref_audios: Optional[List[str]] = None,
         uploaded_ref_videos: Optional[List[dict]] = None,
-        continuation_filename: Optional[str] = None
+        continuation_filename: Optional[str] = None,
+        latent_filename: Optional[str] = None,
+        anchor_filename: Optional[str] = None
     ) -> dict:
         """
         Assemble executable ComfyUI prompt JSON from request, reference images,
@@ -239,7 +241,7 @@ class WorkflowEngine:
                     workflow.pop(node_id)
 
         validate_workflow(request, workflow, model_cfg, ref_images, uploaded_ref_audios or [], uploaded_ref_videos or [])
-        apply_extensions(workflow, request, model_cfg, uploaded_ref_videos or [], continuation_filename)
+        apply_extensions(workflow, request, model_cfg, uploaded_ref_videos or [], continuation_filename, latent_filename, anchor_filename)
         return workflow
 
     def _apply_reference_videos(self, workflow, model_cfg, videos):
