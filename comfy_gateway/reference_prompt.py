@@ -65,6 +65,9 @@ class ReferenceBinding(BaseModel):
         if ref_type:
             if isinstance(ref_type, str):
                 ref_type = ref_type.strip().upper()
+            # Business look references share the canonical character-reference wire type.
+            if ref_type == "CHARACTER_LOOK":
+                ref_type = ReferenceType.CHARACTER_REFERENCE.value
             data["referenceType"] = ref_type
 
         # Normalize reference_id alias 'id'

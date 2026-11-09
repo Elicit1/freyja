@@ -166,15 +166,16 @@ class AiImageApiServiceImplTest {
         assertEquals(400, failure.getCode()); assertTrue(failure.getMessage().contains("2–15"));
     }
 
-    @Test
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"CHARACTER_REFERENCE", "CHARACTER_LOOK"})
     @DisplayName("参考载荷保留图片绑定与精确音频参考关系")
-    void referencePayloadKeepsVisualBindingsAndExactAudioRelationship() throws Exception {
+    void referencePayloadKeepsVisualBindingsAndExactAudioRelationship(String sourceType) throws Exception {
         AiProvider provider = new AiProvider(); provider.setId(5L); provider.setStatus(1);
         provider.setBaseUrl("https://gateway.example.test/v1");
         when(providerMapper.selectById(5L)).thenReturn(provider);
         String dataUri = "data:image/png;base64,aW1hZ2U=";
         ShotRefImageDTO reference = ShotRefImageDTO.builder().id("pov-look")
-                .sourceType("CHARACTER_REFERENCE").sourceId(301L).characterId(201L).lookId(301L)
+                .sourceType(sourceType).sourceId(301L).characterId(201L).lookId(301L)
                 .name("林默造型").usageRole("NON_SUBJECT").referenceRole("COMBINED").imageUrl(dataUri).build();
         DramaShot shot = new DramaShot(); shot.setGenerationMode("REFERENCE_MODE");
         shot.setPrompt(RenderInputFixtures.reference("<Picture 1> <Audio 1>"));
@@ -200,6 +201,8 @@ class AiImageApiServiceImplTest {
         verify(objectMapper).writeValueAsString(payload.capture());
         List<?> references = (List<?>) ((Map<?, ?>) payload.getValue()).get("references");
         Map<?, ?> binding = (Map<?, ?>) references.getFirst();
+        assertEquals("CHARACTER_REFERENCE", binding.get("referenceType"));
+        assertEquals("301", binding.get("entityId"));
         assertEquals("NON_SUBJECT", binding.get("usageRole"));
         assertEquals("COMBINED", binding.get("referenceRole"));
         assertEquals("201", binding.get("characterId"));

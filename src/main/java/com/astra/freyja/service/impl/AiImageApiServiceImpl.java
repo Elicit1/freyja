@@ -649,6 +649,8 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                             Map<String, Object> binding = new HashMap<>();
                             binding.put("referenceId", refImg.getId());
                             String refType = StringUtils.isNotBlank(refImg.getSourceType()) ? refImg.getSourceType().toUpperCase() : "CHARACTER";
+                            // 业务造型类型映射为网关统一的人物参考类型，保留 lookId 等绑定。
+                            if ("CHARACTER_LOOK".equals(refType)) refType = "CHARACTER_REFERENCE";
                             binding.put("referenceType", refType);
                             binding.put("entityId", refImg.getSourceId() != null ? String.valueOf(refImg.getSourceId()) : null);
                             binding.put("characterId", refImg.getCharacterId() != null ? String.valueOf(refImg.getCharacterId()) : null);
