@@ -19,6 +19,7 @@ public class DynamicWorkflowExecutor {
     private final AiImageApiService api;
     private final ReferenceVideoMediaService media;
     private final AiTaskEventStore events;
+    private final ContinuationArtifactService artifacts;
 
     public VideoGenerationResultVO render(VideoBatchModels.Snapshot snapshot)throws Exception {
         String task=snapshot.getRequest().getTaskId();
@@ -27,10 +28,13 @@ public class DynamicWorkflowExecutor {
         return VideoGenerationResultVO.builder().videoUrl(result).build();
     }
     public String enhance(VideoBatchModels.Snapshot snapshot,String base,String task,String prefix)throws Exception {
+        return enhance(snapshot,base,task,prefix,null);
+    }
+    public String enhance(VideoBatchModels.Snapshot snapshot,String base,String task,String prefix,Map<String,Object> latent)throws Exception {
         var plan=snapshot.getRequest().getDynamicWorkflowPlan();
         if(plan==null)return base;
         String output=base;
-        if(plan.getOptions().isUpscale())output=execute(snapshot,task,prefix+":01:UPSCALE","UPSCALE",output);
+        if(plan.getOptions().isUpscale())output=execute(snapshot,task,prefix+":01:UPSCALE","UPSCALE",output,plan.isNativeLatentInput()?latent:null);
         if(plan.getOptions().isFaceRepair())output=execute(snapshot,task,prefix+":02:FACE","FACE",output);
         return output;
     }
@@ -39,6 +43,9 @@ public class DynamicWorkflowExecutor {
         return rows.isEmpty()?null:rows.getFirst();
     }
     private String execute(VideoBatchModels.Snapshot snapshot,String task,String key,String stage,String source)throws Exception {
+        return execute(snapshot,task,key,stage,source,null);
+    }
+    private String execute(VideoBatchModels.Snapshot snapshot,String task,String key,String stage,String source,Map<String,Object> latent)throws Exception {
         var request=json.convertValue(snapshot.getRequest(),DramaShotRenderRequestDTO.class);
         var plan=request.getDynamicWorkflowPlan();
         var transport=new LinkedHashMap<String,Object>();transport.put("schema_version",1);transport.put("stage",stage);transport.put("revision",plan.getCapabilityRevision());
@@ -61,6 +68,10 @@ public class DynamicWorkflowExecutor {
             }
         }
         request.setDynamicWorkflowStage(transport);request.setContinuationSegments(null);request.setContinuationPlan(null);
+        if(latent!=null){
+            transport.put("source_latent",Map.of("content_sha256",Objects.requireNonNull(latent.get("sha256"))));
+            transport.put("source_size",plan.getBaseSize());
+        }
         // Stage identity excludes unrelated enhancement settings and expiring source transport URLs.
         var identity=json.convertValue(request,DramaShotRenderRequestDTO.class);
         identity.setTaskId(null);identity.setDynamicWorkflow(null);identity.setDynamicWorkflowPlan(null);
@@ -111,6 +122,7 @@ public class DynamicWorkflowExecutor {
                 finally{Files.deleteIfExists(file);}
             }
             request.setTaskId(execution);
+            if(latent!=null)transport.put("source_latent",artifacts.transport(latent));
             if(jdbc.update("UPDATE dynamic_workflow_step SET execution_id=?,status='SUBMITTING',prompt_id=NULL,node_id=NULL,error_message=NULL,updated_at=? WHERE task_id=? AND step_key=?",execution,LocalDateTime.now(),task,key)!=1)throw new BizException(500,"工作流执行身份保存失败");
             if(state!=null)state.upstream=(prompt,node)->{if(jdbc.update("UPDATE dynamic_workflow_step SET prompt_id=?,node_id=?,updated_at=? WHERE task_id=? AND step_key=?",prompt,node,LocalDateTime.now(),task,key)!=1)throw new BizException(500,"工作流上游身份保存失败");};
             try {

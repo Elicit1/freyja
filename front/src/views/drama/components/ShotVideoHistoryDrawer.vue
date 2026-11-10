@@ -120,6 +120,7 @@
               </span>
 
               <div>
+                <el-button v-if="take.taskId && hasEnhancedSegments(take)" size="small" plain @click="segmentUpscale?.open(take.taskId)">片段二采替换</el-button>
                 <el-button
                   size="small"
                   type="danger"
@@ -167,12 +168,15 @@
         />
       </div>
     </div>
+    <ContinuationSegmentUpscaleDialog ref="segmentUpscale" />
   </el-dialog>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import ReferenceVideoSnapshot from '@/components/media/ReferenceVideoSnapshot.vue'
+import ContinuationSegmentUpscaleDialog from '@/components/workflow/ContinuationSegmentUpscaleDialog.vue'
+const segmentUpscale = ref<InstanceType<typeof ContinuationSegmentUpscaleDialog>>()
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { shotApi } from '@/api/drama'
 import type { ShotVideoTake } from '@/types/drama'
@@ -198,6 +202,10 @@ const currentPage = ref(1)
 const pageSize = 12
 const selectingTakeId = ref<string | null>(null)
 const deletingTakeId = ref<string | null>(null)
+function hasEnhancedSegments(take: ShotVideoTake) {
+  try { const snapshot = JSON.parse(take.requestSnapshotJson || '{}'); return Array.isArray(snapshot.continuationSegments) && !!snapshot.dynamicWorkflowPlan?.options?.upscale }
+  catch { return false }
+}
 
 watch(
   () => props.modelValue,

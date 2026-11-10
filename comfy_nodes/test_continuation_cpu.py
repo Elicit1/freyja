@@ -43,6 +43,17 @@ def load_nodes(folder):
 
 
 class ContinuationCpuTest(unittest.TestCase):
+    def test_native_upscale_import_validates_compatibility_frame_count_and_source_canvas(self):
+        from freyja_nodes.upscale import FreyjaH3LoadLatent
+        from unittest.mock import patch
+        video=torch.zeros(1,24,7,2,4);audio=torch.ones(1,32,2,37)
+        with patch('freyja_nodes.nodes.read_artifact',return_value=(video,audio)) as read:
+            output=FreyjaH3LoadLatent().apply('base.safetensors','same-model',64,32,22)[0]
+            read.assert_called_with('base.safetensors','same-model')
+            self.assertIs(video,output['samples'].unbind()[0]);self.assertIs(audio,output['samples'].unbind()[1])
+            for width,height,frames in ((32,32,22),(64,64,22),(64,32,39)):
+                with self.assertRaisesRegex(ValueError,'SOURCE_LAYOUT_MISMATCH'):FreyjaH3LoadLatent().apply('base.safetensors','same-model',width,height,frames)
+
     def test_latent_upscale_never_interpolates_time_or_modifies_audio(self):
         from freyja_nodes.upscale import FreyjaH3LatentResize
         video=torch.stack([torch.full((1,24,2,2),float(n)) for n in range(7)],dim=2)

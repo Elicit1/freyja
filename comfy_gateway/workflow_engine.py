@@ -77,7 +77,8 @@ class WorkflowEngine:
         continuation_filename: Optional[str] = None,
         latent_filename: Optional[str] = None,
         anchor_filename: Optional[str] = None,
-        dynamic_source_filename: Optional[str] = None
+        dynamic_source_filename: Optional[str] = None,
+        dynamic_latent_filename: Optional[str] = None
     ) -> dict:
         """
         Assemble executable ComfyUI prompt JSON from request, reference images,
@@ -245,7 +246,7 @@ class WorkflowEngine:
 
         validate_workflow(request, workflow, model_cfg, ref_images, uploaded_ref_audios or [], uploaded_ref_videos or [])
         apply_extensions(workflow, request, model_cfg, uploaded_ref_videos or [], continuation_filename, latent_filename, anchor_filename)
-        workflow = apply_stage(workflow, request, model_cfg, dynamic_source_filename)
+        workflow = apply_stage(workflow, request, model_cfg, dynamic_source_filename, dynamic_latent_filename)
         if request.dynamic_workflow and request.dynamic_workflow.stage != "BASE":
             stage_model = model_cfg
             if request.dynamic_workflow.stage == "FACE":

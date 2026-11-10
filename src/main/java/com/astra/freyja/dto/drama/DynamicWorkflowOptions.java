@@ -61,6 +61,7 @@ public class DynamicWorkflowOptions {
     }
     @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"presetId","version"})
     @Data public static class Plan {
+        private boolean nativeLatentInput;
         private String name;
         private String capabilityRevision;
         private String nodeId;

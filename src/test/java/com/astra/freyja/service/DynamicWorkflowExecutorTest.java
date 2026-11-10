@@ -16,6 +16,7 @@ import static org.mockito.ArgumentMatchers.*;
 
 class DynamicWorkflowExecutorTest {
     JdbcTemplate jdbc;AiImageApiService api;DynamicWorkflowExecutor executor;List<String> calls;
+    ContinuationArtifactService artifacts;
     @BeforeEach void setup()throws Exception{
         var ds=new JdbcDataSource();ds.setURL("jdbc:h2:mem:"+UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1");jdbc=new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE dynamic_workflow_step(task_id VARCHAR(100),step_key VARCHAR(100),input_hash CHAR(64),execution_id VARCHAR(180),stage VARCHAR(20),status VARCHAR(24),output_url VARCHAR(2000),prompt_id VARCHAR(128),node_id VARCHAR(128),source_task_id VARCHAR(100),error_message VARCHAR(2000),updated_at TIMESTAMP,PRIMARY KEY(task_id,step_key))");
@@ -28,7 +29,7 @@ class DynamicWorkflowExecutorTest {
             DramaShotRenderRequestDTO req=call.getArgument(3);String stage=req.getDynamicWorkflowStage().get("stage").toString();calls.add(stage);
             VideoExecutionState.accepted("prompt-"+stage,"node");return VideoGenerationResultVO.builder().videoUrl("http://archive/"+stage).build();
         });
-        executor=new DynamicWorkflowExecutor(jdbc,new ObjectMapper(),api,media,mock(AiTaskEventStore.class));
+        executor=new DynamicWorkflowExecutor(jdbc,new ObjectMapper(),api,media,mock(AiTaskEventStore.class),artifacts=mock(ContinuationArtifactService.class));
     }
     VideoBatchModels.Snapshot snapshot(boolean upscale,boolean face){
         var shot=new DramaShot();shot.setId(1L);shot.setDramaId(2L);shot.setDuration(BigDecimal.valueOf(124/24.0));
@@ -38,6 +39,20 @@ class DynamicWorkflowExecutorTest {
         var snap=new VideoBatchModels.Snapshot();snap.setShot(shot);snap.setRequest(req);return snap;
     }
     @AfterEach void cleanup(){VideoExecutionState.clear("task");}
+    @Test void nativeSourceIsFingerprintStableAcrossExpiringTransportUrls()throws Exception{
+        var snap=snapshot(true,false);snap.getRequest().getDynamicWorkflowPlan().setNativeLatentInput(true);
+        snap.getRequest().getDynamicWorkflowPlan().getOptions().setUpscaleEngine("FREYJA");
+        var latent=Map.<String,Object>of("sha256","b".repeat(64),"objectPath","projects/base.safetensors");
+        when(artifacts.transport(latent)).thenReturn(Map.of("url","http://minio/signed-1","content_sha256","b".repeat(64)));
+        executor.enhance(snap,"http://archive/base","task","segment-000",latent);
+        var captured=org.mockito.ArgumentCaptor.forClass(DramaShotRenderRequestDTO.class);
+        verify(api).generateAndArchiveVideo(eq(1L),eq(2L),any(),captured.capture());
+        assertEquals("960x544",captured.getValue().getDynamicWorkflowStage().get("source_size"));
+        assertEquals("http://minio/signed-1",((Map<?,?>)captured.getValue().getDynamicWorkflowStage().get("source_latent")).get("url"));
+        when(artifacts.transport(latent)).thenReturn(Map.of("url","http://minio/signed-2","content_sha256","b".repeat(64)));
+        executor.enhance(snap,"http://archive/base","task","segment-000",latent);
+        assertEquals(List.of("UPSCALE"),calls);
+    }
     @Test void allFourCombinationsKeepOrderAndResumeWithoutRepeatingStages()throws Exception{
         for(boolean upscale:new boolean[]{false,true})for(boolean face:new boolean[]{false,true}){
             jdbc.update("DELETE FROM dynamic_workflow_step");calls.clear();var snap=snapshot(upscale,face);VideoExecutionState.begin("task");

@@ -43,6 +43,7 @@ public class VideoRenderBatchService {
     private final TransactionTemplate tx;
     private final ObjectMapper json;
     private final ApplicationEventPublisher events;
+    private final ContinuationSegmentEnhancementService segmentEnhancements;
     private volatile String localTask;
 
     public List<Node> tree(Long dramaId){return preparation.tree(dramaId);}
@@ -165,6 +166,34 @@ public class VideoRenderBatchService {
             i.setPhase(VideoBatchPreparation.REF.equals(shot.getGenerationMode())?"REF2VA":"FL2VA");i.setStatus("QUEUED");i.setCreatedAt(LocalDateTime.now());snap.getRequest().setTaskId(i.getTaskId());i.setSnapshotJson(preparation.write(snap));register(i,snap);store.insert(i);return i.getTaskId();
         });
         Item queued=store.task(task);publish(queued.getBatchId());queueChanged();var vo=new RenderSubmissionVO();vo.setTaskId(task);vo.setShotId(id);vo.setProjectId(detail(queued.getBatchId()).getDramaId());vo.setStatus(RenderSubmissionStatus.PENDING);vo.setProgress(0);return vo;
+    }
+    public RenderSubmissionVO enqueueSegmentEnhancement(String sourceTask,String segmentId,DynamicWorkflowOptions options,String requestId){
+        if(requestId==null||!requestId.matches("[A-Za-z0-9_-]{8,80}"))throw new BizException(400,"缺少有效的幂等请求标识");
+        String hash=VideoBatchPreparation.hash(preparation.write(Arrays.asList(sourceTask,segmentId,options)));
+        String task=tx.execute(s->{
+            store.lockQueue();var old=store.byRequest("segment_"+requestId);
+            if(old!=null){if(!hash.equals(old.getRequestHash()))throw new BizException(409,"同一请求标识的内容不一致");return store.items(old.getId()).getFirst().getTaskId();}
+            var snap=segmentEnhancements.prepare(sourceTask,segmentId,options);Long shotId=snap.getShot().getId();
+            if(shots.lockById(shotId)==null)throw new BizException(404,"分镜不存在");
+            if(store.occupied(shotId)||renders.selectCount(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getShotId,shotId).eq(RenderTask::getTaskType,"SHOT_VIDEO").in(RenderTask::getStatus,"QUEUED","RENDERING"))>0)throw new BizException(409,"分镜已有活动渲染任务");
+            preparation.validateRoute(snap);preparation.requireValid(snap,false);
+            var source=store.task(sourceTask);var sourceBatch=store.batch(source.getBatchId());
+            var batch=new Batch();batch.setId(IdWorker.getId());batch.setDramaId(snap.getShot().getDramaId());batch.setName("片段 "+(snap.getSegmentReplacement().getSegmentIndex()+1)+" 二采替换");
+            batch.setRequestId("segment_"+requestId);batch.setRequestHash(hash);
+            try{
+                var batchOptions=json.readValue(sourceBatch.getOptionsJson(),VideoRenderBatchRequest.class);
+                batchOptions.setShotIds(List.of(shotId));batchOptions.setRetryOfBatchId(null);batchOptions.setExistingVideoPolicy("CREATE_NEW_TAKE");
+                var config=batchOptions.getModeConfigs().get(snap.getShot().getGenerationMode());
+                config.setDynamicWorkflow(snap.getRequest().getDynamicWorkflow());
+                batch.setOptionsJson(preparation.write(batchOptions));
+            }catch(Exception error){throw new BizException(409,"来源任务的队列配置无法读取");}
+            batch.setCreatedAt(LocalDateTime.now());store.insert(batch);
+            var item=new Item();item.setId(IdWorker.getId());item.setBatchId(batch.getId());item.setQueueOrder(batch.getId());item.setShotId(shotId);item.setTaskId("RENDER_"+IdWorker.getId());item.setName(batch.getName());
+            item.setPhase(source.getPhase());item.setExecutionOrder(1);item.setStatus("QUEUED");item.setCreatedAt(batch.getCreatedAt());snap.getRequest().setTaskId(item.getTaskId());
+            item.setSnapshotJson(preparation.write(snap));register(item,snap);store.insert(item);
+            segmentEnhancements.copySteps(sourceTask,item.getTaskId(),snap.getSegmentReplacement().getSegmentIndex());return item.getTaskId();
+        });
+        var item=store.task(task);publish(item.getBatchId());queueChanged();var result=new RenderSubmissionVO();result.setTaskId(task);result.setShotId(item.getShotId());result.setProjectId(detail(item.getBatchId()).getDramaId());result.setStatus(RenderSubmissionStatus.PENDING);result.setProgress(0);return result;
     }
     private void register(Item i,Snapshot snap) {
         store.holdShot(i.getShotId(),i.getTaskId());

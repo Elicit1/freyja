@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from h3_continuation import sampler_binding
+from h3_continuation import ArtifactInput, compatibility_key, sampler_binding
 
 
 class UpscaleTiling(BaseModel):
@@ -56,6 +56,8 @@ class DynamicStage(BaseModel):
     scale: Literal[1, 2] = 1
     tiling: Optional[UpscaleTiling] = None
     component: Optional[FreyjaUpscale] = None
+    source_latent: Optional[ArtifactInput] = None
+    source_size: Optional[str] = Field(default=None, pattern=r"^[0-9]{2,4}x[0-9]{2,4}$")
     output_width: Optional[int] = Field(default=None, ge=2, le=4096, strict=True)
     output_height: Optional[int] = Field(default=None, ge=2, le=4096, strict=True)
 
@@ -71,6 +73,13 @@ class DynamicStage(BaseModel):
             raise ValueError("DYNAMIC_EXTERNAL_TILING_REMOVED: reselect FREYJA upscale component")
         if self.component is not None and self.stage != "UPSCALE":
             raise ValueError("DYNAMIC_COMPONENT_UPSCALE_ONLY")
+        if (self.source_latent is None) != (self.source_size is None):
+            raise ValueError("DYNAMIC_LATENT_SOURCE_SIZE_REQUIRED")
+        if self.source_latent is not None:
+            if self.stage != "UPSCALE" or self.component is None:
+                raise ValueError("DYNAMIC_NATIVE_LATENT_UPSCALE_ONLY")
+            if any(n < 32 or n % 32 for n in map(int, self.source_size.split("x"))):
+                raise ValueError("DYNAMIC_LATENT_SOURCE_SIZE_INVALID")
         if (self.output_width is None) != (self.output_height is None) or self.stage == "BASE" and self.output_width is not None:
             raise ValueError("DYNAMIC_OUTPUT_SIZE_INVALID")
         return self
@@ -87,6 +96,9 @@ def stage_nodes(stage, capability):
         required.discard("ImageScale")
         required.discard("H3InjectVideoLatent")
         required.update(COMPONENT_NODES)
+        if stage.source_latent:
+            required.discard("FreyjaH3UpscaleEncode")
+            required.add("FreyjaH3LoadLatent")
         if stage.component.memory == "SPATIAL": required.add("FreyjaH3TileModel")
         if stage.component.memory == "TEMPORAL": required.add("MiniMaxH3ContextWindows")
         if stage.component.method == "H3_LEARNED": required.update(("LatentUpscaleModelLoader", "MiniMaxH3LatentUpscaleWithModel"))
@@ -131,6 +143,7 @@ def describe(model, base_dir):
                               "tileMin": 256, "tileMax": 2048, "tileStep": 32,
                               "overlapMin": 32, "overlapMax": 512, "temporal": True},
             "freyjaUpscale": {"supported": supported, "version": 1,
+                              "nativeLatentInput": supported,
                               "methods": ["LATENT_BICUBIC", "H3_LEARNED"], "memoryModes": ["FULL", "TEMPORAL", "SPATIAL"],
                               "outputs": ["DOUBLE", "FULL_HD"], "maxSteps": model.default_steps},
             "requiredNodes": {"UPSCALE": ["VHS_LoadVideo", "ImageScale", "H3InjectVideoLatent", "FreyjaH3CheckFrames"],
@@ -180,7 +193,7 @@ def _prune(workflow, outputs):
     return {key: node for key, node in workflow.items() if key in reachable}
 
 
-def apply_stage(workflow, request, model, uploaded_source=None):
+def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=None):
     stage = request.dynamic_workflow
     if stage is None or stage.stage == "BASE":
         return workflow
@@ -188,6 +201,7 @@ def apply_stage(workflow, request, model, uploaded_source=None):
         raise ValueError("DYNAMIC_SOURCE_UPLOAD_MISSING")
     cfg = model.h3_extensions
     sampler_id, sampler = sampler_binding(workflow, cfg)
+    native_compatibility = compatibility_key(workflow, cfg, stage.source_size) if stage.source_latent else None
     outputs = [key for key, node in workflow.items() if node.get("class_type") == "SaveVideo"]
     videos = [key for key, node in workflow.items() if node.get("class_type") == "CreateVideo"]
     if len(outputs) != 1 or len(videos) != 1:
@@ -217,8 +231,16 @@ def apply_stage(workflow, request, model, uploaded_source=None):
             # Encode at source size, then enlarge video latent; audio template is unchanged.
             workflow.pop("dynamic_scale")
             workflow.pop("dynamic_inject")
-            workflow["dynamic_encode"] = {"class_type": "FreyjaH3UpscaleEncode", "inputs": {
-                "images": images, "vae": vae, "av_template": [cond_id, 1]}}
+            if stage.source_latent:
+                if not uploaded_latent:
+                    raise ValueError("DYNAMIC_LATENT_UPLOAD_MISSING")
+                source_width, source_height = map(int, stage.source_size.split("x"))
+                workflow["dynamic_encode"] = {"class_type": "FreyjaH3LoadLatent", "inputs": {
+                    "filename": uploaded_latent, "compatibility": native_compatibility,
+                    "width": source_width, "height": source_height, "frames": request.length}}
+            else:
+                workflow["dynamic_encode"] = {"class_type": "FreyjaH3UpscaleEncode", "inputs": {
+                    "images": images, "vae": vae, "av_template": [cond_id, 1]}}
             if component.method == "H3_LEARNED":
                 workflow["dynamic_upscale_model"] = {"class_type": "LatentUpscaleModelLoader", "inputs": {"model_name": component.latent_model}}
                 workflow["dynamic_lift"] = {"class_type": "MiniMaxH3LatentUpscaleWithModel", "inputs": {

@@ -31,6 +31,21 @@ class ShotContinuationRendererTest {
         renderer=new ShotContinuationRenderer(dynamic=mock(DynamicWorkflowExecutor.class),jdbc,new ObjectMapper(),api,media,refs,mock(AiTaskEventStore.class),artifacts);
     }
     private ContinuationArtifactService artifacts;
+    @Test void replacesOnlySelectedEnhancementThenAssemblesOriginalTimelineWithoutBaseRendering()throws Exception{
+        var snap=snapshot("replacement");var replacement=new VideoBatchModels.SegmentReplacement();replacement.setSourceTaskId("original");replacement.setSegmentIndex(1);
+        var outputs=new ArrayList<VideoBatchModels.SegmentOutput>();
+        for(int i=0;i<3;i++){var out=new VideoBatchModels.SegmentOutput();out.setBaseVideoUrl("https://base/"+i);out.setVideoUrl("https://enhanced/"+i);out.setLatent(Map.of("sha256","a".repeat(64)));outputs.add(out);}
+        replacement.setOutputs(outputs);snap.setSegmentReplacement(replacement);
+        when(dynamic.enhance(any(),eq("https://base/1"),eq("replacement"),eq("segment-001"),anyMap())).thenReturn("https://enhanced/replacement-1");
+        VideoExecutionState.begin("replacement");
+        try{
+            renderer.render(snap);
+            verify(dynamic).enhance(same(snap.getRequest().getContinuationSegments().get(1)),eq("https://base/1"),eq("replacement"),eq("segment-001"),eq(outputs.get(1).getLatent()));
+            verify(media).assemble(eq(List.of("https://enhanced/0","https://enhanced/replacement-1","https://enhanced/2")),same(snap.getRequest().getContinuationPlan()));
+            verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());verify(media,never()).tail(anyString(),anyInt(),anyInt());
+            assertEquals("https://enhanced/1",outputs.get(1).getVideoUrl());
+        }finally{VideoExecutionState.clear("replacement");}
+    }
     @Test void enhancedOutputsNeverBecomeNextSegmentsPixelHandoff()throws Exception{
         var snap=snapshot("dynamic-continuation");var calls=new AtomicInteger();
         for(var child:snap.getRequest().getContinuationSegments())child.getRequest().setDynamicWorkflowPlan(new DynamicWorkflowOptions.Plan());

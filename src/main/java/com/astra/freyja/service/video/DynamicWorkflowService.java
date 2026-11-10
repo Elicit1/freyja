@@ -69,6 +69,7 @@ public class DynamicWorkflowService {
         }
         if(options.isFaceRepair()&&!java.util.stream.StreamSupport.stream(match.path("stages").spliterator(),false).anyMatch(n->"FACE".equals(n.asText())))throw new BizException(400,"当前 REF2VA 基础模型未提供人脸修复能力");
         plan.setCapabilityRevision(match.path("revision").asText());plan.setNodeId(match.path("nodeId").asText());plan.setBaseSize(VideoBatchPreparation.normalizeSize(size));plan.setOptions(options);
+        plan.setNativeLatentInput(options.isUpscale()&&"FREYJA".equals(options.getUpscaleEngine())&&match.path("freyjaUpscale").path("nativeLatentInput").asBoolean());
         var wh=plan.getBaseSize().split("x");int scale=options.isUpscale()?2:1;
         long w=(long)Integer.parseInt(wh[0])*scale,h=(long)Integer.parseInt(wh[1])*scale;
         if(options.isUpscale()&&"FULL_HD".equals(options.getUpscaleOutput())){

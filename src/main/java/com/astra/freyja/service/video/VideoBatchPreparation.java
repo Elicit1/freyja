@@ -224,8 +224,14 @@ public class VideoBatchPreparation {
         if(plan.getReuseFromTaskId()==null&&request.getContinuationPlan()!=null)plan.setReuseFromTaskId(request.getContinuationPlan().getDraft().getReuseFromTaskId());
         request.setDynamicWorkflow(selection);request.setDynamicWorkflowPlan(plan);
         request.setDynamicWorkflowStage(Map.of("schema_version",1,"stage","BASE","revision",plan.getCapabilityRevision()));
-        if(request.getContinuationSegments()!=null)for(var child:request.getContinuationSegments()){
+        if(request.getContinuationSegments()!=null)for(int index=0;index<request.getContinuationSegments().size();index++){
+            var child=request.getContinuationSegments().get(index);
             child.getRequest().setDynamicWorkflowPlan(plan);child.getRequest().setDynamicWorkflowStage(request.getDynamicWorkflowStage());
+            if(plan.isNativeLatentInput()){
+                request.getContinuationPlan().getRanges().get(index).setSaveLatent(true);
+                child.getRequest().getH3Options().put("save_latent",true);
+                child.getRequest().getH3Options().put("schema_version",2);
+            }
         }
     }
     public RenderValidationReport inspect(Snapshot snap,boolean dispatch) {

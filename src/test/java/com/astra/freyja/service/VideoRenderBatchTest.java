@@ -40,6 +40,7 @@ class VideoRenderBatchTest {
     ApplicationEventPublisher events;
     ResSceneMapper sceneAssets;
     ShotContinuationPreparation continuations;
+    ContinuationSegmentEnhancementService segmentEnhancements;
     final Map<Long,DramaShot> shotData=new LinkedHashMap<>();final Map<String,RenderTask> renderData=new HashMap<>();
     ObjectMapper json=new ObjectMapper().findAndRegisterModules();JdbcTemplate jdbc;
     @BeforeEach void setup() throws Exception {
@@ -52,7 +53,7 @@ class VideoRenderBatchTest {
         store=new VideoBatchStore(jdbc);var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
         preparation=new VideoBatchPreparation(mock(DynamicWorkflowService.class),(continuations=mock(ShotContinuationPreparation.class)),mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,(sceneAssets=mock(ResSceneMapper.class)),renders,store,json);
         events=mock(ApplicationEventPublisher.class);
-        service=new VideoRenderBatchService(mock(DynamicWorkflowExecutor.class),mock(ShotContinuationRenderer.class),store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,events);
+        service=new VideoRenderBatchService(mock(DynamicWorkflowExecutor.class),mock(ShotContinuationRenderer.class),store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,events,segmentEnhancements=mock(ContinuationSegmentEnhancementService.class));
         when(dramas.selectById(1L)).thenReturn(new Drama());
         DramaEpisode ep=new DramaEpisode();ep.setId(10L);ep.setDramaId(1L);ep.setTitle("第一集");when(episodes.selectList(any())).thenReturn(List.of(ep));
         DramaScene sc=new DramaScene();sc.setId(20L);sc.setDramaId(1L);sc.setName("场景");when(scenes.selectList(any())).thenReturn(List.of(sc));
@@ -588,6 +589,21 @@ class VideoRenderBatchTest {
         verify(api,times(1)).generateAndArchiveVideo(eq(43L),anyLong(),any(),any());
     }
 
+    @Test void segmentReplacementQueuesOnceAndKeepsTheOriginalSuccessfulTask()throws Exception{
+        shot(41,VideoBatchPreparation.REF,1);var source=create(request());service.runNext();
+        var original=store.items(source.getId()).getFirst();assertEquals("SUCCESS",original.getStatus());
+        var snap=json.readValue(original.getSnapshotJson(),Snapshot.class);var replacement=new SegmentReplacement();replacement.setSourceTaskId(original.getTaskId());replacement.setSegmentIndex(1);snap.setSegmentReplacement(replacement);
+        var options=new DynamicWorkflowOptions();options.setUpscale(true);
+        when(segmentEnhancements.prepare(original.getTaskId(),"segment-id",options)).thenReturn(snap);
+        var first=service.enqueueSegmentEnhancement(original.getTaskId(),"segment-id",options,"stable-request-id");
+        var retried=service.enqueueSegmentEnhancement(original.getTaskId(),"segment-id",options,"stable-request-id");
+        assertEquals(first.getTaskId(),retried.getTaskId());assertNotEquals(original.getTaskId(),first.getTaskId());
+        verify(segmentEnhancements,times(1)).copySteps(original.getTaskId(),first.getTaskId(),1);
+        assertEquals("SUCCESS",store.task(original.getTaskId()).getStatus());
+        var changed=new DynamicWorkflowOptions();changed.setUpscale(true);changed.setUpscaleDenoise(.1);
+        assertThrows(RuntimeException.class,()->service.enqueueSegmentEnhancement(original.getTaskId(),"segment-id",changed,"stable-request-id"));
+        assertThrows(RuntimeException.class,()->service.enqueueSegmentEnhancement(original.getTaskId(),"segment-id",options,"another-request-id"));
+    }
     @Test void unresolvedFramesBlockBatchAdmission() {
         shot(41,VideoBatchPreparation.FL,1).setEndFrameImageUrl(null);
         var preview=service.preview(request());assertEquals(1,preview.getBlocked());

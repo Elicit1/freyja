@@ -23,7 +23,9 @@
 
 新开启二采默认使用 FREYJA 潜空间二采、1080P、2 步高清重绘和原生时间分窗。历史任务缺少新字段时继续使用原有像素二采、宽高两倍；旧第三方分块选项若曾开启，会明确要求重新选择二采方式后重新提交，不静默改变执行语义。
 
-执行：源视频按原尺寸 VAE 编码 → 潜空间放大 → 选定步数的 H3 高清重绘 → 解码 → 最后一个增强阶段裁切输出。该实现是完成一采后的独立增强，保留分阶段持久化、复用和恢复；不是 TimelineDirector 的同一采样进程 6+2，也没有减少一采原来的步数。独立阶段目前需要对归档源视频重新编码一次；不能声称全流程无 VAE 往返。
+执行：兼容的一采原始 AV latent → 潜空间放大 → 选定步数的 H3 高清重绘 → 解码 → 最后一个增强阶段裁切输出。新建 FREYJA 接续增强任务会保存每段的一采 latent；使用 `FreyjaH3LoadLatent` 校验模型、VAE、LoRA、调度器、来源画布和帧数后直接加载，不再从视频重新 VAE 编码。原视频只提供原声轨。单镜或旧任务没有可用 latent 时保留原尺寸 VAE 编码路径；旧任务快照不被静默改写。
+
+这仍是完成一采后的独立增强，保留分阶段持久化、复用和恢复；不是 TimelineDirector 的同一采样进程 6+2，也没有减少一采原来的步数。原生输入的摘要包含 latent SHA-256 和来源尺寸，不包含有时效的签名 URL。
 
 - `upscaleEngine`: `FREYJA`；旧 `PIXEL` 用于兼容已有任务。
 - `upscaleMethod`: `LATENT_BICUBIC`（FREYJA 在 CPU 逐 latent 时间位置插值，不改变时间轴，不需附加权重），或 `H3_LEARNED`（ComfyUI 原生 `LatentUpscaleModelLoader`、`MiniMaxH3LatentUpscaleWithModel`，需要在 `upscaleLatentModel` 显式填入已安装的兼容 H3 权重文件名）。不根据文件名猜测模型架构，不自动下载权重，不能使用 LTX 放大权重冒充 H3。
@@ -55,6 +57,22 @@
 ```
 
 组件参数进入 UPSCALE 输入摘要，改动二采不影响 BASE 的复用。最终裁切也进入实际最后阶段的摘要。
+
+### 单片段二采替换与重新合成
+
+视频历史和任务处理步骤提供「片段二采替换」。仅允许来源任务成功、所有片段的一采及最终增强产物完整、目标片段已有原始一采 latent 时提交。当前只替换增强结果；不重生成一采，不改变后续片段使用的接续上下文、片段边界或完整视频输出尺寸。
+
+- `GET /production/video-enhancements/tasks/{taskId}/segments`：返回可替换的片段、各段原有参数、原视频预览及禁用原因。
+- `POST /production/video-enhancements/tasks/{taskId}/segments/{segmentId}/upscale`：提交 `{requestId, options}`。`requestId` 为 8–80 位字母、数字、连字符或下划线，同一请求重试返回同一任务；同标识内容变化报错。
+- 新任务冻结来源片段 URL、原始 latent 清单和原裁切计划。复用所有一采及未选中片段的增强结果，只重跑选中片段的二采和其后已开启的人脸修复，再按原时间轴拼接，保存为新的完整 Take。
+- 原任务、Take 和产物保持不变；新版本成功后可以再次作为替换来源。失败或上游结果不明时走已有任务恢复机制，不因重新点击而重复采样。
+- 输出尺寸变化、片段不属于来源任务、缺失 latent、缺失其他片段产物或分镜已有活动任务时明确拒绝。模型与参考素材继续执行原有快照检查；不允许通过该接口更换模型或修改剧情输入。
+
+### 重影排查记录
+
+2026-11-10 对任务 `RENDER_2119993933123670018` 的第一个片段在 2.5 秒处抽帧对比：二采相对一采新增树枝、花丛及人物边缘双轮廓，静态背景也受影响。该任务实际使用视频重新编码、LATENT_BICUBIC、2 步、denoise 0.25、56/22 帧时间窗，人脸修复关闭。可定位到二采路径，但这一对比不能进一步证明是 VAE 往返、latent 插值还是窗口预测融合单独造成。
+
+原始 latent 直入去掉了已确认的多余编码环节。画质验证仍需以同一片段、同一种子依次对比原始 latent 输入、降低重绘强度、关闭时间窗；整段采样显存较高。不得将 CPU/组图测试通过描述为已证明重影消失。
 
 二采放大与人脸修复均仅开放给 REF2VA 基础模型；FL2VA 普通及接续渲染均不显示开关，后端与网关也拒绝 FL2VA 增强请求。全局动作 ControlNet 不直接注入裁剪修脸分支。模型重绘可能改变动作细节，离线接线检查不等于画质或口型已验证。
 
@@ -117,6 +135,6 @@ Java 在等待提交响应和查询上游结果时更新任务进度。接续显
 
 算力节点更新 `comfy_nodes/freyja_h3_continuation`，新增 `FreyjaH3CheckFrames`；安装方式继续使用 `scripts/install_h3_continuation.py --comfy-root ...`，脚本不会重启 ComfyUI。放大还需现有 `H3InjectVideoLatent`，修脸需 H3 FaceRefine 的裁剪、逐帧重绘和贴回节点。代码仅在用户选择对应阶段时连接它们。
 
-自定义二采需更新 FREYJA 节点包，加载 `FreyjaH3UpscaleEncode`、`FreyjaH3LatentResize`、`FreyjaH3TileModel`、`FreyjaH3FinishSize`。原生时间窗需当前 ComfyUI；选择学习式放大时才需要原生 latent 模型加载节点和兼容权重，权重放在 `models/latent_upscale_models/`。不再安装第三方 SpatialTiles；若以前安装过也无须由 FREYJA 自动卸载，当前图不会引用它。静态能力仅表示网关支持，不证明算力节点在线或依赖已安装。
+自定义二采需更新 FREYJA 节点包，加载 `FreyjaH3UpscaleEncode`、`FreyjaH3LoadLatent`、`FreyjaH3LatentResize`、`FreyjaH3TileModel`、`FreyjaH3FinishSize`。原生时间窗需当前 ComfyUI；选择学习式放大时才需要原生 latent 模型加载节点和兼容权重，权重放在 `models/latent_upscale_models/`。不再安装第三方 SpatialTiles；若以前安装过也无须由 FREYJA 自动卸载，当前图不会引用它。静态能力仅表示网关支持，不证明算力节点在线或依赖已安装。
 
 本次不提交视频渲染任务，不探测或重启离线算力节点。验证覆盖阶段组装、引用契约、失败恢复、复用、任务快照、MCP、前端构建及四套主题模拟交互；真实画质、显存和接缝效果仍需节点恢复后评估。

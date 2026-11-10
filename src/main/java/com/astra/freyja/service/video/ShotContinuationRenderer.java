@@ -24,6 +24,7 @@ public class ShotContinuationRenderer {
         var rows=jdbc.query("SELECT execution_id FROM render_task_step WHERE task_id=? AND status IN ('SUBMITTING','ARCHIVING') ORDER BY updated_at DESC LIMIT 1",(rs,n)->rs.getString(1),task);return rows.isEmpty()?task:rows.getFirst();
     }
     public VideoGenerationResultVO render(VideoBatchModels.Snapshot snapshot)throws Exception{
+        if(snapshot.getSegmentReplacement()!=null)return replaceSegment(snapshot);
         var parent=snapshot.getRequest();String task=parent.getTaskId();var urls=new ArrayList<String>();var enhanced=new ArrayList<String>();var handoffs=new LinkedHashMap<String,Map<String,Object>>();
         if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=true;
         try{
@@ -94,7 +95,10 @@ public class ShotContinuationRenderer {
                 }
                 if(jdbc.update("UPDATE render_task_step SET status='SUCCESS',output_url=?,updated_at=? WHERE task_id=? AND step_key=?",output,LocalDateTime.now(),task,key)!=1)throw new BizException(500,"片段归档结果持久化失败");
                 urls.add(output);events.append(task,"CONTINUATION_SEGMENT_COMPLETE",json.writeValueAsString(Map.of("segmentId",range.getSegmentId(),"index",i,"videoUrl",output)));
-                enhanced.add(child.getRequest().getDynamicWorkflowPlan()==null?output:dynamicWorkflows.enhance(child,output,task,String.format(java.util.Locale.ROOT,"segment-%03d",i)));
+                var enhancement=child.getRequest().getDynamicWorkflowPlan();
+                enhanced.add(enhancement==null?output:enhancement.isNativeLatentInput()&&manifest!=null
+                        ?dynamicWorkflows.enhance(child,output,task,String.format(java.util.Locale.ROOT,"segment-%03d",i),artifacts.read(manifest))
+                        :dynamicWorkflows.enhance(child,output,task,String.format(java.util.Locale.ROOT,"segment-%03d",i)));
                 // A child result must never be mistaken for a recoverable complete parent video.
                 if(VideoExecutionState.current()!=null)VideoExecutionState.current().recoveryUrl=null;
                 VideoExecutionState.phase("CONTINUATION");
@@ -105,6 +109,26 @@ public class ShotContinuationRenderer {
             return api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),url,snapshot.getRequest().getProviderId());
         }catch(Exception e){if(VideoExecutionState.current()!=null&&VideoExecutionState.current().continuationChild)VideoExecutionState.current().recoveryUrl=null;throw e;}
         finally{if(VideoExecutionState.current()!=null){VideoExecutionState.current().continuationChild=false;VideoExecutionState.current().upstream=null;}for(var child:parent.getContinuationSegments())if(child.getRequest().getH3Options()!=null){child.getRequest().getH3Options().remove("continuation");child.getRequest().getH3Options().remove("latent_context");}}
+    }
+    private VideoGenerationResultVO replaceSegment(VideoBatchModels.Snapshot snapshot)throws Exception{
+        var replacement=snapshot.getSegmentReplacement();var parent=snapshot.getRequest();String task=parent.getTaskId();
+        int index=replacement.getSegmentIndex();var outputs=replacement.getOutputs();
+        if(outputs.size()!=parent.getContinuationSegments().size()||index<0||index>=outputs.size())throw new BizException(409,"片段替换快照与接续时间轴不一致");
+        if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=true;
+        try{
+            var urls=new ArrayList<String>();
+            for(int i=0;i<outputs.size();i++){
+                var output=outputs.get(i);
+                if(i==index){
+                    VideoExecutionState.segment(i);
+                    urls.add(dynamicWorkflows.enhance(parent.getContinuationSegments().get(i),output.getBaseVideoUrl(),task,String.format(Locale.ROOT,"segment-%03d",i),output.getLatent()));
+                }else urls.add(output.getVideoUrl());
+            }
+            VideoExecutionState.progress("ASSEMBLING","正在替换片段并按原时间轴重新合成");
+            String merged=media.assemble(urls,parent.getContinuationPlan());
+            if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=false;
+            return api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),merged,parent.getProviderId());
+        }finally{if(VideoExecutionState.current()!=null){VideoExecutionState.current().continuationChild=false;VideoExecutionState.current().upstream=null;VideoExecutionState.current().recoveryUrl=null;}}
     }
     private String manifestText(Object value){return value instanceof byte[] bytes?new String(bytes,java.nio.charset.StandardCharsets.UTF_8):Objects.toString(value,null);}
 }

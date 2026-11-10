@@ -444,6 +444,7 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         if context.anchor:
             anchor_filename=latent_filename if context.anchor.content_sha256==context.content_sha256 else await upload_latent(client,context.anchor)
     dynamic_source_filename = None
+    dynamic_latent_filename = None
     if request.dynamic_workflow:
         from dynamic_workflow import require_stage
         require_stage(request, model_cfg, get_base_dir())
@@ -460,6 +461,9 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
                 contentSha256=context.source_sha256)
             uploaded = await upload_reference_video(client, binding, cap, hosts)
             dynamic_source_filename = uploaded["filename"]
+            if context.source_latent:
+                from continuation_artifacts import upload_latent
+                dynamic_latent_filename = await upload_latent(client, context.source_latent)
     # 4. Assemble workflow JSON
     prompt_workflow = engine.assemble_workflow(
         request=request,
@@ -471,7 +475,8 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         continuation_filename=continuation_filename,
         latent_filename=latent_filename,
         anchor_filename=anchor_filename,
-        dynamic_source_filename=dynamic_source_filename
+        dynamic_source_filename=dynamic_source_filename,
+        dynamic_latent_filename=dynamic_latent_filename
     )
 
     # Extract the exact prompt submitted to ComfyUI
@@ -511,6 +516,12 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         for reference in canonical.get("references") or []:
             if reference.get("content_sha256"):reference.pop("video_url",None)
         if canonical.get("dynamic_workflow") and canonical["dynamic_workflow"].get("source_sha256"):canonical["dynamic_workflow"].pop("source_url",None)
+        if canonical.get("dynamic_workflow"):
+            dynamic = canonical["dynamic_workflow"]
+            if dynamic.get("source_latent"):
+                dynamic["source_latent"].pop("url", None)
+            else:
+                for field in ("source_latent", "source_size"): dynamic.pop(field, None)
         if (canonical.get("h3_options") or {}).get("continuation"):canonical["h3_options"]["continuation"].pop("video_url",None)
         if (canonical.get("h3_options") or {}).get("latent_context"):
             canonical["h3_options"]["latent_context"].pop("url",None)

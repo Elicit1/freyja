@@ -23,7 +23,7 @@ class DynamicWorkflowTests(unittest.TestCase):
                 "scale": 2 if stage == "UPSCALE" else 1, **kwargs})
         engine = WorkflowEngine(cfg)
         before = engine.get_template(model)
-        graph = engine.assemble_workflow(request, uploaded_ref_images=["person.png"], dynamic_source_filename="source.mp4")
+        graph = engine.assemble_workflow(request, uploaded_ref_images=["person.png"], dynamic_source_filename="source.mp4", dynamic_latent_filename="base.safetensors" if request.dynamic_workflow.source_latent else None)
         self.assertEqual(before, engine.get_template(model), "stages must never mutate cached templates")
         assert_acyclic(graph)
         return model, request, graph
@@ -32,6 +32,26 @@ class DynamicWorkflowTests(unittest.TestCase):
         _, _, graph = self.graph("BASE")
         self.assertEqual(1, sum(n["class_type"] == "SamplerCustomAdvanced" for n in graph.values()))
         self.assertFalse(any(k.startswith("dynamic_") for k in graph))
+
+    def test_native_upscale_loads_original_av_without_vae_encode_and_keeps_soundtrack(self):
+        model, request, graph = self.graph("UPSCALE", component={}, source_size="960x544",
+            source_latent={"url":"http://minio/base.safetensors","content_sha256":"b"*64})
+        self.assertEqual("FreyjaH3LoadLatent",graph["dynamic_encode"]["class_type"])
+        self.assertFalse(any(n["class_type"] in {"FreyjaH3UpscaleEncode","H3InjectVideoLatent","ImageScale"} for n in graph.values()))
+        self.assertEqual(["dynamic_source",2],graph["130"]["inputs"]["audio"])
+        from h3_continuation import compatibility_key
+        _, cfg = setup_model()
+        base = WorkflowEngine(cfg).assemble_workflow(ImageGenerationRequest(model=model.model_name,prompt="base",size="960x544",length=124))
+        self.assertEqual(compatibility_key(base,model.h3_extensions,"960x544"),graph["dynamic_encode"]["inputs"]["compatibility"])
+        required=stage_nodes(request.dynamic_workflow,describe(model,BASE))
+        self.assertIn("FreyjaH3LoadLatent",required);self.assertNotIn("FreyjaH3UpscaleEncode",required)
+
+    def test_native_source_requires_matching_size_and_upscale_component(self):
+        latent={"url":"http://minio/base.safetensors","content_sha256":"b"*64}
+        for changes in ({"source_latent":latent},{"source_size":"960x544"},
+                        {"source_latent":latent,"source_size":"961x544","component":{}},
+                        {"source_latent":latent,"source_size":"960x544"}):
+            with self.subTest(changes=changes),self.assertRaises(ValidationError):self.graph("UPSCALE",**changes)
 
     def test_upscale_is_a_standalone_single_sampler_with_source_audio(self):
         _, _, graph = self.graph("UPSCALE", denoise=.2)

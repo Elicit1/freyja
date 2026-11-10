@@ -23,7 +23,7 @@ class VideoEnhancementHttpContractTest {
                 """));
         var builder = JsonMapper.builder();
         new JacksonConfig().longToStringCustomizer().customize(builder);
-        var mvc = MockMvcBuilders.standaloneSetup(new VideoEnhancementController(service, new com.fasterxml.jackson.databind.ObjectMapper()))
+        var mvc = MockMvcBuilders.standaloneSetup(new VideoEnhancementController(service, new com.fasterxml.jackson.databind.ObjectMapper(),mock(com.astra.freyja.service.video.ContinuationSegmentEnhancementService.class),mock(com.astra.freyja.service.video.VideoRenderBatchService.class)))
                 .setMessageConverters(new JacksonJsonHttpMessageConverter(builder.build())).build();
         mvc.perform(get("/production/video-enhancements/capabilities").param("providerId", "2096886255638646785"))
                 .andExpect(status().isOk())

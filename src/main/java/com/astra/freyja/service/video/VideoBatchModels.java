@@ -24,6 +24,7 @@ public final class VideoBatchModels {
 
     @Data
     public static class Snapshot {
+        private SegmentReplacement segmentReplacement;
         private DramaShot shot;
         private DramaShotRenderRequestDTO request;
         private String modelFingerprint;
@@ -31,6 +32,20 @@ public final class VideoBatchModels {
         private FramePlan firstFramePlan;
         private FramePlan lastFramePlan;
         private RenderValidationReport validation;
+    }
+
+    @Data
+    public static class SegmentReplacement {
+        private String sourceTaskId;
+        private int segmentIndex;
+        private List<SegmentOutput> outputs;
+    }
+
+    @Data
+    public static class SegmentOutput {
+        private String baseVideoUrl;
+        private String videoUrl;
+        private java.util.Map<String,Object> latent;
     }
 
     @Data

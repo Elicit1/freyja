@@ -69,6 +69,26 @@ class FreyjaH3LatentResize:
         return ({"samples": NestedTensor((resized_video(video, height // 16, width // 16), audio.cpu()))},)
 
 
+class FreyjaH3LoadLatent:
+    RETURN_TYPES = ("LATENT",)
+    FUNCTION = "apply"
+    CATEGORY = "FREYJA/H3"
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"filename": ("STRING",), "compatibility": ("STRING",),
+                "width": ("INT", {"min": 32, "step": 32}), "height": ("INT", {"min": 32, "step": 32}),
+                "frames": ("INT", {"min": 22})}}
+    def apply(self, filename, compatibility, width, height, frames):
+        from .nodes import read_artifact
+        from .policy import pixel_frames
+        video, audio = read_artifact(filename, compatibility)
+        result = {"samples": NestedTensor((video, audio))}
+        av(result)
+        if width % 32 or height % 32 or video.shape[-2:] != (height // 16, width // 16) or pixel_frames(video.shape[2]) != frames:
+            raise ValueError("FREYJA_UPSCALE_SOURCE_LAYOUT_MISMATCH")
+        return (result,)
+
+
 class FreyjaH3FinishSize:
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply"
@@ -245,4 +265,4 @@ class FreyjaH3TileModel:
         return (out,)
 
 
-CLASSES = (FreyjaH3UpscaleEncode, FreyjaH3LatentResize, FreyjaH3FinishSize, FreyjaH3TileModel)
+CLASSES = (FreyjaH3UpscaleEncode, FreyjaH3LoadLatent, FreyjaH3LatentResize, FreyjaH3FinishSize, FreyjaH3TileModel)
