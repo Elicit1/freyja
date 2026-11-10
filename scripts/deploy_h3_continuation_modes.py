@@ -22,7 +22,9 @@ def preflight():
     if any(int(line) for line in result.stdout.splitlines() if line.strip()):raise RuntimeError('Active render/AI/preparation tasks; deployment stopped')
     probe='''import json,urllib.request
 from config import get_config
-required={'FreyjaH3ChromaNoise','FreyjaH3Continue','FreyjaH3Restore','FreyjaH3SaveLatent'}
+required={'FreyjaH3ChromaNoise','FreyjaH3Continue','FreyjaH3Restore','FreyjaH3SaveLatent',
+ 'FreyjaH3CheckFrames','FreyjaH3UpscaleEncode','FreyjaH3LoadLatent',
+ 'FreyjaH3LatentResize','FreyjaH3FinishSize','FreyjaH3TileModel'}
 for node in get_config().nodes.values():
  if not node.enabled or not any(m.h3_extensions for m in node.models):continue
  base=node.http_url.rstrip('/')

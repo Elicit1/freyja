@@ -120,7 +120,8 @@ def validate_stage_nodes(stage, capability, nodes):
     required = stage_nodes(stage, capability)
     missing = required - set(nodes)
     if missing:
-        raise ValueError("DYNAMIC_NODES_MISSING: " + ", ".join(sorted(missing)))
+        raise ValueError("DYNAMIC_NODES_MISSING: " + ", ".join(sorted(missing))
+                         + "；请安装或更新算力节点上对应的节点包，待队列空闲后重启 ComfyUI。FREYJA 节点包目录：custom_nodes/freyja_h3_continuation。")
     if stage.component and stage.component.method == "H3_LEARNED":
         if stage.component.latent_model not in installed_latent_models(nodes):
             raise ValueError("DYNAMIC_H3_LATENT_MODEL_NOT_INSTALLED")

@@ -107,7 +107,7 @@ fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/mlsd_large_512_f
 
 默认节点、配置生成器及调试图均已切换 2.0。本地 `machine_local.yaml` 也已刷新，其余远程部署需同步更新。工作流变化后重新预览和准备，旧任务快照保持原有内容，不能把使用 v1 生成的片段视为 v2 缓存。先完成运行中的任务，再切换配置。
 
-1. 更新 ComfyUI 到提供上述官方 H3 节点且支持 Union 2.0 加载的版本。保留现有 `ComfyUI-VideoHelperSuite` 视频读取与输出节点，按需安装 `comfyui_controlnet_aux`。不再安装项目自定义节点；若旧部署装过 `custom_nodes/freyja_h3`，可移除该目录后重启 ComfyUI，并重新导入新版调试图。此修改不会通过 ComfyUI HTTP 接口自动删除远端插件目录。
+1. 更新 ComfyUI 到提供上述官方 H3 节点且支持 Union 2.0 加载的版本。保留现有 `ComfyUI-VideoHelperSuite` 视频读取与输出节点，按需安装 `comfyui_controlnet_aux`。基础原生 guide 路径不需要旧 `custom_nodes/freyja_h3`；新版 latent 接续和自定义二采使用独立的 `custom_nodes/freyja_h3_continuation`，必须保留并随应用更新。可在算力机的仓库副本运行 `python scripts/install_h3_continuation.py --comfy-root <ComfyUI目录>`（自动备份旧目录），或将最新节点 ZIP 的同名目录完整替换到 `custom_nodes/`，在队列空闲后重启 ComfyUI。此修改不会通过 HTTP 接口自动更新远端插件目录。
 2. 按实际启用模块安装节点：窗口使用 `MiniMaxH3ContextWindows`，ControlNet 使用 `MiniMaxH3FunControlNetApply`、`ModelPatchLoader` 及 `models/model_patches/` 下的 Union 权重。可选姿态/深度预处理器须另行安装；Canny 使用原生节点。所选补丁必须与底模匹配。未启用的可选模块不成为基础 guide 接续的依赖；缺失模块会在能力中显示不可用。
 3. 维护实际节点 YAML 中的 `h3_extensions`。默认模板已覆盖当前 11 个 H3 生成模型，保留各自 LoRA、采样步数与 FaceRefine 裁脸修复支路。可用以下命令从现有 API 图重新生成绑定：
 
@@ -129,6 +129,8 @@ fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/mlsd_large_512_f
 7. 重新读取当前能力并预览计划。参考视频使用网关实时媒体限制；模型中心可以设置更小的限制，无需重复录入能力 JSON 或设置验收状态。准备快照仍绑定实际工作流版本与节点，过期输入不能继续提交。
 
 原生路径探测不再要求任何项目私有节点。能力的 `controlTypes` 只列出已安装预处理节点支持的类型，以及网关准备的 Gray 和显式预处理视频类型。`contextWindowsWithControlNet` 单独声明原生联用验收范围，节点可见不会自动开启该组合。HED / MLSD / Pose / Depth / Scribble 缺失时，安装 `comfyui_controlnet_aux` 及依赖、对应预处理模型后重启；不影响 Canny、Gray 或已处理视频的节点可用性。
+
+历史片段二采另需在 `/object_info` 确认 `FreyjaH3LoadLatent` 已注册。若其余 FREYJA 节点存在但它缺失，表示算力节点仍加载旧包；更新 `freyja_h3_continuation` 并重启后再重跑，无需重新生成一采视频。该缺失与放大模型权重无关，动态增强的完整依赖见 [安装与验证边界](video-enhancements.md#安装与验证边界)。
 
 运行时探测检查已安装节点与所选补丁是否在列表中；诊断指纹反映节点 schema 与版本，计划 revision 绑定 API 图、网关装配代码、媒体准备代码和模块配置。无需保存诊断指纹作为人工验收标记；工作流或素材变化仍需重新准备快照。
 

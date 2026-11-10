@@ -55,6 +55,15 @@ class DynamicWorkflowTests(unittest.TestCase):
         required=stage_nodes(request.dynamic_workflow,describe(model,BASE))
         self.assertIn("FreyjaH3LoadLatent",required);self.assertNotIn("FreyjaH3UpscaleEncode",required)
 
+    def test_old_node_package_rejects_native_upscale_with_update_instructions(self):
+        model, request, _ = self.graph("UPSCALE", component={}, source_size="960x544",
+            source_latent={"url":"http://minio/base.safetensors","content_sha256":"b"*64})
+        cap = describe(model, BASE)
+        nodes = {name:{} for name in stage_nodes(request.dynamic_workflow, cap)}
+        del nodes["FreyjaH3LoadLatent"]
+        with self.assertRaisesRegex(ValueError, "DYNAMIC_NODES_MISSING: FreyjaH3LoadLatent.*custom_nodes/freyja_h3_continuation"):
+            validate_stage_nodes(request.dynamic_workflow, cap, nodes)
+
     def test_native_source_requires_matching_size_and_upscale_component(self):
         latent={"url":"http://minio/base.safetensors","content_sha256":"b"*64}
         for changes in ({"source_latent":latent},{"source_size":"960x544"},
