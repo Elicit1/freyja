@@ -320,7 +320,9 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         request.node_id = target_node.node_id
         stage = request.dynamic_workflow.stage
         required = describe(model_cfg, get_base_dir())["requiredNodes"].get(stage, [])
-        if required:
+        # UPSCALE submits the selected checkpoint directly. ComfyUI validates
+        # nodes/weights when accepting the prompt; no inventory probe per render.
+        if required and stage != "UPSCALE":
             http = await client.get_http_client()
             response = await http.get(client.http_base + "/object_info", timeout=10)
             response.raise_for_status()

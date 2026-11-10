@@ -40,6 +40,9 @@ class ModelConfig(BaseModel):
     handler: str = Field(default="standard", description="Handler identifier: flux2_reference_chain, latentsync_lipsync, etc.")
     default_steps: Optional[int] = Field(default=20, description="Default sampling steps if not provided in request")
     default_cfg: Optional[float] = Field(default=1.0, description="Default CFG scale")
+    # Exact filename from the deployed H3 node inventory; override per model in YAML.
+    default_upscale_model: str = Field(default="minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors", min_length=1,
+                                      description="Default H3 latent upscaler checkpoint for automatic second-pass enhancement")
     mappings: Dict[str, List[str]] = Field(
         default_factory=dict,
         description="Mapping of parameter names to [NodeID, key1, key2...]"

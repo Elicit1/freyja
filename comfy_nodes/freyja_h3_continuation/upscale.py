@@ -9,7 +9,6 @@ import inspect
 from functools import partial
 
 import torch
-import torch.nn.functional as F
 from comfy.nested_tensor import NestedTensor
 
 
@@ -21,16 +20,6 @@ def av(latent):
     if len(parts) != 2 or parts[0].ndim != 5 or parts[1].ndim != 4 or parts[0].shape[:2] != (1, 24) or parts[1].shape[:3] != (1, 32, 2):
         raise ValueError("FREYJA_UPSCALE_AV_LAYOUT_INVALID")
     return parts
-
-
-def resized_video(video, height, width):
-    """CPU, spatial-only resizing. No temporal interpolation or giant RGB canvas."""
-    b, c, t, _, _ = video.shape
-    output = torch.empty((b, c, t, height, width), dtype=video.dtype, device="cpu")
-    for index in range(t):
-        output[:, :, index] = F.interpolate(video[:, :, index].float().cpu(), size=(height, width),
-                                            mode="bicubic", align_corners=False).to(video.dtype)
-    return output
 
 
 class FreyjaH3UpscaleEncode:
@@ -52,21 +41,6 @@ class FreyjaH3UpscaleEncode:
         if encoded.ndim != 5 or encoded.shape[:3] != template.shape[:3]:
             raise ValueError("FREYJA_UPSCALE_ENCODE_LAYOUT_INVALID")
         return ({"samples": NestedTensor((encoded.cpu(), audio.cpu()))},)
-
-
-class FreyjaH3LatentResize:
-    RETURN_TYPES = ("LATENT",)
-    FUNCTION = "apply"
-    CATEGORY = "FREYJA/H3"
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {"required": {"latent": ("LATENT",), "width": ("INT", {"min": 32, "step": 32}),
-                             "height": ("INT", {"min": 32, "step": 32})}}
-    def apply(self, latent, width, height):
-        if width % 32 or height % 32 or width * height > 4194304:
-            raise ValueError("FREYJA_UPSCALE_TARGET_INVALID")
-        video, audio = av(latent)
-        return ({"samples": NestedTensor((resized_video(video, height // 16, width // 16), audio.cpu()))},)
 
 
 class FreyjaH3LoadLatent:
@@ -265,4 +239,4 @@ class FreyjaH3TileModel:
         return (out,)
 
 
-CLASSES = (FreyjaH3UpscaleEncode, FreyjaH3LoadLatent, FreyjaH3LatentResize, FreyjaH3FinishSize, FreyjaH3TileModel)
+CLASSES = (FreyjaH3UpscaleEncode, FreyjaH3LoadLatent, FreyjaH3FinishSize, FreyjaH3TileModel)

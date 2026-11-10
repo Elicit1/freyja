@@ -5,8 +5,9 @@ export interface WorkflowOptions { upscale: boolean; faceRepair: boolean; scale:
 export interface WorkflowSelection { options?: WorkflowOptions; reusePrevious?: boolean; reuseFromTaskId?: string }
 export interface WorkflowCapability { modelCode: string; nodeId: string; supported: boolean; legacyFixedFace: boolean; revision?: string; stages: string[]; maxTargetPixels: number; upscaleTiling?: { supported: boolean; node: string; apiVersion: string }; freyjaUpscale?: { supported: boolean; version: number; maxSteps: number; nativeLatentInput?: boolean } }
 export const defaultUpscaleTiling = (): UpscaleTilingOptions => ({ enabled: false, tileWidth: 768, tileHeight: 512, overlap: 192, temporal: false, windowFrames: 56, overlapFrames: 22 })
-export const defaultWorkflowOptions = (): WorkflowOptions => ({ upscale: false, faceRepair: false, scale: 2, upscaleDenoise: .25, faceDenoise: .4, upscaleTiling: defaultUpscaleTiling(), upscaleEngine: 'FREYJA', upscaleMethod: 'LATENT_BICUBIC', upscaleOutput: 'FULL_HD', upscaleSteps: 2, upscaleMemory: 'TEMPORAL' })
-export const normalizeWorkflowOptions = (options: Partial<WorkflowOptions>): WorkflowOptions => ({ ...defaultWorkflowOptions(), ...options, upscaleEngine: options.upscaleEngine || 'PIXEL', upscaleOutput: options.upscaleOutput || 'DOUBLE', upscaleTiling: { ...defaultUpscaleTiling(), ...options.upscaleTiling } })
+export const defaultWorkflowOptions = (): WorkflowOptions => ({ upscale: false, faceRepair: false, scale: 2, upscaleDenoise: .25, faceDenoise: .4, upscaleTiling: defaultUpscaleTiling(), upscaleEngine: 'FREYJA', upscaleMethod: 'H3_LEARNED', upscaleOutput: 'FULL_HD', upscaleSteps: 2, upscaleMemory: 'TEMPORAL' })
+// This normalizes editable choices only; persisted task snapshots stay immutable.
+export const normalizeWorkflowOptions = (options: Partial<WorkflowOptions>): WorkflowOptions => ({ ...defaultWorkflowOptions(), ...options, upscaleEngine: 'FREYJA', upscaleMethod: 'H3_LEARNED', upscaleOutput: options.upscaleOutput || 'DOUBLE', upscaleTiling: { ...defaultUpscaleTiling(), ...options.upscaleTiling, enabled: false } })
 type CapabilityCatalog = { models: WorkflowCapability[] }
 export interface ContinuationEnhancementSummary {
   supported: boolean; reason?: string; shotId?: string; providerId?: string; modelCode?: string; options?: WorkflowOptions
@@ -31,7 +32,6 @@ function capabilities(providerId: string, refresh = false): Promise<CapabilityCa
   return pendingRequest
 }
 export const videoEnhancementApi = {
-  upscaleModels: (providerId: string, modelCode: string, nodeId: string) => request<{ modelCode: string; nodeId: string; models: string[] }>({ url: '/production/video-enhancements/upscale-models', method: 'get', params: { providerId, modelCode, nodeId }, timeout: 20000 }),
   segments: (taskId: string) => request<ContinuationEnhancementSummary>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/segments`, method: 'get' }),
   replaceSegments: (taskId: string, segmentIds: string[], options: WorkflowOptions, requestId: string) => request<{ taskId: string }>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/segments/upscale`, method: 'post', data: { segmentIds, options, requestId }, timeout: 120000 }),
   capabilities,

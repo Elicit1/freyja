@@ -54,16 +54,6 @@ class ContinuationCpuTest(unittest.TestCase):
             for width,height,frames in ((32,32,22),(64,64,22),(64,32,39)):
                 with self.assertRaisesRegex(ValueError,'SOURCE_LAYOUT_MISMATCH'):FreyjaH3LoadLatent().apply('base.safetensors','same-model',width,height,frames)
 
-    def test_latent_upscale_never_interpolates_time_or_modifies_audio(self):
-        from freyja_nodes.upscale import FreyjaH3LatentResize
-        video=torch.stack([torch.full((1,24,2,2),float(n)) for n in range(7)],dim=2)
-        sound=torch.arange(32*2*37,dtype=torch.float32).reshape(1,32,2,37)
-        out=FreyjaH3LatentResize().apply({'samples':Nested((video,sound))},64,32)[0]
-        v,a=out['samples'].unbind()
-        self.assertEqual((1,24,7,2,4),tuple(v.shape));self.assertTrue(torch.equal(a,sound))
-        for n in range(7):self.assertTrue(torch.allclose(v[:,:,n],torch.full_like(v[:,:,n],float(n))))
-        self.assertEqual((1,24,7,2,2),tuple(video.shape))
-
     def test_source_encode_uses_original_size_and_validates_temporal_grid(self):
         from freyja_nodes.upscale import FreyjaH3UpscaleEncode
         calls=[]

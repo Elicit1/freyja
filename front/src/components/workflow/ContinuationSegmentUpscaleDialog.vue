@@ -43,7 +43,7 @@
         <section class="parameter-settings" aria-label="本次二采参数">
           <div class="section-heading"><h3>二采参数</h3><small>统一应用于选中的 {{ selected.length }} 个片段</small></div>
           <div class="denoise-row"><span>重绘强度</span><el-input-number v-model="options.upscaleDenoise" aria-label="重绘强度" :min="0.05" :max="0.6" :step="0.05" :precision="2" :disabled="locked" /><p>数值越高，重绘变化越明显；出现双轮廓时可先降低。</p></div>
-          <FreyjaUpscaleOptions v-model="options" :capability="capability?.freyjaUpscale" :provider-id="summary.providerId" :model-code="summary.modelCode" :node-id="capability?.nodeId" :disabled="locked" preserve-size />
+          <FreyjaUpscaleOptions v-model="options" :capability="capability?.freyjaUpscale" :disabled="locked" preserve-size />
           <p>保留原始动作接续、裁切范围和输出尺寸；各片段已开启的人脸修复会在二采后继续执行。</p>
         </section>
       </template>

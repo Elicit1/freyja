@@ -33,16 +33,11 @@ class UpscaleTiling(BaseModel):
 class FreyjaUpscale(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: Literal[1] = 1
-    method: Literal["LATENT_BICUBIC", "H3_LEARNED"] = "LATENT_BICUBIC"
+    method: Literal["H3_LEARNED"] = "H3_LEARNED"
     latent_model: Optional[str] = None
     steps: int = Field(default=2, ge=1, le=32, strict=True)
     memory: Literal["FULL", "TEMPORAL", "SPATIAL"] = "TEMPORAL"
     tiles: UpscaleTiling = Field(default_factory=UpscaleTiling)
-    @model_validator(mode="after")
-    def weight_required(self):
-        if self.method == "H3_LEARNED" and (not self.latent_model or not self.latent_model.strip()):
-            raise ValueError("DYNAMIC_H3_LATENT_MODEL_REQUIRED")
-        return self
 
 
 class DynamicStage(BaseModel):
@@ -87,7 +82,7 @@ class DynamicStage(BaseModel):
 
 SUPPORTED_HANDLERS = {"minimax_h3_ref2va"}
 MODULE = Path(__file__).parent / "workflow_modules/h3_face_v1.json"
-COMPONENT_NODES = ["FreyjaH3UpscaleEncode", "FreyjaH3LatentResize", "FreyjaH3FinishSize"]
+COMPONENT_NODES = ["FreyjaH3UpscaleEncode", "LatentUpscaleModelLoader", "MiniMaxH3LatentUpscaleWithModel", "FreyjaH3FinishSize"]
 
 
 def stage_nodes(stage, capability):
@@ -101,7 +96,6 @@ def stage_nodes(stage, capability):
             required.add("FreyjaH3LoadLatent")
         if stage.component.memory == "SPATIAL": required.add("FreyjaH3TileModel")
         if stage.component.memory == "TEMPORAL": required.add("MiniMaxH3ContextWindows")
-        if stage.component.method == "H3_LEARNED": required.update(("LatentUpscaleModelLoader", "MiniMaxH3LatentUpscaleWithModel"))
     if stage.output_width is not None: required.add("FreyjaH3FinishSize")
     return required
 
@@ -122,9 +116,6 @@ def validate_stage_nodes(stage, capability, nodes):
     if missing:
         raise ValueError("DYNAMIC_NODES_MISSING: " + ", ".join(sorted(missing))
                          + "；请安装或更新算力节点上对应的节点包，待队列空闲后重启 ComfyUI。FREYJA 节点包目录：custom_nodes/freyja_h3_continuation。")
-    if stage.component and stage.component.method == "H3_LEARNED":
-        if stage.component.latent_model not in installed_latent_models(nodes):
-            raise ValueError("DYNAMIC_H3_LATENT_MODEL_NOT_INSTALLED")
 
 
 def describe(model, base_dir):
@@ -136,7 +127,7 @@ def describe(model, base_dir):
             path = base_dir / path
         digest = hashlib.sha256(path.read_bytes() + Path(__file__).read_bytes() + MODULE.read_bytes())
         digest.update(json.dumps({"bindings": model.h3_extensions, "mappings": model.mappings,
-                                  "steps": model.default_steps}, sort_keys=True).encode())
+                                  "steps": model.default_steps, "upscaleModel": model.default_upscale_model}, sort_keys=True).encode())
         revision = digest.hexdigest()
     return {"modelCode": model.model_name, "nodeId": model.node_id, "supported": supported,
             "legacyFixedFace": model.handler == "minimax_h3_face_refine", "revision": revision,
@@ -147,7 +138,8 @@ def describe(model, base_dir):
                               "overlapMin": 32, "overlapMax": 512, "temporal": True},
             "freyjaUpscale": {"supported": supported, "version": 1,
                               "nativeLatentInput": supported,
-                              "methods": ["LATENT_BICUBIC", "H3_LEARNED"], "memoryModes": ["FULL", "TEMPORAL", "SPATIAL"],
+                              "defaultLatentModel": model.default_upscale_model,
+                              "methods": ["H3_LEARNED"], "memoryModes": ["FULL", "TEMPORAL", "SPATIAL"],
                               "outputs": ["DOUBLE", "FULL_HD"], "maxSteps": model.default_steps},
             "requiredNodes": {"UPSCALE": ["VHS_LoadVideo", "ImageScale", "H3InjectVideoLatent", "FreyjaH3CheckFrames"],
                               "FACE": ["VHS_LoadVideo", "H3FaceTrackCrop", "H3InjectVideoLatent",
@@ -244,13 +236,10 @@ def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=
             else:
                 workflow["dynamic_encode"] = {"class_type": "FreyjaH3UpscaleEncode", "inputs": {
                     "images": images, "vae": vae, "av_template": [cond_id, 1]}}
-            if component.method == "H3_LEARNED":
-                workflow["dynamic_upscale_model"] = {"class_type": "LatentUpscaleModelLoader", "inputs": {"model_name": component.latent_model}}
-                workflow["dynamic_lift"] = {"class_type": "MiniMaxH3LatentUpscaleWithModel", "inputs": {
-                    "model": ["dynamic_upscale_model", 0], "samples": ["dynamic_encode", 0], "width": width, "height": height}}
-            else:
-                workflow["dynamic_lift"] = {"class_type": "FreyjaH3LatentResize", "inputs": {
-                    "latent": ["dynamic_encode", 0], "width": width, "height": height}}
+            workflow["dynamic_upscale_model"] = {"class_type": "LatentUpscaleModelLoader", "inputs": {
+                "model_name": component.latent_model or model.default_upscale_model}}
+            workflow["dynamic_lift"] = {"class_type": "MiniMaxH3LatentUpscaleWithModel", "inputs": {
+                "model": ["dynamic_upscale_model", 0], "samples": ["dynamic_encode", 0], "width": width, "height": height}}
             sampler["inputs"]["latent_image"] = ["dynamic_lift", 0]
             final_model = model_link
             if component.memory == "SPATIAL":

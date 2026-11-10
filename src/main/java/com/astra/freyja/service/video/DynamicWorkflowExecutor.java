@@ -57,7 +57,8 @@ public class DynamicWorkflowExecutor {
             if("UPSCALE".equals(stage)&&"FREYJA".equals(plan.getOptions().getUpscaleEngine())){
                 var component=new LinkedHashMap<String,Object>();
                 component.put("version",1);component.put("method",plan.getOptions().getUpscaleMethod());
-                if("H3_LEARNED".equals(plan.getOptions().getUpscaleMethod()))component.put("latent_model",plan.getOptions().getUpscaleLatentModel());
+                if("H3_LEARNED".equals(plan.getOptions().getUpscaleMethod())&&plan.getOptions().getUpscaleLatentModel()!=null
+                        &&!plan.getOptions().getUpscaleLatentModel().isBlank())component.put("latent_model",plan.getOptions().getUpscaleLatentModel());
                 component.put("steps",plan.getOptions().getUpscaleSteps());component.put("memory",plan.getOptions().getUpscaleMemory());
                 component.put("tiles",Map.of("tile_width",tiling.getTileWidth(),"tile_height",tiling.getTileHeight(),"overlap",tiling.getOverlap(),
                         "window_frames",tiling.getWindowFrames(),"overlap_frames",tiling.getOverlapFrames()));

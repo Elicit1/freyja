@@ -14,7 +14,7 @@ public class DynamicWorkflowOptions {
     private UpscaleTiling upscaleTiling = new UpscaleTiling();
     // Missing fields in historical tasks keep their original pixel-stage semantics.
     private String upscaleEngine = "PIXEL";
-    private String upscaleMethod = "LATENT_BICUBIC";
+    private String upscaleMethod = "H3_LEARNED";
     private String upscaleLatentModel;
     private String upscaleOutput = "DOUBLE";
     private int upscaleSteps = 2;
@@ -33,8 +33,8 @@ public class DynamicWorkflowOptions {
                 ||upscaleSteps<1||upscaleSteps>32)throw new BizException(400,"FREYJA 二采组件参数无效");
         if("PIXEL".equals(upscaleEngine)&&(upscaleTiling.isEnabled()||!"DOUBLE".equals(upscaleOutput)))
             throw new BizException(400,"旧分块插件已移除，请选择 FREYJA 二采组件后重新保存");
-        if("FREYJA".equals(upscaleEngine)&&"H3_LEARNED".equals(upscaleMethod)
-                &&(upscaleLatentModel==null||upscaleLatentModel.isBlank()))throw new BizException(400,"请从当前节点的已安装列表中选择放大模型，或改用内置放大");
+        if(upscale&&"FREYJA".equals(upscaleEngine)&&!"H3_LEARNED".equals(upscaleMethod))
+            throw new BizException(400,"内置放大已移除，请重新提交以使用默认专用放大模型");
     }
     @Data public static class UpscaleTiling {
         private boolean enabled;

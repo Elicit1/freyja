@@ -87,7 +87,8 @@ class DynamicWorkflowTests(unittest.TestCase):
         self.assertNotIn("dynamic_scale", graph)
         self.assertNotIn("dynamic_inject", graph)
         self.assertEqual("FreyjaH3UpscaleEncode", graph["dynamic_encode"]["class_type"])
-        self.assertEqual("FreyjaH3LatentResize", graph["dynamic_lift"]["class_type"])
+        self.assertEqual("MiniMaxH3LatentUpscaleWithModel", graph["dynamic_lift"]["class_type"])
+        self.assertEqual(model.default_upscale_model, graph["dynamic_upscale_model"]["inputs"]["model_name"])
         self.assertEqual("MiniMaxH3ContextWindows", graph["dynamic_windows"]["class_type"])
         self.assertEqual(2, graph["124"]["inputs"]["steps"])
         self.assertFalse(graph["dynamic_windows"]["inputs"]["freenoise"])
@@ -108,7 +109,7 @@ class DynamicWorkflowTests(unittest.TestCase):
         del nodes["FreyjaH3TileModel"]
         with self.assertRaisesRegex(ValueError,"DYNAMIC_NODES_MISSING"):validate_stage_nodes(request.dynamic_workflow,cap,nodes)
 
-    def test_learned_lift_checks_installed_weight_and_exact_1080_output(self):
+    def test_learned_lift_preserves_explicit_weight_and_exact_1080_output(self):
         model, request, graph=self.graph("UPSCALE",component={"method":"H3_LEARNED","latent_model":"h3.safetensors"},output_width=1920,output_height=1080)
         self.assertEqual("MiniMaxH3LatentUpscaleWithModel",graph["dynamic_lift"]["class_type"])
         self.assertEqual("FreyjaH3FinishSize",graph["dynamic_finish"]["class_type"])
@@ -117,28 +118,28 @@ class DynamicWorkflowTests(unittest.TestCase):
         nodes["LatentUpscaleModelLoader"]={"input":{"required":{"model_name":[["h3.safetensors"]]}}}
         validate_stage_nodes(request.dynamic_workflow,cap,nodes)
         nodes["LatentUpscaleModelLoader"]["input"]["required"]["model_name"]=[["other.safetensors"]]
-        with self.assertRaisesRegex(ValueError,"NOT_INSTALLED"):validate_stage_nodes(request.dynamic_workflow,cap,nodes)
+        validate_stage_nodes(request.dynamic_workflow,cap,nodes)
 
-    def test_learned_weight_inventory_accepts_core_v3_combo_and_rejects_missing_weight(self):
-        model, request, _ = self.graph("UPSCALE", component={"method":"H3_LEARNED","latent_model":"h3.safetensors"})
-        cap = describe(model, BASE)
-        nodes = {name:{} for name in stage_nodes(request.dynamic_workflow, cap)}
-        field = ["COMBO", {"options":["h3.safetensors"]}]
-        nodes["LatentUpscaleModelLoader"] = {"input":{"required":{"model_name":field}}}
-        validate_stage_nodes(request.dynamic_workflow, cap, nodes)
-        for invalid in (["COMBO", {"options":["other.safetensors"]}], ["COMBO", {}], [],
-                        ["COMBO", {"options":"h3.safetensors"}]):
-            with self.subTest(field=invalid):
-                nodes["LatentUpscaleModelLoader"]["input"]["required"]["model_name"] = invalid
-                with self.assertRaisesRegex(ValueError, "NOT_INSTALLED"):
-                    validate_stage_nodes(request.dynamic_workflow, cap, nodes)
+    def test_automatic_upscale_uses_configured_default_and_tracks_config_changes(self):
+        model, cfg = setup_model()
+        original_revision = describe(model, BASE)["revision"]
+        model.default_upscale_model = "configured.safetensors"
+        capability = describe(model, BASE)
+        self.assertNotEqual(original_revision, capability["revision"])
+        self.assertEqual(["H3_LEARNED"], capability["freyjaUpscale"]["methods"])
+        request = ImageGenerationRequest(model=model.model_name, prompt="test", size="1920x1088", length=124,
+            dynamic_workflow={"stage":"UPSCALE", "revision":capability["revision"],
+                "source_url":"http://minio/source.mp4", "source_sha256":"a"*64, "scale":2, "component":{}})
+        graph = WorkflowEngine(cfg).assemble_workflow(request, dynamic_source_filename="source.mp4")
+        self.assertEqual("configured.safetensors", graph["dynamic_upscale_model"]["inputs"]["model_name"])
+        self.assertFalse(any(n["class_type"] == "FreyjaH3LatentResize" for n in graph.values()))
 
     def test_reject_removed_external_tiles_bad_windows_and_forged_crop(self):
         for bad in ({"tile_width":255},{"tile_height":513},{"overlap":512},{"window_frames":55},{"overlap_frames":56}):
             with self.subTest(bad=bad),self.assertRaises(ValidationError):UpscaleTiling(**bad)
         with self.assertRaisesRegex(ValidationError,"EXTERNAL_TILING_REMOVED"):self.graph("UPSCALE",tiling={})
         with self.assertRaisesRegex(ValidationError,"COMPONENT_UPSCALE_ONLY"):self.graph("BASE",component={})
-        with self.assertRaisesRegex(ValidationError,"MODEL_REQUIRED"):self.graph("UPSCALE",component={"method":"H3_LEARNED"})
+        with self.assertRaises(ValidationError):self.graph("UPSCALE",component={"method":"LATENT_BICUBIC"})
         with self.assertRaisesRegex(ValueError,"CROP_INVALID"):self.graph("UPSCALE",component={},output_width=1280,output_height=720)
         with self.assertRaisesRegex(ValueError,"STEPS_EXCEED"):self.graph("UPSCALE",component={"steps":32})
 
@@ -220,6 +221,28 @@ class DynamicWorkflowTests(unittest.TestCase):
 
 
 class DynamicSubmissionSafetyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_upscale_submits_default_model_without_node_or_weight_inventory_probe(self):
+        import main
+        from unittest.mock import Mock
+        model, cfg = setup_model()
+        request = ImageGenerationRequest(model=model.model_name, prompt="test", size="1920x1088", length=124,
+            dynamic_workflow={"stage":"UPSCALE", "revision":describe(model, BASE)["revision"],
+                "source_url":"http://minio/source.mp4", "source_sha256":"a"*64, "scale":2, "component":{}})
+        client = Mock(http_base="http://compute")
+        client.get_http_client = AsyncMock(side_effect=AssertionError("Inventory must not be read"))
+        client.submit_prompt = AsyncMock(side_effect=ValueError("RENDER_REACHED"))
+        pool = Mock(); pool.get_client_for_node = AsyncMock(return_value=client)
+        http = Request({"type":"http", "method":"POST", "path":"/v1/images/generations", "headers":[]})
+        with patch.object(main, "config", cfg), patch.object(main, "get_client_pool", return_value=pool), \
+             patch.object(main, "get_workflow_engine", return_value=WorkflowEngine(cfg)), \
+             patch.object(main, "upload_reference_video", new=AsyncMock(return_value={"filename":"source.mp4"})):
+            with self.assertRaisesRegex(ValueError, "RENDER_REACHED"):
+                await main._generate_images(request, http)
+        client.get_http_client.assert_not_awaited()
+        client.submit_prompt.assert_awaited_once()
+        graph = client.submit_prompt.call_args.args[0]
+        self.assertEqual(model.default_upscale_model, graph["dynamic_upscale_model"]["inputs"]["model_name"])
+
     async def test_preparation_failure_is_confirmed_before_submission_but_not_after(self):
         from main import generate_images
         request = ImageGenerationRequest(prompt="test", dynamic_workflow={"revision":"x"})
