@@ -34,7 +34,7 @@ public class DynamicWorkflowOptions {
         if("PIXEL".equals(upscaleEngine)&&(upscaleTiling.isEnabled()||!"DOUBLE".equals(upscaleOutput)))
             throw new BizException(400,"旧分块插件已移除，请选择 FREYJA 二采组件后重新保存");
         if("FREYJA".equals(upscaleEngine)&&"H3_LEARNED".equals(upscaleMethod)
-                &&(upscaleLatentModel==null||upscaleLatentModel.isBlank()))throw new BizException(400,"请选择 H3 latent 放大模型文件");
+                &&(upscaleLatentModel==null||upscaleLatentModel.isBlank()))throw new BizException(400,"请从当前节点的已安装列表中选择放大模型，或改用内置放大");
     }
     @Data public static class UpscaleTiling {
         private boolean enabled;

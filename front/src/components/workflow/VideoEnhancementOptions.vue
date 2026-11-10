@@ -16,7 +16,7 @@
           <label v-if="options.upscale">放大重绘强度<el-input-number :model-value="options.upscaleDenoise" :min="0.05" :max="0.6" :step="0.05" :precision="2" :disabled="disabled" @update:model-value="patch('upscaleDenoise', $event ?? .25)" /></label>
           <label v-if="options.faceRepair">人脸重绘强度<el-input-number :model-value="options.faceDenoise" :min="0.05" :max="0.6" :step="0.05" :precision="2" :disabled="disabled" @update:model-value="patch('faceDenoise', $event ?? .4)" /></label>
         </div>
-        <FreyjaUpscaleOptions v-if="options.upscale" :model-value="options" :capability="capability?.freyjaUpscale" :disabled="disabled" @update:model-value="update" />
+        <FreyjaUpscaleOptions v-if="options.upscale" :model-value="options" :capability="capability?.freyjaUpscale" :provider-id="providerId" :model-code="modelCode" :node-id="capability?.nodeId" :disabled="disabled" @update:model-value="update" />
       </el-collapse-item></el-collapse>
       <p>提交后按开关自动追加处理。接续时，每段分别增强，下一段仍使用基础视频和原始 latent。</p>
     </template>

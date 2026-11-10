@@ -28,10 +28,20 @@
 这仍是完成一采后的独立增强，保留分阶段持久化、复用和恢复；不是 TimelineDirector 的同一采样进程 6+2，也没有减少一采原来的步数。原生输入的摘要包含 latent SHA-256 和来源尺寸，不包含有时效的签名 URL。
 
 - `upscaleEngine`: `FREYJA`；旧 `PIXEL` 用于兼容已有任务。
-- `upscaleMethod`: `LATENT_BICUBIC`（FREYJA 在 CPU 逐 latent 时间位置插值，不改变时间轴，不需附加权重），或 `H3_LEARNED`（ComfyUI 原生 `LatentUpscaleModelLoader`、`MiniMaxH3LatentUpscaleWithModel`，需要在 `upscaleLatentModel` 显式填入已安装的兼容 H3 权重文件名）。不根据文件名猜测模型架构，不自动下载权重，不能使用 LTX 放大权重冒充 H3。
+- `upscaleMethod`: `LATENT_BICUBIC`（界面显示「内置放大」，无需安装额外模型），或 `H3_LEARNED`（「使用已安装的放大模型」）。界面通过 `GET /production/video-enhancements/upscale-models?providerId=...&modelCode=...&nodeId=...` 读取当前节点列表，下拉选择后将精确名称写入 `upscaleLatentModel`；只有一个模型且没有已有选择时自动选中。没有模型或节点离线时提示使用内置放大，不要求用户手填文件名，不覆盖历史选择。管理员负责安装与 H3 兼容的权重；列表来自节点 schema，不根据文件名猜测架构或自动下载权重。
 - `upscaleOutput`: `FULL_HD` 或 `DOUBLE`。FULL_HD 要求近 16:9/9:16，横屏采样 1920×1088、成片 1920×1080；竖屏采样 1088×1920、成片 1080×1920。若后面还有修脸，放大阶段保留完整采样尺寸，最后修脸阶段才裁切，Take 记录真实成片尺寸。
 - `upscaleSteps`: 默认 2，至少 1 且不能超过模型登记的采样步数。沿用模型的 sampler 和 scheduler；该参数只改变二采，少步数不保证更低的峰值显存或更好画质。
 - `upscaleMemory`: `TEMPORAL`（ComfyUI 原生 `MiniMaxH3ContextWindows`，默认 56 帧窗口/22 帧重叠，关闭 FreeNoise 重排）、`SPATIAL`（FREYJA 自定义二维空间块，实验性）或 `FULL`。第一版空间分块与时间分窗互斥，不能同时开启。
+
+界面在每个显存选项旁展示用途和代价，窗口、分块大小收在「高级显存参数」中，默认不展开：
+
+| 选项 | 适用情况 | 代价 |
+| --- | --- | --- |
+| 按时间分窗（推荐） | 较长视频，一次处理较短的时间范围 | 可能影响运动连续性 |
+| 按画面分块（实验） | 高分辨率时显存不足，一次处理画面的一部分 | 可能更慢或出现接缝 |
+| 完整处理 | 显存充足，或用于对比排查分窗、分块问题 | 整个片段与画面同时处理，显存压力最大 |
+
+这些是处理方式，不是显存容量保证；模型权重、分辨率和视频长度仍决定实际峰值。保持原来的默认值，不自动改变已保存任务的执行方式。
 
 空间分块参数沿用 `upscaleTiling.tileWidth/tileHeight/overlap`：默认 768/512/192 像素。宽高 256–2048、重叠 32–512，均为 32 倍数，重叠小于块宽高。它在每次模型前向处理重叠 latent 区域并融合预测，不是独立生成每块成品再拼接。保持全局位置编码、完整参考和音频；融合累加器在 CPU。准备采样时按块预算计入完整 AV 缓冲和参考条件。不支持 ControlNet 或其他模块抢占 mask；该组件只接独立增强模型，不改变接续 BASE 的遮罩。分块仍可能有接缝、外观改变或 OOM；16GB 尚未做 GPU 验证。
 

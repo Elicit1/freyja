@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 from starlette.requests import Request
 from pydantic import ValidationError
-from dynamic_workflow import DynamicStage, UpscaleTiling, describe, validate_stage_nodes, stage_nodes, require_stage
+from dynamic_workflow import DynamicStage, UpscaleTiling, describe, validate_stage_nodes, stage_nodes, require_stage, installed_latent_models
 from schemas import ImageGenerationRequest
 from test_video_reference import setup_model, BASE
 from test_continuation_modes import assert_acyclic
@@ -13,6 +13,15 @@ from video_reference import workflow_revision
 
 
 class DynamicWorkflowTests(unittest.TestCase):
+    def test_model_choices_come_from_the_installed_node_schema(self):
+        for field in ([["h3.safetensors", "h3.safetensors", "", None]],
+                      ["COMBO", {"options": ["h3.safetensors"]}]):
+            nodes = {"MiniMaxH3LatentUpscaleWithModel": {}, "LatentUpscaleModelLoader": {
+                "input": {"required": {"model_name": field}}}}
+            self.assertEqual(installed_latent_models(nodes), ["h3.safetensors"])
+            del nodes["MiniMaxH3LatentUpscaleWithModel"]
+            self.assertEqual(installed_latent_models(nodes), [])
+
     def graph(self, stage, model_name="minimax-h3-ref-turbo8", **kwargs):
         model, cfg = setup_model(model_name)
         if model.handler == "minimax_h3_fl2va":

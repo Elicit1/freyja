@@ -9,12 +9,12 @@
         </el-select>
         <video v-if="selected" :src="selected.videoUrl" controls preload="metadata" class="segment-preview" />
         <label>重绘强度 <el-input-number v-model="options.upscaleDenoise" :min="0.05" :max="0.6" :step="0.05" :precision="2" :disabled="submitting" /></label>
-        <FreyjaUpscaleOptions v-model="options" :capability="capability" :disabled="submitting" preserve-size />
-        <p>直接复用归档的一采 latent。若二采出现双轮廓，可先降低重绘强度，再在显存允许时用「整段整帧采样」做对照。完整视频的输出尺寸保持一致。</p>
+        <FreyjaUpscaleOptions v-model="options" :capability="capability?.freyjaUpscale" :provider-id="summary.providerId" :model-code="summary.modelCode" :node-id="capability?.nodeId" :disabled="submitting" preserve-size />
+        <p>复用原始生成数据。若增强后出现双轮廓，可先降低重绘强度，再在显存允许时用「完整处理」做对照。完整视频的输出尺寸保持一致。</p>
       </template>
       <p v-else-if="summary">{{ summary.reason }}</p>
     </div>
-    <template #footer><el-button :disabled="submitting" @click="visible = false">关闭</el-button><el-button type="primary" :loading="submitting" :disabled="loading || !selected || !capability?.supported" @click="submit">重跑此片段二采并重新合成</el-button></template>
+    <template #footer><el-button :disabled="submitting" @click="visible = false">关闭</el-button><el-button type="primary" :loading="submitting" :disabled="loading || !selected || !capability?.freyjaUpscale?.supported" @click="submit">重跑此片段二采并重新合成</el-button></template>
   </el-dialog>
 </template>
 <script setup lang="ts">
@@ -23,7 +23,7 @@ import { ElMessage } from 'element-plus'
 import { videoEnhancementApi, defaultWorkflowOptions, normalizeWorkflowOptions, type ContinuationEnhancementSummary, type WorkflowCapability } from '@/api/video-enhancements'
 import FreyjaUpscaleOptions from './FreyjaUpscaleOptions.vue'
 const visible = ref(false), loading = ref(false), submitting = ref(false), error = ref(''), taskId = ref(''), segmentId = ref('')
-const summary = ref<ContinuationEnhancementSummary>(), options = ref(defaultWorkflowOptions()), capability = ref<WorkflowCapability['freyjaUpscale']>()
+const summary = ref<ContinuationEnhancementSummary>(), options = ref(defaultWorkflowOptions()), capability = ref<WorkflowCapability>()
 const selected = computed(() => summary.value?.segments.find(segment => segment.id === segmentId.value && segment.allowed))
 watch(segmentId, () => { if (selected.value) options.value = { ...normalizeWorkflowOptions(selected.value.options || summary.value?.options || {}), upscaleEngine: 'FREYJA' } })
 let requestId = '', submittedBody = '', revision = 0
@@ -39,8 +39,8 @@ async function open(task: string) {
     segmentId.value = result.segments.find(segment => segment.allowed)?.id || ''
     const catalog = await videoEnhancementApi.capabilities(result.providerId!, true)
     if (token !== revision) return
-    capability.value = catalog.models.find(model => model.modelCode === result.modelCode && model.supported)?.freyjaUpscale
-    if (!capability.value?.nativeLatentInput) { capability.value = undefined; error.value = '当前网关未提供原始 latent 二采，请先更新网关和算力节点。' }
+    capability.value = catalog.models.find(model => model.modelCode === result.modelCode && model.supported)
+    if (!capability.value?.freyjaUpscale?.nativeLatentInput) { capability.value = undefined; error.value = '当前网关未提供原始 latent 二采，请先更新网关和算力节点。' }
   } catch (e: any) { if (token === revision) error.value = e.message || '无法读取片段' }
   finally { if (token === revision) loading.value = false }
 }

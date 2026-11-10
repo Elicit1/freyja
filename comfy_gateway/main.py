@@ -686,6 +686,26 @@ async def model_capabilities(model_code: str, node_id: Optional[str] = None):
             "referenceVideo": public, "healthy": healthy,"h3":h3_public}
 
 
+@app.get("/v1/models/{model_code}/upscale-models")
+async def upscale_models(model_code: str, node_id: str):
+    from dynamic_workflow import describe, installed_latent_models
+    model = config.get_exact_model(model_code, node_id)
+    if not model or not describe(model, get_base_dir())["supported"]:
+        raise HTTPException(status_code=404, detail="Model does not support H3 enhancements on this node")
+    node = config.get_node(node_id)
+    if not node or not node.enabled:
+        raise HTTPException(status_code=503, detail="Compute node is unavailable")
+    try:
+        client = await get_client_pool().get_client_for_node(node)
+        http = await client.get_http_client()
+        response = await http.get(client.http_base + "/object_info", timeout=5)
+        response.raise_for_status()
+        models = installed_latent_models(response.json())
+    except Exception as error:
+        raise HTTPException(status_code=503, detail="Could not read installed upscale models") from error
+    return {"modelCode": model_code, "nodeId": node_id, "models": models}
+
+
 async def _execute_cancel(
     task_id: Optional[str] = None,
     shot_id: Optional[str] = None,

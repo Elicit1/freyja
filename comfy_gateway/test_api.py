@@ -93,6 +93,27 @@ class TestGatewayAPI(unittest.TestCase):
         self.assertIn("minimax-h3-ref-turbo8-face-refine", model_ids)
         self.assertIn("minimax-h3-ref2va", model_ids)
 
+    def test_upscale_model_inventory_is_read_from_the_selected_node(self):
+        http = Mock(); response = Mock()
+        response.json.return_value = {"MiniMaxH3LatentUpscaleWithModel": {}, "LatentUpscaleModelLoader": {
+            "input": {"required": {"model_name": ["COMBO", {"options": ["installed.safetensors"]}]}}}}
+        http.get = AsyncMock(return_value=response)
+        client = Mock(http_base="http://selected-node"); client.get_http_client = AsyncMock(return_value=http)
+        pool = Mock(); pool.get_client_for_node = AsyncMock(return_value=client)
+        with patch("main.get_client_pool", return_value=pool):
+            result = self.client.get("/v1/models/minimax-h3-ref-turbo8/upscale-models", params={"node_id": "default"})
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.json(), {"modelCode": "minimax-h3-ref-turbo8", "nodeId": "default", "models": ["installed.safetensors"]})
+            http.get.assert_awaited_once_with("http://selected-node/object_info", timeout=5)
+            client.submit_prompt.assert_not_called()
+            pool.get_client_for_node.reset_mock()
+            invalid = self.client.get("/v1/models/minimax-h3-ref-turbo8/upscale-models", params={"node_id": "unknown"})
+            self.assertEqual(invalid.status_code, 404)
+            pool.get_client_for_node.assert_not_awaited()
+            http.get.side_effect = OSError("offline")
+            failed = self.client.get("/v1/models/minimax-h3-ref-turbo8/upscale-models", params={"node_id": "default"})
+            self.assertEqual(failed.status_code, 503)
+
     def test_h3_capabilities_reuse_backend_inspection_without_extra_health_probes(self):
         import main
         model=main.config.get_exact_model("minimax-h3-ref-turbo8")

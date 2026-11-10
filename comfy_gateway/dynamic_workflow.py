@@ -106,21 +106,23 @@ def stage_nodes(stage, capability):
     return required
 
 
+def installed_latent_models(nodes):
+    if not {"LatentUpscaleModelLoader", "MiniMaxH3LatentUpscaleWithModel"}.issubset(nodes):
+        return []
+    field = nodes["LatentUpscaleModelLoader"].get("input", {}).get("required", {}).get("model_name", [])
+    choices = field[0] if field and isinstance(field[0], list) else []
+    if len(field) > 1 and field[0] == "COMBO" and isinstance(field[1], dict):
+        choices = field[1].get("options", [])
+    return list(dict.fromkeys(name for name in choices if isinstance(name, str) and name.strip())) if isinstance(choices, list) else []
+
+
 def validate_stage_nodes(stage, capability, nodes):
     required = stage_nodes(stage, capability)
     missing = required - set(nodes)
     if missing:
         raise ValueError("DYNAMIC_NODES_MISSING: " + ", ".join(sorted(missing)))
     if stage.component and stage.component.method == "H3_LEARNED":
-        field = nodes["LatentUpscaleModelLoader"].get("input", {}).get("required", {}).get("model_name", [])
-        # Core V3 nodes expose combos as ["COMBO", {"options": [...]}].
-        # Legacy nodes expose the option list directly as the first element.
-        choices = field[0] if field and isinstance(field[0], list) else []
-        if len(field) > 1 and field[0] == "COMBO" and isinstance(field[1], dict):
-            choices = field[1].get("options", [])
-        if not isinstance(choices, list):
-            choices = []
-        if stage.component.latent_model not in choices:
+        if stage.component.latent_model not in installed_latent_models(nodes):
             raise ValueError("DYNAMIC_H3_LATENT_MODEL_NOT_INSTALLED")
 
 

@@ -19,6 +19,10 @@ public class VideoEnhancementController {
         // Spring MVC uses Jackson 3; do not expose Jackson 2 tree nodes at this boundary.
         return R.ok(json.convertValue(service.capabilities(providerId),new TypeReference<Map<String,Object>>(){}));
     }
+    @GetMapping("/upscale-models") public R<Map<String,Object>> upscaleModels(@RequestParam Long providerId,
+            @RequestParam String modelCode, @RequestParam String nodeId) {
+        return R.ok(json.convertValue(service.upscaleModels(providerId,modelCode,nodeId),new TypeReference<Map<String,Object>>(){}));
+    }
     public record Preview(Long providerId,Long modelId,String size,Selection selection){}
     @PostMapping("/preview") public R<Plan> preview(@RequestBody Preview req){return R.ok(service.resolve(req.selection(),req.providerId(),req.modelId(),req.size(),null));}
     @GetMapping("/tasks/{taskId}/steps") public R<?> steps(@PathVariable String taskId){return R.ok(service.steps(taskId));}

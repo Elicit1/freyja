@@ -13,6 +13,30 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class DynamicWorkflowServiceTest {
+    @Test void installedModelsAreFetchedWithCredentialsForTheExactSelectedNode() throws Exception {
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/v1/models/h3/upscale-models", exchange -> {
+            calls.incrementAndGet();
+            assertEquals("node_id=node-a", exchange.getRequestURI().getRawQuery());
+            assertEquals("Bearer test-key", exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] body = "{\"modelCode\":\"h3\",\"nodeId\":\"node-a\",\"models\":[\"installed.safetensors\"]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, body.length);
+            try (var output = exchange.getResponseBody()) { output.write(body); }
+        });
+        server.start();
+        try {
+            var providers = mock(AiProviderMapper.class); var crypto = mock(CryptoUtil.class);
+            var provider = new AiProvider(); provider.setStatus(1); provider.setApiKey("encrypted");
+            provider.setBaseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1");
+            when(providers.selectById(1L)).thenReturn(provider); when(crypto.decrypt("encrypted")).thenReturn("test-key");
+            var target = spy(new DynamicWorkflowService(mock(AiModelMapper.class), providers, crypto, json, mock(JdbcTemplate.class)));
+            doReturn(json.readTree("{\"models\":[{\"modelCode\":\"h3\",\"nodeId\":\"node-a\",\"supported\":true}]}" )).when(target).capabilities(1L);
+            assertEquals("installed.safetensors", target.upscaleModels(1L, "h3", "node-a").path("models").get(0).asText());
+            assertThrows(com.astra.freyja.common.BizException.class, () -> target.upscaleModels(1L, "h3", "node-b"));
+            assertEquals(1, calls.get());
+        } finally { server.stop(0); }
+    }
     DynamicWorkflowService service;AiModel baseModel;ObjectMapper json=new ObjectMapper();
     @BeforeEach void setup()throws Exception{
         var models=mock(AiModelMapper.class);

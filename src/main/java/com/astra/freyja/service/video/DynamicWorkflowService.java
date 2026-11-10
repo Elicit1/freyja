@@ -53,6 +53,29 @@ public class DynamicWorkflowService {
         if(found==null||!Objects.equals(found.getProviderId(),provider)||!Objects.equals(found.getStatus(),1)||!Set.of("TXT2VIDEO_REF","TXT2VIDEO_FIRST_LAST").contains(found.getModelType()))throw new BizException(400,"请选择已启用的基础视频模型");
         return found;
     }
+    public JsonNode upscaleModels(Long providerId, String modelCode, String nodeId) {
+        boolean registered = false;
+        for (var model : capabilities(providerId).path("models")) {
+            if (modelCode.equals(model.path("modelCode").asText()) && nodeId.equals(model.path("nodeId").asText())
+                    && model.path("supported").asBoolean()) { registered = true; break; }
+        }
+        if (!registered) throw new BizException(400, "当前模型或算力节点不支持视频增强");
+        var provider = providers.selectById(providerId);
+        String path = "/models/" + org.springframework.web.util.UriUtils.encodePathSegment(modelCode, java.nio.charset.StandardCharsets.UTF_8)
+                + "/upscale-models?node_id=" + org.springframework.web.util.UriUtils.encodeQueryParam(nodeId, java.nio.charset.StandardCharsets.UTF_8);
+        try {
+            var req = HttpRequest.newBuilder(URI.create(ShotVideoCapabilityService.apiRoot(provider.getBaseUrl()) + path))
+                    .timeout(Duration.ofSeconds(8)).header("Authorization", "Bearer " + Objects.toString(crypto.decrypt(provider.getApiKey()), "")).GET().build();
+            var response = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) throw new BizException(502, "无法读取已安装的放大模型，请检查网关和算力节点连接");
+            var result = json.readTree(response.body());
+            if (!result.path("models").isArray() || !modelCode.equals(result.path("modelCode").asText())
+                    || !nodeId.equals(result.path("nodeId").asText())) throw new BizException(502, "放大模型列表与当前算力节点不匹配");
+            return result;
+        } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new BizException(409, "读取放大模型列表已取消"); }
+        catch (BizException e) { throw e; }
+        catch (Exception e) { throw new BizException(502, "无法读取已安装的放大模型，请检查网关连接"); }
+    }
     public Plan resolve(Selection selection,Long provider,Long model,String size,String preferredNode) {
         if(selection==null)return null;
         var base=route(provider,model);DynamicWorkflowOptions options=selection.getOptions();

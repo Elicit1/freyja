@@ -33,5 +33,10 @@ class VideoEnhancementHttpContractTest {
                 .andExpect(jsonPath("$.data.models[0].supported").value(true))
                 .andExpect(jsonPath("$.data.models[0].stages[2]").value("FACE"))
                 .andExpect(jsonPath("$.data.models[1].supported").value(false));
+        when(service.upscaleModels(2096886255638646785L,"minimax-h3-ref2va","default")).thenReturn(
+                new com.fasterxml.jackson.databind.ObjectMapper().readTree("{\"modelCode\":\"minimax-h3-ref2va\",\"nodeId\":\"default\",\"models\":[\"installed.safetensors\"]}"));
+        mvc.perform(get("/production/video-enhancements/upscale-models").param("providerId","2096886255638646785")
+                        .param("modelCode","minimax-h3-ref2va").param("nodeId","default"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.models[0]").value("installed.safetensors"));
     }
 }

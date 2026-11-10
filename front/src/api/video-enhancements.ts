@@ -31,6 +31,7 @@ function capabilities(providerId: string, refresh = false): Promise<CapabilityCa
   return pendingRequest
 }
 export const videoEnhancementApi = {
+  upscaleModels: (providerId: string, modelCode: string, nodeId: string) => request<{ modelCode: string; nodeId: string; models: string[] }>({ url: '/production/video-enhancements/upscale-models', method: 'get', params: { providerId, modelCode, nodeId }, timeout: 20000 }),
   segments: (taskId: string) => request<ContinuationEnhancementSummary>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/segments`, method: 'get' }),
   replaceSegment: (taskId: string, segmentId: string, options: WorkflowOptions, requestId: string) => request<{ taskId: string }>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/segments/${encodeURIComponent(segmentId)}/upscale`, method: 'post', data: { options, requestId }, timeout: 120000 }),
   capabilities,
