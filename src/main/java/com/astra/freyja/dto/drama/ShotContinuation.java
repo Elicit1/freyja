@@ -54,8 +54,15 @@ public class ShotContinuation {
         private List<ShotRefImageDTO> referenceImages = new ArrayList<>();
         private List<ShotRefVideoDTO> referenceVideos = new ArrayList<>();
         private boolean controlNetEnabled;
+        /** Independent controls; null preserves the legacy scalar fields below. */
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL)
+        private List<ShotControlNetOptions.Input> controlInputs;
         private String controlVideoId;
         private String controlType = "CANNY";
         private double controlStrength = 1;
+        public ShotControlNetOptions controlOptions(){
+            var options=new ShotControlNetOptions();options.setEnabled(controlNetEnabled);options.setControls(controlInputs);
+            options.setReferenceId(controlVideoId);options.setControlType(controlType);options.setStrength(controlStrength);return options;
+        }
     }
 }

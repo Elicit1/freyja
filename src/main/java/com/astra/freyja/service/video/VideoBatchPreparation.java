@@ -205,9 +205,9 @@ public class VideoBatchPreparation {
             dto.setReferenceVideoRevision(prepared.getModel().getWorkflowRevision());dto.setReferenceVideoNodeId(prepared.getModel().getNodeId());
         }
         var control=supplied!=null&&supplied.getControlNet()!=null?supplied.getControlNet():continuations.savedControl(shot);
-        if(control!=null&&control.isEnabled()){
-            if(videos.size()==1&&control.getReferenceId()==null)control.setReferenceId(videos.getFirst().getId());
-            if(videos.stream().noneMatch(v->Objects.equals(v.getId(),control.getReferenceId())))throw new BizException(400,"请选择本次挂载的 ControlNet 视频");
+        if(control!=null)control.validate();
+        if(control!=null&&control.isActive()){
+            control.validateSources(videos);
             dto.setControlNet(control);dto.setH3Options(continuations.controlOptions(shot,model,provider,control));
             if(!Objects.equals(dto.getReferenceVideoNodeId(),dto.getH3Options().get("node_id")))throw new BizException(409,"ControlNet 与参考视频算力节点不一致");
         }

@@ -113,7 +113,7 @@ def apply_native(workflow, request, cfg, base_model, latent_filename=None, ancho
         if mode=="LATENT_PROTECTED":
             p=options.continuity.protection
             strength=p.noiseStrength;first=p.useFirstFrameAnchor;tail=p.useTailAnchor;fraction=p.tailAnchorStartFraction
-            if tail and options.control_net.enabled:raise ValueError("H3_TAIL_ANCHOR_CONTROL_UNSUPPORTED: disable tail anchor; first-frame protection remains available")
+            if tail and options.control_net.is_active():raise ValueError("H3_TAIL_ANCHOR_CONTROL_UNSUPPORTED: disable tail anchor; first-frame protection remains available")
         else:strength=options.continuity.redraw.strength;first=False;tail=False;fraction=.75
         node={"class_type":"FreyjaH3Continue","inputs":{"latent":sampler["inputs"]["latent_image"],"model":base_model,
               "sigmas":sampler["inputs"]["sigmas"],"filename":latent_filename,"compatibility":compatibility,

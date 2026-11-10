@@ -77,6 +77,8 @@ public class ShotContinuationApplication {
         result.put("providers",enabled.stream().filter(p->available.stream().anyMatch(m->p.getId().equals(m.getProviderId()))).map(p->Map.of("id",p.getId().toString(),"name",p.getProviderName())).toList());
         result.put("models",available.stream().filter(m->ids.contains(m.getProviderId())).map(m->Map.of("id",m.getId().toString(),"providerId",m.getProviderId().toString(),"modelCode",m.getModelCode(),"name",m.getModelName())).toList());
         result.put("controlTypes",ShotControlNetOptions.CONTROL_TYPES.stream().sorted().toList());
+        result.put("controlInputModes",ShotControlNetOptions.INPUT_MODES.stream().sorted().toList());
+        result.put("maxControlInputs",ShotControlNetOptions.MAX_CONTROLS);
         if(provider!=null||code!=null){var model=videoModel(shot,provider,code);var caps=service.capabilities(model,providers.selectById(provider));result.put("capabilities",caps);result.put("controlTypes",json.convertValue(caps.path("h3").path("controlTypes"),List.class));
             var declared=modelOptions(model);var sizes=declared.path("supportedSizes");result.put("outputSizes",sizes.isArray()?json.convertValue(sizes,List.class):defaultSizes());
             var ratios=declared.path("supportedAspectRatios");result.put("aspectRatios",ratios.isArray()?json.convertValue(ratios,List.class):VideoBatchPreparation.SIZES.keySet().stream().sorted().toList());}

@@ -23,12 +23,35 @@ class ContextOptions(BaseModel):
         return self
 
 
+class ControlInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = True
+    reference_id: Optional[str] = None
+    control_type: Literal["CANNY", "POSE", "DEPTH", "HED", "MLSD", "SCRIBBLE", "LAYOUT", "GRAY", "PREPARED"] = "CANNY"
+    input_mode: Literal["RAW", "PREPROCESSED"] = "RAW"
+    strength: float = Field(default=1, ge=0, le=2, allow_inf_nan=False)
+
+    def required_capability(self):
+        return "PREPARED" if self.input_mode == "PREPROCESSED" else self.control_type
+
+
 class ControlOptions(BaseModel):
     model_config = ConfigDict(extra="forbid")
     enabled: bool = False
     reference_id: Optional[str] = None
     control_type: Literal["CANNY", "POSE", "DEPTH", "HED", "MLSD", "SCRIBBLE", "LAYOUT", "GRAY", "PREPARED"] = "CANNY"
     strength: float = Field(default=1, ge=0, le=2, allow_inf_nan=False)
+    controls: Optional[list[ControlInput]] = Field(default=None, max_length=3)
+
+    def active_inputs(self):
+        if not self.enabled:
+            return []
+        if self.controls is not None:
+            return [control for control in self.controls if control.enabled]
+        return [ControlInput(reference_id=self.reference_id, control_type=self.control_type, strength=self.strength)]
+
+    def is_active(self):
+        return bool(self.active_inputs())
 
 
 class ContinuationInput(BaseModel):
@@ -85,7 +108,8 @@ def revision(model, base_dir):
 
 async def inspect_backend(model, client):
     cfg=model.h3_extensions or {}
-    public={"continuation":False,"backendSignature":None,"missingNodes":[],"controlTypes":[],"controlVersion":cfg.get("control_version")}
+    public={"continuation":False,"backendSignature":None,"missingNodes":[],"controlTypes":[],"controlVersion":cfg.get("control_version"),
+            "maxControlInputs":3,"controlInputModes":["RAW","PREPROCESSED"]}
     if not cfg:return public
     baseline={cfg["conditioning"]["class_type"],"MiniMaxH3AddGuide"}
     required=set(baseline)
@@ -139,10 +163,11 @@ def require_options(request, model, base_dir):
     if options.latent_context and request.first_frame:raise ValueError("H3_NATIVE_FIRST_FRAME_CONFLICT: native context owns the opening; remove the segment first frame")
     if options.continuation_enabled and not cfg.get("continuation"): raise ValueError("H3_CONTINUATION_UNSUPPORTED")
     if options.context_windows.enabled and not cfg.get("context_windows"): raise ValueError("H3_CONTEXT_UNSUPPORTED")
-    if options.control_net.enabled:
+    if options.control_net.is_active():
         if not cfg.get("control_net"): raise ValueError("H3_CONTROL_UNSUPPORTED")
-        if not any(v.reference_id==options.control_net.reference_id for v in request.get_all_ref_videos()):
-            raise ValueError("H3_CONTROL_SOURCE_MISSING: select an attached reference video")
+        for control in options.control_net.active_inputs():
+            if not control.reference_id or not any(v.reference_id==control.reference_id for v in request.get_all_ref_videos()):
+                raise ValueError("H3_CONTROL_SOURCE_MISSING: select an attached reference video for every enabled control")
         if options.context_windows.enabled and not cfg.get("context_windows_with_control_net"):
             raise ValueError("H3_WINDOW_CONTROL_UNVERIFIED")
 
@@ -151,7 +176,7 @@ def apply_extensions(workflow, request, model, videos, continuation_filename=Non
     options=request.h3_options
     if options is None: return
     cfg=model.h3_extensions
-    if options.control_net.enabled and options.context_windows.enabled and not cfg.get("context_windows_with_control_net"):
+    if options.control_net.is_active() and options.context_windows.enabled and not cfg.get("context_windows_with_control_net"):
         raise ValueError("H3_WINDOW_CONTROL_UNVERIFIED: use per-segment control without context windows")
     def node(key):
         binding=cfg[key]; value=workflow.get(binding["id"])
@@ -162,24 +187,30 @@ def apply_extensions(workflow, request, model, videos, continuation_filename=Non
     vae_id,_=node("video_vae")
     cond["inputs"]["length"]=options.length
     final=[model_id,0]
-    if options.control_net.enabled:
-        control=options.control_net
-        video=next(v for v in videos if v["reference_id"]==control.reference_id)
+    if options.control_net.is_active():
+        workflow["h3_patch"]={"class_type":"ModelPatchLoader","inputs":{"name":cfg["control_patch"]}}
+    for index, control in enumerate(options.control_net.active_inputs()):
+        suffix="" if index==0 else "_"+str(index)
+        video_id="h3_control_video"+suffix
+        preprocess_id="h3_control_preprocess"+suffix
+        apply_id="h3_control"+suffix
+        video=next((v for v in videos if v["reference_id"]==control.reference_id), None)
+        if video is None: raise ValueError("H3_CONTROL_SOURCE_MISSING: "+str(control.reference_id))
         if video.get("frames",0)<(options.control_required_frames or options.length):
             raise ValueError("H3_CONTROL_RANGE_INVALID: control video does not cover the requested output interval")
-        if control.control_type=="GRAY" and not video.get("control_filename"):
+        raw_gray=control.control_type=="GRAY" and control.input_mode=="RAW"
+        if raw_gray and not video.get("control_filename"):
             raise ValueError("H3_GRAY_SOURCE_MISSING: prepare a separate grayscale control video")
-        filename=video["control_filename"] if control.control_type=="GRAY" else video["filename"]
-        workflow["h3_control_video"]={"class_type":"VHS_LoadVideo","inputs":{"video":filename,"force_rate":24,"custom_width":0,"custom_height":0,"frame_load_cap":options.length,"skip_first_frames":0,"select_every_nth":1,"format":"None"}}
-        source=["h3_control_video",0]
-        if control.control_type!="GRAY" and control.control_type not in cfg.get("prepared_control_types",["PREPARED"]):
+        filename=video["control_filename"] if raw_gray else video["filename"]
+        workflow[video_id]={"class_type":"VHS_LoadVideo","inputs":{"video":filename,"force_rate":24,"custom_width":0,"custom_height":0,"frame_load_cap":options.length,"skip_first_frames":0,"select_every_nth":1,"format":"None"}}
+        source=[video_id,0]
+        if control.input_mode=="RAW" and control.control_type!="GRAY" and control.control_type not in cfg.get("prepared_control_types",["PREPARED"]):
             preset=cfg.get("preprocessors",{}).get(control.control_type)
             if not preset: raise ValueError("H3_PREPROCESSOR_UNSUPPORTED: "+control.control_type)
-            workflow["h3_control_preprocess"]={"class_type":preset["class_type"],"inputs":dict(preset.get("inputs",{}),**{preset.get("image_input","image"):source})}
-            source=["h3_control_preprocess",preset.get("output_slot",0)]
-        workflow["h3_patch"]={"class_type":"ModelPatchLoader","inputs":{"name":cfg["control_patch"]}}
-        workflow["h3_control"]={"class_type":"MiniMaxH3FunControlNetApply","inputs":{"model":final,"model_patch":["h3_patch",0],"vae":[vae_id,0],"strength":control.strength,"start_percent":0.0,"end_percent":1.0,"control_video":source}}
-        final=["h3_control",0]
+            workflow[preprocess_id]={"class_type":preset["class_type"],"inputs":dict(preset.get("inputs",{}),**{preset.get("image_input","image"):source})}
+            source=[preprocess_id,preset.get("output_slot",0)]
+        workflow[apply_id]={"class_type":"MiniMaxH3FunControlNetApply","inputs":{"model":final,"model_patch":["h3_patch",0],"vae":[vae_id,0],"strength":control.strength,"start_percent":0.0,"end_percent":1.0,"control_video":source}}
+        final=[apply_id,0]
     if options.context_windows.enabled:
         window=options.context_windows
         workflow["h3_windows"]={"class_type":"MiniMaxH3ContextWindows","inputs":{"model":final,"context_length":window.context_length,"context_overlap":window.context_overlap,"fuse_method":window.fuse_method,"freenoise":window.freenoise,"split_conds_to_windows":False}}

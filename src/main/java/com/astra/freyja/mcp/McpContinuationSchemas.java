@@ -59,6 +59,8 @@ public class McpContinuationSchemas {
 
                     if(Set.of("dramaId","shotId","providerId").contains(key)&&"string".equals(field.get("type")))field.put("pattern","^[1-9][0-9]{0,18}$");
                     if(key.equals("controlType"))field.put("enum",ShotControlNetOptions.CONTROL_TYPES.stream().sorted().toList());
+                    if(key.equals("inputMode"))field.put("enum",ShotControlNetOptions.INPUT_MODES.stream().sorted().toList());
+                    if(key.equals("controls")||key.equals("controlInputs"))field.put("maxItems",ShotControlNetOptions.MAX_CONTROLS);
                     if(key.equals("shotType"))field.put("x-freyja-dict","shot_type");if(key.equals("cameraMovement"))field.put("x-freyja-dict","camera_movement");
                     if(key.equals("shotSize"))field.put("enum",new ArrayList<>(DirectorPlanSchema.SHOT_SIZES));if(key.equals("cameraAngle"))field.put("enum",new ArrayList<>(DirectorPlanSchema.CAMERA_ANGLES));
                     if(key.equals("movement"))field.put("enum",new ArrayList<>(DirectorPlanSchema.MOVEMENTS));if(key.equals("speed"))field.put("enum",new ArrayList<>(DirectorPlanSchema.SPEEDS));

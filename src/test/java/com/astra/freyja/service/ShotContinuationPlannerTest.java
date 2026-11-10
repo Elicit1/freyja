@@ -4,6 +4,7 @@ import com.astra.freyja.common.BizException;
 import com.astra.freyja.dto.drama.*;
 import com.astra.freyja.service.video.*;
 import org.junit.jupiter.api.Test;
+import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ShotContinuationPlannerTest {
@@ -45,6 +46,21 @@ class ShotContinuationPlannerTest {
         for(String kind:ShotControlNetOptions.CONTROL_TYPES){segment.setControlType(kind);assertDoesNotThrow(()->planner.plan(d,false));}
         segment.setControlType("UNKNOWN");assertThrows(BizException.class,()->planner.plan(d,false));
         segment.setControlType(null);assertThrows(BizException.class,()->planner.plan(d,false));
+    }
+    @Test void independentControlInputsAreValidatedAndChangingOnlyOneInvalidatesThePlan()throws Exception{
+        var d=draft(5);planner.plan(d,true);var segment=d.getSegments().getFirst();segment.setControlNetEnabled(true);
+        for(String id:List.of("pose","depth")){var video=new ShotRefVideoDTO();video.setId(id);video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive.test/"+id+".mp4");segment.getReferenceVideos().add(video);}
+        var pose=new ShotControlNetOptions.Input();pose.setReferenceId("pose");pose.setControlType("POSE");
+        var depth=new ShotControlNetOptions.Input();depth.setReferenceId("depth");depth.setControlType("DEPTH");depth.setInputMode("PREPROCESSED");
+        segment.setControlInputs(List.of(pose,depth));var before=planner.plan(d,false).getPlanHash();
+        depth.setStrength(.4);assertNotEquals(before,planner.plan(d,false).getPlanHash());
+        depth.setReferenceId("foreign");assertThrows(BizException.class,()->planner.plan(d,false));
+        depth.setReferenceId(null);depth.setEnabled(false);assertDoesNotThrow(()->planner.plan(d,false));
+        segment.setControlVideoId("old-missing");segment.setControlInputs(List.of());
+        assertDoesNotThrow(()->planner.plan(d,false));assertFalse(segment.controlOptions().isActive());
+        var legacy=new com.fasterxml.jackson.databind.ObjectMapper().readValue("{\"enabled\":true,\"referenceId\":\"pose\",\"controlType\":\"POSE\",\"strength\":0.7}",ShotControlNetOptions.class);
+        assertEquals(.7,legacy.activeInputs().getFirst().getStrength());
+        assertFalse(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(legacy).has("controls"));
     }
     @Test void replanningProtectsAuthoredTextAndDirectorEvenWithoutMaterials(){
         var d=draft(40);planner.plan(d,true);d.getSegments().getFirst().setScriptContent("本段独立剧本");d.setSegmentFrames(243);

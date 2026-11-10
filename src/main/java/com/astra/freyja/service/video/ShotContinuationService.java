@@ -51,7 +51,7 @@ public class ShotContinuationService {
         for(var range:result.getRanges()){
             var mode=range.getEffectiveContinuity().getMode();
             if(range.getEffectiveContinuity().requiresLatent()&&draft.isContextWindows())result.getIssues().add("原始 latent 接续暂不支持片段内窗口，请关闭上下文窗口");
-            if(mode==ShotContinuityOptions.Mode.LATENT_PROTECTED&&range.getEffectiveContinuity().getProtection().isUseTailAnchor()&&draft.getSegments().stream().anyMatch(s->Objects.equals(s.getId(),range.getSegmentId())&&s.isControlNetEnabled()))result.getIssues().add("延迟尾部锚定暂不支持 ControlNet；可关闭尾锚并保留首帧锚定和上下文噪声");
+            if(mode==ShotContinuityOptions.Mode.LATENT_PROTECTED&&range.getEffectiveContinuity().getProtection().isUseTailAnchor()&&draft.getSegments().stream().anyMatch(s->Objects.equals(s.getId(),range.getSegmentId())&&s.controlOptions().isActive()))result.getIssues().add("延迟尾部锚定暂不支持 ControlNet；可关闭尾锚并保留首帧锚定和上下文噪声");
             if((mode!=ShotContinuityOptions.Mode.GUIDE || h3.path("continuationModes").isObject()) && !h3.path("continuationModes").path(mode.name()).path("available").asBoolean())
                 result.getIssues().add("接续方式 "+mode+" 不可用："+h3.path("continuationModes").path(mode.name()).path("reason").asText("请安装 FREYJA H3 接续节点包并刷新能力"));
             if(range.getEffectiveContinuity().requiresLatent()&&range.getOverlapFrames()>0&&draft.getSegments().stream().anyMatch(s->Objects.equals(s.getId(),range.getSegmentId())&&s.getFirstFrameImageUrl()!=null))result.getIssues().add("原始 latent 接续由上一段上下文决定开头，请移除续段首帧或改用画面引导");
@@ -79,7 +79,7 @@ public class ShotContinuationService {
                     double seconds=video.getEndSeconds().subtract(video.getStartSeconds()==null?BigDecimal.ZERO:video.getStartSeconds()).doubleValue();totalSeconds+=seconds;
                     if(seconds>maxSeconds+1e-6||seconds*24>maxFrames+1e-6)result.getIssues().add("片段视频超出已配置参考预算，请缩短源范围或将段长改为 345 帧等较小值");
                     int required=Math.min(segment.getEndFrame(),result.getOutputFrames())-segment.getStartFrame();
-                    if(segment.isControlNetEnabled()&&Objects.equals(video.getId(),segment.getControlVideoId())&&seconds*24+1e-6<required)result.getIssues().add("ControlNet 视频未完整覆盖本段真实输出范围，请缩短段长或选择足够长的源范围");
+                    if(segment.controlOptions().isActive()&&segment.controlOptions().activeInputs().stream().anyMatch(input->Objects.equals(video.getId(),input.getReferenceId()))&&seconds*24+1e-6<required)result.getIssues().add("ControlNet 视频未完整覆盖本段真实输出范围，请缩短段长或选择足够长的源范围");
                 }
                 if(totalSeconds>Math.min(referenceLimits.getMaxClipSeconds(),videoCap.path("maxTotalClipSeconds").asDouble(referenceLimits.getMaxClipSeconds()))+1e-6)result.getIssues().add("片段参考视频总时长超过预算");
             }
@@ -87,9 +87,9 @@ public class ShotContinuationService {
             if("TXT2VIDEO_REF".equals(model.getModelType())&&(segment.getFirstFrameImageUrl()!=null||segment.getLastFrameImageUrl()!=null))result.getIssues().add("参考生成工作流请挂载普通参考图，不使用首尾帧锚点");
             if(segment.getLastFrameImageUrl()!=null&&segment.getEndFrame()>result.getOutputFrames())result.getIssues().add("末段尾帧位于网格补齐区，请将时长调整为 "+(result.getRenderFrames()/24.0)+" 秒，或移除该尾帧，避免锚点被裁掉");
             if(segment.getPrompt()==null||segment.getPrompt().isBlank())result.getIssues().add("片段 "+segment.getId()+" 需要填写本段提示词");
-            if(segment.isControlNetEnabled()&&!h3.path("controlNet").asBoolean())result.getIssues().add("所选工作流未验证 ControlNet");
-            if(segment.isControlNetEnabled()&&h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->segment.getControlType().equals(type.asText())))result.getIssues().add("算力节点未安装 "+segment.getControlType()+" 控制预处理器");
-            if(segment.isControlNetEnabled()&&draft.isContextWindows()&&!h3.path("contextWindowsWithControlNet").asBoolean())result.getIssues().add("官方上下文窗口与 ControlNet 联用尚未验收，请关闭片段内窗口或 ControlNet");
+            if(segment.controlOptions().isActive()&&!h3.path("controlNet").asBoolean())result.getIssues().add("所选工作流未验证 ControlNet");
+            for(var input:segment.controlOptions().activeInputs())if(h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->input.requiredCapability().equals(type.asText())))result.getIssues().add("算力节点未安装 "+input.requiredCapability()+" 控制预处理器或直入能力");
+            if(segment.controlOptions().isActive()&&draft.isContextWindows()&&!h3.path("contextWindowsWithControlNet").asBoolean())result.getIssues().add("官方上下文窗口与 ControlNet 联用尚未验收，请关闭片段内窗口或 ControlNet");
         }
         if(!excessiveVideoSegments.isEmpty())result.getIssues().add("片段 "+String.join("、",excessiveVideoSegments)+" 的参考视频数量超过上限 "+videoLimit
                 +"（模型中心："+Objects.toString(model.getMaxVideos(),"未设置")+"，网关："+gatewayVideoLimit+"）"
@@ -143,7 +143,7 @@ public class ShotContinuationService {
                 }
                 options.put("control_required_frames",Math.min(segment.getEndFrame(),plan.getOutputFrames())-segment.getStartFrame());
                 options.put("context_windows",Map.of("enabled",draft.isContextWindows()));
-                var control=new LinkedHashMap<String,Object>();control.put("enabled",segment.isControlNetEnabled());control.put("reference_id",segment.getControlVideoId());control.put("control_type",segment.getControlType());control.put("strength",segment.getControlStrength());options.put("control_net",control);childReq.setH3Options(options);
+                options.put("control_net",segment.controlOptions().transport());childReq.setH3Options(options);
                 if(!segment.getReferenceVideos().isEmpty()){
                     var prepared=preparation.prepare(child,segment.getReferenceVideos());childReq.setResolvedRefVideos(prepared.getReferences());childReq.setReferenceVideoRevision(prepared.getModel().getWorkflowRevision());childReq.setReferenceVideoNodeId(prepared.getModel().getNodeId());
                     if(!Objects.equals(plan.getNodeId(),prepared.getModel().getNodeId()))throw new BizException(409,"片段素材与接续计划的算力节点不一致");
@@ -158,11 +158,11 @@ public class ShotContinuationService {
     public Map<String,Object> controlOptions(DramaShot shot,AiModel model,AiProvider provider,ShotControlNetOptions control){
         var cap=capabilities(model,provider);var h3=cap.path("h3");
         if(!h3.path("controlNet").asBoolean()||!cap.path("healthy").asBoolean())throw new BizException(409,"ControlNet 所需节点或权重不可用，或算力节点离线");
-        if(control.getControlType()==null||!ShotControlNetOptions.CONTROL_TYPES.contains(control.getControlType())||!Double.isFinite(control.getStrength())||control.getStrength()<0||control.getStrength()>2)throw new BizException(400,"ControlNet 类型或强度无效");
-        if(h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->control.getControlType().equals(type.asText())))throw new BizException(409,"算力节点未安装 "+control.getControlType()+" 控制预处理器");
+        control.validate();
+        for(var input:control.activeInputs())if(h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->input.requiredCapability().equals(type.asText())))throw new BizException(409,"算力节点未安装 "+input.requiredCapability()+" 控制预处理器或直入能力");
         var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",false);options.put("capability_revision",h3.path("revision").asText());options.put("length",ShotContinuationPlanner.align((int)Math.round(shot.getDuration().doubleValue()*24)));options.put("node_id",cap.path("nodeId").asText());
         options.put("control_required_frames",(int)Math.round(shot.getDuration().doubleValue()*24));
-        options.put("control_net",Map.of("enabled",true,"reference_id",control.getReferenceId(),"control_type",control.getControlType(),"strength",control.getStrength()));return options;
+        options.put("control_net",control.transport());return options;
     }
     /** Preserve both editing drafts; only the selected mode enters validation, hashes and execution. */
     private ShotContinuation inputsForModel(ShotContinuation source,String modelType){
@@ -175,7 +175,7 @@ public class ShotContinuationService {
             if(segment==null)continue;
             if(frames){
                 segment.setReferenceImages(new ArrayList<>());segment.setReferenceVideos(new ArrayList<>());segment.setReferenceAudios(new ArrayList<>());
-                segment.setControlNetEnabled(false);segment.setControlVideoId(null);segment.setControlType("CANNY");segment.setControlStrength(1);
+                segment.setControlNetEnabled(false);segment.setControlInputs(null);segment.setControlVideoId(null);segment.setControlType("CANNY");segment.setControlStrength(1);
             }else{segment.setFirstFrameImageUrl(null);segment.setLastFrameImageUrl(null);}
         }
         return effective;

@@ -1,3 +1,4 @@
+import type { ControlNetConfiguration } from '@/utils/control-net'
 export interface PositionInfo {
   location?: string
   relativeTo?: string
@@ -639,7 +640,7 @@ export interface DramaShotFirstFrame {
 
 export interface DramaShotRenderRequest {
   dynamicWorkflow?: import('@/api/video-enhancements').WorkflowSelection
-  controlNet?: { enabled: boolean; referenceId?: string; controlType: string; strength: number }
+  controlNet?: ControlNetConfiguration
   expectedRenderFingerprint?: string
   preflightId?: string
   providerId?: number | string

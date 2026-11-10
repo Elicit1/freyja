@@ -174,6 +174,46 @@ class ShotContinuationServiceTest {
         control.setControlType("DEPTH");assertThrows(com.astra.freyja.common.BizException.class,()->service.controlOptions(shot,model("TXT2VIDEO_REF"),provider(),control));
     }
     private AiModel model(String type){var model=new AiModel();model.setId(3L);model.setModelCode("h3");model.setModelType(type);return model;}
+    @Test void ordinaryMultiControlPreservesTypesAndSkipsExtractorRequirementForPreparedInputs()throws Exception{
+        var service=service();
+        doReturn(json.readTree("{\"healthy\":true,\"h3\":{\"controlNet\":true,\"controlTypes\":[\"PREPARED\"]}}"))
+                .when(service).capabilities(any(),any());
+        var shot=new DramaShot();shot.setDuration(BigDecimal.valueOf(5));
+        var pose=new ShotControlNetOptions.Input();pose.setReferenceId("pose");pose.setControlType("POSE");pose.setInputMode("PREPROCESSED");pose.setStrength(.8);
+        var depth=new ShotControlNetOptions.Input();depth.setReferenceId("depth");depth.setControlType("DEPTH");depth.setInputMode("PREPROCESSED");depth.setStrength(.4);
+        var control=new ShotControlNetOptions();control.setEnabled(true);control.setControls(List.of(pose,depth));
+        var result=json.valueToTree(service.controlOptions(shot,model("TXT2VIDEO_REF"),provider(),control)).path("control_net").path("controls");
+        assertEquals(2,result.size());assertEquals("pose",result.get(0).path("reference_id").asText());
+        assertEquals("DEPTH",result.get(1).path("control_type").asText());assertEquals(.4,result.get(1).path("strength").asDouble());
+        assertEquals("PREPROCESSED",result.get(1).path("input_mode").asText());
+        depth.setInputMode("RAW");assertThrows(com.astra.freyja.common.BizException.class,()->service.controlOptions(shot,model("TXT2VIDEO_REF"),provider(),control));
+        depth.setEnabled(false);assertDoesNotThrow(()->service.controlOptions(shot,model("TXT2VIDEO_REF"),provider(),control));
+    }
+    @Test void preparedContinuationSnapshotsRetainEveryIndependentControlAndValidateEachDuration()throws Exception{
+        var videos=mock(ShotVideoReferenceService.class);var media=mock(ShotVideoReferenceService.SegmentPreparation.class);
+        var option=new ShotVideoModelOptionVO();option.setWorkflowRevision("video-v1");option.setNodeId("gpu");
+        when(media.model()).thenReturn(option);when(videos.openSegmentPreparation(any())).thenReturn(media);
+        when(media.prepare(any(),anyList())).thenAnswer(call->{var prepared=new VideoReferencePreflightVO();prepared.setModel(option);prepared.setReferences(List.of());return prepared;});
+        var limits=new com.astra.freyja.config.ReferenceVideoProperties();limits.setMaxClipSeconds(20);
+        var service=spy(new ShotContinuationService(new ShotContinuationPlanner(),videos,json,mock(CryptoUtil.class),limits));
+        doReturn(json.readTree("{\"healthy\":true,\"nodeId\":\"gpu\",\"workflowRevision\":\"video-v1\",\"referenceVideo\":{\"adapter\":\"MINIMAX_H3_REF_VIDEO_V1\",\"maxVideos\":3,\"maxTotalClipSeconds\":20},\"h3\":{\"revision\":\"h3-v1\",\"continuation\":true,\"controlNet\":true,\"controlTypes\":[\"PREPARED\"]}}"))
+                .when(service).capabilities(any(),any());
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(5);new ShotContinuationPlanner().plan(draft,true);
+        var segment=draft.getSegments().getFirst();segment.setPrompt("Follow the supplied motion");segment.setControlNetEnabled(true);
+        var inputs=new ArrayList<ShotControlNetOptions.Input>();
+        for(String kind:List.of("POSE","DEPTH")){
+            var video=new ShotRefVideoDTO();video.setId(kind);video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive.test/"+kind+".mp4");video.setEndSeconds(BigDecimal.valueOf(5));segment.getReferenceVideos().add(video);
+            var input=new ShotControlNetOptions.Input();input.setReferenceId(kind);input.setControlType(kind);input.setInputMode("PREPROCESSED");inputs.add(input);
+        }
+        segment.setControlInputs(inputs);
+        var result=service.prepare(shot(draft,"REFERENCE_MODE"),model("TXT2VIDEO_REF"),provider(),"960x544",null);
+        var controls=json.valueToTree(result.getRequest().getContinuationSegments().getFirst().getRequest().getH3Options()).path("control_net").path("controls");
+        assertEquals(2,controls.size());assertEquals("POSE",controls.get(0).path("reference_id").asText());assertEquals("DEPTH",controls.get(1).path("reference_id").asText());
+        assertEquals("PREPROCESSED",controls.get(1).path("input_mode").asText());verify(media).prepare(any(),argThat(refs->refs.size()==2));
+        segment.getReferenceVideos().get(1).setEndSeconds(BigDecimal.ONE);
+        var rejected=service.preview(draft,false,model("TXT2VIDEO_REF"),provider());assertFalse(rejected.isRenderable());
+        assertTrue(rejected.getIssues().stream().anyMatch(issue->issue.contains("未完整覆盖")));
+    }
     @Test void oldDraftWithRemovedLockOptionCanBeReadAndSavedAsNativeGuide() throws Exception {
         var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(5);new ShotContinuationPlanner().plan(draft,true);
         var shot=shot(draft,"REFERENCE_MODE");var legacy=json.readTree(shot.getContinuationJson());((com.fasterxml.jackson.databind.node.ObjectNode)legacy).put("lockContext",true);shot.setContinuationJson(legacy.toString());

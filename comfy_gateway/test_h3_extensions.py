@@ -34,6 +34,69 @@ class H3ExtensionsTest(unittest.TestCase):
                         self.assertEqual(graph["h3_control"]["inputs"]["control_video"],["h3_control_video",0])
                     self.assertEqual(graph["145"],original["145"])  # Existing LoRA chain.
 
+    def test_independent_pose_and_depth_inputs_keep_sources_weights_and_all_consumers(self):
+        from h3_extensions import ControlOptions
+        model, request, graph = self.setup_graph()
+        original = copy.deepcopy(graph)
+        request.h3_options.control_net = ControlOptions(enabled=True, controls=[
+            {"reference_id":"pose", "control_type":"POSE", "strength":0.8},
+            {"reference_id":"depth", "control_type":"DEPTH", "input_mode":"PREPROCESSED", "strength":0.4}])
+        # A prepared Depth video needs no Depth extractor installed/configured.
+        del model.h3_extensions["preprocessors"]["DEPTH"]
+        apply_extensions(graph, request, model, [
+            {"reference_id":"pose", "filename":"person.mp4", "frames":362},
+            {"reference_id":"depth", "filename":"depth.mp4", "frames":362}])
+        self.assertEqual("person.mp4", graph["h3_control_video"]["inputs"]["video"])
+        self.assertEqual("depth.mp4", graph["h3_control_video_1"]["inputs"]["video"])
+        self.assertEqual("DWPreprocessor", graph["h3_control_preprocess"]["class_type"])
+        self.assertNotIn("h3_control_preprocess_1", graph)
+        self.assertEqual(["h3_control_preprocess",0], graph["h3_control"]["inputs"]["control_video"])
+        self.assertEqual(["h3_control_video_1",0], graph["h3_control_1"]["inputs"]["control_video"])
+        self.assertEqual(["h3_control",0], graph["h3_control_1"]["inputs"]["model"])
+        self.assertEqual(0.8, graph["h3_control"]["inputs"]["strength"])
+        self.assertEqual(0.4, graph["h3_control_1"]["inputs"]["strength"])
+        for consumer in model.h3_extensions["model_consumers"]:
+            self.assertEqual(["h3_control_1",0], graph[consumer["id"]]["inputs"][consumer.get("input","model")])
+        self.assertEqual(original["145"], graph["145"])
+        self.assertEqual(1, sum(node["class_type"]=="ModelPatchLoader" for node in graph.values()))
+
+    def test_prepared_inputs_and_disabled_rows_do_not_run_extractors_or_gray_conversion(self):
+        from h3_extensions import ControlOptions
+        model, request, graph = self.setup_graph()
+        request.h3_options.control_net = ControlOptions(enabled=True, controls=[
+            {"reference_id":"pose", "control_type":"POSE", "input_mode":"PREPROCESSED"},
+            {"reference_id":"gray", "control_type":"GRAY", "input_mode":"PREPROCESSED"},
+            {"enabled":False, "reference_id":"not-attached", "control_type":"DEPTH"}])
+        apply_extensions(graph, request, model, [
+            {"reference_id":"pose", "filename":"skeleton.mp4", "frames":362},
+            {"reference_id":"gray", "filename":"already-gray.mp4", "frames":362}])
+        self.assertFalse(any(key.startswith("h3_control_preprocess") for key in graph))
+        self.assertEqual("already-gray.mp4", graph["h3_control_video_1"]["inputs"]["video"])
+        self.assertNotIn("h3_control_2", graph)
+        for rows in ([], [{"enabled":False}]):
+            model, request, graph = self.setup_graph()
+            request.h3_options.control_net = ControlOptions(enabled=True, controls=rows, reference_id="legacy")
+            apply_extensions(graph, request, model, [])
+            self.assertNotIn("h3_control", graph)
+            self.assertNotIn("h3_patch", graph)
+
+    def test_every_enabled_control_must_exist_and_cover_the_segment(self):
+        from h3_extensions import ControlOptions
+        model, request, graph = self.setup_graph()
+        request.h3_options.control_net = ControlOptions(enabled=True, controls=[
+            {"reference_id":"a", "control_type":"POSE"}, {"reference_id":"b", "control_type":"DEPTH"}])
+        with self.assertRaisesRegex(ValueError,"CONTROL_SOURCE_MISSING"):
+            require_options(request, model, BASE)
+        videos=[{"reference_id":"a", "filename":"a.mp4", "frames":362}]
+        with self.assertRaisesRegex(ValueError,"CONTROL_SOURCE_MISSING"):
+            apply_extensions(graph, request, model, videos)
+        videos.append({"reference_id":"b", "filename":"b.mp4", "frames":100})
+        with self.assertRaisesRegex(ValueError,"CONTROL_RANGE_INVALID"):
+            apply_extensions(graph, request, model, videos)
+        for rows in ([{}]*4, [{"input_mode":"guess"}], [None], [{"strength":float("nan")} ]):
+            with self.subTest(rows=rows), self.assertRaises(ValidationError):
+                ControlOptions(enabled=True, controls=rows)
+
     def test_removed_context_lock_cannot_be_reenabled_by_an_old_snapshot(self):
         with self.assertRaises(ValidationError):H3Options.model_validate({"capability_revision":"test","length":124,"lock_context":True})
 
@@ -183,6 +246,46 @@ class H3DebugWorkflowTests(unittest.TestCase):
         self.assertEqual(nodes[205]["type"],"MiniMaxH3AddGuide")
         self.assertEqual(len(nodes[205]["outputs"]),1)
         self.assertFalse(any(node["type"].startswith("Freyja") for node in nodes.values()))
+
+
+class H3MultiControlSubmissionTest(unittest.IsolatedAsyncioTestCase):
+    async def test_upload_prepares_gray_per_source_and_prepared_pose_needs_no_pose_extractor(self):
+        import main
+        from test_render_input_validation import bind_contract
+        from video_reference import workflow_revision
+        model, config = setup_model()
+        model.reference_video.max_videos = 3
+        model.reference_video.max_clip_seconds = 6
+        model.reference_video.max_total_clip_seconds = 15
+        model.reference_video.max_decoded_frames = 144
+        request = bind_contract(ImageGenerationRequest(model=model.model_name, prompt="<Video 1> <Video 2>",
+            prompt_format="MINIMAX_H3_REF2VA_VIDEO_V1", size="960x544", length=124,
+            reference_video_revision=workflow_revision(model,BASE), references=[
+                {"referenceId":key,"referenceType":"REFERENCE_VIDEO","referenceVideo":"http://archive.test/"+key+".mp4","contentSha256":"a"*64}
+                for key in ("pose","gray")],
+            h3_options={"capability_revision":revision(model,BASE),"length":124,"control_net":{"enabled":True,"controls":[
+                {"reference_id":"pose","control_type":"POSE","input_mode":"PREPROCESSED","strength":.8},
+                {"reference_id":"gray","control_type":"GRAY","input_mode":"RAW","strength":.4}]}}))
+        client=Mock(http_base="http://compute");client.check_health=AsyncMock(return_value=True)
+        client.submit_prompt=AsyncMock(side_effect=ValueError("SUBMITTED"))
+        pool=Mock();pool.get_client_for_node=AsyncMock(return_value=client)
+        async def upload(client, binding, capability, hosts, **kwargs):
+            return {"reference_id":binding.reference_id,"filename":binding.reference_id+".mp4","frames":124,"duration":5,"include_audio":False,
+                    **({"control_filename":"gray-copy.mp4"} if kwargs.get("grayscale") else {})}
+        upload_mock=AsyncMock(side_effect=upload)
+        http=Request({"type":"http","method":"POST","path":"/v1/videos/generations","headers":[]})
+        with patch.object(main,"config",config),patch.object(main,"get_client_pool",return_value=pool), \
+             patch.object(main,"get_workflow_engine",return_value=WorkflowEngine(config)), \
+             patch.object(main,"inspect_backend",new=AsyncMock(return_value={"controlNet":True,"controlTypes":["PREPARED","GRAY"]})), \
+             patch.object(main,"upload_reference_video",new=upload_mock):
+            with self.assertRaisesRegex(ValueError,"SUBMITTED"):
+                await main._generate_images(request,http)
+        self.assertEqual([False,True],[call.kwargs["grayscale"] for call in upload_mock.call_args_list])
+        graph=client.submit_prompt.call_args.args[0]
+        self.assertNotIn("h3_control_preprocess",graph)
+        self.assertEqual("pose.mp4",graph["h3_control_video"]["inputs"]["video"])
+        self.assertEqual("gray-copy.mp4",graph["h3_control_video_1"]["inputs"]["video"])
+        self.assertEqual(["h3_control_1",0],graph["126"]["inputs"]["model"])
 
 
 if __name__=="__main__":unittest.main()

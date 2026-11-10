@@ -26,9 +26,9 @@ ControlNet 是结构约束，不保证逐帧复刻、确定性换脸或任意运
 
 调用 `get_shot_continuation_options`，传真实 `dramaId/shotId` 及配套 `providerId/modelCode`，读取实际 `controlTypes`、节点健康、`h3` 功能与 `referenceVideo` 媒体限制。仅不带模型返回的完整枚举，不能证明某预处理器当前可用。Pose 需要 DWPose，Depth/HED/MLSD/Scribble 需要相应预处理器及权重；部署缺失时报告具体类型不可用。不要默默改用 Canny，或把安装节点说成已完成 GPU 效果验收。
 
-- **普通镜头**：通过 `update_shot` 等工具保存 `refVideos`；读取完整接续草稿，在保持 `draft.enabled=false` 的情况下用 `save_shot_continuation` 保存 `draft.controlNet`，字段为 `enabled/referenceId/controlType/strength`。`referenceId` 必须匹配已保存参考视频的一项 `id`。
-- **接续镜头**：在目标 `draft.segments[]` 中保存 `referenceVideos` 与 `controlNetEnabled/controlVideoId/controlType/controlStrength`。`controlVideoId` 必须是本段挂载视频的 `id`，不能用资源托盘或另一段的 ID；按 [接续模式流程](continuation-mode.md) 准备和提交。
-- 多视频时显式选择唯一控制源，其他视频可继续作语义参考；没有参考视频不能启用 ControlNet。特征在渲染时由后台预处理并应用，目前没有独立的 MCP“提取并导出控制视频”工具，不虚构 `extract_features` 等接口或已提取的文件地址。
+- **普通镜头**：通过 `update_shot` 等工具保存 `refVideos`；读取完整接续草稿，在保持 `draft.enabled=false` 的情况下用 `save_shot_continuation` 保存 `draft.controlNet`，字段为 `enabled/controls[]`；每行包含 `enabled/referenceId/controlType/inputMode/strength`，最多三行。`referenceId` 必须匹配已保存参考视频的一项 `id`。
+- **接续镜头**：在目标 `draft.segments[]` 中保存 `referenceVideos` 与 `controlNetEnabled/controlInputs[]`；每行字段同普通镜头的 `controls[]`。每行 `referenceId` 必须是本段挂载视频的 `id`，不能用资源托盘或另一段的 ID；按 [接续模式流程](continuation-mode.md) 准备和提交。
+- 多视频时可独立配置最多三行控制源，例如分别选择骨架和深度视频，独立设置强度、启停；各视频不会合成到同一个画面。`inputMode=RAW` 在渲染时提取，`PREPROCESSED` 直接使用已处理视频、不再提取，无需相应提取器。旧单行字段兼容读取，显式空数组表示清空。没有参考视频不能启用 ControlNet。目前没有独立的 MCP“提取并导出控制视频”工具，不虚构 `extract_features` 等接口或已提取的文件地址。
 - 仅打开接续不需要 ControlNet；段间实际尾部由系统 Guide 接续，不能误用源视频 Pose 代替上一段生成上下文。`contextWindows` 是片段内部独立能力，默认关闭；与 ControlNet 联用须有 `contextWindowsWithControlNet=true` 的组合能力。
 
 ## 明确来源和片段

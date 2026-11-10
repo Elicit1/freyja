@@ -44,8 +44,7 @@ public class ShotContinuationSelections {
             if(segment.getCharacterRefs()!=null&&segment.getCharacterRefs().size()>30||segment.getPropRefs()!=null&&segment.getPropRefs().size()>30||segment.getReferenceImages()!=null&&segment.getReferenceImages().size()>9||segment.getReferenceVideos()!=null&&segment.getReferenceVideos().size()>3||segment.getReferenceAudios()!=null&&segment.getReferenceAudios().size()>3)throw new BizException(400,"片段素材数量超过选项上限");
             String path="片段 "+segment.getId();
             choice(segment.getShotType(),sizes,path+".shotType");choice(segment.getCameraMovement(),movements,path+".cameraMovement");
-            if(segment.getControlVideoId()!=null&&(segment.getReferenceVideos()==null||segment.getReferenceVideos().stream().noneMatch(v->v!=null&&segment.getControlVideoId().equals(v.getId()))))throw new BizException(400,"本段控制视频选项已失效，请重新选择");
-            choice(segment.getControlType(),ShotControlNetOptions.CONTROL_TYPES,path+".controlType");
+            segment.controlOptions().validateSources(segment.getReferenceVideos());
             if(segment.getResSceneId()!=null)asset(scenes.selectById(segment.getResSceneId()),shot);
             if(segment.getResKeyframeId()!=null)asset(keyframes.selectById(segment.getResKeyframeId()),shot);
             if(segment.getCharacterRefs()!=null)for(var ref:segment.getCharacterRefs()) {
@@ -80,10 +79,12 @@ public class ShotContinuationSelections {
     }
     private void ordinaryControl(DramaShot shot,ShotContinuation draft){
         var control=draft.getControlNet();
-        if(control!=null&&(control.isEnabled()||control.getReferenceId()!=null)){var selected=com.astra.freyja.util.ShotVideoReferenceValidator.parse(shot.getRefVideosJson(),new com.fasterxml.jackson.databind.ObjectMapper());if(control.isEnabled()&&(!"REFERENCE_MODE".equals(shot.getGenerationMode())||selected.isEmpty()||selected.size()>1&&control.getReferenceId()==null)||control.getReferenceId()!=null&&selected.stream().noneMatch(v->control.getReferenceId().equals(v.getId())))throw new BizException(400,"镜头控制视频选项已失效，请重新选择");}
-
-        if(control!=null){choice(control.getControlType(),ShotControlNetOptions.CONTROL_TYPES,"controlNet.controlType");if(!Double.isFinite(control.getStrength())||control.getStrength()<0||control.getStrength()>2)throw new BizException(400,"ControlNet强度须在0～2之间");}
+        if(control!=null){
+            if(control.isActive()&&!"REFERENCE_MODE".equals(shot.getGenerationMode()))throw new BizException(400,"ControlNet 仅支持参考生成模式");
+            control.validateSources(com.astra.freyja.util.ShotVideoReferenceValidator.parse(shot.getRefVideosJson(),new com.fasterxml.jackson.databind.ObjectMapper()));
+        }
     }
+
     private void asset(BaseEntity entity,DramaShot shot) {
         if(entity==null)throw new BizException(400,"资产选项已删除或不存在，请重新选择");
         Long project;Integer status;

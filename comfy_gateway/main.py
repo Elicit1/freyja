@@ -341,11 +341,11 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         if request.h3_options.save_latent and not accepted.get("continuationModes",{}).get("LATENT_REDRAW",{}).get("available"):
             raise ValueError("H3_LATENT_OUTPUT_UNAVAILABLE: install FREYJA H3 node package")
         if request.h3_options.context_windows.enabled and not accepted.get("contextWindows"):raise ValueError("H3_CONTEXT_UNAVAILABLE")
-        if request.h3_options.control_net.enabled and not accepted.get("controlNet"):raise ValueError("H3_CONTROL_UNAVAILABLE")
-        if request.h3_options.control_net.enabled and request.h3_options.context_windows.enabled and not accepted.get("contextWindowsWithControlNet"):raise ValueError("H3_WINDOW_CONTROL_UNAVAILABLE")
-        if request.h3_options.control_net.enabled and request.h3_options.control_net.control_type not in accepted["controlTypes"]:raise ValueError("H3_PREPROCESSOR_UNSUPPORTED")
+        if request.h3_options.control_net.is_active() and not accepted.get("controlNet"):raise ValueError("H3_CONTROL_UNAVAILABLE")
+        if request.h3_options.control_net.is_active() and request.h3_options.context_windows.enabled and not accepted.get("contextWindowsWithControlNet"):raise ValueError("H3_WINDOW_CONTROL_UNAVAILABLE")
+        if any(control.required_capability() not in accepted["controlTypes"] for control in request.h3_options.control_net.active_inputs()):raise ValueError("H3_PREPROCESSOR_UNSUPPORTED")
         request.node_id=target_node.node_id
-        if request.h3_options.control_net.enabled and not video_references: raise ValueError("H3_CONTROL_SOURCE_MISSING")
+        if request.h3_options.control_net.is_active() and not video_references: raise ValueError("H3_CONTROL_SOURCE_MISSING")
     elif model_cfg.handler in {"minimax_h3_fl2va","minimax_h3_ref2va","minimax_h3_face_refine"} and (request.duration and request.duration>15 or request.length and request.length>362):
         raise ValueError("H3_CONTINUATION_REQUIRED: requests longer than 15 seconds require continuation mode")
     if video_references:
@@ -400,9 +400,10 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         hosts = {host.strip().lower() for host in os.getenv("REFERENCE_MEDIA_HOSTS", "").split(",") if host.strip()}
         for binding in video_references:
             control_upload = {}
-            if request.h3_options and request.h3_options.control_net.enabled and binding.reference_id == request.h3_options.control_net.reference_id:
+            controls = [control for control in request.h3_options.control_net.active_inputs() if control.reference_id == binding.reference_id] if request.h3_options else []
+            if controls:
                 control_upload = {"required_frames":request.h3_options.control_required_frames or request.h3_options.length,
-                                  "grayscale":request.h3_options.control_net.control_type=="GRAY"}
+                                  "grayscale":any(control.control_type=="GRAY" and control.input_mode=="RAW" for control in controls)}
             uploaded_ref_videos.append(await asyncio.wait_for(upload_reference_video(client, binding, video_capability, hosts, **control_upload), timeout=120))
             if sum(video["duration"] for video in uploaded_ref_videos) > video_capability.max_total_clip_seconds + len(uploaded_ref_videos) / video_capability.decode_fps:
                 raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: total reference duration exceeds model configuration")
@@ -528,6 +529,10 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         if (canonical.get("h3_options") or {}).get("latent_context"):
             canonical["h3_options"]["latent_context"].pop("url",None)
             if canonical["h3_options"]["latent_context"].get("anchor"):canonical["h3_options"]["latent_context"]["anchor"].pop("url",None)
+        if canonical.get("h3_options"):
+            control = canonical["h3_options"].get("control_net")
+            if control is not None and control.get("controls") is None:
+                control.pop("controls", None)  # Preserve immutable single-control execution hashes.
         if canonical.get("h3_options") and canonical["h3_options"].get("schema_version",1)==1:
             # Preserve idempotency hashes for immutable pre-v2 task snapshots.
             for field in ("continuity","save_latent","latent_context","backend_signature"):canonical["h3_options"].pop(field,None)

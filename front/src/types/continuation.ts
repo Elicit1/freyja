@@ -1,3 +1,4 @@
+import type { ControlNetConfiguration, ControlNetInput } from '@/utils/control-net'
 import type { ShotRefImage, ShotRefVideo, ShotRefAudio, CharacterShotRefInfo, PropShotRefInfo, DirectorPlan } from './drama'
 import type { H3ControlType } from '@/constants/h3ControlTypes'
 export type ContinuityMode = 'GUIDE' | 'GUIDE_CHROMA' | 'LATENT_REDRAW' | 'LATENT_PROTECTED'
@@ -37,6 +38,7 @@ export interface ContinuationSegment {
   lastFrameImageUrl?: string
   referenceImages: ShotRefImage[]
   referenceVideos: ShotRefVideo[]
+  controlInputs?: ControlNetInput[] | null
   controlNetEnabled: boolean
   controlVideoId?: string
   controlType: H3ControlType
@@ -52,7 +54,7 @@ export interface ContinuationDraft {
   autoSplitReferenceVideo?: boolean
   videoSources?: ShotRefVideo[]
   imageSources?: ShotRefImage[]
-  controlNet?: { enabled: boolean; referenceId?: string; controlType: string; strength: number }
+  controlNet?: ControlNetConfiguration
   contextWindows: boolean
   reuseFromTaskId?: string
   segments: ContinuationSegment[]

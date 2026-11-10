@@ -24,6 +24,19 @@ class McpContinuationToolsTest {
         selection.remove("presetId");selection.put("source_url","http://forged");assertFalse(validator.validate(schema,request).valid());
     }
     final McpJson json=new McpJson();
+    @Test void multiControlSchemaKeepsSourcesIndependentAndRestrictsInputModes(){
+        var schemas=new McpContinuationSchemas(new McpJson());var validator=new DefaultJsonSchemaValidator();
+        var schema=schemas.tool(McpContinuationTools.Plan.class);var input=plan();
+        @SuppressWarnings("unchecked") var d=(Map<String,Object>)input.get("draft");
+        var pose=new LinkedHashMap<String,Object>(Map.of("enabled",true,"referenceId","pose","controlType","POSE","inputMode","PREPROCESSED","strength",.8));
+        var depth=Map.of("enabled",true,"referenceId","depth","controlType","DEPTH","inputMode","PREPROCESSED","strength",.4);
+        d.put("controlNet",Map.of("enabled",true,"controls",List.of(pose,depth)));
+        d.put("segments",List.of(Map.of("id","s","startFrame",0,"endFrame",124,"controlNetEnabled",true,"controlInputs",List.of(pose,depth))));
+        assertTrue(validator.validate(schema,input).valid(),new McpJson().write(schema));
+        pose.put("inputMode","invented");assertFalse(validator.validate(schema,input).valid());
+        pose.put("inputMode","RAW");d.put("controlNet",Map.of("enabled",true,"controls",List.of(pose,depth,pose,depth)));
+        assertFalse(validator.validate(schema,input).valid());
+    }
     final McpContinuationSchemas schemas=new McpContinuationSchemas(json);
     final DefaultJsonSchemaValidator validator=new DefaultJsonSchemaValidator();
     Map<String,Object> draft(){return new LinkedHashMap<>(Map.of("schemaVersion",1,"enabled",true,"durationSeconds",30,"segmentFrames",124,"overlapFrames",22,"segments",new ArrayList<>()));}

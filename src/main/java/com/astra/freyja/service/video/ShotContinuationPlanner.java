@@ -68,14 +68,8 @@ public class ShotContinuationPlanner {
                     throw new BizException(400,"请给片段挂载有效且固定的图片地址");
             }
             com.astra.freyja.util.ShotVideoReferenceValidator.validate(segment.getReferenceVideos());
-            if(!Double.isFinite(segment.getControlStrength())||segment.getControlStrength()<0||segment.getControlStrength()>2)
-                throw new BizException(400,"ControlNet 强度应在 0～2 范围内");
-            if(segment.isControlNetEnabled()) {
-                if(segment.getReferenceVideos().isEmpty())throw new BizException(400,"开启 ControlNet 的片段必须挂载参考视频");
-                if(segment.getReferenceVideos().size()==1&&segment.getControlVideoId()==null)segment.setControlVideoId(segment.getReferenceVideos().getFirst().getId());
-                if(segment.getReferenceVideos().stream().noneMatch(v->Objects.equals(v.getId(),segment.getControlVideoId())))throw new BizException(400,"请选择本段 ControlNet 视频源");
-                if(segment.getControlType()==null||!ShotControlNetOptions.CONTROL_TYPES.contains(segment.getControlType()))throw new BizException(400,"ControlNet 控制类型无效");
-            }
+            var controls=segment.controlOptions();controls.validateSources(segment.getReferenceVideos());
+            if(segment.getControlInputs()==null)segment.setControlVideoId(controls.getReferenceId());
             var range=new ShotContinuationPlan.Range();range.setSegmentId(segment.getId());range.setStartFrame(start);range.setEndFrame(end);
             var configured=segment.getContinuityOverride()!=null?segment.getContinuityOverride():draft.getContinuity();
             var strategy=(configured==null?new ShotContinuityOptions():configured).resolved(i==0?overlap:shared);
@@ -111,7 +105,7 @@ public class ShotContinuationPlanner {
         return s.isLocked()||s.getContinuityOverride()!=null||s.getPrompt()!=null&&!s.getPrompt().isBlank()||s.getScriptContent()!=null&&!s.getScriptContent().isBlank()||s.getName()!=null&&!s.getName().isBlank()
                 ||s.getFirstFrameImageUrl()!=null||s.getLastFrameImageUrl()!=null||s.getDirectorPlan()!=null||s.getResSceneId()!=null||s.getResKeyframeId()!=null
                 ||s.getFirstFramePrompt()!=null||s.getEndFramePrompt()!=null||s.getNegativePrompt()!=null||s.getActionDescription()!=null||s.getSoundEffect()!=null||s.getCustomScenePrompt()!=null
-                ||s.getShotType()!=null||s.getCameraMovement()!=null||s.isControlNetEnabled()
+                ||s.getShotType()!=null||s.getCameraMovement()!=null||s.isControlNetEnabled()||s.getControlInputs()!=null&&!s.getControlInputs().isEmpty()
                 ||s.getReferenceImages()!=null&&!s.getReferenceImages().isEmpty()||s.getReferenceVideos()!=null&&!s.getReferenceVideos().isEmpty()
                 ||s.getCharacterRefs()!=null&&!s.getCharacterRefs().isEmpty()||s.getPropRefs()!=null&&!s.getPropRefs().isEmpty()||s.getReferenceAudios()!=null&&!s.getReferenceAudios().isEmpty();
     }
