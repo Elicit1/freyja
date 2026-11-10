@@ -1,12 +1,14 @@
 <template>
-  <section class="video-enhancements" aria-label="视频增强" v-loading="loading">
+  <section class="video-enhancements" aria-label="视频增强" :aria-busy="loading">
     <div class="enhancement-switches">
       <div class="enhancement-option"><div><strong>二采放大</strong><el-switch :model-value="options.upscale" aria-label="二采放大" :disabled="disabled || !canUpscale" @update:model-value="patch('upscale', !!$event)" /></div><p>基础视频生成后，放大并进行第二次采样。</p></div>
       <div class="enhancement-option"><div><strong>人脸修复</strong><el-switch :model-value="options.faceRepair" aria-label="人脸修复" :disabled="disabled || !canRepairFace" @update:model-value="patch('faceRepair', !!$event)" /></div><p>{{ capability?.supported && !canRepairFace ? '当前基础模型不支持人脸修复。' : '跟踪面部，精修后融合回画面。' }}</p></div>
     </div>
-    <p v-if="error" role="alert">{{ error }}，仍可关闭增强进行基础渲染。</p>
-    <p v-else-if="!providerId || !modelId">选择视频模型后可开启增强。</p>
-    <p v-else-if="!loading && !capability?.supported">当前模型未提供二采放大和人脸修复能力。</p>
+    <p v-if="!providerId || !modelId || !modelCode">选择视频模型后可开启增强。</p>
+    <p v-else-if="loading" role="status">正在读取视频增强能力…</p>
+    <p v-else-if="error" role="alert">{{ error }}。可直接进行基础渲染。<el-button link type="primary" :disabled="disabled" @click="loadCapabilities(true)">重试</el-button></p>
+    <p v-else-if="loaded && !capability">网关未登记模型 {{ modelCode }}，请核对模型编码及网关配置。<el-button link type="primary" :disabled="disabled" @click="loadCapabilities(true)">刷新能力</el-button></p>
+    <p v-else-if="loaded && !capability?.supported">当前模型未提供二采放大和人脸修复能力，请选择基础 REF2VA 模型。<el-button link type="primary" :disabled="disabled" @click="loadCapabilities(true)">刷新能力</el-button></p>
     <template v-if="options.upscale || options.faceRepair">
       <div class="enhancement-path" aria-label="本次处理顺序"><span>基础生成</span><span v-if="options.upscale">→ 二采放大</span><span v-if="options.faceRepair">→ 人脸修复</span><span>→ 输出 {{ outputSize }}</span></div>
       <el-collapse><el-collapse-item title="增强参数" name="parameters">
@@ -26,21 +28,25 @@ import { videoEnhancementApi, defaultWorkflowOptions, normalizeWorkflowOptions, 
 import FreyjaUpscaleOptions from './FreyjaUpscaleOptions.vue'
 const props = defineProps<{ modelValue?: WorkflowSelection; providerId?: string; modelId?: string; modelCode?: string; size?: string; disabled?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: WorkflowSelection | undefined] }>()
-const capabilities = ref<WorkflowCapability[]>([]), loading = ref(false), error = ref('')
+const capabilities = ref<WorkflowCapability[]>([]), loading = ref(false), loaded = ref(false), error = ref('')
 let revision = 0
-const capability = computed(() => capabilities.value.find(c => c.modelCode === props.modelCode && c.supported))
-const canUpscale = computed(() => !!capability.value?.stages.includes('UPSCALE'))
-const canRepairFace = computed(() => !!capability.value?.stages.includes('FACE'))
+const capability = computed(() => capabilities.value.find(c => c.modelCode === props.modelCode && c.supported) || capabilities.value.find(c => c.modelCode === props.modelCode))
+const canUpscale = computed(() => !loading.value && loaded.value && !!props.modelId && !!capability.value?.supported && capability.value.stages.includes('UPSCALE'))
+const canRepairFace = computed(() => !loading.value && loaded.value && !!props.modelId && !!capability.value?.supported && capability.value.stages.includes('FACE'))
 const options = computed(() => props.modelValue?.options ? normalizeWorkflowOptions(props.modelValue.options) : defaultWorkflowOptions())
 const outputSize = computed(() => { const [w,h] = (props.size || '').split('x').map(Number); if (options.value.upscale && options.value.upscaleOutput === 'FULL_HD') return w && h && w < h ? '1080 × 1920' : '1920 × 1080'; return w && h ? `${w * (options.value.upscale ? 2 : 1)} × ${h * (options.value.upscale ? 2 : 1)}` : '原尺寸' })
-watch(() => [props.providerId, props.modelId, props.modelCode], async () => {
-  const token = ++revision; capabilities.value = []; error.value = ''; loading.value = false; emit('update:modelValue', undefined)
-  if (!props.providerId || !props.modelId) return
+watch(() => [props.providerId, props.modelId, props.modelCode], () => {
+  if (props.modelValue) emit('update:modelValue', undefined)
+})
+async function loadCapabilities(refresh = false) {
+  const token = ++revision; capabilities.value = []; error.value = ''; loading.value = false; loaded.value = false
+  if (!props.providerId) return
   loading.value = true
-  try { const result = await videoEnhancementApi.capabilities(props.providerId); if (token === revision) capabilities.value = result.models }
-  catch (e: any) { if (token === revision) error.value = e.message || '无法读取视频增强能力' }
+  try { const result = await videoEnhancementApi.capabilities(props.providerId, refresh); if (token === revision) { capabilities.value = result.models; loaded.value = true } }
+  catch (e: any) { if (token === revision) error.value = e.code === 'ECONNABORTED' ? '读取视频增强能力超时，请检查网关连接' : e.message || '无法读取视频增强能力' }
   finally { if (token === revision) loading.value = false }
-}, { immediate: true })
+}
+watch(() => props.providerId, () => loadCapabilities(), { immediate: true })
 function update(value: WorkflowOptions) { if (!props.disabled) emit('update:modelValue', value.upscale || value.faceRepair ? { options: value } : undefined) }
 function patch<K extends keyof WorkflowOptions>(key: K, value: WorkflowOptions[K]) { update({ ...options.value, [key]: value }) }
 onBeforeUnmount(() => { revision++ })

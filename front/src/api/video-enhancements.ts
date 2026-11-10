@@ -7,8 +7,27 @@ export interface WorkflowCapability { modelCode: string; nodeId: string; support
 export const defaultUpscaleTiling = (): UpscaleTilingOptions => ({ enabled: false, tileWidth: 768, tileHeight: 512, overlap: 192, temporal: false, windowFrames: 56, overlapFrames: 22 })
 export const defaultWorkflowOptions = (): WorkflowOptions => ({ upscale: false, faceRepair: false, scale: 2, upscaleDenoise: .25, faceDenoise: .4, upscaleTiling: defaultUpscaleTiling(), upscaleEngine: 'FREYJA', upscaleMethod: 'LATENT_BICUBIC', upscaleOutput: 'FULL_HD', upscaleSteps: 2, upscaleMemory: 'TEMPORAL' })
 export const normalizeWorkflowOptions = (options: Partial<WorkflowOptions>): WorkflowOptions => ({ ...defaultWorkflowOptions(), ...options, upscaleEngine: options.upscaleEngine || 'PIXEL', upscaleOutput: options.upscaleOutput || 'DOUBLE', upscaleTiling: { ...defaultUpscaleTiling(), ...options.upscaleTiling } })
+type CapabilityCatalog = { models: WorkflowCapability[] }
+const capabilityCache = new Map<string, { expires: number; value: CapabilityCatalog }>()
+const capabilityRequests = new Map<string, Promise<CapabilityCatalog>>()
+function capabilities(providerId: string, refresh = false): Promise<CapabilityCatalog> {
+  const pending = capabilityRequests.get(providerId)
+  if (pending) return pending
+  const cached = capabilityCache.get(providerId)
+  if (!refresh && cached && cached.expires > Date.now()) return Promise.resolve(cached.value)
+  const pendingRequest = request<CapabilityCatalog>({ url: '/production/video-enhancements/capabilities', method: 'get', params: { providerId }, timeout: 8000 })
+    .then(value => {
+      if (!Array.isArray(value?.models)) throw new Error('视频增强能力返回格式无效，请更新网关')
+      capabilityCache.set(providerId, { expires: Date.now() + 5000, value })
+      return value
+    })
+    .catch(error => { capabilityCache.delete(providerId); throw error })
+    .finally(() => { capabilityRequests.delete(providerId) })
+  capabilityRequests.set(providerId, pendingRequest)
+  return pendingRequest
+}
 export const videoEnhancementApi = {
-  capabilities: (providerId: string) => request<{ models: WorkflowCapability[] }>({ url: '/production/video-enhancements/capabilities', method: 'get', params: { providerId } }),
+  capabilities,
   preview: (data: { providerId: string; modelId: string; size: string; selection: WorkflowSelection }) => request<{ name: string; baseSize: string; outputSize: string; options: WorkflowOptions }>({ url: '/production/video-enhancements/preview', method: 'post', data }),
   steps: (taskId: string) => request<Array<{ step_key: string; stage: string; status: string; output_url?: string; error_message?: string }>>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/steps`, method: 'get' })
 }
