@@ -1,5 +1,5 @@
 <template>
-  <section class="continuity-selector studio-card" aria-label="接续方式">
+  <section class="continuity-selector" aria-label="接续方式">
     <div class="continuity-heading"><div><h3>{{ compact ? '本段接续方式' : '接续方式' }}</h3></div><span class="mode-note">{{ capabilities ? '按所选模型的实际能力展示' : '提交前检查所选模型的节点能力' }}</span></div>
     <div class="mode-grid" role="radiogroup" aria-label="接续方式" @keydown="navigate">
       <button v-for="item in modes" :key="item.id" type="button" role="radio" :aria-checked="value.mode === item.id" :disabled="capabilities?.[item.id]?.available === false" :title="capabilities?.[item.id]?.reason || item.detail" :class="['mode-card', { selected: value.mode === item.id }]" @click="select(item.id)">
@@ -69,7 +69,7 @@ function navigate(event: KeyboardEvent) {
 </script>
 
 <style scoped>
-.continuity-selector{padding:16px;margin-bottom:16px;color:var(--text-primary)}
+.continuity-selector{margin:20px 0 16px;color:var(--text-primary)}
 .continuity-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 h3{font-size:14px;font-weight:600;margin:0}.mode-note{font-size:11px;color:var(--text-secondary)}
 .mode-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}

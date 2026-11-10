@@ -164,6 +164,7 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
             take.setGenerationMode(shotSnapshot.getGenerationMode());
             take.setSeed(requestSnapshot != null ? requestSnapshot.getSeed() : null);
             take.setSize(requestSnapshot != null ? requestSnapshot.getSize() : null);
+            if(requestSnapshot!=null&&requestSnapshot.getDynamicWorkflowPlan()!=null)take.setSize(requestSnapshot.getDynamicWorkflowPlan().getOutputSize());
             take.setDuration(shotSnapshot.getDuration());
 
             String prompt = renderTask != null ? renderTask.getPrompt() : null;
@@ -456,6 +457,7 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
             map.put("referenceVideoNodeId", requestDTO.getReferenceVideoNodeId());
             map.put("continuationPlan",requestDTO.getContinuationPlan());
             map.put("continuationSegments",requestDTO.getContinuationSegments());
+            if(requestDTO.getDynamicWorkflowPlan()!=null)map.put("dynamicWorkflowPlan",requestDTO.getDynamicWorkflowPlan());
             return com.astra.freyja.util.VideoReferenceSnapshotJson.write(map, objectMapper);
         } catch (Exception e) {
             log.warn("[ShotVideoTakeService] 序列化请求参数快照异常: {}", e.getMessage());

@@ -213,6 +213,10 @@ public class ReferenceVideoMediaService {
     }
     public void downloadPrepared(String url,Path target)throws Exception{download(url,target);}
     public record ContinuationArtifact(String objectPath,String url,String sha256){}
+    public ContinuationArtifact archiveDynamicSource(Path file)throws Exception{
+        String sha=digest(file),key="reference-video/dynamic/"+sha+".mp4";
+        archive(file,key,"video/mp4");return new ContinuationArtifact(key,previewUrl(key),sha);
+    }
     public ContinuationArtifact archiveContinuation(Path file)throws Exception{
         String key="reference-video/continuation/"+UUID.randomUUID()+".mp4";archive(file,key,"video/mp4");
         return new ContinuationArtifact(key,previewUrl(key),digest(file));

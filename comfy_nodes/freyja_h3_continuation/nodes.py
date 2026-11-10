@@ -262,5 +262,24 @@ class FreyjaH3SaveLatent:
         return {"ui":{"latents":[{"filename":name,"subfolder":"freyja_h3","type":"output"}]}}
 
 
-NODE_CLASS_MAPPINGS = {c.__name__:c for c in (FreyjaH3ChromaNoise,FreyjaH3Continue,FreyjaH3Restore,FreyjaH3SaveLatent)}
+class FreyjaH3CheckFrames:
+    """Reject truncated stage inputs before sampling; never silently stretch time."""
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "apply"
+    CATEGORY = "FREYJA/H3"
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"images": ("IMAGE",), "expected_frames": ("INT", {"min": 5, "max": 362})},
+                "optional": {"expected_width": ("INT", {"default": 0, "min": 0}), "expected_height": ("INT", {"default": 0, "min": 0})}}
+    def apply(self, images, expected_frames, expected_width=0, expected_height=0):
+        if len(images) != expected_frames:
+            raise ValueError(f"DYNAMIC_SOURCE_FRAME_MISMATCH: expected {expected_frames}, got {len(images)}")
+        if expected_width and images.shape[2] != expected_width or expected_height and images.shape[1] != expected_height:
+            raise ValueError("DYNAMIC_OUTPUT_SIZE_MISMATCH")
+        return (images,)
+
+
+NODE_CLASS_MAPPINGS = {c.__name__:c for c in (FreyjaH3ChromaNoise,FreyjaH3Continue,FreyjaH3Restore,FreyjaH3SaveLatent,FreyjaH3CheckFrames)}
+from .upscale import CLASSES as UPSCALE_CLASSES
+NODE_CLASS_MAPPINGS.update({c.__name__: c for c in UPSCALE_CLASSES})
 NODE_DISPLAY_NAME_MAPPINGS = {name:name.replace("FreyjaH3", "FREYJA H3 · ") for name in NODE_CLASS_MAPPINGS}

@@ -4,9 +4,11 @@ from typing import List, Optional, Dict, Any, Tuple, Literal
 from pydantic import BaseModel, Field, StrictInt, model_validator
 from reference_prompt import ReferenceBinding, ReferenceType
 from h3_extensions import H3Options
+from dynamic_workflow import DynamicStage
 
 
 class ImageGenerationRequest(BaseModel):
+    dynamic_workflow: Optional[DynamicStage] = None
     h3_options: Optional[H3Options] = None
     model: str = Field(default="flux-2-klein-9b", description="Model name matching workflows or nodes")
     prompt: str = Field(..., description="Positive text prompt")

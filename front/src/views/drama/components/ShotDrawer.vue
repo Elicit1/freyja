@@ -94,7 +94,19 @@
         </div>
       </div>
 
-      <ShotContinuationEditor v-if="form.id && !loading" :key="String(form.id)" v-show="continuationEnabled" ref="continuationEditor" :shot-id="String(form.id)" :enabled="continuationEnabled" :generation-mode="form.generationMode || 'FIRST_LAST_FRAME'" :aspect-ratio="currentDramaAspectRatio" :drama-id="form.dramaId" :characters="characterOptions" :scenes="sceneOptions" :props-options="propOptions" :keyframes="keyframeOptions" :source-images="refImages" :source-videos="form.refVideos" :source-first="form.previewImageUrl" :source-last="form.endFrameImageUrl" @saved="emit('success', form.id)" @request-render="handleRender" @request-save="handleSave(false)" />
+      <ShotContinuationEditor v-if="form.id && !loading" :key="String(form.id)" v-show="continuationEnabled" ref="continuationEditor" :shot-id="String(form.id)" :enabled="continuationEnabled" :generation-mode="form.generationMode || 'FIRST_LAST_FRAME'" :aspect-ratio="currentDramaAspectRatio" :drama-id="form.dramaId" :characters="characterOptions" :scenes="sceneOptions" :props-options="propOptions" :keyframes="keyframeOptions" :source-images="refImages" :source-videos="form.refVideos" :source-first="form.previewImageUrl" :source-last="form.endFrameImageUrl" @saved="emit('success', form.id)" @request-render="handleRender" @request-save="handleSave(false)">
+        <template #seed>
+          <el-form ref="continuationSeedFormRef" :model="form" :rules="{ seed: rules.seed }" label-position="top" class="mt-4 max-w-xl">
+            <el-form-item label="视频随机种子 Seed" prop="seed">
+              <div class="flex w-full items-center gap-2">
+                <el-input v-model="form.seed" :disabled="refreshingSeed || saving" placeholder="留空保留原种子" inputmode="numeric" clearable class="flex-1 font-mono" />
+                <el-button :disabled="!form.id || saving" :loading="refreshingSeed" @click="handleRefreshSeed">刷新种子</el-button>
+              </div>
+              <p class="mt-1 text-xs text-[var(--text-muted)]">作为镜头配置保存，各接续片段的种子由此按固定规则派生。</p>
+            </el-form-item>
+          </el-form>
+        </template>
+      </ShotContinuationEditor>
       <el-tabs v-show="!continuationEnabled" v-model="activeSection" class="shot-workspace-tabs shrink-0">
         <el-tab-pane v-for="(section, index) in editorSections" :key="section.name" :name="section.name">
           <template #label>
@@ -1073,6 +1085,7 @@ const loading = ref(false)
 const saving = ref(false)
 const rendering = ref(false)
 const refreshingSeed = ref(false)
+const continuationSeedFormRef = ref<FormInstance>()
 const savedSeed = ref<string>()
 const formRef = ref<FormInstance>()
 
@@ -1848,11 +1861,16 @@ async function handleRender() {
 }
 
 async function handleSave(closeAfter = false): Promise<boolean> {
+  if (refreshingSeed.value) { ElMessage.warning('种子正在刷新，请稍后保存'); return false }
   if (continuationEnabled.value) {
-    if (!form.id) return false
+    if (!form.id || !continuationSeedFormRef.value) return false
+    try { if (!await continuationSeedFormRef.value.validate()) return false } catch { return false }
     saving.value = true
     try {
-      await shotApi.update({ id: form.id, generationMode: form.generationMode })
+      const seed = form.seed?.trim() || undefined
+      await shotApi.update({ id: form.id, generationMode: form.generationMode, seed: seed !== savedSeed.value ? seed : undefined })
+      savedSeed.value = seed || savedSeed.value
+      form.seed = savedSeed.value
       const saved = await continuationEditor.value?.save(true)
       if (saved && closeAfter) visible.value = false
       return saved === true

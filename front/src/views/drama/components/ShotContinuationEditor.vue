@@ -4,6 +4,7 @@
       <section class="continuation-master">
         <div class="master-heading"><div><span class="eyebrow">单镜头 · 接续创作</span><h2>接续总控</h2><p>先规划时间轴，再逐段编写内容和挂载参考。</p></div><div class="flex gap-2"><el-button :disabled="!draft.segments.length" @click="planningDialog?.open()">✦ AI 自动规划</el-button><el-button type="primary" plain :loading="previewing" @click="preview(true)">自动分段</el-button></div></div>
         <ContinuationModeSelector v-model="draft.continuity" :overlap-frames="draft.overlapFrames" :capabilities="plan?.continuationModes" @update:model-value="draft.schemaVersion = 2" />
+        <slot name="seed" />
         <div class="master-fields"><label>成片总时长（秒）<el-input-number v-model="draft.durationSeconds" :min="0.5" :max="300" :step="0.5" /></label><label>每段生成时长<el-select :model-value="selectedPreset" @change="applyPreset"><el-option v-for="p in presets" :key="p.id" :value="p.id" :label="p.label" /><el-option value="custom" label="自定义帧数" /></el-select></label><label>段长（帧）<el-input-number v-model="draft.segmentFrames" :min="124" :max="362" :step="17" /></label><label>共享上下文（帧）<el-input-number v-model="draft.overlapFrames" :min="5" :max="141" :step="17" /></label></div>
         <div class="timeline" aria-label="接续片段时间轴"><button v-for="(s,i) in draft.segments" :key="s.id" :class="{selected:activeId===s.id}" :style="{flex: Math.max(1,s.endFrame-s.startFrame)}" @click="activeId=s.id"><b>{{ String(i+1).padStart(2,'0') }}</b><span>{{ seconds(s.startFrame) }}–{{ seconds(s.endFrame) }}s</span><small>{{ i ? modeLabel(s.continuityOverride?.mode || draft.continuity?.mode) : '起始段' }}</small></button><p v-if="!draft.segments.length">点击自动分段，预览接续计划</p></div>
         <div class="master-summary"><span>{{ draft.segments.length }} 个片段 · {{ Math.max(0,draft.segments.length-1) }} 个接续点 · {{ draft.durationSeconds }} 秒成片</span><div class="flex gap-2"><el-button text size="small" @click="appendSegment">＋ 手动加段</el-button><el-button text size="small" @click="preview(false)">校验时间轴</el-button><el-button text size="small" @click="resetPlan">重建</el-button></div></div>
@@ -191,7 +192,7 @@ async function render(config: VideoRenderConfiguration, onProgress: (message: st
     if (prepared.status !== 'READY') throw new Error(prepared.errorMessage || '素材准备失败')
     if (!alive || before !== revision || !props.enabled) throw new Error('配置已变化，请重新提交')
     onProgress('素材已就绪，正在提交渲染任务…')
-    await shotApi.submitRender(props.shotId, { providerId: config.providerId, workflowTemplateId: config.modelCode, size: config.size, expectedRenderFingerprint: accepted.planHash }); emit('saved')
+    await shotApi.submitRender(props.shotId, { providerId: config.providerId, workflowTemplateId: config.modelCode, size: config.size, expectedRenderFingerprint: accepted.planHash, dynamicWorkflow: config.dynamicWorkflow }); emit('saved')
   } finally { busy.value = false }
 }
 defineExpose({ save, openRender, isReady: () => ready.value })

@@ -57,7 +57,11 @@ public class ShotContinuationPreparation {
             var snap=json.readValue(rows.getFirst(),VideoBatchModels.Snapshot.class);
             // Normal seed admission remains authoritative; media preparation never changes a shot seed.
             snap.getShot().setSeed(shot.getSeed());snap.getRequest().setSeed(shot.getSeed());
-            for(int i=0;i<snap.getRequest().getContinuationSegments().size();i++)snap.getRequest().getContinuationSegments().get(i).getRequest().setSeed(1+Math.floorMod(shot.getSeed()+i*104729L,9007199254740990L));
+            for(int i=0;i<snap.getRequest().getContinuationSegments().size();i++){
+                var child=snap.getRequest().getContinuationSegments().get(i);
+                long seed=1+Math.floorMod(shot.getSeed()+i*104729L,9007199254740990L);
+                child.getShot().setSeed(seed);child.getRequest().setSeed(seed);
+            }
             return snap;
         }catch(Exception e){throw new BizException(500,"接续素材快照无法读取");}
     }

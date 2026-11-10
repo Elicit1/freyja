@@ -122,6 +122,7 @@ public final class VideoBatchModels {
         @JsonIgnore private String recoveryUrl;
         public boolean isArchiveRecoverable(){return recoveryUrl!=null;}
         private boolean continuationRecoverable;
+        private boolean dynamicWorkflowRecoverable;
         private LocalDateTime createdAt;
         private LocalDateTime finishedAt;
         @JsonIgnore private String snapshotJson;

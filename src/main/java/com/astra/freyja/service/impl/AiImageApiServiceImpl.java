@@ -553,6 +553,11 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             payload.put("h3_options",options);if(node!=null)payload.put("node_id",node);
             payload.put("length",options.get("length"));
         }
+        if(dto!=null&&dto.getDynamicWorkflowStage()!=null)payload.put("dynamic_workflow",dto.getDynamicWorkflowStage());
+        if(dto!=null&&dto.getDynamicWorkflowPlan()!=null){
+            payload.put("node_id",dto.getDynamicWorkflowPlan().getNodeId());
+            if(dto.getH3Options()==null){int frames=Math.max(5,(int)Math.round(shot.getDuration().doubleValue()*24));payload.put("length",frames+(5-frames%17+17)%17);}
+        }
 
         // 参考图模式以主 Prompt 为准；本次请求中的编辑值优先于分镜快照。
         String prompt = ShotRenderPromptUtil.resolve(
@@ -567,6 +572,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
         var inputRequest = new com.astra.freyja.dto.drama.DramaShotRenderRequestDTO();
         inputRequest.setPrompt(prompt);
         if(dto!=null)inputRequest.setH3Options(dto.getH3Options());
+        if(dto!=null)inputRequest.setDynamicWorkflowStage(dto.getDynamicWorkflowStage());
         if (dto != null) inputRequest.setResolvedRefVideos(dto.getResolvedRefVideos());
         inputSnapshot.setRequest(inputRequest);
         var inputReport = com.astra.freyja.service.video.RenderInputResolver.inspect(inputSnapshot, true, objectMapper);
@@ -776,7 +782,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(requestUrl))
                     .header("X-Freyja-Deferred-Video", "true")
-                    .header("X-Freyja-Async-Submit", dto!=null&&dto.getH3Options()!=null&&Boolean.TRUE.equals(dto.getH3Options().get("continuation_enabled"))?"true":"false")
+                    .header("X-Freyja-Async-Submit", dto!=null&&(dto.getDynamicWorkflowStage()!=null||dto.getH3Options()!=null&&Boolean.TRUE.equals(dto.getH3Options().get("continuation_enabled")))?"true":"false")
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + (apiKey != null ? apiKey : ""))
                     .timeout(Duration.ofSeconds(Math.max(videoHttpTimeoutSeconds,

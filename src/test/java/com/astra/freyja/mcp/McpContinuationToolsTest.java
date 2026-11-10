@@ -13,6 +13,16 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class McpContinuationToolsTest {
+    @Test void dynamicWorkflowSchemaKeepsPresetIdsAsStringsAndRejectsInternalStageFields(){
+        var schemas=new McpContinuationSchemas(new McpJson());var validator=new DefaultJsonSchemaValidator();
+        var schema=schemas.tool(McpContinuationTools.OrdinaryRender.class);
+        var selection=new LinkedHashMap<String,Object>();selection.put("presetId","2032095628944588803");selection.put("version",1);
+        selection.put("options",Map.of("upscale",true,"faceRepair",true));
+        var request=new LinkedHashMap<String,Object>(Map.of("dramaId","1","shotId","2","requestId","request-001","expectedFingerprint","hash","providerId","3","modelCode","h3","size","960x544","dynamicWorkflow",selection));
+        assertTrue(validator.validate(schema,request).valid(),new McpJson().write(schema));
+        selection.put("presetId",2032095628944588803L);assertFalse(validator.validate(schema,request).valid());
+        selection.put("presetId","2032095628944588803");selection.put("source_url","http://forged");assertFalse(validator.validate(schema,request).valid());
+    }
     final McpJson json=new McpJson();
     final McpContinuationSchemas schemas=new McpContinuationSchemas(json);
     final DefaultJsonSchemaValidator validator=new DefaultJsonSchemaValidator();
@@ -44,7 +54,7 @@ class McpContinuationToolsTest {
     }
     @Test void allToolsAreInThePublishedInventoryWithScopedReadAndJournaledWrites(){
         var scope=mock(McpScope.class);var app=mock(ShotContinuationApplication.class);var journal=mock(McpOperationStore.class);var records=mock(McpBusinessRecords.class);
-        var tools=new McpContinuationTools(scope,records,mock(McpBusinessView.class),journal,schemas,app,mock(VideoRenderBatchService.class),mock(RenderTaskMapper.class),new ObjectMapper());
+        var tools=new McpContinuationTools(scope,records,mock(McpBusinessView.class),journal,schemas,app,mock(VideoRenderBatchService.class),mock(RenderTaskMapper.class),new ObjectMapper(),mock(com.astra.freyja.service.video.DynamicWorkflowService.class));
         assertEquals(McpContinuationTools.TOOL_NAMES,new HashSet<>(tools.tools().stream().map(McpTool::name).toList()));
         var caller=new McpPrincipal(false,false,false,Set.of(1L));
         @SuppressWarnings("unchecked") var save=(McpTool<McpContinuationTools.Save>)tools.tools().stream().filter(t->t.name().equals("save_shot_continuation")).findFirst().orElseThrow();
@@ -55,7 +65,7 @@ class McpContinuationToolsTest {
     }
     @Test void agentSchemaRemovesOnlyInjectedProjectAndRequestFields(){
         var inventory=mock(McpToolInventory.class);var app=mock(ShotContinuationApplication.class);
-        var tools=new McpContinuationTools(mock(McpScope.class),mock(McpBusinessRecords.class),mock(McpBusinessView.class),mock(McpOperationStore.class),schemas,app,mock(VideoRenderBatchService.class),mock(RenderTaskMapper.class),new ObjectMapper());
+        var tools=new McpContinuationTools(mock(McpScope.class),mock(McpBusinessRecords.class),mock(McpBusinessView.class),mock(McpOperationStore.class),schemas,app,mock(VideoRenderBatchService.class),mock(RenderTaskMapper.class),new ObjectMapper(),mock(com.astra.freyja.service.video.DynamicWorkflowService.class));
         when(inventory.registeredHandlers()).thenReturn(tools.tools());
         var business=new org.springframework.beans.factory.support.StaticListableBeanFactory(Map.of("inventory",inventory));
         var handlers=new com.astra.freyja.capability.service.CapabilityHandlers(business.getBeanProvider(McpToolInventory.class),new org.springframework.beans.factory.support.StaticListableBeanFactory().getBeanProvider(org.springframework.core.ResolvableType.forClassWithGenerics(List.class,com.astra.freyja.agent.tool.AgentTool.class)),json,new com.astra.freyja.agent.model.AgentJson());

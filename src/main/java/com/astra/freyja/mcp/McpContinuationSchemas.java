@@ -20,6 +20,8 @@ public class McpContinuationSchemas {
         Map<String,Object> props=(Map<String,Object>)root.get("properties");
         if(props.containsKey("draft"))props.put("draft",domain(ShotContinuation.class));
         if(props.containsKey("referenceVideo"))props.put("referenceVideo",domain(ShotRefVideoDTO.class));
+        if(props.containsKey("dynamicWorkflow"))props.put("dynamicWorkflow",domain(DynamicWorkflowOptions.Selection.class));
+        if(props.containsKey("selection"))props.put("selection",domain(DynamicWorkflowOptions.Selection.class));
         normalize(root);return root;
     }
     @SuppressWarnings("unchecked") private Map<String,Object> parse(String text) {try{return json.mapper().readValue(text,Map.class);}catch(Exception e){throw new IllegalStateException(e);}}

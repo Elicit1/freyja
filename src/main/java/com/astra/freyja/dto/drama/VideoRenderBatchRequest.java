@@ -22,6 +22,7 @@ public class VideoRenderBatchRequest {
 
     @Data
     public static class ModeConfig {
+        private DynamicWorkflowOptions.Selection dynamicWorkflow;
         private Long providerId;
         private Long modelId;
         private boolean autoUsePreviousVideoTailAsFirstFrame = true;

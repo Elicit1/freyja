@@ -16,7 +16,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class ShotContinuationRendererTest {
-    JdbcTemplate jdbc;AiImageApiService api;ShotContinuationMedia media;ShotContinuationRenderer renderer;
+    JdbcTemplate jdbc;AiImageApiService api;ShotContinuationMedia media;ShotContinuationRenderer renderer;DynamicWorkflowExecutor dynamic;
     @BeforeEach void setup()throws Exception{
         var ds=new JdbcDataSource();ds.setURL("jdbc:h2:mem:"+UUID.randomUUID()+";MODE=MySQL");jdbc=new JdbcTemplate(ds);
         // Keep this database alive across the renderer's independent persistence operations.
@@ -28,9 +28,19 @@ class ShotContinuationRendererTest {
         when(refs.transportUrl(anyString())).thenReturn("https://archive/context");when(media.assemble(anyList(),any())).thenReturn("https://archive/full");
         when(api.archiveExistingVideo(anyLong(),anyLong(),anyString())).thenAnswer(call->VideoGenerationResultVO.builder().videoUrl(call.getArgument(2)).build());
         artifacts=mock(ContinuationArtifactService.class);
-        renderer=new ShotContinuationRenderer(jdbc,new ObjectMapper(),api,media,refs,mock(AiTaskEventStore.class),artifacts);
+        renderer=new ShotContinuationRenderer(dynamic=mock(DynamicWorkflowExecutor.class),jdbc,new ObjectMapper(),api,media,refs,mock(AiTaskEventStore.class),artifacts);
     }
     private ContinuationArtifactService artifacts;
+    @Test void enhancedOutputsNeverBecomeNextSegmentsPixelHandoff()throws Exception{
+        var snap=snapshot("dynamic-continuation");var calls=new AtomicInteger();
+        for(var child:snap.getRequest().getContinuationSegments())child.getRequest().setDynamicWorkflowPlan(new DynamicWorkflowOptions.Plan());
+        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenAnswer(call->VideoGenerationResultVO.builder().videoUrl("https://archive/base-"+calls.getAndIncrement()).build());
+        when(dynamic.enhance(any(),anyString(),anyString(),anyString())).thenAnswer(call->"https://enhanced/"+call.getArgument(1).toString().substring("https://archive/".length()));
+        renderer.render(snap);
+        verify(media).tail(eq("https://archive/base-0"),anyInt(),anyInt());
+        verify(media).tail(eq("https://archive/base-1"),anyInt(),anyInt());
+        verify(media).assemble(eq(List.of("https://enhanced/base-0","https://enhanced/base-1","https://enhanced/base-2")),any());
+    }
     VideoBatchModels.Snapshot snapshot(String task){
         var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(30);draft.setSegmentFrames(362);draft.setOverlapFrames(39);var plan=new ShotContinuationPlanner().plan(draft,true);
         var shot=new DramaShot();shot.setId(1L);shot.setDramaId(2L);shot.setRefImagesJson("[]");shot.setRefVideosJson("[]");

@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class VideoBatchPreparation {
+    private final DynamicWorkflowService dynamicWorkflows;
     private final ShotContinuationPreparation continuations;
     private final com.astra.freyja.service.ShotVideoReferenceService videoReferences;
     private final com.astra.freyja.service.ShotVideoCapabilityService videoCapabilities;
@@ -169,7 +170,7 @@ public class VideoBatchPreparation {
         if(provider==null||!Objects.equals(provider.getStatus(),1)||StringUtils.isBlank(provider.getBaseUrl())) throw new BizException(400,"提供商未启用或缺少服务地址");
         if(shot.getContinuationJson()!=null&&continuations.enabled(shot)) {
             var snap=continuations.prepare(shot,model,provider,normalizeSize(size),supplied);
-            snap.setModelFingerprint(fingerprint(model,provider));snap.setAspectRatio(ratio);return snap;
+            snap.setModelFingerprint(fingerprint(model,provider));snap.setAspectRatio(ratio);applyDynamic(snap,cfg,supplied,model);return snap;
         }
         String prompt=ShotRenderPromptUtil.resolve(shot.getGenerationMode(),shot.getPrompt(),shot.getVideoPrompt(),supplied==null?null:supplied.getPrompt());
         if(StringUtils.isBlank(prompt)) throw new BizException(400,"请先保存视频提示词");
@@ -210,7 +211,21 @@ public class VideoBatchPreparation {
             dto.setControlNet(control);dto.setH3Options(continuations.controlOptions(shot,model,provider,control));
             if(!Objects.equals(dto.getReferenceVideoNodeId(),dto.getH3Options().get("node_id")))throw new BizException(409,"ControlNet 与参考视频算力节点不一致");
         }
-        snap.setRequest(dto);return snap;
+        snap.setRequest(dto);applyDynamic(snap,cfg,supplied,model);return snap;
+    }
+    private void applyDynamic(Snapshot snap,VideoRenderBatchRequest.ModeConfig cfg,DramaShotRenderRequestDTO supplied,AiModel model){
+        var selection=supplied!=null?supplied.getDynamicWorkflow():cfg.getDynamicWorkflow();
+        if(selection==null)return;
+        var request=snap.getRequest();String node=request.getReferenceVideoNodeId();
+        if(node==null&&request.getContinuationPlan()!=null)node=request.getContinuationPlan().getNodeId();
+        var plan=dynamicWorkflows.resolve(selection,request.getProviderId(),model.getId(),request.getSize(),node);
+        plan.setReuseFromTaskId(selection.getReuseFromTaskId()!=null?selection.getReuseFromTaskId():selection.isReusePrevious()?dynamicWorkflows.previousTask(snap.getShot().getId()):null);
+        if(plan.getReuseFromTaskId()==null&&request.getContinuationPlan()!=null)plan.setReuseFromTaskId(request.getContinuationPlan().getDraft().getReuseFromTaskId());
+        request.setDynamicWorkflow(selection);request.setDynamicWorkflowPlan(plan);
+        request.setDynamicWorkflowStage(Map.of("schema_version",1,"stage","BASE","revision",plan.getCapabilityRevision()));
+        if(request.getContinuationSegments()!=null)for(var child:request.getContinuationSegments()){
+            child.getRequest().setDynamicWorkflowPlan(plan);child.getRequest().setDynamicWorkflowStage(request.getDynamicWorkflowStage());
+        }
     }
     public RenderValidationReport inspect(Snapshot snap,boolean dispatch) {
         var report=RenderInputResolver.inspect(snap,dispatch,json);snap.setValidation(report);return report;

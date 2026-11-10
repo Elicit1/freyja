@@ -139,6 +139,13 @@ class ShotVideoTakeServiceTest {
         verify(shotMapper).promoteVideoTakeIfLatest(1001L, "RENDER_001", 2001L,
                 mockResultVO.getVideoUrl());
     }
+    @Test void enhancedTakeRecordsOutputSizeAndFrozenWorkflowWithoutChangingBaseSize(){
+        when(videoTakeMapper.selectMaxTakeNoByShotId(1001L)).thenReturn(0);
+        when(videoTakeMapper.insert(any(DramaShotVideoTake.class))).thenAnswer(call->{DramaShotVideoTake take=call.getArgument(0);take.setId(2001L);return 1;});
+        var plan=new com.astra.freyja.dto.drama.DynamicWorkflowOptions.Plan();plan.setOutputSize("1440x2560");plan.setName("高清成片");plan.setVersion(3);mockRequestDTO.setDynamicWorkflowPlan(plan);
+        var created=videoTakeService.recordGeneratedTake(mockShot,mockRenderTask,mockRequestDTO,mockResultVO);
+        assertEquals("1440x2560",created.getSize());assertEquals("720x1280",mockRequestDTO.getSize());assertTrue(created.getRequestSnapshotJson().contains("dynamicWorkflowPlan"));
+    }
 
     @Test
     @DisplayName("乱序完成的旧任务：成功归档至历史 Take，但绝不覆盖更新的当前视频")

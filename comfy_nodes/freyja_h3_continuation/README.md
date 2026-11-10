@@ -6,7 +6,14 @@
 无需安装 Director、Geiru 或 Context Loop 的整套插件/UI。
 
 节点：`FreyjaH3ChromaNoise`、`FreyjaH3Continue`、`FreyjaH3Restore`、
-`FreyjaH3SaveLatent`。可在 `/object_info` 中只读确认是否加载成功。
+`FreyjaH3SaveLatent`、`FreyjaH3CheckFrames`。可在 `/object_info` 中只读确认是否加载成功。
+
+动态工作流的二采放大、人脸修复为独立可选阶段。`FreyjaH3CheckFrames` 在采样前
+检查源帧数，输出前核对帧数与尺寸。放大复用 `ImageScale` 和现有
+`H3InjectVideoLatent`；修脸复用 H3 FaceRefine 的跟踪、逐帧重绘和贴回节点。
+自定义二采由本包的 `FreyjaH3UpscaleEncode`、`FreyjaH3LatentResize`、`FreyjaH3TileModel`、`FreyjaH3FinishSize` 提供，不依赖第三方 SpatialTiles、TimelineDirector 或 SelfLift 插件。内置 latent 插值无需附加权重；学习式放大选择 ComfyUI 核心 H3 latent 放大节点和已安装的兼容权重。编码保持来源尺寸，高清采样后裁成精确1080P。独立二采仍需对归档视频编码一次，不是同一采样进程6+2。
+空间分块是实验性的模型前向预测融合，CPU累加，保留全局位置编码、完整参考及音频，并调整准备采样预算；不支持ControlNet或外部mask冲突。可另选原生时间分窗，二者互斥。模型、VAE、完整latent和参考仍占显存，不能保证16GB无OOM。
+未选择增强时不需要这些增强节点。更新本包后需在算力队列空闲时重启加载。
 
 需要支持 H3 原生 AV noise mask、`set_model_denoise_mask_function` 及
 `WrappersMP.APPLY_MODEL` 的当前 ComfyUI。旧版本或其他 mask 适配冲突会明确报错。

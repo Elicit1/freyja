@@ -7,11 +7,12 @@
       <div class="flex gap-6 text-sm text-[var(--text-secondary)]"><span>REF2VA {{ batch.refProcessed }}/{{ batch.refTotal }}</span><span>FL2VA {{ batch.flProcessed }}/{{ batch.flTotal }}</span></div>
       <div v-if="batch.items.some(i => i.status === 'FAILED' && !i.archiveRecoverable)" class="flex gap-3"><el-select v-model="retrySource" class="!w-56"><el-option value="ORIGINAL_SNAPSHOT" label="按原始输入重试失败项" /><el-option value="CURRENT_SHOT" label="按当前分镜配置重试" /></el-select><el-button :loading="retrying" @click="retry">检查并重试失败项</el-button></div>
       <el-table :data="batch.items" size="small">
+        <el-table-column type="expand"><template #default="{ row }"><DynamicWorkflowSteps :task-id="row.taskId" :status="row.status" /></template></el-table-column>
         <el-table-column prop="phase" label="阶段" width="90" /><el-table-column prop="name" label="分镜" min-width="150" />
         <el-table-column label="状态" width="100"><template #default="{ row }">{{ labels[row.status] || row.status }}</template></el-table-column>
         <el-table-column label="执行阶段" min-width="200"><template #default="{ row }"><div>{{ ['DISPATCHING', 'RENDERING'].includes(row.status) ? (row.stageMessage || '正在处理视频') : (labels[row.status] || row.status) }}</div><div v-if="row.stageUpdatedAt" class="text-xs text-[var(--text-muted)]">{{ row.stageUpdatedAt.replace('T', ' ') }}</div></template></el-table-column>
         <el-table-column prop="errorMessage" label="说明" min-width="200" show-overflow-tooltip />
-        <el-table-column label="操作" width="300"><template #default="{ row }"><el-button v-if="row.outputUrl" link type="primary" @click="videoUrl = row.outputUrl">预览</el-button><el-button link @click="openShot(row.shotId)">分镜</el-button><el-button v-if="row.status === 'FAILED' && row.archiveRecoverable && !batch.cancelRequested" link type="primary" @click="retryArchive(row.taskId)">重试归档</el-button><el-button v-if="(row.status === 'NEEDS_REVIEW' || (row.status === 'FAILED' && (row.upstreamStatus === 'UNCONFIRMED' || row.continuationRecoverable))) && !batch.cancelRequested" link type="primary" :loading="recoveringTask === row.taskId" :disabled="!!recoveringTask" @click="recoverResult(row.taskId)">{{ row.continuationRecoverable ? '恢复接续步骤' : '查询并取回结果' }}</el-button></template></el-table-column>
+        <el-table-column label="操作" width="300"><template #default="{ row }"><el-button v-if="row.outputUrl" link type="primary" @click="videoUrl = row.outputUrl">预览</el-button><el-button link @click="openShot(row.shotId)">分镜</el-button><el-button v-if="row.status === 'FAILED' && row.archiveRecoverable && !batch.cancelRequested" link type="primary" @click="retryArchive(row.taskId)">重试归档</el-button><el-button v-if="(row.status === 'NEEDS_REVIEW' || (row.status === 'FAILED' && (row.upstreamStatus === 'UNCONFIRMED' || row.continuationRecoverable || row.dynamicWorkflowRecoverable))) && !batch.cancelRequested" link type="primary" :loading="recoveringTask === row.taskId" :disabled="!!recoveringTask" @click="recoverResult(row.taskId)">{{ row.dynamicWorkflowRecoverable ? '继续工作流' : row.continuationRecoverable ? '恢复接续步骤' : '查询并取回结果' }}</el-button></template></el-table-column>
       </el-table>
     </div>
     <el-dialog :model-value="!!videoUrl" title="视频结果" width="min(900px,90vw)" append-to-body @close="videoUrl = ''"><video v-if="videoUrl" :src="videoUrl" controls class="w-full max-h-[70vh]" /></el-dialog>
@@ -19,6 +20,7 @@
 </template>
 <script setup lang="ts">
 import { computed, onUnmounted, ref } from 'vue'
+import DynamicWorkflowSteps from '@/components/workflow/DynamicWorkflowSteps.vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { videoBatchApi, type VideoBatch, type VideoBatchRequest } from '@/api/video-render-batch'

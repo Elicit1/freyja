@@ -12,6 +12,7 @@ import java.util.*;
 
 @Service @RequiredArgsConstructor
 public class ShotContinuationRenderer {
+    private final DynamicWorkflowExecutor dynamicWorkflows;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final AiImageApiService api;
@@ -23,7 +24,7 @@ public class ShotContinuationRenderer {
         var rows=jdbc.query("SELECT execution_id FROM render_task_step WHERE task_id=? AND status IN ('SUBMITTING','ARCHIVING') ORDER BY updated_at DESC LIMIT 1",(rs,n)->rs.getString(1),task);return rows.isEmpty()?task:rows.getFirst();
     }
     public VideoGenerationResultVO render(VideoBatchModels.Snapshot snapshot)throws Exception{
-        var parent=snapshot.getRequest();String task=parent.getTaskId();var urls=new ArrayList<String>();var handoffs=new LinkedHashMap<String,Map<String,Object>>();
+        var parent=snapshot.getRequest();String task=parent.getTaskId();var urls=new ArrayList<String>();var enhanced=new ArrayList<String>();var handoffs=new LinkedHashMap<String,Map<String,Object>>();
         if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=true;
         try{
             for(int i=0;i<parent.getContinuationSegments().size();i++){
@@ -31,6 +32,7 @@ public class ShotContinuationRenderer {
                 var child=parent.getContinuationSegments().get(i);var range=parent.getContinuationPlan().getRanges().get(i);
                 var generation=new LinkedHashMap<String,Object>();var options=new LinkedHashMap<>(child.getRequest().getH3Options());options.remove("continuation");options.remove("latent_context");
                 generation.put("options",options);generation.put("provider",parent.getProviderId());generation.put("model",parent.getWorkflowTemplateId());generation.put("modelFingerprint",snapshot.getModelFingerprint());generation.put("size",parent.getSize());generation.put("prompt",child.getRequest().getPrompt());generation.put("seed",child.getRequest().getSeed());generation.put("images",child.getShot().getRefImagesJson());generation.put("firstFrame",child.getShot().getPreviewImageUrl());generation.put("lastFrame",child.getShot().getEndFrameImageUrl());generation.put("overlap",range.getOverlapFrames());
+                if(child.getRequest().getDynamicWorkflowStage()!=null)generation.put("dynamicBase",child.getRequest().getDynamicWorkflowStage());
                 generation.put("videos",child.getRequest().getResolvedRefVideos()==null?List.of():child.getRequest().getResolvedRefVideos().stream().map(v->Arrays.asList(v.getId(),v.getContentSha256(),v.getIncludeAudio())).toList());
                 // V2 explicitly fingerprints standalone audio as well as visual handoff settings.
                 // Keep immutable V1 execution hashes readable during recovery.
@@ -91,12 +93,13 @@ public class ShotContinuationRenderer {
                 }
                 if(jdbc.update("UPDATE render_task_step SET status='SUCCESS',output_url=?,updated_at=? WHERE task_id=? AND step_key=?",output,LocalDateTime.now(),task,key)!=1)throw new BizException(500,"片段归档结果持久化失败");
                 urls.add(output);events.append(task,"CONTINUATION_SEGMENT_COMPLETE",json.writeValueAsString(Map.of("segmentId",range.getSegmentId(),"index",i,"videoUrl",output)));
+                enhanced.add(child.getRequest().getDynamicWorkflowPlan()==null?output:dynamicWorkflows.enhance(child,output,task,String.format(java.util.Locale.ROOT,"segment-%03d",i)));
                 // A child result must never be mistaken for a recoverable complete parent video.
                 if(VideoExecutionState.current()!=null)VideoExecutionState.current().recoveryUrl=null;
                 VideoExecutionState.phase("CONTINUATION");
             }
             VideoExecutionState.progress("ASSEMBLING","正在裁去接续重叠并合成完整视频");
-            String url=media.assemble(urls,parent.getContinuationPlan());
+            String url=media.assemble(enhanced,parent.getContinuationPlan());
             if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=false;
             return api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),url);
         }catch(Exception e){if(VideoExecutionState.current()!=null&&VideoExecutionState.current().continuationChild)VideoExecutionState.current().recoveryUrl=null;throw e;}

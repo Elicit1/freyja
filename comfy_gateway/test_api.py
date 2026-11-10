@@ -10,6 +10,17 @@ from main import app
 
 
 class TestGatewayAPI(unittest.TestCase):
+    def test_dynamic_workflow_catalog_is_read_only_and_never_probes_compute(self):
+        with patch("main.get_client_pool") as pool:
+            response = self.client.get("/v1/dynamic-workflows/capabilities")
+        self.assertEqual(200, response.status_code)
+        models = response.json()["models"]
+        base = next(m for m in models if m["modelCode"] == "minimax-h3-ref-turbo8")
+        self.assertEqual(["BASE", "UPSCALE", "FACE"], base["stages"])
+        self.assertEqual(64, len(base["revision"]))
+        self.assertTrue(next(m for m in models if m["modelCode"] == "minimax-h3-ref-turbo8-face-refine")["legacyFixedFace"])
+        pool.assert_not_called()
+
 
     def setUp(self):
         self.client = TestClient(app)

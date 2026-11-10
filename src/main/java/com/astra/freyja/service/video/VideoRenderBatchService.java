@@ -29,6 +29,7 @@ import java.util.*;
 @RequiredArgsConstructor
 @Slf4j
 public class VideoRenderBatchService {
+    private final DynamicWorkflowExecutor dynamicWorkflows;
     private final ShotContinuationRenderer continuationRenderer;
     private final VideoBatchStore store;
     private final VideoBatchPreparation preparation;
@@ -111,6 +112,7 @@ public class VideoRenderBatchService {
         return VideoBatchPreparation.hash(preparation.write(Arrays.asList(r.getDramaId(),r.getName(),r.getShotIds()==null?null:r.getShotIds().stream().sorted().toList(),r.getSelection(),r.getAspectRatio(),r.getSize(),r.getExistingVideoPolicy(),r.getModeConfigs()==null?Map.of():new TreeMap<>(r.getModeConfigs()),r.getRetryOfBatchId(),r.getInputSource())));
     }
     public RenderValidationReport precheckSingle(Long id,DramaShotRenderRequestDTO request) {
+        rejectInternalDynamic(request);
         var shot=shots.selectById(id);if(shot==null)throw new BizException(404,"分镜不存在");
         shot=preparation.copy(shot);
         if(shot.getSeed()==null||shot.getSeed()<=0||shot.getSeed()>com.astra.freyja.util.ShotSeedUtil.MAX_SEED)shot.setSeed(1L);
@@ -135,6 +137,7 @@ public class VideoRenderBatchService {
         }
     }
     public RenderSubmissionVO enqueueSingle(Long id,DramaShotRenderRequestDTO request) {
+        rejectInternalDynamic(request);
         if(request!=null&&(request.getResolvedRefVideos()!=null||request.getReferenceVideoRevision()!=null||request.getReferenceVideoNodeId()!=null||request.getH3Options()!=null||request.getContinuationSegments()!=null||request.getContinuationPlan()!=null))
             throw new BizException(400,"请仅提交 preflightId，参考视频快照必须由服务端生成");
         String task=tx.execute(s->{
@@ -171,6 +174,9 @@ public class VideoRenderBatchService {
                 .providerId(snap.getRequest().getProviderId()).modelCode(snap.getRequest().getWorkflowTemplateId()).prompt(snap.getRequest().getPrompt()).negativePrompt(snap.getShot().getNegativePrompt())
                 .requestSnapshotJson(com.astra.freyja.util.VideoReferenceSnapshotJson.write(snap.getRequest(),json)).status("QUEUED").progress(0).currentNode("等待全局串行渲染队列").build());
     }
+    private void rejectInternalDynamic(DramaShotRenderRequestDTO request){
+        if(request!=null&&(request.getDynamicWorkflowPlan()!=null||request.getDynamicWorkflowStage()!=null))throw new BizException(400,"动态工作流执行快照必须由服务端生成");
+    }
     public boolean owns(String taskId){return store.task(taskId)!=null;}
     public Long batchForTask(String taskId){Item i=store.task(taskId);return i==null?null:i.getBatchId();}
     public List<Batch> list(boolean active,int limit){return store.batches(active,Math.max(1,Math.min(200,limit))).stream().map(b->detail(b.getId())).toList();}
@@ -178,7 +184,7 @@ public class VideoRenderBatchService {
         Batch b=store.batch(id);if(b==null)throw new BizException(404,"批次不存在");List<Item> items=store.items(id);b.setItems(items);
         try{b.setOptions(json.readValue(b.getOptionsJson(),VideoRenderBatchRequest.class));}catch(Exception e){throw new IllegalStateException("批次配置快照不可读",e);}
         for(Item i:items){
-            if("FAILED".equals(i.getStatus())&&i.getSnapshotJson()!=null){try{i.setContinuationRecoverable(json.readTree(i.getSnapshotJson()).path("request").path("continuationSegments").isArray());}catch(Exception e){throw new IllegalStateException("接续快照无法读取",e);}}
+            if("FAILED".equals(i.getStatus())&&i.getSnapshotJson()!=null){try{i.setContinuationRecoverable(json.readTree(i.getSnapshotJson()).path("request").path("continuationSegments").isArray());i.setDynamicWorkflowRecoverable(json.readTree(i.getSnapshotJson()).path("request").path("dynamicWorkflowPlan").isObject());}catch(Exception e){throw new IllegalStateException("接续快照无法读取",e);}}
             if("SKIPPED".equals(i.getStatus())){b.setSkipped(b.getSkipped()+1);continue;}
             b.setTotal(b.getTotal()+1);boolean done=VideoBatchStore.terminal(i.getStatus());if(done)b.setProcessed(b.getProcessed()+1);
             if("REF2VA".equals(i.getPhase())){b.setRefTotal(b.getRefTotal()+1);if(done)b.setRefProcessed(b.getRefProcessed()+1);}else{b.setFlTotal(b.getFlTotal()+1);if(done)b.setFlProcessed(b.getFlProcessed()+1);}
@@ -227,6 +233,7 @@ public class VideoRenderBatchService {
                 VideoExecutionState.completed(item.getRecoveryUrl());
                 result="RESULT_COMMIT".equals(item.getFailurePhase())?VideoGenerationResultVO.builder().videoUrl(item.getRecoveryUrl()).build():api.archiveExistingVideo(item.getShotId(),snap.getShot().getDramaId(),item.getRecoveryUrl());
             }else if(snap.getRequest().getContinuationSegments()!=null)result=continuationRenderer.render(snap);
+            else if(snap.getRequest().getDynamicWorkflowPlan()!=null)result=dynamicWorkflows.render(snap);
             else result=api.generateAndArchiveVideo(item.getShotId(),snap.getShot().getDramaId(),snap.getShot(),snap.getRequest());
             VideoExecutionState.completed(result.getVideoUrl());VideoExecutionState.phase("RESULT_COMMIT");
             VideoExecutionState.progress("COMMITTING","视频已归档，正在保存结果");
@@ -327,7 +334,7 @@ public class VideoRenderBatchService {
         for(Item i:affected){
             if("UNCONFIRMED".equals(i.getUpstreamStatus())){
                 String state="UNCONFIRMED";
-                try{var snap=json.readValue(i.getSnapshotJson(),Snapshot.class);String execution=snap.getRequest().getContinuationSegments()==null?i.getTaskId():continuationRenderer.activeExecution(i.getTaskId());var remote=api.cancelRemoteTask(snap.getRequest().getProviderId(),execution,i.getShotId());if(remote!=null&&remote.isSuccess())state="CONFIRMED";}catch(Exception e){log.warn("取消上游视频失败: {}",i.getTaskId());}
+                try{var snap=json.readValue(i.getSnapshotJson(),Snapshot.class);String execution=dynamicWorkflows.activeExecution(i.getTaskId());if(execution==null)execution=snap.getRequest().getContinuationSegments()==null?i.getTaskId():continuationRenderer.activeExecution(i.getTaskId());var remote=api.cancelRemoteTask(snap.getRequest().getProviderId(),execution,i.getShotId());if(remote!=null&&remote.isSuccess())state="CONFIRMED";}catch(Exception e){log.warn("取消上游视频失败: {}",i.getTaskId());}
                 String finalState=state;tx.executeWithoutResult(s->{store.lockQueue();renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",i.getTaskId()).set("cancel_upstream_status",finalState));
                     // Item is already terminal; update cancellation evidence separately.
                     store.cancelEvidence(i.getTaskId(),finalState);releaseIfIdle(i.getTaskId());});
@@ -366,7 +373,7 @@ public class VideoRenderBatchService {
         Snapshot snapshot;
         try { snapshot=json.readValue(StringUtils.defaultIfBlank(original.getResolvedJson(),original.getSnapshotJson()),Snapshot.class); }
         catch(Exception e){throw new BizException(500,"无法读取原任务快照");}
-        if(snapshot.getRequest().getContinuationSegments()!=null){
+        if(snapshot.getRequest().getContinuationSegments()!=null||snapshot.getRequest().getDynamicWorkflowPlan()!=null){
             tx.executeWithoutResult(s->{store.lockQueue();Item current=store.task(taskId);checkRecoveryTarget(batchId,current);
                 if(!canRecoverResult(current)||taskId.equals(localTask))throw new BizException(409,"任务执行状态已变化，请刷新后重试");
                 DramaShot shot=shots.lockById(current.getShotId());
@@ -374,7 +381,7 @@ public class VideoRenderBatchService {
                     throw new BizException(409,"分镜已有更新的任务，不能恢复覆盖原结果");
                 store.holdShot(current.getShotId(),taskId);store.retryArchive(taskId);store.recovery(taskId,"CONTINUATION",null);
                 renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",taskId).set("status","QUEUED").set("finish_time",null));store.batchStatus(batchId,"QUEUED",false);
-            });renderTasks.refreshTaskFromDatabase(taskId);publish(batchId);queueChanged();return new RecoveryResult("QUEUED","正在恢复接续步骤，已归档片段不会重新生成");
+            });renderTasks.refreshTaskFromDatabase(taskId);publish(batchId);queueChanged();return new RecoveryResult("QUEUED","正在恢复生成与增强步骤，已完成的步骤不会重新生成");
         }
         var remote=api.queryVideoTask(snapshot.getRequest().getProviderId(),taskId);
         if(remote==null)throw new BizException(502,"未获取到上游任务状态");
@@ -412,7 +419,9 @@ public class VideoRenderBatchService {
     private boolean canRecoverResult(Item item){
         boolean continuation=false;
         if("FAILED".equals(item.getStatus())&&item.getSnapshotJson()!=null)try{continuation=json.readTree(item.getSnapshotJson()).path("request").path("continuationSegments").isArray();}catch(Exception e){throw new IllegalStateException("接续快照无法读取",e);}
-        return continuation||"NEEDS_REVIEW".equals(item.getStatus())||("FAILED".equals(item.getStatus())&&"UNCONFIRMED".equals(item.getUpstreamStatus()));
+        boolean dynamic=false;
+        if("FAILED".equals(item.getStatus())&&item.getSnapshotJson()!=null)try{dynamic=json.readTree(item.getSnapshotJson()).path("request").path("dynamicWorkflowPlan").isObject();}catch(Exception e){throw new IllegalStateException("工作流快照无法读取",e);}
+        return continuation||dynamic||"NEEDS_REVIEW".equals(item.getStatus())||("FAILED".equals(item.getStatus())&&"UNCONFIRMED".equals(item.getUpstreamStatus()));
     }
 
     private void checkRecoveryTarget(Long batchId, Item item) {

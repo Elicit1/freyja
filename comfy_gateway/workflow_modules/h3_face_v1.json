@@ -1,0 +1,197 @@
+{
+  "157": {
+    "class_type": "H3FaceTrackCrop",
+    "inputs": {
+      "images": [
+        "122",
+        0
+      ],
+      "detector": "face_yolov8m.pt",
+      "confidence": 0.35,
+      "crop_factor": 3,
+      "canvas_width": 768,
+      "canvas_height": 768,
+      "canvas_mode": "auto_capped_768",
+      "smooth_window": 21,
+      "size_smooth_window": 51,
+      "smooth_method": "gaussian",
+      "size_mode": "per_frame",
+      "identity_track": false,
+      "identity_threshold": 0.28,
+      "select": "largest_face",
+      "fallback_detector": "none",
+      "fallback_head_frac": 0.5,
+      "select_index": 0,
+      "identity_model": "insightface",
+      "cut_detection": "none",
+      "cut_threshold": 3,
+      "absent_shots": "off",
+      "X": 0,
+      "Y": 0,
+      "frame_index": 0
+    }
+  },
+  "158": {
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "inputs": {
+      "prompt": "",
+      "width": [
+        "157",
+        4
+      ],
+      "height": [
+        "157",
+        5
+      ],
+      "length": [
+        "157",
+        6
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "128",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "121",
+        0
+      ]
+    }
+  },
+  "159": {
+    "class_type": "H3InjectVideoLatent",
+    "inputs": {
+      "av_latent": [
+        "158",
+        1
+      ],
+      "images": [
+        "157",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    }
+  },
+  "160": {
+    "class_type": "H3PerFrameDenoise",
+    "inputs": {
+      "model": [
+        "145",
+        0
+      ],
+      "av_latent": [
+        "159",
+        0
+      ],
+      "transform": [
+        "157",
+        1
+      ],
+      "denoise_multiplier_small_face": 1.0,
+      "denoise_multiplier_large_face": 0.35,
+      "scale_mode": "absolute_px",
+      "face_px_small": 30,
+      "face_px_large": 120,
+      "gamma": 1,
+      "smooth_frames": 9
+    }
+  },
+  "161": {
+    "class_type": "BasicGuider",
+    "inputs": {
+      "model": [
+        "160",
+        2
+      ],
+      "conditioning": [
+        "158",
+        0
+      ]
+    }
+  },
+  "162": {
+    "class_type": "BasicScheduler",
+    "inputs": {
+      "model": [
+        "160",
+        2
+      ],
+      "scheduler": "simple",
+      "steps": 8,
+      "denoise": 0.4
+    }
+  },
+  "163": {
+    "class_type": "SamplerCustomAdvanced",
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "161",
+        0
+      ],
+      "sampler": [
+        "123",
+        0
+      ],
+      "sigmas": [
+        "162",
+        0
+      ],
+      "latent_image": [
+        "160",
+        0
+      ]
+    }
+  },
+  "164": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "163",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    }
+  },
+  "165": {
+    "class_type": "H3FaceStitch",
+    "inputs": {
+      "base_images": [
+        "122",
+        0
+      ],
+      "refined_crops": [
+        "164",
+        0
+      ],
+      "transform": [
+        "157",
+        1
+      ],
+      "paste_region": "face_only",
+      "mask_dilation": 24,
+      "feather": 24,
+      "colour_match": 1,
+      "blend": 1,
+      "undetected_frames": "fade_out",
+      "feather_scales_with_crop": false
+    }
+  }
+}

@@ -130,6 +130,7 @@ public class ShotContinuationService {
                 // Endpoint anchors must also be explicitly attached to this segment.
                 child.setPreviewImageUrl(segment.getFirstFrameImageUrl());child.setEndFrameImageUrl(segment.getLastFrameImageUrl());
                 var childReq=new DramaShotRenderRequestDTO();childReq.setProviderId(provider.getId());childReq.setWorkflowTemplateId(model.getModelCode());childReq.setSize(size);childReq.setPrompt(segment.getPrompt());childReq.setSeed(1+Math.floorMod(shot.getSeed()+i*104729L,9007199254740990L));
+                child.setSeed(childReq.getSeed());
                 var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",true);options.put("capability_revision",plan.getCapabilityRevision());options.put("length",segment.getEndFrame()-segment.getStartFrame());
                 var range=plan.getRanges().get(i);
                 if(draft.getSchemaVersion()>=2 || range.getEffectiveContinuity().getMode()!=ShotContinuityOptions.Mode.GUIDE || range.isSaveLatent()){

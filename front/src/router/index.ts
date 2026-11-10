@@ -53,6 +53,7 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/production/VideoUpscale.vue'),
         meta: { title: '视频超分', productionWorkspace: true }
       },
+      { path: 'production/dynamic-workflows', name: 'DynamicWorkflows', component: () => import('@/views/production/DynamicWorkflows.vue'), meta: { title: '动态工作流', productionWorkspace: true } },
       {
         path: 'production/frame-interpolation',
         name: 'FrameInterpolation',

@@ -50,9 +50,9 @@ class VideoRenderBatchTest {
         var models=mock(AiModelMapper.class);var providers=mock(AiProviderMapper.class);var keyframes=mock(ResKeyframeMapper.class);renders=mock(RenderTaskMapper.class);
         api=mock(AiImageApiService.class);rendersService=mock(RenderTaskService.class);frames=mock(VideoBatchFrameService.class);var takes=mock(ShotVideoTakeService.class);
         store=new VideoBatchStore(jdbc);var tx=new TransactionTemplate(new DataSourceTransactionManager(ds));
-        preparation=new VideoBatchPreparation((continuations=mock(ShotContinuationPreparation.class)),mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,(sceneAssets=mock(ResSceneMapper.class)),renders,store,json);
+        preparation=new VideoBatchPreparation(mock(DynamicWorkflowService.class),(continuations=mock(ShotContinuationPreparation.class)),mock(ShotVideoReferenceService.class),mock(ShotVideoCapabilityService.class),shots,dramas,episodes,scenes,groups,models,providers,keyframes,(sceneAssets=mock(ResSceneMapper.class)),renders,store,json);
         events=mock(ApplicationEventPublisher.class);
-        service=new VideoRenderBatchService(mock(ShotContinuationRenderer.class),store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,events);
+        service=new VideoRenderBatchService(mock(DynamicWorkflowExecutor.class),mock(ShotContinuationRenderer.class),store,preparation,frames,shots,renders,models,api,rendersService,takes,tx,json,events);
         when(dramas.selectById(1L)).thenReturn(new Drama());
         DramaEpisode ep=new DramaEpisode();ep.setId(10L);ep.setDramaId(1L);ep.setTitle("第一集");when(episodes.selectList(any())).thenReturn(List.of(ep));
         DramaScene sc=new DramaScene();sc.setId(20L);sc.setDramaId(1L);sc.setName("场景");when(scenes.selectList(any())).thenReturn(List.of(sc));
@@ -492,6 +492,32 @@ class VideoRenderBatchTest {
         AiProvider provider=new AiProvider();provider.setId(100L);when(api.resolveProvider(100L)).thenReturn(provider);
         when(api.resolveVideoModelCode(any(),eq(100L),eq(VideoBatchPreparation.REF))).thenReturn("ref");
         var request=new DramaShotRenderRequestDTO();request.setProviderId(100L);request.setWorkflowTemplateId("ref");return request;
+    }
+
+    @Test void continuationReusesPreparedMediaButRebindsEveryChildSeedAtAdmission() throws Exception {
+        var shot=shot(41,VideoBatchPreparation.REF,1);var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(8);
+        var plan=new ShotContinuationPlanner().plan(draft,true);draft.getSegments().forEach(segment->segment.setPrompt("A continuous action"));
+        plan.setRenderable(true);plan.setPlanHash("a".repeat(64));plan.setCapabilityRevision("test");plan.setNodeId("gpu");
+        shot.setContinuationJson(json.writeValueAsString(draft));
+        var planner=spy(new ShotContinuationService(new ShotContinuationPlanner(),mock(ShotVideoReferenceService.class),json,mock(com.astra.freyja.util.CryptoUtil.class),new com.astra.freyja.config.ReferenceVideoProperties()));
+        doReturn(plan).when(planner).preview(any(),eq(false),any(),any());
+        var model=model(101L,"ref","TXT2VIDEO_REF");var provider=new AiProvider();provider.setId(100L);
+        var cached=planner.prepare(shot,model,provider,"960x544",null);
+        jdbc.execute("CREATE TABLE shot_continuation_preparation (shot_id BIGINT,plan_hash VARCHAR(64),provider_id BIGINT,model_code VARCHAR(200),size VARCHAR(40),status VARCHAR(24),snapshot_json CLOB,updated_at TIMESTAMP)");
+        jdbc.update("INSERT INTO shot_continuation_preparation VALUES (?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",41L,plan.getPlanHash(),100L,"ref","960x544","READY",json.writeValueAsString(cached));
+        var media=new ShotContinuationPreparation(planner,jdbc,json,Runnable::run,mock(org.springframework.transaction.PlatformTransactionManager.class));
+        when(continuations.enabled(any())).thenReturn(true);
+        when(continuations.prepare(any(),any(),any(),anyString(),any())).thenAnswer(call->media.prepare(call.getArgument(0),call.getArgument(1),call.getArgument(2),call.getArgument(3),call.getArgument(4)));
+        shot.setSeed(777L); // Mirror a seed saved in the shot after media preparation.
+        var req=singleRequest();req.setSize("960x544");req.setExpectedRenderFingerprint(plan.getPlanHash());
+        assertTrue(service.precheckSingle(41L,req).isSubmissionReady());
+        var submitted=service.enqueueSingle(41L,req);var frozen=json.readValue(store.task(submitted.getTaskId()).getSnapshotJson(),Snapshot.class);
+        assertEquals(777L,frozen.getRequest().getSeed());assertEquals(777L,frozen.getShot().getSeed());
+        var children=frozen.getRequest().getContinuationSegments();assertEquals(2,children.size());
+        assertEquals(778L,children.getFirst().getRequest().getSeed());assertEquals(105507L,children.get(1).getRequest().getSeed());
+        for(var child:children)assertEquals(child.getRequest().getSeed(),child.getShot().getSeed());
+        assertEquals(124L,cached.getRequest().getContinuationSegments().getFirst().getRequest().getSeed(),"cached media remains reusable for a different seed");
+        verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
     }
 
     @Test void singleOverrideMissingReferencesIsRejectedWithoutSeedPromptOrTaskWrites() {

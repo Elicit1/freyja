@@ -17,6 +17,7 @@ public final class RenderInputResolver {
         DramaShot shot = snapshot.getShot();
         var request = snapshot.getRequest();
         boolean continuationSegment=request.getH3Options()!=null&&Boolean.TRUE.equals(request.getH3Options().get("continuation_enabled"));
+        if(request.getDynamicWorkflowStage()!=null&&!"BASE".equals(request.getDynamicWorkflowStage().get("stage")))continuationSegment=true;
         if(request.getContinuationSegments()!=null){
             var aggregate=new RenderValidationReport();aggregate.setInputFingerprint(request.getContinuationPlan().getPlanHash());
             for(var child:request.getContinuationSegments())aggregate.getIssues().addAll(inspect(child,dispatch,json).getIssues());
@@ -73,6 +74,7 @@ public final class RenderInputResolver {
                     snapshot.getModelFingerprint(), snapshot.getFirstFramePlan(), snapshot.getLastFramePlan(),
                     request.getReferenceVideoRevision(), request.getReferenceVideoNodeId(),request.getH3Options()))));
         } catch (Exception e) { throw new IllegalStateException(e); }
+        if(request.getDynamicWorkflowPlan()!=null)try{report.setInputFingerprint(VideoBatchPreparation.hash(report.getInputFingerprint()+json.writeValueAsString(request.getDynamicWorkflowPlan())));}catch(Exception e){throw new IllegalStateException(e);}
         return report;
     }
 

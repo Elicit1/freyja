@@ -244,6 +244,18 @@ async def list_models():
 
 @app.post("/v1/images/generations", response_model=ImageGenerationResponse)
 async def generate_images(request: ImageGenerationRequest, http_req: Request):
+    http_req.state.submission_started = False
+    try:
+        return await _generate_images(request, http_req)
+    except ValueError:
+        raise
+    except Exception as error:
+        if request.dynamic_workflow and not http_req.state.submission_started:
+            raise ValueError("DYNAMIC_PREPARATION_FAILED: " + str(error)) from error
+        raise
+
+
+async def _generate_images(request: ImageGenerationRequest, http_req: Request):
     """
     OpenAI-compatible Image & Video Generation Endpoint.
     Dynamically routes to the corresponding compute node machine, uploads media assets,
@@ -262,7 +274,7 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     validate_transport(request)
     # 1. Resolve target model configuration
     video_references = request.get_all_ref_videos()
-    model_cfg = config.get_exact_model(request.model, request.node_id) if video_references or request.h3_options else config.get_model(request.model)
+    model_cfg = config.get_exact_model(request.model, request.node_id) if video_references or request.h3_options or request.dynamic_workflow else config.get_model(request.model)
     if not model_cfg:
         available = [m.model_name for m in config.models]
         raise ValueError(f"Model '{request.model}' not supported. Available models: {available}")
@@ -279,7 +291,7 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     )
 
     if request.target_backend:
-        if video_references:
+        if video_references or request.dynamic_workflow:
             raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: direct backend overrides are not accepted")
         logger.info(f"Using direct target_backend override: {request.target_backend}")
         client = await pool.get_client_by_url(request.target_backend)
@@ -290,6 +302,20 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         logger.info(f"Routing request for model '{request.model}' to node '{target_node.node_id}' ({target_node.http_url})")
         client = await pool.get_client_for_node(target_node)
 
+    if request.dynamic_workflow:
+        from dynamic_workflow import require_stage, describe, validate_stage_nodes
+        if request.node_id and request.node_id != target_node.node_id: raise ValueError("DYNAMIC_MODEL_NODE_MISMATCH")
+        model_cfg = config.get_exact_model(request.model, target_node.node_id)
+        if model_cfg is None: raise ValueError("DYNAMIC_MODEL_NODE_MISMATCH")
+        require_stage(request, model_cfg, get_base_dir())
+        request.node_id = target_node.node_id
+        stage = request.dynamic_workflow.stage
+        required = describe(model_cfg, get_base_dir())["requiredNodes"].get(stage, [])
+        if required:
+            http = await client.get_http_client()
+            response = await http.get(client.http_base + "/object_info", timeout=10)
+            response.raise_for_status()
+            validate_stage_nodes(request.dynamic_workflow, describe(model_cfg, get_base_dir()), response.json())
     video_capability = None
     if request.h3_options:
         if request.target_backend: raise ValueError("H3_BACKEND_OVERRIDE_FORBIDDEN")
@@ -409,6 +435,23 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         latent_filename=await upload_latent(client,context)
         if context.anchor:
             anchor_filename=latent_filename if context.anchor.content_sha256==context.content_sha256 else await upload_latent(client,context.anchor)
+    dynamic_source_filename = None
+    if request.dynamic_workflow:
+        from dynamic_workflow import require_stage
+        require_stage(request, model_cfg, get_base_dir())
+        if request.dynamic_workflow.stage != "BASE":
+            from reference_prompt import ReferenceBinding, ReferenceType
+            from video_reference import ReferenceVideoCapability
+            context = request.dynamic_workflow
+            hosts = {host.strip().lower() for host in os.getenv("REFERENCE_MEDIA_HOSTS", "").split(",") if host.strip()}
+            cap = ReferenceVideoCapability(max_videos=1, max_clip_seconds=request.length/24,
+                max_total_clip_seconds=request.length/24, max_decoded_frames=request.length,
+                max_decode_width=4096, max_decode_height=4096, max_download_bytes=1024**3)
+            binding = ReferenceBinding(referenceType=ReferenceType.REFERENCE_VIDEO,
+                referenceId="dynamic-stage-source", referenceVideo=context.source_url,
+                contentSha256=context.source_sha256)
+            uploaded = await upload_reference_video(client, binding, cap, hosts)
+            dynamic_source_filename = uploaded["filename"]
     # 4. Assemble workflow JSON
     prompt_workflow = engine.assemble_workflow(
         request=request,
@@ -419,7 +462,8 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
         uploaded_ref_videos=uploaded_ref_videos,
         continuation_filename=continuation_filename,
         latent_filename=latent_filename,
-        anchor_filename=anchor_filename
+        anchor_filename=anchor_filename,
+        dynamic_source_filename=dynamic_source_filename
     )
 
     # Extract the exact prompt submitted to ComfyUI
@@ -451,33 +495,38 @@ async def generate_images(request: ImageGenerationRequest, http_req: Request):
     client_id = str(uuid.uuid4())
     async_submit = http_req.headers.get("x-freyja-async-submit")=="true"
     if async_submit:
-        if not request.task_id or not request.h3_options: raise ValueError("H3_ASYNC_REQUIRES_EXECUTION_ID")
+        if not request.task_id or not (request.h3_options or request.dynamic_workflow): raise ValueError("H3_ASYNC_REQUIRES_EXECUTION_ID")
         redis=task_tracker._redis_client
         if redis is None: raise RuntimeError("H3_TRACKING_UNAVAILABLE: Redis is required")
         canonical=request.model_dump(exclude={"extra_body"})
+        if canonical.get("dynamic_workflow") is None: canonical.pop("dynamic_workflow",None)
         for reference in canonical.get("references") or []:
             if reference.get("content_sha256"):reference.pop("video_url",None)
-        if canonical["h3_options"].get("continuation"):canonical["h3_options"]["continuation"].pop("video_url",None)
-        if canonical["h3_options"].get("latent_context"):
+        if canonical.get("dynamic_workflow") and canonical["dynamic_workflow"].get("source_sha256"):canonical["dynamic_workflow"].pop("source_url",None)
+        if (canonical.get("h3_options") or {}).get("continuation"):canonical["h3_options"]["continuation"].pop("video_url",None)
+        if (canonical.get("h3_options") or {}).get("latent_context"):
             canonical["h3_options"]["latent_context"].pop("url",None)
             if canonical["h3_options"]["latent_context"].get("anchor"):canonical["h3_options"]["latent_context"]["anchor"].pop("url",None)
-        if canonical["h3_options"].get("schema_version",1)==1:
+        if canonical.get("h3_options") and canonical["h3_options"].get("schema_version",1)==1:
             # Preserve idempotency hashes for immutable pre-v2 task snapshots.
             for field in ("continuity","save_latent","latent_context","backend_signature"):canonical["h3_options"].pop(field,None)
         fingerprint=hashlib.sha256(json.dumps(canonical,sort_keys=True).encode()).hexdigest()
         key="comfy:submission:"+request.task_id
         claimed=await redis.set(key,fingerprint,nx=True,ex=604800)
         if not claimed:
+            http_req.state.submission_started = True  # An earlier invocation may already own a GPU task.
             if await redis.get(key)!=fingerprint: raise ValueError("H3_EXECUTION_CONFLICT")
             binding=await task_tracker.find(task_id=request.task_id)
             if not binding: raise RuntimeError("H3_SUBMISSION_UNCONFIRMED: reconcile original submission")
             return ImageGenerationResponse(execution={"taskId":request.task_id,"promptId":binding[0],"nodeId":binding[1],"status":"QUEUED"})
+        http_req.state.submission_started = True
         try:prompt_id=await client.submit_prompt(prompt_workflow,client_id,execution_id=request.task_id)
         except ValueError:
             await redis.delete(key)
             raise
         await task_tracker.register(prompt_id=prompt_id,node_id=target_node_id,task_id=request.task_id,shot_id=request.shot_id,strict=True)
         return ImageGenerationResponse(execution={"taskId":request.task_id,"promptId":prompt_id,"nodeId":target_node_id,"status":"QUEUED"})
+    http_req.state.submission_started = True
     prompt_id = await client.submit_prompt(prompt_workflow, client_id)
 
     # 注册到 TaskTracker (Redis/内存) 与本地活跃任务映射以支持精准远程取消
@@ -575,6 +624,12 @@ async def generate_videos(request: ImageGenerationRequest, http_req: Request):
     """
     http_req.state.defer_video_output = http_req.headers.get("x-freyja-deferred-video") == "true"
     return await generate_images(request, http_req)
+
+
+@app.get("/v1/dynamic-workflows/capabilities")
+async def dynamic_workflow_capabilities():
+    from dynamic_workflow import describe
+    return {"schemaVersion": 1, "models": [describe(model, get_base_dir()) for model in config.models]}
 
 
 @app.get("/v1/models/{model_code}/capabilities")

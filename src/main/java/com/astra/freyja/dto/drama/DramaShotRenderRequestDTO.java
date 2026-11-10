@@ -7,6 +7,10 @@ import lombok.Data;
  */
 @Data
 public class DramaShotRenderRequestDTO {
+    private DynamicWorkflowOptions.Selection dynamicWorkflow;
+    /** Server-resolved immutable execution plan and per-stage transport. Never accepted from clients. */
+    private DynamicWorkflowOptions.Plan dynamicWorkflowPlan;
+    private java.util.Map<String,Object> dynamicWorkflowStage;
     private Integer schemaVersion = 1;
 
     /** 指定 AI 提供商 ID (为空则使用系统默认) */

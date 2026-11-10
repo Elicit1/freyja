@@ -9,6 +9,7 @@ from schemas import ImageGenerationRequest
 from video_reference import require_supported, assert_video_paths, workflow_revision
 from render_input_validation import validate_transport, validate_workflow
 from h3_extensions import require_options, apply_extensions
+from dynamic_workflow import require_stage, apply_stage
 
 logger = logging.getLogger("workflow_engine")
 
@@ -75,7 +76,8 @@ class WorkflowEngine:
         uploaded_ref_videos: Optional[List[dict]] = None,
         continuation_filename: Optional[str] = None,
         latent_filename: Optional[str] = None,
-        anchor_filename: Optional[str] = None
+        anchor_filename: Optional[str] = None,
+        dynamic_source_filename: Optional[str] = None
     ) -> dict:
         """
         Assemble executable ComfyUI prompt JSON from request, reference images,
@@ -83,7 +85,7 @@ class WorkflowEngine:
         """
         has_videos = bool(request.get_all_ref_videos())
         validate_transport(request)
-        model_cfg = self.config.get_exact_model(request.model, request.node_id) if has_videos or request.h3_options else self.config.get_model(request.model)
+        model_cfg = self.config.get_exact_model(request.model, request.node_id) if has_videos or request.h3_options or request.dynamic_workflow else self.config.get_model(request.model)
         if not model_cfg:
             available = [m.model_name for m in self.config.models]
             raise ValueError(f"Model '{request.model}' not supported. Available models: {available}")
@@ -91,6 +93,7 @@ class WorkflowEngine:
         # 1. Load base template
         workflow = self.get_template(model_cfg)
         require_options(request, model_cfg, self._base_dir)
+        require_stage(request, model_cfg, self._base_dir)
         if has_videos:
             capability = require_supported(model_cfg, self._base_dir)
             if request.reference_video_revision != workflow_revision(model_cfg, self._base_dir):
@@ -242,6 +245,12 @@ class WorkflowEngine:
 
         validate_workflow(request, workflow, model_cfg, ref_images, uploaded_ref_audios or [], uploaded_ref_videos or [])
         apply_extensions(workflow, request, model_cfg, uploaded_ref_videos or [], continuation_filename, latent_filename, anchor_filename)
+        workflow = apply_stage(workflow, request, model_cfg, dynamic_source_filename)
+        if request.dynamic_workflow and request.dynamic_workflow.stage != "BASE":
+            stage_model = model_cfg
+            if request.dynamic_workflow.stage == "FACE":
+                stage_model = model_cfg.model_copy(update={"mappings": {**model_cfg.mappings, "prompt": ["dynamic_face_158", "inputs", "prompt"]}})
+            validate_workflow(request, workflow, stage_model, ref_images, uploaded_ref_audios or [], uploaded_ref_videos or [])
         return workflow
 
     def _apply_reference_videos(self, workflow, model_cfg, videos):
