@@ -40,7 +40,7 @@ class ContinuationSegmentEnhancementServiceTest {
     }
     @Test void freezesUnchangedClipsAndCopiesOnlyTheirEnhancementsWithoutTouchingOriginal(){
         var result=service.prepare("source","seg-1",plan.getOptions());
-        assertEquals(1,result.getSegmentReplacement().getSegmentIndex());assertEquals("base-1",result.getSegmentReplacement().getOutputs().get(1).getBaseVideoUrl());
+        assertEquals(List.of(1),result.getSegmentReplacement().indices());assertEquals("base-1",result.getSegmentReplacement().getOutputs().get(1).getBaseVideoUrl());
         assertEquals(List.of("enhanced-0","enhanced-1","enhanced-2"),result.getSegmentReplacement().getOutputs().stream().map(SegmentOutput::getVideoUrl).toList());
         service.copySteps("source","replacement",1);
         assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM render_task_step WHERE task_id='replacement'",Integer.class));
@@ -60,5 +60,43 @@ class ContinuationSegmentEnhancementServiceTest {
         var replacement=service.prepare("source","seg-1",plan.getOptions());item.setSnapshotJson(json.writeValueAsString(replacement));when(store.task("replacement")).thenReturn(item);
         var next=service.prepare("replacement","seg-2",plan.getOptions());
         assertEquals("replacement-1",next.getSegmentReplacement().getOutputs().get(1).getVideoUrl());
+    }
+    @Test void selectsMultipleSegmentsInTimelineOrderAndCopiesOnlyUnselectedEnhancements(){
+        var result=service.prepare("source",List.of("seg-2","seg-0"),plan.getOptions());
+        assertEquals(List.of(0,2),result.getSegmentReplacement().indices());
+        service.copySteps("source","replacement",result.getSegmentReplacement().indices());
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM render_task_step WHERE task_id='replacement'",Integer.class));
+        assertEquals(List.of("segment-001:01:UPSCALE"),jdbc.queryForList("SELECT step_key FROM dynamic_workflow_step WHERE task_id='replacement'",String.class));
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM dynamic_workflow_step WHERE task_id='source'",Integer.class));
+    }
+    @Test void selectingAllKeepsAllBaseArtifactsAndDropsAllOldEnhancements(){
+        var result=service.prepare("source",List.of("seg-0","seg-1","seg-2"),plan.getOptions());
+        service.copySteps("source","replacement",result.getSegmentReplacement().indices());
+        assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM render_task_step WHERE task_id='replacement'",Integer.class));
+        assertEquals(0,jdbc.queryForObject("SELECT COUNT(*) FROM dynamic_workflow_step WHERE task_id='replacement'",Integer.class));
+    }
+    @Test void rejectsEmptyDuplicateForeignAndPartlyUnavailableSelections(){
+        for(var ids:Arrays.asList(null,List.<String>of(),List.of("seg-0","seg-0"),List.of("seg-0","foreign"),Arrays.asList("seg-0",null),List.of(" ")))
+            assertThrows(RuntimeException.class,()->service.prepare("source",ids,plan.getOptions()));
+        jdbc.update("UPDATE render_task_step SET result_manifest_json=NULL WHERE step_key='segment-1'");
+        assertThrows(RuntimeException.class,()->service.prepare("source",List.of("seg-0","seg-1"),plan.getOptions()));
+        verify(workflows,never()).resolve(any(),any(),any(),any(),any());
+    }
+    @Test void commonUpscaleSettingsPreserveEachSegmentsFaceRepair()throws Exception{
+        var original=snapshot.getRequest().getContinuationSegments().get(1).getRequest();
+        var facePlan=json.convertValue(plan,DynamicWorkflowOptions.Plan.class);
+        facePlan.getOptions().setFaceRepair(true);facePlan.getOptions().setFaceDenoise(.35);original.setDynamicWorkflowPlan(facePlan);
+        item.setSnapshotJson(json.writeValueAsString(snapshot));
+        jdbc.update("INSERT INTO dynamic_workflow_step(task_id,step_key,status,output_url) VALUES ('source','segment-001:02:FACE','SUCCESS','face-1')");
+        when(workflows.resolve(any(),any(),any(),any(),any())).thenAnswer(call->{
+            var resolved=json.convertValue(plan,DynamicWorkflowOptions.Plan.class);
+            resolved.setOptions(((DynamicWorkflowOptions.Selection)call.getArgument(0)).getOptions());return resolved;
+        });
+        var options=json.convertValue(plan.getOptions(),DynamicWorkflowOptions.class);options.setUpscaleDenoise(.1);
+        var result=service.prepare("source",List.of("seg-0","seg-1"),options);
+        var first=result.getRequest().getContinuationSegments().get(0).getRequest().getDynamicWorkflowPlan().getOptions();
+        var second=result.getRequest().getContinuationSegments().get(1).getRequest().getDynamicWorkflowPlan().getOptions();
+        assertEquals(.1,first.getUpscaleDenoise());assertEquals(.1,second.getUpscaleDenoise());
+        assertFalse(first.isFaceRepair());assertTrue(second.isFaceRepair());assertEquals(.35,second.getFaceDenoise());
     }
 }

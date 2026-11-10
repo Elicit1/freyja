@@ -168,17 +168,23 @@ public class VideoRenderBatchService {
         Item queued=store.task(task);publish(queued.getBatchId());queueChanged();var vo=new RenderSubmissionVO();vo.setTaskId(task);vo.setShotId(id);vo.setProjectId(detail(queued.getBatchId()).getDramaId());vo.setStatus(RenderSubmissionStatus.PENDING);vo.setProgress(0);return vo;
     }
     public RenderSubmissionVO enqueueSegmentEnhancement(String sourceTask,String segmentId,DynamicWorkflowOptions options,String requestId){
+        return enqueueSegmentEnhancements(sourceTask,Collections.singletonList(segmentId),options,requestId);
+    }
+    public RenderSubmissionVO enqueueSegmentEnhancements(String sourceTask,List<String> segmentIds,DynamicWorkflowOptions options,String requestId){
         if(requestId==null||!requestId.matches("[A-Za-z0-9_-]{8,80}"))throw new BizException(400,"缺少有效的幂等请求标识");
-        String hash=VideoBatchPreparation.hash(preparation.write(Arrays.asList(sourceTask,segmentId,options)));
+        var ids=ContinuationSegmentEnhancementService.validateSegmentIds(segmentIds);
+        String hash=VideoBatchPreparation.hash(preparation.write(Arrays.asList(sourceTask,ids.size()==1?ids.getFirst():ids,options)));
         String task=tx.execute(s->{
             store.lockQueue();var old=store.byRequest("segment_"+requestId);
             if(old!=null){if(!hash.equals(old.getRequestHash()))throw new BizException(409,"同一请求标识的内容不一致");return store.items(old.getId()).getFirst().getTaskId();}
-            var snap=segmentEnhancements.prepare(sourceTask,segmentId,options);Long shotId=snap.getShot().getId();
+            var snap=segmentEnhancements.prepare(sourceTask,ids,options);Long shotId=snap.getShot().getId();
             if(shots.lockById(shotId)==null)throw new BizException(404,"分镜不存在");
             if(store.occupied(shotId)||renders.selectCount(new LambdaQueryWrapper<RenderTask>().eq(RenderTask::getShotId,shotId).eq(RenderTask::getTaskType,"SHOT_VIDEO").in(RenderTask::getStatus,"QUEUED","RENDERING"))>0)throw new BizException(409,"分镜已有活动渲染任务");
             preparation.validateRoute(snap);preparation.requireValid(snap,false);
             var source=store.task(sourceTask);var sourceBatch=store.batch(source.getBatchId());
-            var batch=new Batch();batch.setId(IdWorker.getId());batch.setDramaId(snap.getShot().getDramaId());batch.setName("片段 "+(snap.getSegmentReplacement().getSegmentIndex()+1)+" 二采替换");
+            var batch=new Batch();batch.setId(IdWorker.getId());batch.setDramaId(snap.getShot().getDramaId());
+            var indices=snap.getSegmentReplacement().indices();
+            batch.setName(indices.size()==1?"片段 "+(indices.getFirst()+1)+" 二采替换":indices.size()+" 个片段二采替换");
             batch.setRequestId("segment_"+requestId);batch.setRequestHash(hash);
             try{
                 var batchOptions=json.readValue(sourceBatch.getOptionsJson(),VideoRenderBatchRequest.class);
@@ -191,7 +197,7 @@ public class VideoRenderBatchService {
             var item=new Item();item.setId(IdWorker.getId());item.setBatchId(batch.getId());item.setQueueOrder(batch.getId());item.setShotId(shotId);item.setTaskId("RENDER_"+IdWorker.getId());item.setName(batch.getName());
             item.setPhase(source.getPhase());item.setExecutionOrder(1);item.setStatus("QUEUED");item.setCreatedAt(batch.getCreatedAt());snap.getRequest().setTaskId(item.getTaskId());
             item.setSnapshotJson(preparation.write(snap));register(item,snap);store.insert(item);
-            segmentEnhancements.copySteps(sourceTask,item.getTaskId(),snap.getSegmentReplacement().getSegmentIndex());return item.getTaskId();
+            segmentEnhancements.copySteps(sourceTask,item.getTaskId(),snap.getSegmentReplacement().indices());return item.getTaskId();
         });
         var item=store.task(task);publish(item.getBatchId());queueChanged();var result=new RenderSubmissionVO();result.setTaskId(task);result.setShotId(item.getShotId());result.setProjectId(detail(item.getBatchId()).getDramaId());result.setStatus(RenderSubmissionStatus.PENDING);result.setProgress(0);return result;
     }

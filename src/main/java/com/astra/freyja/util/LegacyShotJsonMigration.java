@@ -7,6 +7,10 @@ import tools.jackson.databind.node.ObjectNode;
 public final class LegacyShotJsonMigration {
     private LegacyShotJsonMigration() {}
 
+    public static java.util.List<Integer> segmentReplacementIndices(Integer index, java.util.List<Integer> indices) {
+        return indices != null ? indices : index == null ? java.util.List.of() : java.util.List.of(index);
+    }
+
     public static JsonNode projectDraft(JsonNode node) { return visit(node.deepCopy(), false); }
 
     public static JsonNode projectPromptInput(JsonNode node) {

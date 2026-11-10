@@ -594,15 +594,30 @@ class VideoRenderBatchTest {
         var original=store.items(source.getId()).getFirst();assertEquals("SUCCESS",original.getStatus());
         var snap=json.readValue(original.getSnapshotJson(),Snapshot.class);var replacement=new SegmentReplacement();replacement.setSourceTaskId(original.getTaskId());replacement.setSegmentIndex(1);snap.setSegmentReplacement(replacement);
         var options=new DynamicWorkflowOptions();options.setUpscale(true);
-        when(segmentEnhancements.prepare(original.getTaskId(),"segment-id",options)).thenReturn(snap);
+        when(segmentEnhancements.prepare(original.getTaskId(),List.of("segment-id"),options)).thenReturn(snap);
         var first=service.enqueueSegmentEnhancement(original.getTaskId(),"segment-id",options,"stable-request-id");
         var retried=service.enqueueSegmentEnhancement(original.getTaskId(),"segment-id",options,"stable-request-id");
         assertEquals(first.getTaskId(),retried.getTaskId());assertNotEquals(original.getTaskId(),first.getTaskId());
-        verify(segmentEnhancements,times(1)).copySteps(original.getTaskId(),first.getTaskId(),1);
+        verify(segmentEnhancements,times(1)).copySteps(original.getTaskId(),first.getTaskId(),List.of(1));
         assertEquals("SUCCESS",store.task(original.getTaskId()).getStatus());
         var changed=new DynamicWorkflowOptions();changed.setUpscale(true);changed.setUpscaleDenoise(.1);
         assertThrows(RuntimeException.class,()->service.enqueueSegmentEnhancement(original.getTaskId(),"segment-id",changed,"stable-request-id"));
         assertThrows(RuntimeException.class,()->service.enqueueSegmentEnhancement(original.getTaskId(),"segment-id",options,"another-request-id"));
+    }
+    @Test void multiSegmentReplacementIsOneTaskAndRetryIgnoresSelectionOrder()throws Exception{
+        shot(41,VideoBatchPreparation.REF,1);var source=create(request());service.runNext();
+        var original=store.items(source.getId()).getFirst();
+        var snap=json.readValue(original.getSnapshotJson(),Snapshot.class);var replacement=new SegmentReplacement();
+        replacement.setSourceTaskId(original.getTaskId());replacement.setSegmentIndices(List.of(0,2));snap.setSegmentReplacement(replacement);
+        var options=new DynamicWorkflowOptions();options.setUpscale(true);
+        when(segmentEnhancements.prepare(original.getTaskId(),List.of("seg-0","seg-2"),options)).thenReturn(snap);
+        var first=service.enqueueSegmentEnhancements(original.getTaskId(),List.of("seg-2","seg-0"),options,"multi-segment-request");
+        var retry=service.enqueueSegmentEnhancements(original.getTaskId(),List.of("seg-0","seg-2"),options,"multi-segment-request");
+        assertEquals(first.getTaskId(),retry.getTaskId());
+        verify(segmentEnhancements,times(1)).copySteps(original.getTaskId(),first.getTaskId(),List.of(0,2));
+        assertEquals(1,store.items(store.task(first.getTaskId()).getBatchId()).size());
+        assertEquals("SUCCESS",store.task(original.getTaskId()).getStatus());
+        assertThrows(RuntimeException.class,()->service.enqueueSegmentEnhancements(original.getTaskId(),List.of("seg-0"),options,"multi-segment-request"));
     }
     @Test void unresolvedFramesBlockBatchAdmission() {
         shot(41,VideoBatchPreparation.FL,1).setEndFrameImageUrl(null);

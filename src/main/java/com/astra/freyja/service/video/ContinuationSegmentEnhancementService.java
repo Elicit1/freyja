@@ -70,31 +70,55 @@ public class ContinuationSegmentEnhancementService {
                 var child=req.getContinuationPlan().getDraft().getSegments().get(i);
                 boolean allowed=nativeAvailable(outputs.get(i));
                 var enhancement=req.getContinuationSegments().get(i).getRequest().getDynamicWorkflowPlan();
-                segments.add(new Segment(range.getSegmentId(),i+1,child.getName(),range.getKeepStartFrame(),range.getKeepEndFrame(),outputs.get(i).getVideoUrl(),allowed,allowed?null:"此片段没有归档的一采 latent",enhancement==null?null:enhancement.getOptions()));
+                segments.add(new Segment(range.getSegmentId(),i+1,child.getName(),range.getKeepStartFrame(),range.getKeepEndFrame(),outputs.get(i).getVideoUrl(),allowed,allowed?null:"此片段缺少可复用的原始生成数据",enhancement==null?null:enhancement.getOptions()));
             }
             return new Summary(true,null,snapshot.getShot().getId().toString(),req.getProviderId().toString(),req.getWorkflowTemplateId(),req.getDynamicWorkflowPlan().getOptions(),segments);
         }catch(BizException e){return new Summary(false,e.getMessage(),null,null,null,null,List.of());}
     }
     public Snapshot prepare(String task,String segmentId,DynamicWorkflowOptions options){
+        return prepare(task,Collections.singletonList(segmentId),options);
+    }
+    public static List<String> validateSegmentIds(List<String> ids){
+        if(ids==null||ids.isEmpty()||ids.stream().anyMatch(id->id==null||id.isBlank())||new HashSet<>(ids).size()!=ids.size())
+            throw new BizException(400,"请选择至少一个片段，且片段标识不能为空或重复");
+        return ids.stream().sorted().toList();
+    }
+    public Snapshot prepare(String task,List<String> segmentIds,DynamicWorkflowOptions options){
+        var selected=new HashSet<>(validateSegmentIds(segmentIds));
         var snapshot=source(task);var req=snapshot.getRequest();var outputs=outputs(task,snapshot);
-        int index=-1;for(int i=0;i<req.getContinuationPlan().getRanges().size();i++)if(Objects.equals(segmentId,req.getContinuationPlan().getRanges().get(i).getSegmentId()))index=i;
-        if(index<0)throw new BizException(400,"片段不属于来源任务");
-        if(!nativeAvailable(outputs.get(index)))throw new BizException(409,"此片段没有可复用的一采 latent，不能仅重跑二采");
+        var indices=new ArrayList<Integer>();
+        for(int i=0;i<req.getContinuationPlan().getRanges().size();i++)if(selected.contains(req.getContinuationPlan().getRanges().get(i).getSegmentId()))indices.add(i);
+        if(indices.size()!=selected.size())throw new BizException(400,"片段不属于来源任务");
+        for(int index:indices)if(!nativeAvailable(outputs.get(index)))throw new BizException(409,"片段 "+(index+1)+" 没有可复用的一采 latent，不能仅重跑二采");
         if(options==null||!options.isUpscale()||!"FREYJA".equals(options.getUpscaleEngine()))throw new BizException(400,"片段替换须使用 FREYJA 二采");
         var model=models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId,req.getProviderId()).eq(AiModel::getModelCode,req.getWorkflowTemplateId()).last("LIMIT 1"));
         if(model==null)throw new BizException(409,"原视频模型已不存在");
-        var selection=new DynamicWorkflowOptions.Selection();selection.setOptions(options);
-        var plan=workflows.resolve(selection,req.getProviderId(),model.getId(),req.getSize(),req.getDynamicWorkflowPlan().getNodeId());
-        if(!plan.isNativeLatentInput())throw new BizException(409,"请更新网关和算力节点以支持原始 latent 二采");
-        if(!Objects.equals(plan.getOutputSize(),req.getDynamicWorkflowPlan().getOutputSize()))throw new BizException(400,"替换片段须保持原视频输出尺寸");
-        var child=req.getContinuationSegments().get(index);child.getRequest().setDynamicWorkflowPlan(plan);
+        for(int index:indices){
+            var child=req.getContinuationSegments().get(index);
+            var original=child.getRequest().getDynamicWorkflowPlan();
+            var childOptions=json.convertValue(options,DynamicWorkflowOptions.class);
+            childOptions.setFaceRepair(original!=null&&original.getOptions().isFaceRepair());
+            if(original!=null)childOptions.setFaceDenoise(original.getOptions().getFaceDenoise());
+            var selection=new DynamicWorkflowOptions.Selection();selection.setOptions(childOptions);
+            var plan=workflows.resolve(selection,req.getProviderId(),model.getId(),req.getSize(),req.getDynamicWorkflowPlan().getNodeId());
+            if(!plan.isNativeLatentInput())throw new BizException(409,"请更新网关和算力节点以支持原始 latent 二采");
+            if(!Objects.equals(plan.getOutputSize(),req.getDynamicWorkflowPlan().getOutputSize()))throw new BizException(400,"替换片段须保持原视频输出尺寸");
+            child.getRequest().setDynamicWorkflowPlan(plan);
+        }
+        var plan=req.getContinuationSegments().get(indices.getFirst()).getRequest().getDynamicWorkflowPlan();
+        var selection=new DynamicWorkflowOptions.Selection();selection.setOptions(plan.getOptions());
         req.setDynamicWorkflowPlan(plan);req.setDynamicWorkflow(selection);
-        var replacement=new SegmentReplacement();replacement.setSourceTaskId(task);replacement.setSegmentIndex(index);replacement.setOutputs(outputs);snapshot.setSegmentReplacement(replacement);
+        var replacement=new SegmentReplacement();replacement.setSourceTaskId(task);replacement.setSegmentIndices(indices);replacement.setOutputs(outputs);snapshot.setSegmentReplacement(replacement);
         snapshot.setFirstFramePlan(null);snapshot.setLastFramePlan(null);
         return snapshot;
     }
     public void copySteps(String source,String target,int index){
+        copySteps(source,target,List.of(index));
+    }
+    public void copySteps(String source,String target,List<Integer> indices){
         jdbc.update("INSERT INTO render_task_step(task_id,step_key,input_hash,execution_id,status,output_url,prompt_id,node_id,source_task_id,result_manifest_json,updated_at) SELECT ?,step_key,input_hash,execution_id,status,output_url,prompt_id,node_id,?,result_manifest_json,CURRENT_TIMESTAMP FROM render_task_step WHERE task_id=? AND status='SUCCESS'",target,source,source);
-        jdbc.update("INSERT INTO dynamic_workflow_step(task_id,step_key,input_hash,execution_id,stage,status,output_url,prompt_id,node_id,source_task_id,updated_at) SELECT ?,step_key,input_hash,execution_id,stage,status,output_url,prompt_id,node_id,?,CURRENT_TIMESTAMP FROM dynamic_workflow_step WHERE task_id=? AND status='SUCCESS' AND step_key NOT LIKE ?",target,source,source,String.format(Locale.ROOT,"segment-%03d:%%",index));
+        var args=new ArrayList<Object>(List.of(target,source,source));
+        for(int index:indices)args.add(String.format(Locale.ROOT,"segment-%03d:%%",index));
+        jdbc.update("INSERT INTO dynamic_workflow_step(task_id,step_key,input_hash,execution_id,stage,status,output_url,prompt_id,node_id,source_task_id,updated_at) SELECT ?,step_key,input_hash,execution_id,stage,status,output_url,prompt_id,node_id,?,CURRENT_TIMESTAMP FROM dynamic_workflow_step WHERE task_id=? AND status='SUCCESS' AND "+String.join(" AND ",Collections.nCopies(indices.size(),"step_key NOT LIKE ?")),args.toArray());
     }
 }

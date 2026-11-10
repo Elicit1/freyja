@@ -46,6 +46,40 @@ class ShotContinuationRendererTest {
             assertEquals("https://enhanced/1",outputs.get(1).getVideoUrl());
         }finally{VideoExecutionState.clear("replacement");}
     }
+    private VideoBatchModels.Snapshot replacementSnapshot(List<Integer> indices){
+        var snap=snapshot("replacement");var replacement=new VideoBatchModels.SegmentReplacement();replacement.setSegmentIndices(indices);
+        var outputs=new ArrayList<VideoBatchModels.SegmentOutput>();
+        for(int i=0;i<3;i++){var out=new VideoBatchModels.SegmentOutput();out.setBaseVideoUrl("https://base/"+i);out.setVideoUrl("https://enhanced/"+i);out.setLatent(Map.of("sha256","a".repeat(64)));outputs.add(out);}
+        replacement.setOutputs(outputs);snap.setSegmentReplacement(replacement);return snap;
+    }
+    @Test void multipleOrAllReplacementsRunInTimelineOrderAndAssembleExactlyOnce()throws Exception{
+        for(var indices:List.of(List.of(0,2),List.of(0,1,2))){
+            var snap=replacementSnapshot(indices);clearInvocations(dynamic,media,api);
+            when(dynamic.enhance(any(),anyString(),anyString(),anyString(),anyMap())).thenAnswer(call->"https://rerun/"+call.getArgument(3));
+            renderer.render(snap);
+            var ordered=inOrder(dynamic);
+            for(int index:indices)ordered.verify(dynamic).enhance(same(snap.getRequest().getContinuationSegments().get(index)),eq("https://base/"+index),eq("replacement"),eq(String.format("segment-%03d",index)),anyMap());
+            ordered.verifyNoMoreInteractions();
+            var expected=new ArrayList<String>();for(int i=0;i<3;i++)expected.add(indices.contains(i)?"https://rerun/"+String.format("segment-%03d",i):"https://enhanced/"+i);
+            verify(media,times(1)).assemble(eq(expected),same(snap.getRequest().getContinuationPlan()));
+            verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+            assertEquals("https://enhanced/0",snap.getSegmentReplacement().getOutputs().getFirst().getVideoUrl());
+        }
+    }
+    @Test void invalidReplacementSelectionsNeverReachTheGpuOrAssembler(){
+        for(var indices:List.of(List.<Integer>of(),List.of(-1),List.of(3),List.of(0,0),Arrays.asList(0,null))){
+            assertThrows(com.astra.freyja.common.BizException.class,()->renderer.render(replacementSnapshot(indices)));
+        }
+        verifyNoInteractions(dynamic,media,api);
+    }
+    @Test void historicalSingleSegmentSnapshotStillReadsWithoutRewritingStoredJson()throws Exception{
+        var json=new ObjectMapper();
+        var old=json.readValue("{\"segmentIndex\":1}",VideoBatchModels.SegmentReplacement.class);
+        assertEquals(List.of(1),old.indices());
+        assertNull(old.getSegmentIndices());
+        var current=json.readValue("{\"segmentIndices\":[0,2]}",VideoBatchModels.SegmentReplacement.class);
+        assertEquals(List.of(0,2),current.indices());
+    }
     @Test void enhancedOutputsNeverBecomeNextSegmentsPixelHandoff()throws Exception{
         var snap=snapshot("dynamic-continuation");var calls=new AtomicInteger();
         for(var child:snap.getRequest().getContinuationSegments())child.getRequest().setDynamicWorkflowPlan(new DynamicWorkflowOptions.Plan());

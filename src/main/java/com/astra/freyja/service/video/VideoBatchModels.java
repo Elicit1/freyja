@@ -37,8 +37,13 @@ public final class VideoBatchModels {
     @Data
     public static class SegmentReplacement {
         private String sourceTaskId;
-        private int segmentIndex;
+        private Integer segmentIndex;
+        private List<Integer> segmentIndices;
         private List<SegmentOutput> outputs;
+
+        public List<Integer> indices() {
+            return com.astra.freyja.util.LegacyShotJsonMigration.segmentReplacementIndices(segmentIndex, segmentIndices);
+        }
     }
 
     @Data

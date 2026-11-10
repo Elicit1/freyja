@@ -33,8 +33,8 @@ function capabilities(providerId: string, refresh = false): Promise<CapabilityCa
 export const videoEnhancementApi = {
   upscaleModels: (providerId: string, modelCode: string, nodeId: string) => request<{ modelCode: string; nodeId: string; models: string[] }>({ url: '/production/video-enhancements/upscale-models', method: 'get', params: { providerId, modelCode, nodeId }, timeout: 20000 }),
   segments: (taskId: string) => request<ContinuationEnhancementSummary>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/segments`, method: 'get' }),
-  replaceSegment: (taskId: string, segmentId: string, options: WorkflowOptions, requestId: string) => request<{ taskId: string }>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/segments/${encodeURIComponent(segmentId)}/upscale`, method: 'post', data: { options, requestId }, timeout: 120000 }),
+  replaceSegments: (taskId: string, segmentIds: string[], options: WorkflowOptions, requestId: string) => request<{ taskId: string }>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/segments/upscale`, method: 'post', data: { segmentIds, options, requestId }, timeout: 120000 }),
   capabilities,
   preview: (data: { providerId: string; modelId: string; size: string; selection: WorkflowSelection }) => request<{ name: string; baseSize: string; outputSize: string; options: WorkflowOptions }>({ url: '/production/video-enhancements/preview', method: 'post', data }),
-  steps: (taskId: string) => request<Array<{ step_key: string; stage: string; status: string; output_url?: string; error_message?: string }>>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/steps`, method: 'get' })
+  steps: (taskId: string) => request<Array<{ step_key: string; stage: string; status: string; output_url?: string; error_message?: string; source_task_id?: string }>>({ url: `/production/video-enhancements/tasks/${encodeURIComponent(taskId)}/steps`, method: 'get' })
 }

@@ -112,14 +112,15 @@ public class ShotContinuationRenderer {
     }
     private VideoGenerationResultVO replaceSegment(VideoBatchModels.Snapshot snapshot)throws Exception{
         var replacement=snapshot.getSegmentReplacement();var parent=snapshot.getRequest();String task=parent.getTaskId();
-        int index=replacement.getSegmentIndex();var outputs=replacement.getOutputs();
-        if(outputs.size()!=parent.getContinuationSegments().size()||index<0||index>=outputs.size())throw new BizException(409,"片段替换快照与接续时间轴不一致");
+        var indices=replacement.indices();var outputs=replacement.getOutputs();
+        if(outputs==null||outputs.size()!=parent.getContinuationSegments().size()||indices.isEmpty()
+                ||indices.stream().anyMatch(index->index==null||index<0||index>=outputs.size())||new HashSet<>(indices).size()!=indices.size())throw new BizException(409,"片段替换快照与接续时间轴不一致");
         if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=true;
         try{
             var urls=new ArrayList<String>();
             for(int i=0;i<outputs.size();i++){
                 var output=outputs.get(i);
-                if(i==index){
+                if(indices.contains(i)){
                     VideoExecutionState.segment(i);
                     urls.add(dynamicWorkflows.enhance(parent.getContinuationSegments().get(i),output.getBaseVideoUrl(),task,String.format(Locale.ROOT,"segment-%03d",i),output.getLatent()));
                 }else urls.add(output.getVideoUrl());
