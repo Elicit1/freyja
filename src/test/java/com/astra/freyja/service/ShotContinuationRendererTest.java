@@ -26,7 +26,7 @@ class ShotContinuationRendererTest {
         api=mock(AiImageApiService.class);media=mock(ShotContinuationMedia.class);var refs=mock(ReferenceVideoMediaService.class);
         when(media.tail(anyString(),anyInt(),anyInt())).thenReturn(new ReferenceVideoMediaService.ContinuationArtifact("reference-video/context","https://archive/context","a".repeat(64)));
         when(refs.transportUrl(anyString())).thenReturn("https://archive/context");when(media.assemble(anyList(),any())).thenReturn("https://archive/full");
-        when(api.archiveExistingVideo(anyLong(),anyLong(),anyString())).thenAnswer(call->VideoGenerationResultVO.builder().videoUrl(call.getArgument(2)).build());
+        when(api.archiveExistingVideo(anyLong(),anyLong(),anyString(),anyLong())).thenAnswer(call->VideoGenerationResultVO.builder().videoUrl(call.getArgument(2)).build());
         artifacts=mock(ContinuationArtifactService.class);
         renderer=new ShotContinuationRenderer(dynamic=mock(DynamicWorkflowExecutor.class),jdbc,new ObjectMapper(),api,media,refs,mock(AiTaskEventStore.class),artifacts);
     }
@@ -59,7 +59,7 @@ class ShotContinuationRendererTest {
             assertThrows(IllegalStateException.class,()->renderer.render(snap));assertNull(VideoExecutionState.current().recoveryUrl);
             var result=renderer.render(snap);assertEquals("https://archive/full",result.getVideoUrl());assertEquals(3,calls.get());
             assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM render_task_step WHERE status='SUCCESS'",Integer.class));
-            verify(api).archiveExistingVideo(1L,2L,"https://archive/1");
+            verify(api).archiveExistingVideo(1L,2L,"https://archive/1",3L);
         }finally{VideoExecutionState.clear("parent");}
     }
     @Test void unknownRemoteStateNeverAuthorizesAnotherGpuSubmission()throws Exception{

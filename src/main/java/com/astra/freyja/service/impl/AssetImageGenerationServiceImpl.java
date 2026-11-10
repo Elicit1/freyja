@@ -31,6 +31,7 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
     private final ResSceneMapper sceneMapper;
     private final ResPropMapper propMapper;
     private final com.astra.freyja.service.RenderTaskService renderTaskService;
+    private final com.astra.freyja.service.ResCharacterLookService lookService;
 
     @Override
     public AssetImageGenerationVO submit(AssetImageGenerationRequest request) {
@@ -103,7 +104,7 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
 
     @Override
     public void apply(String targetType, Long targetId, String slot, String imageUrl) {
-        if (targetId == null || StringUtils.isBlank(imageUrl)) throw new BizException(400, "资产和图片地址不能为空");
+        if (targetId == null || StringUtils.isBlank(imageUrl) || StringUtils.isBlank(slot)) throw new BizException(400, "资产、图片槽位和图片地址不能为空");
         if ("CHARACTER".equalsIgnoreCase(targetType)) {
             ResCharacter character = characterMapper.selectById(targetId);
             if (character == null) throw new BizException(404, "人物角色不存在");
@@ -113,13 +114,10 @@ public class AssetImageGenerationServiceImpl implements AssetImageGenerationServ
             }
             characterMapper.updateById(character);
         } else if ("CHARACTER_LOOK".equalsIgnoreCase(targetType)) {
-            ResCharacterLook outfit = outfitMapper.selectById(targetId);
-            if (outfit == null) throw new BizException(404, "人物造型不存在");
             switch (slot.toUpperCase()) {
-                case "REFERENCE", "PREVIEW" -> outfit.setReferenceImageUrl(imageUrl);
+                case "REFERENCE", "PREVIEW" -> lookService.updateLookImage(targetId, imageUrl);
                 default -> throw new BizException(400, "不支持的造型图片槽位: " + slot);
             }
-            outfitMapper.updateById(outfit);
         } else if ("SCENE".equalsIgnoreCase(targetType)) {
             ResScene scene = sceneMapper.selectById(targetId);
             if (scene == null) throw new BizException(404, "场景不存在");

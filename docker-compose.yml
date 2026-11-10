@@ -121,6 +121,7 @@ services:
     environment:
       GATEWAY_HOST: 0.0.0.0
       GATEWAY_PORT: 8000
+      GATEWAY_API_KEY: ${GATEWAY_API_KEY:?请设置至少24字符的网关令牌，并填入对应AI提供商的API Key}
       COMFYUI_HTTP_URL: ${COMFYUI_HTTP_URL:-http://host.docker.internal:8188}
       COMFYUI_WS_URL: ${COMFYUI_WS_URL:-ws://host.docker.internal:8188/ws}
       BASE_URL: ${GATEWAY_BASE_URL:-http://localhost:8000}
@@ -133,7 +134,7 @@ services:
       - "host.docker.internal:host-gateway"
       - "minio.localhost:host-gateway"
     ports:
-      - "${GATEWAY_PORT:-8000}:8000"
+      - "127.0.0.1:${GATEWAY_PORT:-8000}:8000"
     volumes:
       - gateway_outputs:/app/static/outputs
     restart: unless-stopped

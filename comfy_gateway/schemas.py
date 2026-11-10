@@ -19,7 +19,7 @@ class ImageGenerationRequest(BaseModel):
     cfg: Optional[float] = Field(default=None, description="Classifier Free Guidance scale")
     response_format: Literal["url", "b64_json"] = Field(default="url", description="Response format ('url' or 'b64_json')")
     extra_body: Optional[Dict[str, Any]] = Field(default=None, description="OpenAI extra parameters dictionary")
-    ref_images: Optional[List[str]] = Field(default=None, description="Optional list of reference image URLs or file paths")
+    ref_images: Optional[List[str]] = Field(default=None, description="Optional list of HTTP(S) reference image URLs or Base64 data URIs")
     duration: Optional[float] = Field(default=None, description="Video duration in seconds (e.g. 5.0, 15.0)")
     first_frame: Optional[str] = Field(default=None, description="Optional first frame URL/path/Base64")
     last_frame: Optional[str] = Field(default=None, description="Optional last frame URL/path/Base64")
@@ -36,15 +36,15 @@ class ImageGenerationRequest(BaseModel):
     continuity_prompt: Optional[str] = Field(default=None, description="Optional custom continuity constraints prompt override")
 
     # LatentSync & Video Extensions
-    video_url: Optional[str] = Field(default=None, description="Source face video URL or local file path for lip-sync")
-    audio_url: Optional[str] = Field(default=None, description="Source audio dialogue URL or local file path for lip-sync")
+    video_url: Optional[str] = Field(default=None, description="Source face video HTTP(S) URL or Base64 data URI for lip-sync")
+    audio_url: Optional[str] = Field(default=None, description="Source audio HTTP(S) URL or Base64 data URI for lip-sync")
     inference_steps: Optional[int] = Field(default=None, description="Inference steps override")
     lips_expression: Optional[float] = Field(default=None, description="LatentSync lip expression multiplier (e.g. 1.5)")
     vram_usage: Optional[str] = Field(default=None, description="LatentSync VRAM usage mode: low, medium, high")
 
     # Multi-Node Routing Overrides
     node_id: Optional[str] = Field(default=None, description="Optional compute node ID override")
-    target_backend: Optional[str] = Field(default=None, description="Optional direct ComfyUI HTTP URL override")
+    target_backend: Optional[str] = Field(default=None, description="Unsupported legacy field; use a configured node_id")
 
     # Prompt Format Specification
     prompt_format: Optional[str] = Field(default=None, description="Prompt format specification (e.g. 'MINIMAX_H3_REF2VA_V1', 'MINIMAX_H3_FL2VA_V1')")

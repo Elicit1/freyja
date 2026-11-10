@@ -40,6 +40,23 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class AiImageApiServiceImplTest {
 
+    @Test void resultDownloadAuthenticatesOnlyToTheConfiguredProviderOrigin() {
+        var provider = new AiProvider(); provider.setBaseUrl("https://gateway.test:8000/v1"); provider.setApiKey("encrypted");
+        when(cryptoUtil.decrypt("encrypted")).thenReturn("gateway-token");
+        java.net.http.HttpRequest sameOrigin = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                aiImageApiService, "videoDownloadRequest", "https://gateway.test:8000/v1/tasks/task/output", provider);
+        assertEquals("Bearer gateway-token", sameOrigin.headers().firstValue("Authorization").orElseThrow());
+        for (String url : List.of("https://cdn.test/video.mp4", "http://gateway.test:8000/output", "https://gateway.test:9000/output")) {
+            java.net.http.HttpRequest external = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                    aiImageApiService, "videoDownloadRequest", url, provider);
+            assertTrue(external.headers().firstValue("Authorization").isEmpty());
+        }
+        provider.setBaseUrl("https://Gateway.Test:443/v1");
+        java.net.http.HttpRequest canonicalOrigin = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                aiImageApiService, "videoDownloadRequest", "https://gateway.test/v1/tasks/task/output", provider);
+        assertEquals("Bearer gateway-token", canonicalOrigin.headers().firstValue("Authorization").orElseThrow());
+    }
+
     @Mock private RenderDispatchCoordinator renderDispatchCoordinator;
     @Mock private RenderTaskService renderTaskService;
 

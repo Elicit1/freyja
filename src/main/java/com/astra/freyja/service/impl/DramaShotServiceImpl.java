@@ -613,13 +613,21 @@ public class DramaShotServiceImpl implements DramaShotService {
         }
 
         List<Long> shotIds = dto.getShotIds();
+        if (shotIds.stream().anyMatch(Objects::isNull) || new java.util.HashSet<>(shotIds).size() != shotIds.size()) {
+            throw new BizException(400, "分镜 ID 不能重复或为空");
+        }
+        for (Long shotId : shotIds.stream().sorted().toList()) {
+            DramaShot shot = shotMapper.lockById(shotId);
+            if (shot == null || !Objects.equals(shot.getSceneId(), targetScene.getId())
+                    || !Objects.equals(shot.getEpisodeId(), targetScene.getEpisodeId())
+                    || !Objects.equals(shot.getDramaId(), targetScene.getDramaId())) {
+                throw new BizException(400, "分镜不存在或不属于当前场次: " + shotId);
+            }
+        }
         for (int i = 0; i < shotIds.size(); i++) {
             Long shotId = shotIds.get(i);
             DramaShot updateEntity = new DramaShot();
             updateEntity.setId(shotId);
-            updateEntity.setSceneId(targetScene.getId());
-            updateEntity.setEpisodeId(targetScene.getEpisodeId());
-            updateEntity.setDramaId(targetScene.getDramaId());
             updateEntity.setShotNo(i + 1);
             updateEntity.setSortOrder(i + 1);
             shotMapper.updateById(updateEntity);

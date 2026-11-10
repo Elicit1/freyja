@@ -72,6 +72,7 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
     private final DramaEpisodeMapper episodeMapper;
     private final DramaSceneMapper sceneMapper;
     private final Object[] taskStateLocks = new Object[64];
+    private final LocalDateTime instanceStartedAt = LocalDateTime.now();
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
@@ -123,6 +124,27 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
 
     private Object taskStateLock(String taskId) {
         return taskStateLocks[Math.floorMod(taskId.hashCode(), taskStateLocks.length)];
+    }
+
+    @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
+    public void recoverInterruptedTasks() {
+        renderAsyncExecutor.execute(() -> renderDispatchCoordinator.executeVideoQueue(() -> {
+            // shortcut: queued-task recovery assumes one backend; add execution leases before scaling instances.
+            var interrupted = taskMapper.selectList(new LambdaQueryWrapper<MediaProcessTask>()
+                    .in(MediaProcessTask::getStatus, "QUEUED", "PENDING", "PROCESSING", "RUNNING")
+                    .lt(MediaProcessTask::getSubmitTime, instanceStartedAt));
+            for (var task : interrupted) {
+                String message = "服务重启，任务执行已中断；请先查询原网关任务，再决定是否重新提交，避免重复渲染";
+                int changed = taskMapper.update(null, new LambdaUpdateWrapper<MediaProcessTask>()
+                        .eq(MediaProcessTask::getId, task.getId())
+                        .in(MediaProcessTask::getStatus, "QUEUED", "PENDING", "PROCESSING", "RUNNING")
+                        .set(MediaProcessTask::getStatus, "FAILED")
+                        .set(MediaProcessTask::getCurrentNode, "执行中断，未自动重新渲染")
+                        .set(MediaProcessTask::getErrorMessage, message)
+                        .set(MediaProcessTask::getFinishTime, LocalDateTime.now()));
+                if (changed > 0) renderTaskService.failTask(task.getTaskId(), message, null);
+            }
+        }));
     }
 
     @Override
@@ -474,8 +496,9 @@ public class VideoProcessingServiceImpl implements VideoProcessingService {
 
     private void ensureTaskNotCancelled(Long entityId) {
         MediaProcessTask task = taskMapper.selectById(entityId);
-        if (Thread.currentThread().isInterrupted() || (task != null && "CANCELLED".equals(task.getStatus()))) {
-            throw new java.util.concurrent.CancellationException("视频处理任务已取消");
+        if (Thread.currentThread().isInterrupted() || task == null
+                || List.of("CANCELLED", "SUCCESS", "FAILED").contains(task.getStatus())) {
+            throw new java.util.concurrent.CancellationException("视频处理任务已结束或取消");
         }
     }
 

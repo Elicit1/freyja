@@ -6,12 +6,14 @@ import asyncio
 import logging
 import hashlib
 import json
+import secrets
 from pathlib import Path
 from contextlib import asynccontextmanager
 from typing import List, Optional, Dict, Tuple, Any
 
 from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -99,6 +101,18 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+@app.middleware("http")
+async def authenticate_api(request: Request, call_next):
+    if request.url.path == "/v1" or request.url.path.startswith("/v1/"):
+        token = os.getenv("GATEWAY_API_KEY", "").strip()
+        if len(token) < 24:
+            return JSONResponse(status_code=503, content={"error": "GATEWAY_API_KEY must contain at least 24 characters"})
+        scheme, _, supplied = request.headers.get("authorization", "").partition(" ")
+        if scheme.lower() != "bearer" or not secrets.compare_digest(supplied.encode(), token.encode()):
+            return JSONResponse(status_code=401, content={"error": "Unauthorized"}, headers={"WWW-Authenticate": "Bearer"})
+    return await call_next(request)
+
+
 # Enable CORS
 app.add_middleware(
     CORSMiddleware,
@@ -124,7 +138,7 @@ async def request_validation_error_handler(request: Request, exc: RequestValidat
         request.url.path,
         errors,
     )
-    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content={"detail": errors})
+    return JSONResponse(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, content=jsonable_encoder({"detail": errors}))
 
 
 @app.exception_handler(ValueError)
@@ -281,9 +295,8 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
 
     # 2. Resolve target compute node / ComfyUI client
     # Priority:
-    #   a) Direct target_backend URL in request (e.g. "http://192.168.1.120:8188")
-    #   b) Preferred node_id from request body or HTTP header (X-Comfy-Node)
-    #   c) Standard model-to-node routing via config
+    #   a) Preferred node_id from request body or HTTP header (X-Comfy-Node)
+    #   b) Standard model-to-node routing via config
     preferred_node = (
         request.node_id or
         http_req.headers.get("x-comfy-node") or
@@ -291,16 +304,12 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
     )
 
     if request.target_backend:
-        if video_references or request.dynamic_workflow:
-            raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: direct backend overrides are not accepted")
-        logger.info(f"Using direct target_backend override: {request.target_backend}")
-        client = await pool.get_client_by_url(request.target_backend)
-    else:
-        target_node = config.get_node_for_model(request.model, preferred_node=preferred_node)
-        if not target_node:
-            raise RuntimeError(f"No active compute node found for model '{request.model}' (preferred node: '{preferred_node}').")
-        logger.info(f"Routing request for model '{request.model}' to node '{target_node.node_id}' ({target_node.http_url})")
-        client = await pool.get_client_for_node(target_node)
+        raise ValueError("Direct backend overrides are forbidden; select a configured node_id")
+    target_node = config.get_node_for_model(request.model, preferred_node=preferred_node)
+    if not target_node:
+        raise RuntimeError(f"No active compute node found for model '{request.model}' (preferred node: '{preferred_node}').")
+    logger.info(f"Routing request for model '{request.model}' to node '{target_node.node_id}' ({target_node.http_url})")
+    client = await pool.get_client_for_node(target_node)
 
     if request.dynamic_workflow:
         from dynamic_workflow import require_stage, describe, validate_stage_nodes
@@ -318,7 +327,6 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
             validate_stage_nodes(request.dynamic_workflow, describe(model_cfg, get_base_dir()), response.json())
     video_capability = None
     if request.h3_options:
-        if request.target_backend: raise ValueError("H3_BACKEND_OVERRIDE_FORBIDDEN")
         model_cfg=config.get_exact_model(request.model,target_node.node_id)
         if model_cfg is None:raise ValueError("H3_MODEL_NODE_MISMATCH")
         require_options(request,model_cfg,get_base_dir())

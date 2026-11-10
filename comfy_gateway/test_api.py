@@ -4,6 +4,7 @@ Verifies OpenAPI routing, model listing, input validation, and OpenAI standard r
 """
 
 import unittest
+import os
 from unittest.mock import AsyncMock, Mock, patch
 from starlette.testclient import TestClient
 from main import app
@@ -23,7 +24,43 @@ class TestGatewayAPI(unittest.TestCase):
 
 
     def setUp(self):
-        self.client = TestClient(app)
+        self.token = "gateway-test-token-0123456789"
+        environment = patch.dict(os.environ, {"GATEWAY_API_KEY": self.token})
+        environment.start()
+        self.addCleanup(environment.stop)
+        self.client = TestClient(app, headers={"Authorization": "Bearer " + self.token})
+
+    def test_authentication_blocks_work_before_compute_access(self):
+        client = TestClient(app)
+        with patch("main.get_client_pool") as pool:
+            for path in ("/v1/images/generations", "/v1/tasks/task/cancel", "/v1/interrupt"):
+                self.assertEqual(client.post(path, json={}).status_code, 401)
+            self.assertEqual(client.get("/v1/models").status_code, 401)
+            self.assertEqual(client.get("/v1/tasks/task/output").status_code, 401)
+            self.assertEqual(client.post("/v1/interrupt", headers={"Authorization": "Bearer wrong"}).status_code, 401)
+            pool.assert_not_called()
+            pool.return_value.interrupt_all = AsyncMock(return_value={})
+            self.assertEqual(self.client.post("/v1/interrupt").status_code, 200)
+            pool.return_value.interrupt_all.assert_awaited_once()
+        for token in ("", "too-short"):
+            with patch.dict(os.environ, {"GATEWAY_API_KEY": token}):
+                self.assertEqual(self.client.get("/v1/models").status_code, 503)
+
+    def test_custom_validator_error_is_a_serializable_422(self):
+        response = self.client.post("/v1/images/generations", json={
+            "prompt": "test", "references": [], "extra_body": {"references": "invalid"}
+        })
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("must be a list", response.json()["detail"][0]["msg"])
+
+    def test_direct_backend_overrides_never_contact_the_target(self):
+        for routing in ({"target_backend": "http://untrusted.invalid"},
+                        {"extra_body": {"backend_url": "http://untrusted.invalid"}}):
+            with patch("main.get_client_pool") as pool:
+                response = self.client.post("/v1/images/generations", json={"prompt": "test", **routing})
+                self.assertEqual(response.status_code, 400)
+                pool.return_value.get_client_by_url.assert_not_called()
+                pool.return_value.get_client_for_node.assert_not_called()
 
     def test_root_and_health(self):
         """Test GET / and GET /health"""

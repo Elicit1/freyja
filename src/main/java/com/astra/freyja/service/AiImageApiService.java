@@ -50,7 +50,7 @@ public interface AiImageApiService {
     String resolveVideoModelCode(com.astra.freyja.dto.drama.DramaShotRenderRequestDTO dto, Long providerId, String generationMode);
 
     /** Recover an already generated video; never calls the generation endpoint. */
-    default com.astra.freyja.dto.drama.VideoGenerationResultVO archiveExistingVideo(Long shotId,Long dramaId,String sourceUrl) {
+    default com.astra.freyja.dto.drama.VideoGenerationResultVO archiveExistingVideo(Long shotId,Long dramaId,String sourceUrl,Long providerId) {
         throw new UnsupportedOperationException("此提供商未实现归档恢复");
     }
 

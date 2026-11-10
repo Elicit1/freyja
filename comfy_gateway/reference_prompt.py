@@ -48,9 +48,9 @@ class ReferenceBinding(BaseModel):
     reference_description: Optional[str] = Field(default=None, alias="referenceDescription", max_length=1000)
 
     # Media asset sources
-    images: Optional[List[str]] = Field(default=None, alias="referenceImages", description="List of image URLs or file paths")
-    audio_url: Optional[str] = Field(default=None, alias="referenceAudio", description="Reference audio URL or file path")
-    video_url: Optional[str] = Field(default=None, alias="referenceVideo", description="Reference video URL or file path")
+    images: Optional[List[str]] = Field(default=None, alias="referenceImages", description="HTTP(S) image URLs or Base64 data URIs")
+    audio_url: Optional[str] = Field(default=None, alias="referenceAudio", description="HTTP(S) audio URL or Base64 data URI")
+    video_url: Optional[str] = Field(default=None, alias="referenceVideo", description="Archived reference video HTTP(S) URL")
     include_audio: bool = Field(default=False, alias="includeAudio")
     content_sha256: Optional[str] = Field(default=None, alias="contentSha256", pattern=r"^[a-f0-9]{64}$")
 

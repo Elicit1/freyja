@@ -387,6 +387,7 @@ public class CharacterRegistryServiceImpl implements CharacterRegistryService {
                     }
                 } catch (Exception e) {
                     log.warn("[CharacterRegistry] 更新分镜 characterRefsJson 失败, shotId={}", shot.getId(), e);
+                    throw new BizException(500, "角色合并失败：分镜 " + shot.getId() + " 的角色引用迁移失败，合并已回滚");
                 }
             }
         }

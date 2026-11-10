@@ -11,7 +11,7 @@ logger = logging.getLogger("config")
 
 
 class ServerConfig(BaseModel):
-    host: str = Field(default="0.0.0.0", description="Gateway bind host")
+    host: str = Field(default="127.0.0.1", description="Gateway bind host")
     port: int = Field(default=8000, description="Gateway bind port")
     comfyui_http_url: str = Field(default="http://127.0.0.1:8188", description="Default/Fallback ComfyUI HTTP base URL")
     comfyui_ws_url: str = Field(default="ws://127.0.0.1:8188/ws", description="Default/Fallback ComfyUI WebSocket base URL")

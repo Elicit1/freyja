@@ -46,4 +46,4 @@ echo " Starting ComfyUI Universal Multi-Workflow OpenAI Gateway "
 echo " Port: ${GATEWAY_PORT} | Target ComfyUI: ${COMFYUI_HTTP_URL} "
 echo "=========================================================="
 
-exec python -m uvicorn main:app --app-dir "${SCRIPT_DIR}" --host 0.0.0.0 --port "${GATEWAY_PORT}" --reload
+exec python -m uvicorn main:app --app-dir "${SCRIPT_DIR}" --host "${GATEWAY_HOST:-127.0.0.1}" --port "${GATEWAY_PORT}" --reload

@@ -11,11 +11,11 @@
 2. **OpenAI SDK 协议完全兼容**：
    - 路由：`POST /v1/images/generations`，支持标准入参：`model`、`prompt`、`negative_prompt`、`size`、`steps`、`seed`、`response_format` ("url" / "b64_json")。
    - 尺寸：图片工作流宽高必须为 16 的整数倍，MiniMax H3 视频工作流宽高必须为 32 的整数倍。非法尺寸返回 `400 invalid_parameters`，网关不会静默缩放。
-   - 拓展参数支持：通过 `extra_body` 注入 `ref_images: List[str]`（支持 HTTP/HTTPS 网络图片、本地文件路径及 Base64 Data URI）。
+   - 拓展参数支持：通过 `extra_body` 注入 `ref_images: List[str]`（支持 HTTP/HTTPS 网络图片及 Base64 Data URI，拒绝服务器本地文件路径）。
    - 严格对齐 OpenAI 标准响应格式 `{ "created": 1717..., "data": [{"url": "...", "b64_json": null}] }`。
 3. **FLUX.2 Klein 9B 动态参考图插拔与链式装配（`flux2_reference_chain`）**：
    - **0 张参考图**：纯文生图模式，保持正向提示词与引导直连 KSampler，不产生冗余图像加载节点。
-   - **1~N 张参考图**：自动将网络 URL/本地文件/Base64 转存上传至 ComfyUI `/upload/image`，并动态在图中追加 `LoadImage -> VAEEncode -> ReferenceLatent` 节点链，将多图特征依次串联后接入采样器。
+   - **1~N 张参考图**：自动将网络 URL/Base64 以唯一文件名转存上传至 ComfyUI `/upload/image`，并动态在图中追加 `LoadImage -> VAEEncode -> ReferenceLatent` 节点链，将多图特征依次串联后接入采样器。
 4. **高并发异步通信与双重容灾**：
    - 基于 `httpx.AsyncClient` 连接池提交任务。
    - 基于 `websockets` 独立追踪 `clientId` 的 `progress`、`executing` 与 `executed` 事件。
@@ -59,13 +59,18 @@ pip install -r requirements.txt
 ```
 
 ### 2. 启动 ComfyUI 网关服务
+
+先在环境变量或 `.env` 中设置 `GATEWAY_API_KEY`，使用至少 24 字符的随机令牌，可通过 `python -c "import secrets; print(secrets.token_urlsafe(32))"` 生成。工作台对应 AI 提供商的 API Key 必须填写相同值。
+
+所有 `/v1/**` 接口（包含任务查询和结果下载）要求 `Authorization: Bearer <令牌>`。令牌缺失或过短时返回 503，凭据不匹配返回 401。`/health` 与已生成的 `/outputs/**` 仍可直接访问。默认只绑定本机地址，远程访问请使用私有网络或 SSH 隧道。计算目标只接受已配置的 `node_id`，请求中的 `target_backend` 及其旧别名均会被拒绝。
+
 - **Windows (PowerShell)**:
   ```powershell
   .\start.ps1
   ```
 - **或者直接使用 Python 启动**:
   ```bash
-  python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+  python -m uvicorn main:app --host 127.0.0.1 --port 8000 --reload
   ```
 
 服务启动后：
@@ -79,7 +84,7 @@ pip install -r requirements.txt
 
 ```yaml
 server:
-  host: "0.0.0.0"
+  host: "127.0.0.1"
   port: 8000
   comfyui_http_url: "http://127.0.0.1:8188"
   comfyui_ws_url: "ws://127.0.0.1:8188/ws"
@@ -118,12 +123,13 @@ models:
 ### 1. 官方 OpenAI Python SDK 调用示例
 
 ```python
+import os
 from openai import OpenAI
 
 # 初始化客户端，base_url 指向网关 /v1
 client = OpenAI(
     base_url="http://127.0.0.1:8000/v1",
-    api_key="not-needed"
+    api_key=os.environ["GATEWAY_API_KEY"]
 )
 
 # 案例 A：纯文生图 (0 张参考图)
@@ -144,7 +150,7 @@ response = client.images.generate(
     extra_body={
         "ref_images": [
             "https://example.com/character_face.png",
-            "F:/assets/props/cyber_coat.png"
+            "https://example.com/cyber_coat.png"
         ],
         "steps": 4,
         "seed": 42
@@ -199,6 +205,7 @@ print("多参考图生成的视频 URL:", response_ref_video.data[0].url)
 
 ```bash
 curl -X POST http://127.0.0.1:8000/v1/images/generations \
+  -H "Authorization: Bearer $GATEWAY_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "minimax-h3-fl2va",

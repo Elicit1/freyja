@@ -3,9 +3,37 @@
 import asyncio
 import json
 import unittest
+import httpx
 from unittest.mock import AsyncMock, Mock, patch
 
 from comfy_client import ComfyAsyncClient
+
+
+class MediaUploadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_local_paths_and_non_http_schemes_are_rejected(self):
+        client = ComfyAsyncClient("http://comfy", "ws://comfy/ws")
+        client.upload_file_to_comfy = AsyncMock()
+        for source in (__file__, "/proc/self/environ", "file:///etc/passwd", "ftp://server/file"):
+            with self.assertRaisesRegex(ValueError, "local paths are forbidden"):
+                await client.load_and_upload_media(source)
+        client.upload_file_to_comfy.assert_not_awaited()
+
+    async def test_same_named_sources_and_repeated_data_uris_get_distinct_names(self):
+        client = ComfyAsyncClient("http://comfy", "ws://comfy/ws")
+        client._http_client = httpx.AsyncClient(transport=httpx.MockTransport(
+            lambda request: httpx.Response(200, content=request.url.path.encode())))
+        client.upload_file_to_comfy = AsyncMock(side_effect=lambda raw, name: name)
+        try:
+            names = []
+            for source in ("https://archive.test/alice/reference.png", "https://archive.test/bob/reference.png",
+                           "data:image/png;base64,QQ==", "data:image/png;base64,QQ=="):
+                names.append(await client.load_and_upload_media(source))
+            self.assertEqual(len(set(names)), 4)
+            self.assertTrue(all(name.endswith(".png") for name in names))
+            self.assertNotEqual(client.upload_file_to_comfy.await_args_list[0].args[0],
+                                client.upload_file_to_comfy.await_args_list[1].args[0])
+        finally:
+            await client.close()
 
 
 class _SilentWebSocket:

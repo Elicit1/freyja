@@ -21,7 +21,6 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.minio.MinioClient;
-import io.minio.RemoveObjectArgs;
 import io.minio.StatObjectArgs;
 import io.minio.errors.ErrorResponseException;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +31,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.net.URLDecoder;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -52,6 +50,7 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
     private final MinioClient minioClient;
     private final MinioProperties minioProperties;
     private final ObjectMapper objectMapper;
+    private final com.astra.freyja.service.AssetMediaCleanupService mediaCleanup;
 
     @Override
     public Page<ShotVideoTakeVO> pageByShotId(Long shotId, ShotVideoTakeQuery query) {
@@ -304,7 +303,7 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
             throw new BizException(404, "指定分镜的视频版本不存在");
         }
 
-        String objectKey = ownedMinioObjectKey(take.getVideoUrl());
+        String objectKey = mediaCleanup.managedObjectKey(take.getVideoUrl());
         if (objectKey == null) {
             throw new BizException(400, "该视频不属于当前 MinIO 存储桶，无法同步删除文件");
         }
@@ -324,17 +323,10 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
             throw new BizException(409, "该视频仍被其他分镜、版本或正在执行的任务引用，无法删除文件");
         }
 
-        try {
-            minioClient.removeObject(RemoveObjectArgs.builder()
-                    .bucket(minioProperties.getBucketName()).object(objectKey).build());
-        } catch (Exception e) {
-            log.error("[ShotVideoTakeService] 删除 MinIO 视频失败: takeId={}, objectKey={}", takeId, objectKey, e);
-            throw new BizException(500, "删除 MinIO 视频文件失败，历史记录已保留");
-        }
-
         if (Objects.equals(shot.getCurrentVideoTakeId(), takeId)) {
             shotMapper.update(null, new LambdaUpdateWrapper<DramaShot>()
                     .eq(DramaShot::getId, shotId)
+                    .eq(DramaShot::getCurrentVideoTakeId, takeId)
                     .set(DramaShot::getCurrentVideoTakeId, null)
                     .set(DramaShot::getVideoUrl, null)
                     .set(DramaShot::getRenderStatus, "INIT")
@@ -346,33 +338,8 @@ public class ShotVideoTakeServiceImpl implements ShotVideoTakeService {
         mediaProcessTaskMapper.update(null, new LambdaUpdateWrapper<MediaProcessTask>()
                 .eq(MediaProcessTask::getOutputVideoUrl, take.getVideoUrl())
                 .set(MediaProcessTask::getOutputVideoUrl, null)
-                .set(MediaProcessTask::getCurrentNode, "视频文件已删除"));
-    }
-
-    private String ownedMinioObjectKey(String videoUrl) {
-        if (StringUtils.isBlank(videoUrl)) return null;
-        try {
-            URI videoUri = URI.create(videoUrl);
-            URI internal = URI.create(minioProperties.getEndpoint());
-            URI external = URI.create(minioProperties.getExternalEndpoint());
-            URI endpoint = sameOrigin(videoUri, internal) ? internal
-                    : sameOrigin(videoUri, external) ? external : null;
-            if (endpoint == null) return null;
-            String basePath = StringUtils.removeEnd(StringUtils.defaultString(endpoint.getRawPath()), "/");
-            String bucketPath = basePath + "/" + minioProperties.getBucketName() + "/";
-            String path = videoUri.getRawPath();
-            if (path == null || !path.startsWith(bucketPath)) return null;
-            String key = URLDecoder.decode(path.substring(bucketPath.length()), StandardCharsets.UTF_8);
-            if (StringUtils.isBlank(key) || key.startsWith("/") || key.contains("..") || key.contains("\\")) return null;
-            return key;
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private boolean sameOrigin(URI left, URI right) {
-        return Objects.equals(left.getScheme(), right.getScheme())
-                && Objects.equals(left.getRawAuthority(), right.getRawAuthority());
+                .set(MediaProcessTask::getCurrentNode, "视频版本已删除"));
+        mediaCleanup.deleteAfterCommit(take.getVideoUrl());
     }
 
     @Override

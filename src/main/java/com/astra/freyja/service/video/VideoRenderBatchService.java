@@ -239,7 +239,7 @@ public class VideoRenderBatchService {
             VideoGenerationResultVO result;
             if(item.getRecoveryUrl()!=null){
                 VideoExecutionState.completed(item.getRecoveryUrl());
-                result="RESULT_COMMIT".equals(item.getFailurePhase())?VideoGenerationResultVO.builder().videoUrl(item.getRecoveryUrl()).build():api.archiveExistingVideo(item.getShotId(),snap.getShot().getDramaId(),item.getRecoveryUrl());
+                result="RESULT_COMMIT".equals(item.getFailurePhase())?VideoGenerationResultVO.builder().videoUrl(item.getRecoveryUrl()).build():api.archiveExistingVideo(item.getShotId(),snap.getShot().getDramaId(),item.getRecoveryUrl(),snap.getRequest().getProviderId());
             }else if(snap.getRequest().getContinuationSegments()!=null)result=continuationRenderer.render(snap);
             else if(snap.getRequest().getDynamicWorkflowPlan()!=null)result=dynamicWorkflows.render(snap);
             else result=api.generateAndArchiveVideo(item.getShotId(),snap.getShot().getDramaId(),snap.getShot(),snap.getRequest());

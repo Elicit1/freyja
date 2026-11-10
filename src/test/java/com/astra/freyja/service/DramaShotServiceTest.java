@@ -484,14 +484,36 @@ class DramaShotServiceTest {
 
         when(sceneMapper.selectById(10L)).thenReturn(targetScene);
 
+        for (Long id : List.of(1002L, 1001L, 1003L)) {
+            var shot = new DramaShot(); shot.setId(id); shot.setSceneId(10L); shot.setEpisodeId(5L); shot.setDramaId(1L);
+            when(shotMapper.lockById(id)).thenReturn(shot);
+        }
+
         DramaShotReorderDTO reorderDTO = new DramaShotReorderDTO();
         reorderDTO.setSceneId(10L);
         reorderDTO.setShotIds(List.of(1002L, 1001L, 1003L));
 
         shotService.reorderShots(reorderDTO);
 
-        verify(shotMapper, times(3)).updateById(any(DramaShot.class));
+        verify(shotMapper, times(3)).updateById(argThat((DramaShot shot) ->
+                shot.getSceneId() == null && shot.getEpisodeId() == null && shot.getDramaId() == null
+                        && shot.getShotGroupId() == null && shot.getSortOrder() != null));
         verify(episodeService, times(1)).recalculateEpisodeDuration(5L);
+    }
+
+    @Test void reorderRejectsForeignAndDuplicateShotsBeforeAnyWrite() {
+        var scene = new DramaScene(); scene.setId(10L); scene.setEpisodeId(5L); scene.setDramaId(1L);
+        when(sceneMapper.selectById(10L)).thenReturn(scene);
+        var valid = new DramaShot(); valid.setId(1L); valid.setSceneId(10L); valid.setEpisodeId(5L); valid.setDramaId(1L);
+        var foreign = new DramaShot(); foreign.setId(2L); foreign.setSceneId(20L); foreign.setEpisodeId(6L); foreign.setDramaId(2L);
+        when(shotMapper.lockById(1L)).thenReturn(valid);
+        when(shotMapper.lockById(2L)).thenReturn(foreign);
+        var request = new DramaShotReorderDTO(); request.setSceneId(10L); request.setShotIds(List.of(1L, 2L));
+        assertThrows(BizException.class, () -> shotService.reorderShots(request));
+        request.setShotIds(List.of(1L, 1L));
+        assertThrows(BizException.class, () -> shotService.reorderShots(request));
+        verify(shotMapper, never()).updateById(any(DramaShot.class));
+        verifyNoInteractions(episodeService);
     }
 
     @Test

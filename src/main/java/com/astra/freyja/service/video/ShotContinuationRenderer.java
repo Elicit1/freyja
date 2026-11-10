@@ -53,7 +53,7 @@ public class ShotContinuationRenderer {
                     else{
                         String persistedPrompt=Objects.toString(row.get("prompt_id"),null),persistedNode=Objects.toString(row.get("node_id"),null);
                         var remote=persistedPrompt!=null&&persistedNode!=null?api.queryVideoTask(parent.getProviderId(),execution,persistedPrompt,persistedNode):api.queryVideoTask(parent.getProviderId(),execution);
-                        if("SUCCESS".equals(remote.status())){if(remote.videoUrl()==null||remote.videoUrl().isBlank())throw new BizException(502,"上游已完成片段缺少视频地址");output=api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),remote.videoUrl()).getVideoUrl();}
+                        if("SUCCESS".equals(remote.status())){if(remote.videoUrl()==null||remote.videoUrl().isBlank())throw new BizException(502,"上游已完成片段缺少视频地址");output=api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),remote.videoUrl(),snapshot.getRequest().getProviderId()).getVideoUrl();}
                         else if(Set.of("FAILED","CANCELLED").contains(remote.status())){execution=task+"-segment-"+i+"-"+UUID.randomUUID();jdbc.update("UPDATE render_task_step SET execution_id=?,status='SUBMITTING',updated_at=? WHERE task_id=? AND step_key=?",execution,LocalDateTime.now(),task,key);}
                         else throw new BizException(409,"片段上游状态为 "+remote.status()+"，暂不重复提交，请稍后恢复");
                     }
@@ -102,7 +102,7 @@ public class ShotContinuationRenderer {
             VideoExecutionState.progress("ASSEMBLING","正在裁去接续重叠并合成完整视频");
             String url=media.assemble(enhanced,parent.getContinuationPlan());
             if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=false;
-            return api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),url);
+            return api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),url,snapshot.getRequest().getProviderId());
         }catch(Exception e){if(VideoExecutionState.current()!=null&&VideoExecutionState.current().continuationChild)VideoExecutionState.current().recoveryUrl=null;throw e;}
         finally{if(VideoExecutionState.current()!=null){VideoExecutionState.current().continuationChild=false;VideoExecutionState.current().upstream=null;}for(var child:parent.getContinuationSegments())if(child.getRequest().getH3Options()!=null){child.getRequest().getH3Options().remove("continuation");child.getRequest().getH3Options().remove("latent_context");}}
     }

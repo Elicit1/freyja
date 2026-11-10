@@ -1,4 +1,5 @@
 import tempfile
+import os
 import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -9,9 +10,14 @@ from task_tracker import TaskTracker
 
 
 class TaskRecoveryTests(unittest.TestCase):
+    def setUp(self):
+        environment = patch.dict(os.environ, {"GATEWAY_API_KEY": "gateway-test-token-0123456789"})
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_unknown_task_does_not_offer_download(self):
         with patch.object(main.task_tracker, "find", new_callable=AsyncMock, return_value=None):
-            client = TestClient(main.app)
+            client = TestClient(main.app, headers={"Authorization": "Bearer gateway-test-token-0123456789"})
             result = client.get("/v1/tasks/missing").json()
             self.assertEqual(result["status"], "UNKNOWN")
             self.assertNotIn("video_url", result)
@@ -27,7 +33,7 @@ class TaskRecoveryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, \
                 patch.object(main.config.server, "output_dir", directory), \
                 patch("main.tracked_task_state", side_effect=snapshot):
-            client = TestClient(main.app)
+            client = TestClient(main.app, headers={"Authorization": "Bearer gateway-test-token-0123456789"})
             response = client.get("/v1/tasks/render-1").json()
             self.assertEqual(response["status"], "SUCCESS")
             self.assertTrue(response["video_url"].endswith("/v1/tasks/render-1/output"))
@@ -41,7 +47,7 @@ class TaskRecoveryTests(unittest.TestCase):
     def test_running_task_cannot_be_downloaded(self):
         state = {"status": "RUNNING", "assets": []}
         with patch("main.tracked_task_state", new_callable=AsyncMock, return_value=(AsyncMock(), state)):
-            self.assertEqual(TestClient(main.app).get("/v1/tasks/render-1/output").status_code, 409)
+            self.assertEqual(TestClient(main.app, headers={"Authorization": "Bearer gateway-test-token-0123456789"}).get("/v1/tasks/render-1/output").status_code, 409)
 
 
 class TrackerRetentionTests(unittest.IsolatedAsyncioTestCase):

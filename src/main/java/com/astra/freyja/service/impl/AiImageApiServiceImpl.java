@@ -846,7 +846,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 String targetUrl = resolveRemoteImageUrl(remoteVideoUrl, baseUrl);
                 com.astra.freyja.service.video.VideoExecutionState.completed(targetUrl);
                 log.info("[AiImageApi] 成功获取远程视频 URL，正在下载转存至 MinIO: targetUrl={}", targetUrl);
-                videoBytes = downloadVideoResult(targetUrl);
+                videoBytes = downloadVideoResult(targetUrl, provider);
             } else if (firstItem.hasNonNull("b64_json")) {
                 com.astra.freyja.service.video.VideoExecutionState.completed(null);
                 String b64 = firstItem.get("b64_json").asText();
@@ -905,16 +905,32 @@ public class AiImageApiServiceImpl implements AiImageApiService {
     }
 
     @Override
-    public com.astra.freyja.dto.drama.VideoGenerationResultVO archiveExistingVideo(Long shotId,Long dramaId,String sourceUrl) {
+    public com.astra.freyja.dto.drama.VideoGenerationResultVO archiveExistingVideo(Long shotId,Long dramaId,String sourceUrl,Long providerId) {
         com.astra.freyja.service.video.VideoExecutionState.completed(sourceUrl);
-        byte[] bytes=downloadVideoResult(sourceUrl);
+        byte[] bytes=downloadVideoResult(sourceUrl,resolveProvider(providerId));
         com.astra.freyja.service.video.VideoExecutionState.progress("ARCHIVING","正在归档视频至 MinIO");
         return com.astra.freyja.dto.drama.VideoGenerationResultVO.builder().videoUrl(uploadVideoToMinio(shotId,dramaId,bytes)).build();
     }
 
-    private byte[] downloadVideoResult(String url){
+    private HttpRequest videoDownloadRequest(String url, AiProvider provider) {
+        URI target = URI.create(url);
+        URI base = URI.create(provider.getBaseUrl());
+        var request = HttpRequest.newBuilder(target).timeout(Duration.ofSeconds(videoTransferTimeoutSeconds)).GET();
+        int targetPort = target.getPort() >= 0 ? target.getPort() : ("https".equalsIgnoreCase(target.getScheme()) ? 443 : 80);
+        int basePort = base.getPort() >= 0 ? base.getPort() : ("https".equalsIgnoreCase(base.getScheme()) ? 443 : 80);
+        // Provider credentials must never be forwarded to an external CDN or downgraded URL.
+        if (target.getScheme().equalsIgnoreCase(base.getScheme())
+                && target.getHost() != null && target.getHost().equalsIgnoreCase(base.getHost())
+                && targetPort == basePort
+                && StringUtils.isNotBlank(provider.getApiKey())) {
+            request.header("Authorization", "Bearer " + cryptoUtil.decrypt(provider.getApiKey()));
+        }
+        return request.build();
+    }
+
+    private byte[] downloadVideoResult(String url, AiProvider provider){
         try{
-            return com.astra.freyja.service.video.VideoResultDownloader.download(HTTP_CLIENT,url,Duration.ofSeconds(videoTransferTimeoutSeconds),
+            return com.astra.freyja.service.video.VideoResultDownloader.download(HTTP_CLIENT,videoDownloadRequest(url,provider),
                     attempt->com.astra.freyja.service.video.VideoExecutionState.progress("DOWNLOADING",
                             attempt==1?"渲染已完成，正在下载视频":"正在重试下载原视频（"+attempt+"/3）"));
         }catch(InterruptedException e){Thread.currentThread().interrupt();throw new java.util.concurrent.CancellationException("视频下载已取消");}

@@ -157,9 +157,33 @@ public class VideoProcessingServiceTest {
                     if ("executeSingle".equals(invocation.getMethod().getName())) {
                         return ((java.util.function.Supplier<?>) invocation.getArgument(0)).get();
                     }
+                    if ("executeVideoQueue".equals(invocation.getMethod().getName())) {
+                        ((Runnable) invocation.getArgument(0)).run();
+                        return null;
+                    }
                     return org.mockito.Mockito.RETURNS_DEFAULTS.answer(invocation);
                 })
         );
+    }
+
+    @Test void restartRecoveryTerminatesInterruptedTasksWithoutCallingGeneration() {
+        var task = new MediaProcessTask(); task.setId(1L); task.setTaskId("VP_interrupted");
+        when(taskMapper.selectList(any())).thenReturn(List.of(task));
+        when(taskMapper.update(isNull(), any())).thenReturn(1);
+        videoProcessingService.recoverInterruptedTasks();
+        verify(renderTaskService).failTask(eq("VP_interrupted"), contains("避免重复渲染"), isNull());
+        var filter = ArgumentCaptor.forClass(com.baomidou.mybatisplus.core.conditions.AbstractWrapper.class);
+        verify(taskMapper).selectList(filter.capture());
+        assertTrue(filter.getValue().getSqlSegment().contains("submit_time <"));
+        verifyNoInteractions(aiImageApiService);
+    }
+
+    @Test void recoveryDoesNotFailARenderTaskThatAlreadyFinished() {
+        var task = new MediaProcessTask(); task.setId(1L); task.setTaskId("VP_finished");
+        when(taskMapper.selectList(any())).thenReturn(List.of(task));
+        when(taskMapper.update(isNull(), any())).thenReturn(0);
+        videoProcessingService.recoverInterruptedTasks();
+        verifyNoInteractions(renderTaskService, aiImageApiService);
     }
 
     @ParameterizedTest

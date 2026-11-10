@@ -54,4 +54,5 @@ Write-Host " Starting ComfyUI Universal Multi-Workflow OpenAI Gateway " -Foregro
 Write-Host " Port: $Port | Target ComfyUI: $ComfyHttp " -ForegroundColor Yellow
 Write-Host "==========================================================" -ForegroundColor Cyan
 
-python -m uvicorn main:app --app-dir $PSScriptRoot --host 0.0.0.0 --port $Port --reload
+$gatewayBindHost = if ($env:GATEWAY_HOST) { $env:GATEWAY_HOST } else { "127.0.0.1" }
+python -m uvicorn main:app --app-dir $PSScriptRoot --host $gatewayBindHost --port $Port --reload

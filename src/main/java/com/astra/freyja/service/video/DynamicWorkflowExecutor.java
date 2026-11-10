@@ -87,7 +87,7 @@ public class DynamicWorkflowExecutor {
                     var remote=prompt!=null&&node!=null?api.queryVideoTask(request.getProviderId(),execution,prompt,node):api.queryVideoTask(request.getProviderId(),execution);
                     if(remote!=null&&"SUCCESS".equals(remote.status())){
                         if(remote.videoUrl()==null||remote.videoUrl().isBlank())throw new BizException(502,"上游工作流步骤缺少视频地址");
-                        String output=api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),remote.videoUrl()).getVideoUrl();
+                        String output=api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),remote.videoUrl(),snapshot.getRequest().getProviderId()).getVideoUrl();
                         success(task,key,stage,output);return output;
                     }
                     if(remote==null||!Set.of("FAILED","CANCELLED").contains(remote.status()))throw new BizException(409,"原工作流步骤尚未确认结束，请稍后恢复，避免重复生成");

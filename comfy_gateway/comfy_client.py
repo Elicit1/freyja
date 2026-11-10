@@ -5,12 +5,12 @@ import base64
 import asyncio
 import logging
 import mimetypes
+import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 import httpx
 import websockets
 from websockets.exceptions import WebSocketException
-import aiofiles
 
 from config import GatewayConfig, NodeConfig
 
@@ -62,7 +62,7 @@ class ComfyAsyncClient:
 
     async def load_and_upload_media(self, media_source: str, default_name: str = "media_upload") -> str:
         """
-        Load image/video/audio from URL, local file, or Base64, and upload to ComfyUI /upload/image.
+        Load image/video/audio from HTTP(S) or a Base64 data URI, and upload to ComfyUI.
         Returns the filename stored in the ComfyUI input directory.
         """
         raw_bytes: bytes
@@ -95,16 +95,10 @@ class ComfyAsyncClient:
             except Exception as e:
                 raise ValueError(f"Invalid Base64 media format: {e}")
 
-        # 3. Local File Path
         else:
-            local_path = Path(media_source)
-            if not local_path.is_file():
-                raise FileNotFoundError(f"Media file not found on server: {media_source}")
-            logger.info(f"[{self.http_base}] Reading local media file: {local_path}")
-            async with aiofiles.open(local_path, "rb") as f:
-                raw_bytes = await f.read()
-            filename = local_path.name
+            raise ValueError("Media source must be an HTTP(S) URL or Base64 data URI; local paths are forbidden")
 
+        filename = f"{uuid.uuid4().hex}{Path(filename).suffix or '.bin'}"
         return await self.upload_file_to_comfy(raw_bytes, filename)
 
     async def load_and_upload_ref_image(self, ref_source: str) -> str:

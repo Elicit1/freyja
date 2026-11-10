@@ -67,6 +67,9 @@ class ShotVideoTakeServiceTest {
     @Mock
     private MinioProperties minioProperties;
 
+    @Mock
+    private AssetMediaCleanupService mediaCleanup;
+
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
 
@@ -336,7 +339,7 @@ class ShotVideoTakeServiceTest {
     }
 
     @Test
-    @DisplayName("删除当前 Take：同步删除 MinIO 视频并清空分镜当前视频")
+    @DisplayName("删除当前 Take：提交后清理素材并清空分镜当前视频")
     void testDeleteCurrentTake() throws Exception {
         DramaShotVideoTake take = new DramaShotVideoTake();
         take.setId(2002L);
@@ -346,13 +349,12 @@ class ShotVideoTakeServiceTest {
         mockShot.setVideoUrl(take.getVideoUrl());
         when(shotMapper.selectById(1001L)).thenReturn(mockShot);
         when(videoTakeMapper.selectById(2002L)).thenReturn(take);
-        when(minioProperties.getBucketName()).thenReturn("freyja");
-        when(minioProperties.getEndpoint()).thenReturn("http://127.0.0.1:9000");
-        when(minioProperties.getExternalEndpoint()).thenReturn("http://127.0.0.1:9000");
+        when(mediaCleanup.managedObjectKey(take.getVideoUrl())).thenReturn("videos/take.mp4");
 
         videoTakeService.deleteTake(1001L, 2002L);
 
-        verify(minioClient).removeObject(any(RemoveObjectArgs.class));
+        verify(mediaCleanup).deleteAfterCommit(take.getVideoUrl());
+        verifyNoInteractions(minioClient);
         verify(shotMapper).update(isNull(), any());
         verify(videoTakeMapper).deleteById(2002L);
         verify(mediaProcessTaskMapper).update(isNull(), any());
@@ -367,13 +369,48 @@ class ShotVideoTakeServiceTest {
         take.setVideoUrl("http://127.0.0.1:9000/freyja/videos/shared.mp4");
         when(shotMapper.selectById(1001L)).thenReturn(mockShot);
         when(videoTakeMapper.selectById(2002L)).thenReturn(take);
-        when(minioProperties.getBucketName()).thenReturn("freyja");
-        when(minioProperties.getEndpoint()).thenReturn("http://127.0.0.1:9000");
-        when(minioProperties.getExternalEndpoint()).thenReturn("http://127.0.0.1:9000");
+        when(mediaCleanup.managedObjectKey(take.getVideoUrl())).thenReturn("videos/shared.mp4");
         when(videoTakeMapper.selectCount(any())).thenReturn(1L);
 
         assertEquals(409, assertThrows(BizException.class, () -> videoTakeService.deleteTake(1001L, 2002L)).getCode());
         verify(minioClient, never()).removeObject(any(RemoveObjectArgs.class));
         verify(videoTakeMapper, never()).deleteById(any());
+    }
+
+    @Test void takeDeletionRetainsPhysicalVideoOnRollbackAndCleansOnlyAfterCommit() throws Exception {
+        var source = new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                "jdbc:h2:mem:" + java.util.UUID.randomUUID() + ";MODE=MySQL;DB_CLOSE_DELAY=-1", "sa", "");
+        var properties = new MinioProperties(); properties.setBucketName("freyja");
+        var cleanup = new AssetMediaCleanupService(minioClient, properties, new org.springframework.jdbc.core.JdbcTemplate(source));
+        org.springframework.test.util.ReflectionTestUtils.setField(videoTakeService, "mediaCleanup", cleanup);
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(
+                new org.springframework.jdbc.datasource.DataSourceTransactionManager(source));
+        var take = new DramaShotVideoTake(); take.setId(2002L); take.setShotId(1001L);
+        take.setVideoUrl("http://127.0.0.1:9000/freyja/videos/take.mp4");
+        when(shotMapper.selectById(1001L)).thenReturn(mockShot);
+        when(videoTakeMapper.selectById(2002L)).thenReturn(take);
+        transaction.executeWithoutResult(status -> {
+            videoTakeService.deleteTake(1001L, 2002L);
+            verifyNoInteractions(minioClient);
+            status.setRollbackOnly();
+        });
+        verifyNoInteractions(minioClient);
+        transaction.executeWithoutResult(status -> {
+            videoTakeService.deleteTake(1001L, 2002L);
+            verifyNoInteractions(minioClient);
+        });
+        verify(minioClient).removeObject(any(RemoveObjectArgs.class));
+    }
+
+    @Test void failedDatabaseDeletionNeverSchedulesFileRemoval() {
+        var take = new DramaShotVideoTake(); take.setId(2002L); take.setShotId(1001L);
+        take.setVideoUrl("http://127.0.0.1:9000/freyja/videos/take.mp4");
+        when(shotMapper.selectById(1001L)).thenReturn(mockShot);
+        when(videoTakeMapper.selectById(2002L)).thenReturn(take);
+        when(mediaCleanup.managedObjectKey(take.getVideoUrl())).thenReturn("videos/take.mp4");
+        doThrow(new IllegalStateException("database offline")).when(videoTakeMapper).deleteById(2002L);
+        assertThrows(IllegalStateException.class, () -> videoTakeService.deleteTake(1001L, 2002L));
+        verify(mediaCleanup, never()).deleteAfterCommit(anyString());
+        verifyNoInteractions(minioClient);
     }
 }

@@ -23,7 +23,7 @@ class DynamicWorkflowExecutorTest {
         api=mock(AiImageApiService.class);var media=mock(ReferenceVideoMediaService.class);calls=new ArrayList<>();
         when(media.archiveDynamicSource(any())).thenReturn(new ReferenceVideoMediaService.ContinuationArtifact("reference-video/dynamic/a.mp4","http://minio/a.mp4","a".repeat(64)));
         when(media.transportUrl(any())).thenReturn("http://minio/signed");
-        when(api.archiveExistingVideo(anyLong(),anyLong(),anyString())).thenAnswer(call->VideoGenerationResultVO.builder().videoUrl(call.getArgument(2)).build());
+        when(api.archiveExistingVideo(anyLong(),anyLong(),anyString(),anyLong())).thenAnswer(call->VideoGenerationResultVO.builder().videoUrl(call.getArgument(2)).build());
         when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenAnswer(call->{
             DramaShotRenderRequestDTO req=call.getArgument(3);String stage=req.getDynamicWorkflowStage().get("stage").toString();calls.add(stage);
             VideoExecutionState.accepted("prompt-"+stage,"node");return VideoGenerationResultVO.builder().videoUrl("http://archive/"+stage).build();

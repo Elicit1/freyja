@@ -11,13 +11,14 @@ Demonstrates:
 import sys
 import json
 import logging
+import os
 from openai import OpenAI
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("test_client")
 
 GATEWAY_BASE_URL = "http://127.0.0.1:8000/v1"
-API_KEY = "not-needed"  # Local gateway does not require OpenAI key
+API_KEY = os.environ["GATEWAY_API_KEY"]
 
 
 def test_openai_sdk_integration():
@@ -66,7 +67,7 @@ def test_openai_sdk_integration():
     # -------------------------------------------------------------
     logger.info("\n[Test 3] FLUX.2 Klein 9B - Multi-Reference Image Injection (2 reference images)...")
     prompt_ref = "The same protagonist standing in a high-tech laboratory, holding an energy orb, dramatic lighting"
-    # Example reference images: can be HTTP URLs, local file paths, or Base64
+    # Example reference images: accept HTTP(S) URLs or Base64 data URIs, never server paths
     ref_images = [
         "https://raw.githubusercontent.com/comfyanonymous/ComfyUI/master/input/example.png",
         "https://raw.githubusercontent.com/comfyanonymous/ComfyUI/master/input/example.png"

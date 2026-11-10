@@ -81,4 +81,11 @@ class AssetMediaCleanupServiceTest {
         cleanup.deleteUnreferencedNow(url);
         verifyNoInteractions(minio);
     }
+
+    @Test void exportSnapshotRetainsVideoAfterItsTakeIsDeleted() {
+        jdbc.execute("CREATE TABLE shot_video_export_item (id BIGINT, snapshot_json CLOB)");
+        jdbc.update("INSERT INTO shot_video_export_item VALUES (1,?)", "{\"videoUrl\":\"" + url + "\"}");
+        cleanup.deleteAfterCommit(url);
+        verifyNoInteractions(minio);
+    }
 }
