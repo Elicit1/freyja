@@ -3,6 +3,9 @@ package com.astra.freyja.service.video;
 import com.astra.freyja.common.BizException;
 import com.astra.freyja.dao.AiModelMapper;
 import com.astra.freyja.dto.drama.DynamicWorkflowOptions;
+import com.astra.freyja.dto.drama.ShotVideoModelOptionVO;
+import com.astra.freyja.service.ShotVideoCapabilityService;
+import com.astra.freyja.service.ShotVideoReferenceService;
 import com.astra.freyja.service.video.VideoBatchModels.*;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.astra.freyja.entity.AiModel;
@@ -20,6 +23,8 @@ public class ContinuationSegmentEnhancementService {
     private final ObjectMapper json;
     private final DynamicWorkflowService workflows;
     private final AiModelMapper models;
+    private final ShotVideoCapabilityService videoCapabilities;
+    private final ShotVideoReferenceService videoReferences;
 
     public record Segment(String id,int index,String name,int startFrame,int endFrame,String videoUrl,boolean allowed,String reason,DynamicWorkflowOptions options){}
     public record Summary(boolean supported,String reason,String shotId,String providerId,String modelCode,DynamicWorkflowOptions options,List<Segment> segments){}
@@ -93,6 +98,7 @@ public class ContinuationSegmentEnhancementService {
         if(options==null||!options.isUpscale()||!"FREYJA".equals(options.getUpscaleEngine()))throw new BizException(400,"片段替换须使用 FREYJA 二采");
         var model=models.selectOne(new LambdaQueryWrapper<AiModel>().eq(AiModel::getProviderId,req.getProviderId()).eq(AiModel::getModelCode,req.getWorkflowTemplateId()).last("LIMIT 1"));
         if(model==null)throw new BizException(409,"原视频模型已不存在");
+        ShotVideoModelOptionVO referenceModel=null;
         for(int index:indices){
             var child=req.getContinuationSegments().get(index);
             var original=child.getRequest().getDynamicWorkflowPlan();
@@ -103,6 +109,15 @@ public class ContinuationSegmentEnhancementService {
             var plan=workflows.resolve(selection,req.getProviderId(),model.getId(),req.getSize(),req.getDynamicWorkflowPlan().getNodeId());
             if(!plan.isNativeLatentInput())throw new BizException(409,"请更新网关和算力节点以支持原始 latent 二采");
             if(!Objects.equals(plan.getOutputSize(),req.getDynamicWorkflowPlan().getOutputSize()))throw new BizException(400,"替换片段须保持原视频输出尺寸");
+            var references=child.getRequest().getResolvedRefVideos();
+            if(references!=null&&!references.isEmpty()){
+                if(referenceModel==null)referenceModel=videoCapabilities.describe(model);
+                videoReferences.validateSnapshot(references,referenceModel,child.getShot());
+                if(!Objects.equals(referenceModel.getNodeId(),plan.getNodeId()))throw new BizException(409,"参考视频与二采算力节点不一致，请重新预检");
+                // A new replacement pins the current contract only after validating its archived media.
+                child.getRequest().setReferenceVideoRevision(referenceModel.getWorkflowRevision());
+                child.getRequest().setReferenceVideoNodeId(referenceModel.getNodeId());
+            }
             child.getRequest().setDynamicWorkflowPlan(plan);
         }
         var plan=req.getContinuationSegments().get(indices.getFirst()).getRequest().getDynamicWorkflowPlan();

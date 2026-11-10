@@ -16,14 +16,16 @@ import static org.mockito.ArgumentMatchers.*;
 
 class ContinuationSegmentEnhancementServiceTest {
     JdbcTemplate jdbc;ObjectMapper json=new ObjectMapper();VideoBatchStore store;DynamicWorkflowService workflows;
-    ContinuationSegmentEnhancementService service;Snapshot snapshot;DynamicWorkflowOptions.Plan plan;Item item;
+    ContinuationSegmentEnhancementService service;Snapshot snapshot;DynamicWorkflowOptions.Plan plan;Item item;AiModelMapper models;
+    ShotVideoCapabilityService videoCapabilities;ShotVideoReferenceService videoReferences;
     @BeforeAll static void metadata(){var configuration=new com.baomidou.mybatisplus.core.MybatisConfiguration();com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(new org.apache.ibatis.builder.MapperBuilderAssistant(configuration,"replacement-test"),AiModel.class);}
     @BeforeEach void setup()throws Exception{
         var ds=new JdbcDataSource();ds.setURL("jdbc:h2:mem:"+UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1");jdbc=new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE render_task_step(task_id VARCHAR(100),step_key VARCHAR(100),input_hash CHAR(64),execution_id VARCHAR(180),status VARCHAR(24),output_url VARCHAR(1000),prompt_id VARCHAR(128),node_id VARCHAR(128),source_task_id VARCHAR(128),result_manifest_json VARCHAR(2000),updated_at TIMESTAMP,PRIMARY KEY(task_id,step_key))");
         jdbc.execute("CREATE TABLE dynamic_workflow_step(task_id VARCHAR(100),step_key VARCHAR(100),input_hash CHAR(64),execution_id VARCHAR(180),stage VARCHAR(20),status VARCHAR(24),output_url VARCHAR(1000),prompt_id VARCHAR(128),node_id VARCHAR(128),source_task_id VARCHAR(128),updated_at TIMESTAMP,PRIMARY KEY(task_id,step_key))");
-        store=mock(VideoBatchStore.class);workflows=mock(DynamicWorkflowService.class);var models=mock(AiModelMapper.class);var model=new AiModel();model.setId(99L);when(models.selectOne(any())).thenReturn(model);
-        service=new ContinuationSegmentEnhancementService(store,jdbc,json,workflows,models);
+        store=mock(VideoBatchStore.class);workflows=mock(DynamicWorkflowService.class);models=mock(AiModelMapper.class);var model=new AiModel();model.setId(99L);when(models.selectOne(any())).thenReturn(model);
+        videoCapabilities=mock(ShotVideoCapabilityService.class);videoReferences=mock(ShotVideoReferenceService.class);
+        service=new ContinuationSegmentEnhancementService(store,jdbc,json,workflows,models,videoCapabilities,videoReferences);
         snapshot=new Snapshot();var shot=new DramaShot();shot.setId(1L);snapshot.setShot(shot);var req=new DramaShotRenderRequestDTO();snapshot.setRequest(req);req.setProviderId(2L);req.setWorkflowTemplateId("h3");req.setSize("544x960");
         var options=new DynamicWorkflowOptions();options.setUpscale(true);options.setUpscaleEngine("FREYJA");plan=new DynamicWorkflowOptions.Plan();plan.setOptions(options);plan.setOutputSize("1080x1920");plan.setNodeId("node");plan.setNativeLatentInput(true);req.setDynamicWorkflowPlan(plan);
         var timeline=new ShotContinuationPlan();timeline.setDraft(new ShotContinuation());req.setContinuationPlan(timeline);req.setContinuationSegments(new ArrayList<>());
@@ -46,6 +48,7 @@ class ContinuationSegmentEnhancementServiceTest {
         assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM render_task_step WHERE task_id='replacement'",Integer.class));
         assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM dynamic_workflow_step WHERE task_id='replacement'",Integer.class));
         assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM dynamic_workflow_step WHERE task_id='source'",Integer.class));
+        verifyNoInteractions(videoCapabilities,videoReferences);
     }
     @Test void rejectsForeignSegmentMissingNativeSourceIncompleteVideoAndChangedCanvas(){
         assertThrows(RuntimeException.class,()->service.prepare("source","foreign",plan.getOptions()));
@@ -98,5 +101,63 @@ class ContinuationSegmentEnhancementServiceTest {
         var second=result.getRequest().getContinuationSegments().get(1).getRequest().getDynamicWorkflowPlan().getOptions();
         assertEquals(.1,first.getUpscaleDenoise());assertEquals(.1,second.getUpscaleDenoise());
         assertFalse(first.isFaceRepair());assertTrue(second.isFaceRepair());assertEquals(.35,second.getFaceDenoise());
+    }
+    private ShotVideoModelOptionVO archivedVideoReferences()throws Exception{
+        var cap=new ReferenceVideoCapability();cap.setMaxVideos(2);cap.setMaxMixedAssets(12);cap.setDecodeFps(24);
+        cap.setMinClipSeconds(new java.math.BigDecimal("0.1"));cap.setMaxClipSeconds(java.math.BigDecimal.valueOf(15));cap.setMaxTotalClipSeconds(java.math.BigDecimal.valueOf(15));
+        cap.setMaxDecodedFrames(360);cap.setMaxDecodeWidth(768);cap.setMaxDecodeHeight(768);
+        var option=new ShotVideoModelOptionVO();option.setNodeId("node");option.setWorkflowRevision("reference-current");option.setRenderable(true);option.setReferenceVideo(cap);
+        when(videoCapabilities.describe(any(AiModel.class))).thenReturn(option);
+        doCallRealMethod().when(videoCapabilities).requireRenderable(any());
+        var media=new ReferenceVideoMediaService(new com.astra.freyja.config.ReferenceVideoProperties(),new com.astra.freyja.config.MediaToolProperties(),
+                mock(VideoFrameExtractService.class),mock(NativeProcessExecutor.class),mock(io.minio.MinioClient.class),new com.astra.freyja.config.MinioProperties());
+        videoReferences=spy(new ShotVideoReferenceService(mock(com.astra.freyja.dao.DramaShotMapper.class),models,mock(VideoProcessSourceResolver.class),videoCapabilities,media,
+                new com.astra.freyja.config.ReferenceVideoProperties(),jdbc,json,Runnable::run,mock(org.springframework.transaction.PlatformTransactionManager.class)));
+        service=new ContinuationSegmentEnhancementService(store,jdbc,json,workflows,models,videoCapabilities,videoReferences);
+        for(int i=0;i<3;i++){
+            var ref=new ResolvedShotVideoReference();ref.setId("ref-"+i);ref.setOrdinal(1);ref.setObjectPath("reference-video/archived-"+i+"/clip.mp4");ref.setContentSha256("b".repeat(64));
+            ref.setStartSeconds(java.math.BigDecimal.ZERO);ref.setEndSeconds(java.math.BigDecimal.valueOf(2));ref.setIncludeAudio(false);
+            var metadata=new com.astra.freyja.dto.video.VideoProbeInfoVO();metadata.setWidth(640);metadata.setHeight(360);metadata.setFps(24.0);metadata.setFrameCount(48L);metadata.setDuration(java.math.BigDecimal.valueOf(2));ref.setMetadata(metadata);
+            var child=snapshot.getRequest().getContinuationSegments().get(i);child.setShot(new DramaShot());child.getShot().setSeed(123L);
+            child.getRequest().setResolvedRefVideos(List.of(ref));child.getRequest().setReferenceVideoNodeId("node");child.getRequest().setReferenceVideoRevision("reference-old");
+        }
+        item.setSnapshotJson(json.writeValueAsString(snapshot));return option;
+    }
+    @Test void revalidatesArchivedReferencesAndPinsCurrentVersionOnlyForSelectedSegments()throws Exception{
+        archivedVideoReferences();String original=item.getSnapshotJson();
+        var result=service.prepare("source",List.of("seg-0","seg-2"),plan.getOptions());
+        for(int i=0;i<3;i++){
+            var before=snapshot.getRequest().getContinuationSegments().get(i);var after=result.getRequest().getContinuationSegments().get(i);
+            assertEquals(i==1?"reference-old":"reference-current",after.getRequest().getReferenceVideoRevision());
+            assertEquals("node",after.getRequest().getReferenceVideoNodeId());
+            assertEquals(before.getRequest().getResolvedRefVideos(),after.getRequest().getResolvedRefVideos());
+            assertEquals(before.getShot().getSeed(),after.getShot().getSeed());
+        }
+        assertEquals(original,item.getSnapshotJson());
+        verify(videoCapabilities,times(1)).describe(any(AiModel.class));
+        verify(videoReferences,times(2)).validateSnapshot(anyList(),any(),any());
+        verify(videoReferences,never()).prepareSegment(any(),any(),any());
+    }
+    @Test void singleSegmentRouteAlsoRefreshesItsReferenceContract()throws Exception{
+        archivedVideoReferences();
+        var result=service.prepare("source","seg-1",plan.getOptions());
+        assertEquals("reference-current",result.getRequest().getContinuationSegments().get(1).getRequest().getReferenceVideoRevision());
+        assertEquals("reference-old",result.getRequest().getContinuationSegments().get(0).getRequest().getReferenceVideoRevision());
+    }
+    @Test void currentMediaLimitsAndOfflineModelsStillBlockReplacement()throws Exception{
+        var option=archivedVideoReferences();String original=item.getSnapshotJson();
+        option.getReferenceVideo().setMaxDecodedFrames(10);
+        assertThrows(com.astra.freyja.common.BizException.class,()->service.prepare("source",List.of("seg-0","seg-2"),plan.getOptions()));
+        option.getReferenceVideo().setMaxDecodedFrames(360);option.getReferenceVideo().setDecodeFps(30);
+        assertThrows(com.astra.freyja.common.BizException.class,()->service.prepare("source","seg-1",plan.getOptions()));
+        option.getReferenceVideo().setDecodeFps(24);option.setRenderable(false);
+        assertThrows(com.astra.freyja.common.BizException.class,()->service.prepare("source","seg-1",plan.getOptions()));
+        assertEquals(original,item.getSnapshotJson());
+    }
+    @Test void referenceContractCannotSilentlyMoveReplacementToAnotherNode()throws Exception{
+        var option=archivedVideoReferences();option.setNodeId("another-node");
+        var error=assertThrows(com.astra.freyja.common.BizException.class,()->service.prepare("source","seg-1",plan.getOptions()));
+        assertTrue(error.getMessage().contains("算力节点不一致"));
+        assertEquals("node",json.readValue(item.getSnapshotJson(),Snapshot.class).getRequest().getContinuationSegments().get(1).getRequest().getReferenceVideoNodeId());
     }
 }
