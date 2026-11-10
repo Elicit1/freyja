@@ -24,7 +24,7 @@ def preflight():
 from config import get_config
 required={'FreyjaH3ChromaNoise','FreyjaH3Continue','FreyjaH3Restore','FreyjaH3SaveLatent',
  'FreyjaH3CheckFrames','FreyjaH3UpscaleEncode','FreyjaH3LoadLatent',
- 'FreyjaH3FinishSize','FreyjaH3TileModel','LatentUpscaleModelLoader','MiniMaxH3LatentUpscaleWithModel'}
+ 'FreyjaH3FinishSize','FreyjaH3TileModel','FreyjaH3UpscaleContinue','LatentUpscaleModelLoader','MiniMaxH3LatentUpscaleWithModel'}
 for node in get_config().nodes.values():
  if not node.enabled or not any(m.h3_extensions for m in node.models):continue
  base=node.http_url.rstrip('/')

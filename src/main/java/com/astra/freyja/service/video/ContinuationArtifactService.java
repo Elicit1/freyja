@@ -32,6 +32,10 @@ public class ContinuationArtifactService {
     private static final long LIMIT=2L*1024*1024*1024;
 
     public Map<String,Object> archive(Long providerId,String task,String prompt,String node,Long drama,Long shot)throws Exception{
+        return archive(providerId,task,prompt,node,drama,shot,"FIRST_PASS");
+    }
+    public Map<String,Object> archive(Long providerId,String task,String prompt,String node,Long drama,Long shot,String stage)throws Exception{
+        if(!Set.of("FIRST_PASS","SECOND_PASS").contains(stage))throw new BizException(400,"latent 阶段无效");
         if(prompt==null||node==null)throw new BizException(502,"原始 latent 缺少上游执行身份，不能恢复归档");
         var provider=providers.selectById(providerId);
         if(provider==null)throw new BizException(404,"视频提供商不存在");
@@ -52,7 +56,7 @@ public class ContinuationArtifactService {
             String sha=HexFormat.of().formatHex(digest.digest());
             String key="projects/"+drama+"/shots/"+shot+"/continuation/latent/"+sha+".safetensors";
             minio.uploadObject(UploadObjectArgs.builder().bucket(storage.getBucketName()).object(key).filename(temp.toString()).contentType("application/octet-stream").build());
-            return Map.of("objectPath",key,"sha256",sha,"bytes",Files.size(temp),"format","FREYJA_H3_AV_V1","stage","FIRST_PASS");
+            return Map.of("objectPath",key,"sha256",sha,"bytes",Files.size(temp),"format","FREYJA_H3_AV_V1","stage",stage);
         }finally{Files.deleteIfExists(temp);}
     }
     public Map<String,Object> transport(Map<String,Object> artifact)throws Exception{

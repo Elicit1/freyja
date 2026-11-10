@@ -14,6 +14,9 @@ public class DynamicWorkflowSchema implements SmartInitializingSingleton {
             try(var columns=c.getMetaData().getColumns(c.getCatalog(),null,"dynamic_workflow_step","source_task_id")){
                 if(!columns.next())sql.executeUpdate("ALTER TABLE dynamic_workflow_step ADD COLUMN source_task_id VARCHAR(100) NULL");
             }
+            try(var columns=c.getMetaData().getColumns(c.getCatalog(),null,"dynamic_workflow_step","result_manifest_json")){
+                if(!columns.next())sql.executeUpdate("ALTER TABLE dynamic_workflow_step ADD COLUMN result_manifest_json JSON NULL");
+            }
         } catch(java.sql.SQLException e) { throw new IllegalStateException("视频处理阶段结构升级失败",e); }
     }
 }

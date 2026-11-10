@@ -22,7 +22,7 @@ class ContinuationSegmentEnhancementServiceTest {
     @BeforeEach void setup()throws Exception{
         var ds=new JdbcDataSource();ds.setURL("jdbc:h2:mem:"+UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1");jdbc=new JdbcTemplate(ds);
         jdbc.execute("CREATE TABLE render_task_step(task_id VARCHAR(100),step_key VARCHAR(100),input_hash CHAR(64),execution_id VARCHAR(180),status VARCHAR(24),output_url VARCHAR(1000),prompt_id VARCHAR(128),node_id VARCHAR(128),source_task_id VARCHAR(128),result_manifest_json VARCHAR(2000),updated_at TIMESTAMP,PRIMARY KEY(task_id,step_key))");
-        jdbc.execute("CREATE TABLE dynamic_workflow_step(task_id VARCHAR(100),step_key VARCHAR(100),input_hash CHAR(64),execution_id VARCHAR(180),stage VARCHAR(20),status VARCHAR(24),output_url VARCHAR(1000),prompt_id VARCHAR(128),node_id VARCHAR(128),source_task_id VARCHAR(128),updated_at TIMESTAMP,PRIMARY KEY(task_id,step_key))");
+        jdbc.execute("CREATE TABLE dynamic_workflow_step(task_id VARCHAR(100),step_key VARCHAR(100),input_hash CHAR(64),execution_id VARCHAR(180),stage VARCHAR(20),status VARCHAR(24),output_url VARCHAR(1000),prompt_id VARCHAR(128),node_id VARCHAR(128),source_task_id VARCHAR(128),result_manifest_json VARCHAR(4000),updated_at TIMESTAMP,PRIMARY KEY(task_id,step_key))");
         store=mock(VideoBatchStore.class);workflows=mock(DynamicWorkflowService.class);models=mock(AiModelMapper.class);var model=new AiModel();model.setId(99L);when(models.selectOne(any())).thenReturn(model);
         videoCapabilities=mock(ShotVideoCapabilityService.class);videoReferences=mock(ShotVideoReferenceService.class);
         service=new ContinuationSegmentEnhancementService(store,jdbc,json,workflows,models,videoCapabilities,videoReferences);
@@ -49,6 +49,17 @@ class ContinuationSegmentEnhancementServiceTest {
         assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM dynamic_workflow_step WHERE task_id='replacement'",Integer.class));
         assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM dynamic_workflow_step WHERE task_id='source'",Integer.class));
         verifyNoInteractions(videoCapabilities,videoReferences);
+    }
+    @Test void secondPassManifestsSurvivePartialReplacementAndMissingHistoricalPredecessorsRequireContiguousRerun()throws Exception{
+        plan.setSecondPassContinuity(true);
+        assertThrows(RuntimeException.class,()->service.prepare("source","seg-1",plan.getOptions()));
+        assertEquals(List.of(0,1),service.prepare("source",List.of("seg-0","seg-1"),plan.getOptions()).getSegmentReplacement().indices());
+        var saved=Map.of("stage","SECOND_PASS","format","FREYJA_H3_AV_V1","sha256","b".repeat(64),"objectPath","projects/second.safetensors");
+        jdbc.update("UPDATE dynamic_workflow_step SET result_manifest_json=? WHERE task_id='source' AND step_key='segment-000:01:UPSCALE'",json.writeValueAsString(saved));
+        var prepared=service.prepare("source","seg-1",plan.getOptions());
+        assertEquals(saved,prepared.getSegmentReplacement().getOutputs().getFirst().getUpscaleLatent());
+        service.copySteps("source","replacement",1);
+        assertEquals(json.writeValueAsString(saved),jdbc.queryForObject("SELECT result_manifest_json FROM dynamic_workflow_step WHERE task_id='replacement' AND step_key='segment-000:01:UPSCALE'",String.class));
     }
     @Test void rejectsForeignSegmentMissingNativeSourceIncompleteVideoAndChangedCanvas(){
         assertThrows(RuntimeException.class,()->service.prepare("source","foreign",plan.getOptions()));

@@ -132,6 +132,8 @@ fetch 'https://hf-mirror.com/lllyasviel/Annotators/resolve/main/mlsd_large_512_f
 
 历史片段二采另需在 `/object_info` 确认 `FreyjaH3LoadLatent` 已注册。若其余 FREYJA 节点存在但它缺失，表示算力节点仍加载旧包；更新 `freyja_h3_continuation` 并重启后再重跑，无需重新生成一采视频。该缺失与放大模型权重无关，动态增强的完整依赖见 [安装与验证边界](video-enhancements.md#安装与验证边界)。
 
+新任务的二采段间 latent 接续还需 `FreyjaH3UpscaleContinue`，并更新 `FreyjaH3SaveLatent` 以写入 `SECOND_PASS` 阶段。后端启动时新增 `dynamic_workflow_step.result_manifest_json` 保存二采归档清单；网关与后端须一同更新。旧任务快照不自动切换模式；缺少前驱二采 latent 的历史视频，可保留一采，从首段连续重跑二采以建立新链路。
+
 运行时探测检查已安装节点与所选补丁是否在列表中；诊断指纹反映节点 schema 与版本，计划 revision 绑定 API 图、网关装配代码、媒体准备代码和模块配置。无需保存诊断指纹作为人工验收标记；工作流或素材变化仍需重新准备快照。
 
 ## 调试工作流与 GPU 验收

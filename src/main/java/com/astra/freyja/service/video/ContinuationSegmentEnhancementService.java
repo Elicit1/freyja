@@ -53,6 +53,13 @@ public class ContinuationSegmentEnhancementService {
             }catch(Exception e){throw new BizException(409,"原始 latent 归档清单无效");}
             var plan=snapshot.getRequest().getContinuationSegments().get(i).getRequest().getDynamicWorkflowPlan();
             if(plan!=null&&(plan.getOptions().isUpscale()||plan.getOptions().isFaceRepair())){
+                if(plan.getOptions().isUpscale()){
+                    var saved=jdbc.queryForList("SELECT result_manifest_json FROM dynamic_workflow_step WHERE task_id=? AND step_key=? AND status='SUCCESS'",task,String.format(Locale.ROOT,"segment-%03d:01:UPSCALE",i));
+                    if(!saved.isEmpty()&&saved.getFirst().get("result_manifest_json")!=null)try{
+                        var value=saved.getFirst().get("result_manifest_json");
+                        output.setUpscaleLatent(json.readValue(value instanceof byte[] bytes?new String(bytes,java.nio.charset.StandardCharsets.UTF_8):value.toString(),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){}));
+                    }catch(Exception e){throw new BizException(409,"二采 latent 归档清单无效");}
+                }
                 String stage=plan.getOptions().isFaceRepair()?"02:FACE":"01:UPSCALE";
                 var rows=jdbc.queryForList("SELECT output_url FROM dynamic_workflow_step WHERE task_id=? AND step_key=? AND status='SUCCESS'",task,String.format(Locale.ROOT,"segment-%03d:",i)+stage);
                 if(rows.size()!=1||rows.getFirst().get("output_url")==null)throw new BizException(409,"原任务缺少完整增强产物，不能局部替换");
@@ -120,6 +127,10 @@ public class ContinuationSegmentEnhancementService {
             }
             child.getRequest().setDynamicWorkflowPlan(plan);
         }
+        for(int index:indices)if(index>0&&req.getContinuationSegments().get(index).getRequest().getDynamicWorkflowPlan().isSecondPassContinuity()&&!indices.contains(index-1)){
+            var predecessor=outputs.get(index-1).getUpscaleLatent();
+            if(predecessor==null||!"SECOND_PASS".equals(predecessor.get("stage")))throw new BizException(409,"前序片段缺少二采 latent，请从首段开始连续选择并重跑二采");
+        }
         var plan=req.getContinuationSegments().get(indices.getFirst()).getRequest().getDynamicWorkflowPlan();
         var selection=new DynamicWorkflowOptions.Selection();selection.setOptions(plan.getOptions());
         req.setDynamicWorkflowPlan(plan);req.setDynamicWorkflow(selection);
@@ -134,6 +145,6 @@ public class ContinuationSegmentEnhancementService {
         jdbc.update("INSERT INTO render_task_step(task_id,step_key,input_hash,execution_id,status,output_url,prompt_id,node_id,source_task_id,result_manifest_json,updated_at) SELECT ?,step_key,input_hash,execution_id,status,output_url,prompt_id,node_id,?,result_manifest_json,CURRENT_TIMESTAMP FROM render_task_step WHERE task_id=? AND status='SUCCESS'",target,source,source);
         var args=new ArrayList<Object>(List.of(target,source,source));
         for(int index:indices)args.add(String.format(Locale.ROOT,"segment-%03d:%%",index));
-        jdbc.update("INSERT INTO dynamic_workflow_step(task_id,step_key,input_hash,execution_id,stage,status,output_url,prompt_id,node_id,source_task_id,updated_at) SELECT ?,step_key,input_hash,execution_id,stage,status,output_url,prompt_id,node_id,?,CURRENT_TIMESTAMP FROM dynamic_workflow_step WHERE task_id=? AND status='SUCCESS' AND "+String.join(" AND ",Collections.nCopies(indices.size(),"step_key NOT LIKE ?")),args.toArray());
+        jdbc.update("INSERT INTO dynamic_workflow_step(task_id,step_key,input_hash,execution_id,stage,status,output_url,prompt_id,node_id,source_task_id,result_manifest_json,updated_at) SELECT ?,step_key,input_hash,execution_id,stage,status,output_url,prompt_id,node_id,?,result_manifest_json,CURRENT_TIMESTAMP FROM dynamic_workflow_step WHERE task_id=? AND status='SUCCESS' AND "+String.join(" AND ",Collections.nCopies(indices.size(),"step_key NOT LIKE ?")),args.toArray());
     }
 }

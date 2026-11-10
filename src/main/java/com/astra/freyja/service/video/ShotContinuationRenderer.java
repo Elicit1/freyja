@@ -26,6 +26,7 @@ public class ShotContinuationRenderer {
     public VideoGenerationResultVO render(VideoBatchModels.Snapshot snapshot)throws Exception{
         if(snapshot.getSegmentReplacement()!=null)return replaceSegment(snapshot);
         var parent=snapshot.getRequest();String task=parent.getTaskId();var urls=new ArrayList<String>();var enhanced=new ArrayList<String>();var handoffs=new LinkedHashMap<String,Map<String,Object>>();
+        Map<String,Object> previousUpscale=null;
         if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=true;
         try{
             for(int i=0;i<parent.getContinuationSegments().size();i++){
@@ -96,9 +97,16 @@ public class ShotContinuationRenderer {
                 if(jdbc.update("UPDATE render_task_step SET status='SUCCESS',output_url=?,updated_at=? WHERE task_id=? AND step_key=?",output,LocalDateTime.now(),task,key)!=1)throw new BizException(500,"片段归档结果持久化失败");
                 urls.add(output);events.append(task,"CONTINUATION_SEGMENT_COMPLETE",json.writeValueAsString(Map.of("segmentId",range.getSegmentId(),"index",i,"videoUrl",output)));
                 var enhancement=child.getRequest().getDynamicWorkflowPlan();
-                enhanced.add(enhancement==null?output:enhancement.isNativeLatentInput()&&manifest!=null
-                        ?dynamicWorkflows.enhance(child,output,task,String.format(java.util.Locale.ROOT,"segment-%03d",i),artifacts.read(manifest))
-                        :dynamicWorkflows.enhance(child,output,task,String.format(java.util.Locale.ROOT,"segment-%03d",i)));
+                if(enhancement!=null&&enhancement.isSecondPassContinuity()&&enhancement.getOptions().isUpscale()){
+                    var result=dynamicWorkflows.enhanceContinuation(child,output,task,String.format(Locale.ROOT,"segment-%03d",i),
+                            enhancement.isNativeLatentInput()&&manifest!=null?artifacts.read(manifest):null,previousUpscale,range.getOverlapFrames());
+                    enhanced.add(result.videoUrl());previousUpscale=result.latent();
+                }else{
+                    enhanced.add(enhancement==null?output:enhancement.isNativeLatentInput()&&manifest!=null
+                            ?dynamicWorkflows.enhance(child,output,task,String.format(Locale.ROOT,"segment-%03d",i),artifacts.read(manifest))
+                            :dynamicWorkflows.enhance(child,output,task,String.format(Locale.ROOT,"segment-%03d",i)));
+                    previousUpscale=null;
+                }
                 // A child result must never be mistaken for a recoverable complete parent video.
                 if(VideoExecutionState.current()!=null)VideoExecutionState.current().recoveryUrl=null;
                 VideoExecutionState.phase("CONTINUATION");
@@ -118,12 +126,21 @@ public class ShotContinuationRenderer {
         if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=true;
         try{
             var urls=new ArrayList<String>();
+            Map<String,Object> previousUpscale=null;
             for(int i=0;i<outputs.size();i++){
                 var output=outputs.get(i);
                 if(indices.contains(i)){
                     VideoExecutionState.segment(i);
-                    urls.add(dynamicWorkflows.enhance(parent.getContinuationSegments().get(i),output.getBaseVideoUrl(),task,String.format(Locale.ROOT,"segment-%03d",i),output.getLatent()));
-                }else urls.add(output.getVideoUrl());
+                    var child=parent.getContinuationSegments().get(i);
+                    if(child.getRequest().getDynamicWorkflowPlan()!=null&&child.getRequest().getDynamicWorkflowPlan().isSecondPassContinuity()){
+                        var result=dynamicWorkflows.enhanceContinuation(child,output.getBaseVideoUrl(),task,String.format(Locale.ROOT,"segment-%03d",i),
+                                output.getLatent(),previousUpscale,parent.getContinuationPlan().getRanges().get(i).getOverlapFrames());
+                        urls.add(result.videoUrl());previousUpscale=result.latent();
+                    }else{
+                        urls.add(dynamicWorkflows.enhance(child,output.getBaseVideoUrl(),task,String.format(Locale.ROOT,"segment-%03d",i),output.getLatent()));
+                        previousUpscale=null;
+                    }
+                }else{urls.add(output.getVideoUrl());previousUpscale=output.getUpscaleLatent();}
             }
             VideoExecutionState.progress("ASSEMBLING","正在替换片段并按原时间轴重新合成");
             String merged=media.assemble(urls,parent.getContinuationPlan());

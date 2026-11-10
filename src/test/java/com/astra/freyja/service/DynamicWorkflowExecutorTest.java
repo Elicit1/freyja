@@ -19,7 +19,7 @@ class DynamicWorkflowExecutorTest {
     ContinuationArtifactService artifacts;
     @BeforeEach void setup()throws Exception{
         var ds=new JdbcDataSource();ds.setURL("jdbc:h2:mem:"+UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1");jdbc=new JdbcTemplate(ds);
-        jdbc.execute("CREATE TABLE dynamic_workflow_step(task_id VARCHAR(100),step_key VARCHAR(100),input_hash CHAR(64),execution_id VARCHAR(180),stage VARCHAR(20),status VARCHAR(24),output_url VARCHAR(2000),prompt_id VARCHAR(128),node_id VARCHAR(128),source_task_id VARCHAR(100),error_message VARCHAR(2000),updated_at TIMESTAMP,PRIMARY KEY(task_id,step_key))");
+        jdbc.execute("CREATE TABLE dynamic_workflow_step(task_id VARCHAR(100),step_key VARCHAR(100),input_hash CHAR(64),execution_id VARCHAR(180),stage VARCHAR(20),status VARCHAR(24),output_url VARCHAR(2000),prompt_id VARCHAR(128),node_id VARCHAR(128),source_task_id VARCHAR(100),result_manifest_json VARCHAR(4000),error_message VARCHAR(2000),updated_at TIMESTAMP,PRIMARY KEY(task_id,step_key))");
         jdbc.execute("CREATE TABLE render_task(task_id VARCHAR(100),shot_id BIGINT)");
         api=mock(AiImageApiService.class);var media=mock(ReferenceVideoMediaService.class);calls=new ArrayList<>();
         when(media.archiveDynamicSource(any())).thenReturn(new ReferenceVideoMediaService.ContinuationArtifact("reference-video/dynamic/a.mp4","http://minio/a.mp4","a".repeat(64)));
@@ -39,6 +39,66 @@ class DynamicWorkflowExecutorTest {
         var snap=new VideoBatchModels.Snapshot();snap.setShot(shot);snap.setRequest(req);return snap;
     }
     @AfterEach void cleanup(){VideoExecutionState.clear("task");}
+    Map<String,Object> secondPass(String digest){return Map.of("stage","SECOND_PASS","format","FREYJA_H3_AV_V1","sha256",digest.repeat(64),"objectPath","projects/"+digest+".safetensors");}
+    VideoBatchModels.Snapshot chainedSnapshot(){
+        var snap=snapshot(true,true);var plan=snap.getRequest().getDynamicWorkflowPlan();
+        plan.setSecondPassContinuity(true);plan.getOptions().setUpscaleEngine("FREYJA");return snap;
+    }
+    @Test void secondPassHandoffPersistsBeforeFaceAndResumesWithoutRepeatedGpuOrArchive()throws Exception{
+        var snap=chainedSnapshot();var predecessor=secondPass("b");var saved=secondPass("c");
+        when(artifacts.archive(eq(3L),anyString(),eq("prompt-UPSCALE"),eq("node"),eq(2L),eq(1L),eq("SECOND_PASS"))).thenReturn(saved);
+        when(artifacts.transport(predecessor)).thenReturn(Map.of("url","http://minio/signed-1","content_sha256","b".repeat(64)));
+        VideoExecutionState.begin("task");
+        var result=executor.enhanceContinuation(snap,"http://archive/base","task","segment-001",null,predecessor,22);
+        assertEquals("http://archive/FACE",result.videoUrl());assertEquals(saved,result.latent());
+        assertEquals("SECOND_PASS",new ObjectMapper().readTree(jdbc.queryForObject("SELECT result_manifest_json FROM dynamic_workflow_step WHERE stage='UPSCALE'",String.class)).path("stage").asText());
+        var capture=org.mockito.ArgumentCaptor.forClass(DramaShotRenderRequestDTO.class);
+        verify(api,times(2)).generateAndArchiveVideo(anyLong(),anyLong(),any(),capture.capture());
+        var stage=capture.getAllValues().getFirst().getDynamicWorkflowStage();
+        assertEquals(true,stage.get("save_latent"));assertEquals(22,((Map<?,?>)stage.get("latent_context")).get("frames"));
+        assertEquals("http://minio/signed-1",((Map<?,?>)stage.get("latent_context")).get("url"));
+        assertFalse(capture.getAllValues().getLast().getDynamicWorkflowStage().containsKey("latent_context"));
+        when(artifacts.transport(predecessor)).thenReturn(Map.of("url","http://minio/signed-2","content_sha256","b".repeat(64)));
+        assertEquals(saved,executor.enhanceContinuation(snap,"http://archive/base","task","segment-001",null,predecessor,22).latent());
+        assertEquals(List.of("UPSCALE","FACE"),calls);
+        verify(artifacts,times(1)).archive(eq(3L),anyString(),anyString(),anyString(),eq(2L),eq(1L),eq("SECOND_PASS"));
+        assertThrows(RuntimeException.class,()->executor.enhanceContinuation(snap,"http://archive/base","task","segment-001",null,secondPass("d"),22));
+    }
+    @Test void failedSecondPassLatentArchiveIsRecoverableWithoutRepeatingSampling()throws Exception{
+        var snap=chainedSnapshot();snap.getRequest().getDynamicWorkflowPlan().getOptions().setFaceRepair(false);
+        var saved=secondPass("c");
+        when(artifacts.archive(eq(3L),anyString(),anyString(),anyString(),eq(2L),eq(1L),eq("SECOND_PASS")))
+                .thenThrow(new java.io.IOException("storage interrupted")).thenReturn(saved);
+        VideoExecutionState.begin("task");
+        assertThrows(java.io.IOException.class,()->executor.enhanceContinuation(snap,"http://archive/base","task","segment-000",null,null,0));
+        assertEquals("ARCHIVING",jdbc.queryForObject("SELECT status FROM dynamic_workflow_step",String.class));
+        assertNotNull(executor.activeExecution("task"));
+        assertEquals(saved,executor.enhanceContinuation(snap,"http://archive/base","task","segment-000",null,null,0).latent());
+        assertEquals(List.of("UPSCALE"),calls);verify(api,never()).queryVideoTask(anyLong(),anyString(),anyString(),anyString());
+    }
+    @Test void missingOrFirstPassPredecessorNeverSubmitsSecondPass()throws Exception{
+        var snap=chainedSnapshot();
+        assertThrows(RuntimeException.class,()->executor.enhanceContinuation(snap,"base","task","segment-001",null,null,22));
+        assertThrows(RuntimeException.class,()->executor.enhanceContinuation(snap,"base","task","segment-001",null,Map.of("stage","FIRST_PASS"),22));
+        verifyNoInteractions(api);
+    }
+    @Test void secondPassReconcilesRemoteSuccessAndReusesTheDurableManifestAcrossTasks()throws Exception{
+        var snap=chainedSnapshot();snap.getRequest().getDynamicWorkflowPlan().getOptions().setFaceRepair(false);
+        VideoExecutionState.begin("task");
+        doAnswer(call->{VideoExecutionState.accepted("p","n");VideoExecutionState.phase("SENT");throw new IllegalStateException("response lost");})
+                .when(api).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+        assertThrows(IllegalStateException.class,()->executor.enhanceContinuation(snap,"base","task","segment-000",null,null,0));
+        when(api.queryVideoTask(eq(3L),anyString(),eq("p"),eq("n"))).thenReturn(new RemoteVideoTaskVO("SUCCESS","remote","p","n"));
+        var saved=secondPass("c");when(artifacts.archive(eq(3L),anyString(),eq("p"),eq("n"),eq(2L),eq(1L),eq("SECOND_PASS"))).thenReturn(saved);
+        assertEquals(saved,executor.enhanceContinuation(snap,"base","task","segment-000",null,null,0).latent());
+        jdbc.update("INSERT INTO render_task(task_id,shot_id) VALUES ('task',1)");
+        snap.getRequest().getDynamicWorkflowPlan().setReuseFromTaskId("task");
+        assertEquals(saved,executor.enhanceContinuation(snap,"base","new-task","segment-000",null,null,0).latent());
+        verify(api,times(1)).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+        verify(artifacts,times(1)).archive(eq(3L),anyString(),anyString(),anyString(),eq(2L),eq(1L),eq("SECOND_PASS"));
+        jdbc.update("UPDATE dynamic_workflow_step SET result_manifest_json=NULL WHERE task_id='new-task'");
+        assertThrows(RuntimeException.class,()->executor.enhanceContinuation(snap,"base","new-task","segment-000",null,null,0));
+    }
     @Test void nativeSourceIsFingerprintStableAcrossExpiringTransportUrls()throws Exception{
         var snap=snapshot(true,false);snap.getRequest().getDynamicWorkflowPlan().setNativeLatentInput(true);
         snap.getRequest().getDynamicWorkflowPlan().getOptions().setUpscaleEngine("FREYJA");

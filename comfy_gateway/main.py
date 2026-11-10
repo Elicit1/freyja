@@ -448,6 +448,7 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
             anchor_filename=latent_filename if context.anchor.content_sha256==context.content_sha256 else await upload_latent(client,context.anchor)
     dynamic_source_filename = None
     dynamic_latent_filename = None
+    dynamic_context_filename = None
     if request.dynamic_workflow:
         from dynamic_workflow import require_stage
         require_stage(request, model_cfg, get_base_dir())
@@ -467,6 +468,9 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
             if context.source_latent:
                 from continuation_artifacts import upload_latent
                 dynamic_latent_filename = await upload_latent(client, context.source_latent)
+            if context.latent_context:
+                from continuation_artifacts import upload_latent
+                dynamic_context_filename = await upload_latent(client, context.latent_context)
     # 4. Assemble workflow JSON
     prompt_workflow = engine.assemble_workflow(
         request=request,
@@ -479,7 +483,8 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         latent_filename=latent_filename,
         anchor_filename=anchor_filename,
         dynamic_source_filename=dynamic_source_filename,
-        dynamic_latent_filename=dynamic_latent_filename
+        dynamic_latent_filename=dynamic_latent_filename,
+        dynamic_context_filename=dynamic_context_filename
     )
 
     # Extract the exact prompt submitted to ComfyUI
@@ -525,6 +530,12 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
                 dynamic["source_latent"].pop("url", None)
             else:
                 for field in ("source_latent", "source_size"): dynamic.pop(field, None)
+            if dynamic.get("latent_context"):
+                dynamic["latent_context"].pop("url", None)
+            else:
+                dynamic.pop("latent_context", None)
+            if not dynamic.get("save_latent"):
+                dynamic.pop("save_latent", None)  # Preserve pre-chaining execution hashes.
         if (canonical.get("h3_options") or {}).get("continuation"):canonical["h3_options"]["continuation"].pop("video_url",None)
         if (canonical.get("h3_options") or {}).get("latent_context"):
             canonical["h3_options"]["latent_context"].pop("url",None)

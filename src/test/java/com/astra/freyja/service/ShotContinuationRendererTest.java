@@ -31,6 +31,43 @@ class ShotContinuationRendererTest {
         renderer=new ShotContinuationRenderer(dynamic=mock(DynamicWorkflowExecutor.class),jdbc,new ObjectMapper(),api,media,refs,mock(AiTaskEventStore.class),artifacts);
     }
     private ContinuationArtifactService artifacts;
+    @Test void firstAndSecondPassesUseSeparatePredecessorsAndRestoreTheirChainsOnResume()throws Exception{
+        var snap=snapshot("dual-pass");var count=new AtomicInteger();
+        for(var child:snap.getRequest().getContinuationSegments()){
+            var plan=new DynamicWorkflowOptions.Plan();var options=new DynamicWorkflowOptions();options.setUpscale(true);
+            plan.setOptions(options);plan.setSecondPassContinuity(true);child.getRequest().setDynamicWorkflowPlan(plan);
+        }
+        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenAnswer(call->VideoGenerationResultVO.builder().videoUrl("https://base/"+count.getAndIncrement()).build());
+        var carried=new ArrayList<Map<String,Object>>();
+        for(int i=0;i<3;i++)carried.add(Map.of("stage","SECOND_PASS","sha256",String.valueOf(i).repeat(64)));
+        when(dynamic.enhanceContinuation(any(),anyString(),anyString(),anyString(),nullable(Map.class),nullable(Map.class),anyInt())).thenAnswer(call->{
+            int index=Integer.parseInt(call.<String>getArgument(3).substring(8));
+            assertEquals(index==0?null:carried.get(index-1),call.getArgument(5));
+            assertEquals(snap.getRequest().getContinuationPlan().getRanges().get(index).getOverlapFrames(),call.<Integer>getArgument(6));
+            return new DynamicWorkflowExecutor.Enhancement("https://enhanced/"+index,carried.get(index));
+        });
+        renderer.render(snap);renderer.render(snap);
+        assertEquals(3,count.get());
+        verify(media).tail(eq("https://base/0"),anyInt(),anyInt());
+        verify(media).tail(eq("https://base/1"),anyInt(),anyInt());
+        verify(media,times(2)).assemble(eq(List.of("https://enhanced/0","https://enhanced/1","https://enhanced/2")),any());
+    }
+    @Test void replacementUsesFrozenPreviousSecondPassAndNewlyRenderedSelectedSecondPass()throws Exception{
+        var snap=replacementSnapshot(List.of(1,2));var outputs=snap.getSegmentReplacement().getOutputs();
+        var old=Map.<String,Object>of("stage","SECOND_PASS","sha256","a".repeat(64));outputs.getFirst().setUpscaleLatent(old);
+        var fresh=Map.<String,Object>of("stage","SECOND_PASS","sha256","b".repeat(64));
+        for(var child:snap.getRequest().getContinuationSegments()){
+            var plan=new DynamicWorkflowOptions.Plan();plan.setSecondPassContinuity(true);child.getRequest().setDynamicWorkflowPlan(plan);
+        }
+        when(dynamic.enhanceContinuation(any(),anyString(),anyString(),eq("segment-001"),anyMap(),eq(old),anyInt()))
+                .thenReturn(new DynamicWorkflowExecutor.Enhancement("https://new/1",fresh));
+        when(dynamic.enhanceContinuation(any(),anyString(),anyString(),eq("segment-002"),anyMap(),eq(fresh),anyInt()))
+                .thenReturn(new DynamicWorkflowExecutor.Enhancement("https://new/2",fresh));
+        renderer.render(snap);
+        verify(media).assemble(eq(List.of("https://enhanced/0","https://new/1","https://new/2")),any());
+        verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+        assertNull(outputs.get(1).getUpscaleLatent());
+    }
     @Test void replacesOnlySelectedEnhancementThenAssemblesOriginalTimelineWithoutBaseRendering()throws Exception{
         var snap=snapshot("replacement");var replacement=new VideoBatchModels.SegmentReplacement();replacement.setSourceTaskId("original");replacement.setSegmentIndex(1);
         var outputs=new ArrayList<VideoBatchModels.SegmentOutput>();

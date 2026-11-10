@@ -56,6 +56,13 @@ class DynamicWorkflowServiceTest {
         clearInvocations(service);var off=new DynamicWorkflowOptions.Selection();off.setOptions(new DynamicWorkflowOptions());
         assertNull(service.resolve(off,1L,2L,"960x544",null));verify(service,never()).capabilities(any());
     }
+    @Test void newPlansEnableSecondPassContinuationOnlyWhenGatewayAdvertisesIt()throws Exception{
+        var selection=new DynamicWorkflowOptions.Selection();var options=new DynamicWorkflowOptions();options.setUpscale(true);options.setUpscaleEngine("FREYJA");selection.setOptions(options);
+        assertFalse(service.resolve(selection,1L,2L,"960x544","node").isSecondPassContinuity());
+        doReturn(json.readTree("{\"models\":[{\"modelCode\":\"h3\",\"nodeId\":\"node\",\"supported\":true,\"revision\":\"r1\",\"maxTargetPixels\":4194304,\"freyjaUpscale\":{\"supported\":true,\"secondPassContinuity\":true,\"maxSteps\":8}}]}" )).when(service).capabilities(1L);
+        assertTrue(service.resolve(selection,1L,2L,"960x544","node").isSecondPassContinuity());
+        assertFalse(json.readValue("{\"nativeLatentInput\":true}",DynamicWorkflowOptions.Plan.class).isSecondPassContinuity());
+    }
     @Test void refusesWrongNodeModelAndPixelBudget(){
         var selection=new DynamicWorkflowOptions.Selection();var options=new DynamicWorkflowOptions();options.setUpscale(true);selection.setOptions(options);
         assertThrows(RuntimeException.class,()->service.resolve(selection,1L,2L,"960x544","other-node"));

@@ -51,6 +51,7 @@ public final class VideoBatchModels {
         private String baseVideoUrl;
         private String videoUrl;
         private java.util.Map<String,Object> latent;
+        private java.util.Map<String,Object> upscaleLatent;
     }
 
     @Data

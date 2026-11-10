@@ -40,6 +40,15 @@ class FreyjaUpscale(BaseModel):
     tiles: UpscaleTiling = Field(default_factory=UpscaleTiling)
 
 
+class UpscaleContext(ArtifactInput):
+    frames: int = Field(ge=5, le=362, strict=True)
+    @model_validator(mode="after")
+    def frame_grid(self):
+        if (self.frames - 5) % 17:
+            raise ValueError("DYNAMIC_SECOND_PASS_CONTEXT_GRID_INVALID")
+        return self
+
+
 class DynamicStage(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     schema_version: Literal[1] = 1
@@ -53,6 +62,8 @@ class DynamicStage(BaseModel):
     component: Optional[FreyjaUpscale] = None
     source_latent: Optional[ArtifactInput] = None
     source_size: Optional[str] = Field(default=None, pattern=r"^[0-9]{2,4}x[0-9]{2,4}$")
+    save_latent: bool = False
+    latent_context: Optional[UpscaleContext] = None
     output_width: Optional[int] = Field(default=None, ge=2, le=4096, strict=True)
     output_height: Optional[int] = Field(default=None, ge=2, le=4096, strict=True)
 
@@ -75,6 +86,11 @@ class DynamicStage(BaseModel):
                 raise ValueError("DYNAMIC_NATIVE_LATENT_UPSCALE_ONLY")
             if any(n < 32 or n % 32 for n in map(int, self.source_size.split("x"))):
                 raise ValueError("DYNAMIC_LATENT_SOURCE_SIZE_INVALID")
+        if self.save_latent or self.latent_context is not None:
+            if self.stage != "UPSCALE" or self.component is None:
+                raise ValueError("DYNAMIC_SECOND_PASS_UPSCALE_ONLY")
+        if self.latent_context is not None and not self.save_latent:
+            raise ValueError("DYNAMIC_SECOND_PASS_SAVE_REQUIRED")
         if (self.output_width is None) != (self.output_height is None) or self.stage == "BASE" and self.output_width is not None:
             raise ValueError("DYNAMIC_OUTPUT_SIZE_INVALID")
         return self
@@ -97,6 +113,8 @@ def stage_nodes(stage, capability):
         if stage.component.memory == "SPATIAL": required.add("FreyjaH3TileModel")
         if stage.component.memory == "TEMPORAL": required.add("MiniMaxH3ContextWindows")
     if stage.output_width is not None: required.add("FreyjaH3FinishSize")
+    if stage.save_latent: required.add("FreyjaH3SaveLatent")
+    if stage.latent_context: required.update({"FreyjaH3UpscaleContinue", "FreyjaH3Restore"})
     return required
 
 
@@ -138,6 +156,7 @@ def describe(model, base_dir):
                               "overlapMin": 32, "overlapMax": 512, "temporal": True},
             "freyjaUpscale": {"supported": supported, "version": 1,
                               "nativeLatentInput": supported,
+                              "secondPassContinuity": supported,
                               "defaultLatentModel": model.default_upscale_model,
                               "methods": ["H3_LEARNED"], "memoryModes": ["FULL", "TEMPORAL", "SPATIAL"],
                               "outputs": ["DOUBLE", "FULL_HD"], "maxSteps": model.default_steps},
@@ -167,6 +186,8 @@ def require_stage(request, model, base_dir):
             raise ValueError("DYNAMIC_TARGET_TOO_LARGE")
         if stage.component and stage.component.steps > model.default_steps:
             raise ValueError("DYNAMIC_UPSCALE_STEPS_EXCEED_MODEL")
+        if stage.latent_context and stage.latent_context.frames >= request.length:
+            raise ValueError("DYNAMIC_SECOND_PASS_CONTEXT_TOO_LONG")
         if stage.output_width is not None and not (0 <= width - stage.output_width <= 31 and 0 <= height - stage.output_height <= 31
                                                    and stage.output_width % 2 == 0 and stage.output_height % 2 == 0):
             raise ValueError("DYNAMIC_OUTPUT_CROP_INVALID")
@@ -188,7 +209,7 @@ def _prune(workflow, outputs):
     return {key: node for key, node in workflow.items() if key in reachable}
 
 
-def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=None):
+def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=None, uploaded_context=None):
     stage = request.dynamic_workflow
     if stage is None or stage.stage == "BASE":
         return workflow
@@ -197,6 +218,12 @@ def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=
     cfg = model.h3_extensions
     sampler_id, sampler = sampler_binding(workflow, cfg)
     native_compatibility = compatibility_key(workflow, cfg, stage.source_size) if stage.source_latent else None
+    # Compatibility concerns the model/VAE and latent canvas. Per-segment denoise,
+    # steps and memory settings may change during a partial enhancement retake;
+    # those remain part of the execution identity, not the artifact's tensor format.
+    second_pass_compatibility = hashlib.sha256(json.dumps({
+        "base": compatibility_key(workflow, cfg, request.size),
+        "stage": "SECOND_PASS"}, sort_keys=True).encode()).hexdigest() if stage.save_latent else None
     outputs = [key for key, node in workflow.items() if node.get("class_type") == "SaveVideo"]
     videos = [key for key, node in workflow.items() if node.get("class_type") == "CreateVideo"]
     if len(outputs) != 1 or len(videos) != 1:
@@ -257,6 +284,30 @@ def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=
         schedule_id = sampler["inputs"]["sigmas"][0]
         workflow[schedule_id]["inputs"]["denoise"] = stage.denoise
         workflow[schedule_id]["inputs"]["steps"] = stage.component.steps if stage.component else model.default_steps
+        if stage.save_latent:
+            # Resolve before inserting context nodes so the digest is independent
+            # of predecessor identity, frame count, prompt and expiring URLs.
+            compatibility = second_pass_compatibility
+            result = [sampler_id, 0]
+            if stage.latent_context:
+                if not uploaded_context:
+                    raise ValueError("DYNAMIC_SECOND_PASS_UPLOAD_MISSING")
+                workflow["dynamic_continue"] = {"class_type": "FreyjaH3UpscaleContinue", "inputs": {
+                    "latent": sampler["inputs"]["latent_image"], "filename": uploaded_context,
+                    "compatibility": compatibility, "frames": stage.latent_context.frames}}
+                sampler["inputs"]["latent_image"] = ["dynamic_continue", 0]
+                workflow["dynamic_restore"] = {"class_type": "FreyjaH3Restore", "inputs": {
+                    "latent": result, "restore": ["dynamic_continue", 1]}}
+                result = ["dynamic_restore", 0]
+                for node in workflow.values():
+                    if node.get("class_type") in {"VAEDecode", "VAEDecodeAudio"}:
+                        for port, value in list(node["inputs"].items()):
+                            if value == [sampler_id, 0]: node["inputs"][port] = result
+            if not request.task_id:
+                raise ValueError("DYNAMIC_SECOND_PASS_EXECUTION_REQUIRED")
+            workflow["dynamic_save_latent"] = {"class_type": "FreyjaH3SaveLatent", "inputs": {
+                "latent": result, "compatibility": compatibility, "execution_id": request.task_id, "stage": "SECOND_PASS"}}
+            outputs.append("dynamic_save_latent")
         workflow[video_id]["inputs"]["audio"] = audio
     else:
         # Reuse the existing face module's crop/inject/sample/stitch semantics.

@@ -78,6 +78,36 @@ class FreyjaH3FinishSize:
         return (images[:, top:top + height, left:left + width].contiguous(),)
 
 
+class FreyjaH3UpscaleContinue:
+    """Pin the previous SECOND_PASS video tail; keep this segment's own audio."""
+    RETURN_TYPES = ("LATENT", "FREYJA_H3_RESTORE")
+    FUNCTION = "apply"
+    CATEGORY = "FREYJA/H3"
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"latent": ("LATENT",), "filename": ("STRING",),
+                "compatibility": ("STRING",), "frames": ("INT", {"min": 5, "max": 362})}}
+    def apply(self, latent, filename, compatibility, frames):
+        from .nodes import read_artifact
+        from .policy import tail_start
+        video, audio = av(latent)
+        source, _ = read_artifact(filename, compatibility, stage="SECOND_PASS")
+        if source.shape[:2] != video.shape[:2] or source.shape[3:] != video.shape[3:]:
+            raise ValueError("FREYJA_UPSCALE_CONTEXT_CANVAS_MISMATCH")
+        start, count = tail_start(source.shape[2], frames)
+        if count >= video.shape[2]:
+            raise ValueError("FREYJA_UPSCALE_CONTEXT_TOO_LONG")
+        clean = source[:, :, start:start + count].to(video)
+        carried = video.clone()
+        carried[:, :, :count] = clean
+        vm = torch.ones_like(video[:, :1], dtype=torch.float32)
+        vm[:, :, :count] = 0
+        out = dict(latent)
+        out["samples"] = NestedTensor((carried, audio))
+        out["noise_mask"] = NestedTensor((vm, torch.ones_like(audio[:, :1], dtype=torch.float32)))
+        return out, {"video": clean, "audio": None}
+
+
 def regions(length, size, overlap):
     if length % 2 or size < 2 or size % 2 or overlap % 2 or overlap < 0 or overlap >= size:
         raise ValueError("FREYJA_UPSCALE_TILE_GRID_INVALID")
@@ -226,8 +256,8 @@ class FreyjaH3TileModel:
         if any(n % 32 for n in (tile_width, tile_height, overlap)) or not (256 <= tile_width <= 2048 and 256 <= tile_height <= 2048
                     and 32 <= overlap <= 512 and overlap < min(tile_width, tile_height)):
             raise ValueError("FREYJA_UPSCALE_TILE_GRID_INVALID")
-        # This node is exclusively for independent enhancement; continuation masks
-        # belong to BASE and must never leak into this model.
+        # Enhancement may carry a static pinned prefix in the latent mask. Dynamic
+        # BASE mask hooks must not leak into this independently sampled model.
         if model.model_options.get("denoise_mask_function") is not None:
             raise ValueError("FREYJA_UPSCALE_MASK_OWNER_CONFLICT")
         out = model.clone()
@@ -239,4 +269,4 @@ class FreyjaH3TileModel:
         return (out,)
 
 
-CLASSES = (FreyjaH3UpscaleEncode, FreyjaH3LoadLatent, FreyjaH3FinishSize, FreyjaH3TileModel)
+CLASSES = (FreyjaH3UpscaleEncode, FreyjaH3LoadLatent, FreyjaH3FinishSize, FreyjaH3TileModel, FreyjaH3UpscaleContinue)

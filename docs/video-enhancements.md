@@ -13,7 +13,7 @@
 
 每个阶段是独立的 ComfyUI prompt，有自己的执行 ID、上游 prompt/node ID、输入摘要、状态和 MinIO 视频结果。网关只保留当前阶段输出所依赖的节点；放大、修脸阶段不会重新执行基础采样器，也不会保留其他隐藏保存分支。
 
-接续仍按既有四种模式运行。上一段基础视频/原始 AV latent 供下一段交接，增强产物只用于最终裁切拼接。保护模式使用恢复后的基础 latent。原音频沿用来源视频，增强阶段不以新生成音频替换。
+接续一采仍按既有四种模式运行，上一段基础视频/原始 AV latent 供下一段一采交接。新任务开启 FREYJA 二采时，上一段二采 latent 另行交给下一段二采；两条链分别继承。保护模式使用恢复后的基础 latent。原音频沿用来源视频，增强阶段不以新生成音频替换。
 
 二采放大：基础画面 → ImageScale → VAE 编码注入 AV latent → H3 二次采样 → 解码。第一版固定宽高各 2 倍；总像素上限 4,194,304，宽高按 32 对齐，denoise 范围 `(0,0.6]`，默认 0.25。采样步数、采样器与底模/LoRA 组合沿用基础模型，避免任意覆盖蒸馏模型的采样配置。
 
@@ -26,6 +26,16 @@
 执行：兼容的一采原始 AV latent → 潜空间放大 → 选定步数的 H3 高清重绘 → 解码 → 最后一个增强阶段裁切输出。新建 FREYJA 接续增强任务会保存每段的一采 latent；使用 `FreyjaH3LoadLatent` 校验模型、VAE、LoRA、调度器、来源画布和帧数后直接加载，不再从视频重新 VAE 编码。原视频只提供原声轨。单镜或旧任务没有可用 latent 时保留原尺寸 VAE 编码路径；旧任务快照不被静默改写。
 
 这仍是完成一采后的独立增强，保留分阶段持久化、复用和恢复；不是 TimelineDirector 的同一采样进程 6+2，也没有减少一采原来的步数。原生输入的摘要包含 latent SHA-256 和来源尺寸，不包含有时效的签名 URL。
+
+### 二采 latent 接续
+
+网关静态能力 `freyjaUpscale.secondPassContinuity` 驱动新计划的 `secondPassContinuity` 标记；不增加界面开关，不逐次探测放大模型。历史快照缺少标记时沿用独立二采，不改写历史 JSON。
+
+每段二采将裁切前的完整 AV latent 归档为 `SECOND_PASS`，在 `dynamic_workflow_step.result_manifest_json` 保存引用。后续二采传入 `save_latent=true` 和 `latent_context={url,content_sha256,frames}`。上一段二采尾部在当前段潜空间放大后注入，重叠区域 mask 固定为零；恢复后的同一份 latent 供解码和下段交接。音频不继承上一段二采，修脸结果也不作为二采上下文。真实重叠帧数来自接续计划，支持 17k+5 网格与不同长度的末段。
+
+兼容性校验区分一采/二采，校验底模、VAE、LoRA 与完整采样画布；阶段输入摘要还包含前序二采 SHA-256 和重叠帧数，排除临时签名 URL。二采参数变化可重新采样，时间分窗、空间分块和完整处理共用同一接续方式。
+
+二采视频生成成功而 latent 归档失败时进入 `ARCHIVING`；恢复只补归档，不重复采样。成功步骤复用时一并复用二采清单。局部重做使用未选前驱的已存二采 latent，连续选择多段则使用刚重做的前驱；未选片段保持既有成片。旧任务缺少前驱二采 latent 时须从首段连续选择重跑二采，不能拿一采或视频编码冒充。
 
 - `upscaleEngine`: `FREYJA`；旧 `PIXEL` 用于兼容已有任务。
 - `upscaleMethod`: 新二采统一为 `H3_LEARNED`，移除「内置放大」及模型选择器。开启二采后直接使用网关 `ModelConfig.default_upscale_model` 配置的专用 H3 权重，默认文件为 `minimax_h3_latent_upscaler_3d_conv_v1_fp16.safetensors`（名称来自已保存的节点清单），可在节点 YAML 的具体模型下通过 `default_upscale_model` 覆盖。Java 从静态增强能力中的 `defaultLatentModel` 将精确文件名冻结进新任务；旧快照已指定的模型继续透传。无需前端选择模型或读取模型列表，也不在提交二采时通过 `/object_info` 预检模型是否安装；缺失、不兼容或加载失败由 ComfyUI 提交/执行结果报告。只保留参数、路由和快照版本校验，旧内置插值请求明确拒绝，不静默替换运行中的历史任务。
@@ -145,7 +155,7 @@ Java 在等待提交响应和查询上游结果时更新任务进度。接续显
 
 ## 失败恢复
 
-`dynamic_workflow_step` 的 PREPARING/ SUBMITTING/ SUCCESS/ FAILED 状态先落库后提交。持久化失败直接报错。上游身份在收到异步确认后立即保存。
+`dynamic_workflow_step` 的 PREPARING/ SUBMITTING/ ARCHIVING/ SUCCESS/ FAILED 状态持久化。持久化失败直接报错。上游身份在收到异步确认后立即保存。
 
 - 前置准备失败、明确拒绝：可以重试该阶段。
 - 已提交或结果不明：查询原 execution/prompt/node，未确认结束时不重复提交。
@@ -157,7 +167,7 @@ Java 在等待提交响应和查询上游结果时更新任务进度。接续显
 
 ## 安装与验证边界
 
-更新 Java、前端与网关代码。数据库启动时幂等维护处理阶段表及步骤来源列，不重写历史 JSON。
+更新 Java 与网关代码。数据库启动时幂等维护处理阶段表、步骤来源列与 latent 归档清单列，不重写历史 JSON。
 
 算力节点更新 `comfy_nodes/freyja_h3_continuation`，新增 `FreyjaH3CheckFrames`；安装方式继续使用 `scripts/install_h3_continuation.py --comfy-root ...`，脚本不会重启 ComfyUI。放大还需现有 `H3InjectVideoLatent`，修脸需 H3 FaceRefine 的裁剪、逐帧重绘和贴回节点。代码仅在用户选择对应阶段时连接它们。
 

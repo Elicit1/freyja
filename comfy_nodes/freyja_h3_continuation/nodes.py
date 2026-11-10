@@ -43,11 +43,13 @@ def input_path(filename):
     return path
 
 
-def read_artifact(filename, compatibility):
+def read_artifact(filename, compatibility, stage="FIRST_PASS"):
     with safe_open(str(input_path(filename)), framework="pt", device="cpu") as data:
         meta = data.metadata() or {}
         if meta.get("format") != VERSION or meta.get("compatibility") != compatibility:
             raise ValueError("FREYJA_H3_ARTIFACT_INCOMPATIBLE: model/VAE/LoRA/scheduler/canvas changed")
+        if meta.get("stage") != stage:
+            raise ValueError("FREYJA_H3_ARTIFACT_STAGE_MISMATCH")
         if set(data.keys()) != {"video", "audio"}:
             raise ValueError("FREYJA_H3_ARTIFACT_LAYOUT_INVALID")
         video, audio = data.get_tensor("video"), data.get_tensor("audio")
@@ -245,8 +247,11 @@ class FreyjaH3SaveLatent:
     CATEGORY = "FREYJA/H3"
     @classmethod
     def INPUT_TYPES(cls):
-        return {"required": {"latent": ("LATENT",), "compatibility": ("STRING",), "execution_id": ("STRING",)}}
-    def save(self, latent, compatibility, execution_id):
+        return {"required": {"latent": ("LATENT",), "compatibility": ("STRING",), "execution_id": ("STRING",)},
+                "optional": {"stage": (["FIRST_PASS", "SECOND_PASS"],)}}
+    def save(self, latent, compatibility, execution_id, stage="FIRST_PASS"):
+        if stage not in {"FIRST_PASS", "SECOND_PASS"}:
+            raise ValueError("FREYJA_H3_ARTIFACT_STAGE_INVALID")
         video, audio = streams(latent)
         # Atomic content is opaque to gateway/Java. Only safe tensor format is accepted on reload.
         root = Path(folder_paths.get_output_directory()) / "freyja_h3"
@@ -255,7 +260,7 @@ class FreyjaH3SaveLatent:
         temp = root / (uuid.uuid4().hex+".tmp")
         try:
             save_file({"video":video.detach().cpu().contiguous(),"audio":audio.detach().cpu().contiguous()}, str(temp),
-                      metadata={"format":VERSION,"stage":"FIRST_PASS","compatibility":compatibility,"frames":str(pixel_frames(video.shape[2]))})
+                      metadata={"format":VERSION,"stage":stage,"compatibility":compatibility,"frames":str(pixel_frames(video.shape[2]))})
             os.replace(temp, root/name)
         finally:
             temp.unlink(missing_ok=True)

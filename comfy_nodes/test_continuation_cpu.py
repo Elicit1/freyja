@@ -43,6 +43,37 @@ def load_nodes(folder):
 
 
 class ContinuationCpuTest(unittest.TestCase):
+    def test_second_pass_handoff_pins_video_tail_without_carrying_audio_or_changing_source(self):
+        from freyja_nodes.upscale import FreyjaH3UpscaleContinue
+        from unittest.mock import patch
+        previous=torch.arange(24*37*2*4,dtype=torch.float32).reshape(1,24,37,2,4)
+        current=torch.full_like(previous,-1)
+        audio=torch.full((1,32,2,207),3.)
+        latent={'samples':Nested((current,audio))}
+        with patch('freyja_nodes.nodes.read_artifact',return_value=(previous,torch.zeros_like(audio))) as read:
+            carried,restore=FreyjaH3UpscaleContinue().apply(latent,'previous.safetensors','model',22)
+            read.assert_called_with('previous.safetensors','model',stage='SECOND_PASS')
+            video,sound=carried['samples'].unbind()
+            self.assertTrue(torch.equal(video[:,:,:7],previous[:,:,30:]))
+            self.assertTrue(torch.equal(video[:,:,7:],current[:,:,7:]))
+            self.assertIs(sound,audio)
+            self.assertTrue(torch.all(current==-1))
+            vm,am=carried['noise_mask'].unbind()
+            self.assertTrue(torch.all(vm[:,:,:7]==0));self.assertTrue(torch.all(vm[:,:,7:]==1));self.assertTrue(torch.all(am==1))
+            damaged={'samples':Nested((video+1,audio))}
+            restored=self.nodes.FreyjaH3Restore().apply(damaged,restore)[0]['samples'].unbind()[0]
+            self.assertTrue(torch.equal(restored[:,:,:7],previous[:,:,30:]))
+            with self.assertRaisesRegex(ValueError,'CONTEXT_TOO_LONG'):FreyjaH3UpscaleContinue().apply(latent,'previous.safetensors','model',124)
+        with patch('freyja_nodes.nodes.read_artifact',return_value=(previous[:,:,:,:,::2],audio)):
+            with self.assertRaisesRegex(ValueError,'CANVAS_MISMATCH'):FreyjaH3UpscaleContinue().apply(latent,'previous.safetensors','model',22)
+
+    def test_second_pass_artifact_is_distinct_from_first_pass(self):
+        path=self.nodes.FreyjaH3SaveLatent().save(self.latent(2),'compatible','upscale',stage='SECOND_PASS')['ui']['latents'][0]
+        filename=path['subfolder']+'/'+path['filename']
+        with self.assertRaisesRegex(ValueError,'STAGE_MISMATCH'):self.nodes.read_artifact(filename,'compatible')
+        video,_=self.nodes.read_artifact(filename,'compatible',stage='SECOND_PASS')
+        self.assertTrue(torch.all(video==2))
+
     def test_native_upscale_import_validates_compatibility_frame_count_and_source_canvas(self):
         from freyja_nodes.upscale import FreyjaH3LoadLatent
         from unittest.mock import patch
