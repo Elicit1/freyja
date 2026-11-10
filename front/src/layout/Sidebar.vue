@@ -63,7 +63,6 @@
         <el-sub-menu index="/production">
           <template #title><el-icon><VideoCamera /></el-icon><span>视频中心</span></template>
           <el-menu-item index="/production/video-upscale">视频超分</el-menu-item>
-          <el-menu-item index="/production/dynamic-workflows">动态工作流</el-menu-item>
           <el-menu-item index="/production/frame-interpolation">视频补帧</el-menu-item>
         </el-sub-menu>
         <el-menu-item index="/render/tasks">

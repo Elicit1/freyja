@@ -1,6 +1,7 @@
 import os
 import time
 import logging
+import json
 from typing import Optional, Dict, Tuple, Any
 
 logger = logging.getLogger("task_tracker")
@@ -23,6 +24,7 @@ class TaskTracker:
         self._redis_client: Optional[Any] = None
         self._memory_tasks: Dict[str, Dict[str, Any]] = {}
         self._memory_index: Dict[str, str] = {}  # alias_key -> task_id or prompt_id
+        self._memory_progress = {}
         self._init_redis()
 
     def _init_redis(self):
@@ -157,6 +159,30 @@ class TaskTracker:
                     1, key, state)
             except Exception as exc:
                 logger.warning("Task status persistence failed: task=%s error=%r", primary_id, exc)
+
+    async def record_progress(self, prompt_id, progress):
+        snapshot = dict(progress)
+        self._memory_progress[prompt_id] = (time.time() + 86400, snapshot)
+        # Bound optional telemetry without changing durable execution identity.
+        if len(self._memory_progress) > 1024:
+            oldest = next(iter(self._memory_progress))
+            self._memory_progress.pop(oldest, None)
+        if self._redis_client:
+            try:
+                await self._redis_client.set("comfy:progress:" + prompt_id, json.dumps(snapshot), ex=86400)
+            except Exception:
+                logger.debug("Progress telemetry persistence unavailable")
+
+    async def progress(self, prompt_id):
+        if self._redis_client:
+            try:
+                value = await self._redis_client.get("comfy:progress:" + prompt_id)
+                if value:
+                    return json.loads(value)
+            except Exception:
+                logger.debug("Progress telemetry read unavailable")
+        cached = self._memory_progress.get(prompt_id)
+        return dict(cached[1]) if cached and cached[0] > time.time() else None
 
     async def unregister(
         self,

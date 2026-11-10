@@ -13,19 +13,24 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class DynamicWorkflowServiceTest {
-    DynamicWorkflowService service;DynamicWorkflowPresetMapper presets;ObjectMapper json=new ObjectMapper();
+    DynamicWorkflowService service;ObjectMapper json=new ObjectMapper();
     @BeforeEach void setup()throws Exception{
-        presets=mock(DynamicWorkflowPresetMapper.class);var models=mock(AiModelMapper.class);
+        var models=mock(AiModelMapper.class);
         var model=new AiModel();model.setId(2L);model.setProviderId(1L);model.setStatus(1);model.setModelType("TXT2VIDEO_REF");model.setModelCode("h3");when(models.selectById(2L)).thenReturn(model);
-        service=spy(new DynamicWorkflowService(presets,models,mock(AiProviderMapper.class),mock(CryptoUtil.class),json,mock(JdbcTemplate.class)));
+        service=spy(new DynamicWorkflowService(models,mock(AiProviderMapper.class),mock(CryptoUtil.class),json,mock(JdbcTemplate.class)));
         doReturn(json.readTree("{\"models\":[{\"modelCode\":\"h3\",\"nodeId\":\"node\",\"supported\":true,\"revision\":\"r1\",\"stages\":[\"BASE\",\"UPSCALE\",\"FACE\"],\"maxTargetPixels\":4194304}]}" )).when(service).capabilities(1L);
     }
-    @Test void resolvesIndependentSwitchesAndFreezesPresetSettings()throws Exception{
-        var preset=new DynamicWorkflowPreset();preset.setId(2032095628944588803L);preset.setProviderId(1L);preset.setModelId(2L);preset.setVersion(7);preset.setStatus(1);preset.setName("高清人物");preset.setOptionsJson("{\"upscale\":true,\"faceRepair\":true}");when(presets.selectById(preset.getId())).thenReturn(preset);
-        var selection=new DynamicWorkflowOptions.Selection();selection.setPresetId(preset.getId());selection.setVersion(7);
-        var plan=service.resolve(selection,1L,2L,"960x544","node");assertEquals("1920x1088",plan.getOutputSize());assertTrue(plan.getOptions().isFaceRepair());assertEquals(7,plan.getVersion());
-        preset.setOptionsJson("{\"upscale\":false}");assertTrue(plan.getOptions().isUpscale());
-        selection.setVersion(6);assertThrows(RuntimeException.class,()->service.resolve(selection,1L,2L,"960x544",null));
+    @Test void bothDisabledNeedNoEnhancementCapabilityAndEnabledChoicesAreFrozen(){
+        for(boolean upscale:new boolean[]{false,true})for(boolean face:new boolean[]{false,true}){
+            var selection=new DynamicWorkflowOptions.Selection();var options=new DynamicWorkflowOptions();
+            options.setUpscale(upscale);options.setFaceRepair(face);selection.setOptions(options);
+            var plan=service.resolve(selection,1L,2L,"960x544","node");
+            if(!upscale&&!face){assertNull(plan);continue;}
+            assertEquals(upscale,plan.getOptions().isUpscale());assertEquals(face,plan.getOptions().isFaceRepair());
+            options.setUpscale(!upscale);assertEquals(upscale,plan.getOptions().isUpscale());
+        }
+        clearInvocations(service);var off=new DynamicWorkflowOptions.Selection();off.setOptions(new DynamicWorkflowOptions());
+        assertNull(service.resolve(off,1L,2L,"960x544",null));verify(service,never()).capabilities(any());
     }
     @Test void refusesWrongNodeModelAndPixelBudget(){
         var selection=new DynamicWorkflowOptions.Selection();var options=new DynamicWorkflowOptions();options.setUpscale(true);selection.setOptions(options);

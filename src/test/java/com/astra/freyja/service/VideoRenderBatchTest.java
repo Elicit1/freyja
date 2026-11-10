@@ -84,6 +84,18 @@ class VideoRenderBatchTest {
         assertDoesNotThrow(()->preparation.prepare(shot,cfg,"960x544","16:9",supplied));
     }
 
+    @Test void batchIncludesCurrentShotPartialProgressAndOnlyFinishedItemsReachOneHundred() {
+        shot(41,VideoBatchPreparation.REF,1);var batch=create(request());var item=batch.getItems().getFirst();
+        store.status(item.getTaskId(),"RENDERING",null,null,null);
+        var task=renderData.get(item.getTaskId());task.setProgress(45);when(renders.selectList(any())).thenReturn(List.of(task));
+        var current=service.detail(batch.getId());assertEquals(45,current.getProgress());assertEquals(45,current.getItems().getFirst().getProgress());assertEquals(0,current.getProcessed());
+        assertEquals(45,service.summary(batch.getId()).getProgress());
+        task.setProgress(100);assertEquals(99,service.detail(batch.getId()).getProgress());
+        store.status(item.getTaskId(),"SUCCESS",null,"http://archive/result.mp4",null);
+        assertEquals(100,service.detail(batch.getId()).getProgress());
+        verify(api,never()).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+    }
+
     @Test void explicitlySelectedSizeIsSharedByBothPhasesAndFrozenAtSubmission() {
         shot(41,VideoBatchPreparation.REF,1);shot(42,VideoBatchPreparation.FL,2);
         var req=request();req.setSize("1344x768");

@@ -13,15 +13,15 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class McpContinuationToolsTest {
-    @Test void dynamicWorkflowSchemaKeepsPresetIdsAsStringsAndRejectsInternalStageFields(){
+    @Test void videoEnhancementSchemaAcceptsIndependentSwitchesAndRejectsPresetsAndInternalFields(){
         var schemas=new McpContinuationSchemas(new McpJson());var validator=new DefaultJsonSchemaValidator();
         var schema=schemas.tool(McpContinuationTools.OrdinaryRender.class);
-        var selection=new LinkedHashMap<String,Object>();selection.put("presetId","2032095628944588803");selection.put("version",1);
+        var selection=new LinkedHashMap<String,Object>();
         selection.put("options",Map.of("upscale",true,"faceRepair",true));
         var request=new LinkedHashMap<String,Object>(Map.of("dramaId","1","shotId","2","requestId","request-001","expectedFingerprint","hash","providerId","3","modelCode","h3","size","960x544","dynamicWorkflow",selection));
         assertTrue(validator.validate(schema,request).valid(),new McpJson().write(schema));
-        selection.put("presetId",2032095628944588803L);assertFalse(validator.validate(schema,request).valid());
-        selection.put("presetId","2032095628944588803");selection.put("source_url","http://forged");assertFalse(validator.validate(schema,request).valid());
+        selection.put("presetId","2032095628944588803");assertFalse(validator.validate(schema,request).valid());
+        selection.remove("presetId");selection.put("source_url","http://forged");assertFalse(validator.validate(schema,request).valid());
     }
     final McpJson json=new McpJson();
     final McpContinuationSchemas schemas=new McpContinuationSchemas(json);

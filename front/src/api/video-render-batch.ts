@@ -1,7 +1,7 @@
 import { request } from './request'
 
 export type VideoMode = 'REFERENCE_MODE' | 'FIRST_LAST_FRAME'
-export interface BatchModeConfig { providerId?: string; modelId?: string; autoUsePreviousVideoTailAsFirstFrame?: boolean; autoUseNextVideoHeadAsLastFrame?: boolean; dynamicWorkflow?: import('./dynamic-workflow').WorkflowSelection }
+export interface BatchModeConfig { providerId?: string; modelId?: string; autoUsePreviousVideoTailAsFirstFrame?: boolean; autoUseNextVideoHeadAsLastFrame?: boolean; dynamicWorkflow?: import('./video-enhancements').WorkflowSelection }
 export interface VideoBatchRequest {
   clientRequestId?: string; name?: string; dramaId: string; shotIds: string[]; expectedPreviewHash?: string
   existingVideoPolicy: 'SKIP' | 'CREATE_NEW_TAKE'; aspectRatio: string
@@ -12,7 +12,7 @@ export interface VideoBatchRequest {
 export interface BatchSelectionNode { key: string; id: string; label: string; type: string; children: BatchSelectionNode[] }
 export interface BatchCandidate { shotId: string; name: string; context: string; generationMode: VideoMode; status: string; reason?: string; firstFrameSource?: string; lastFrameSource?: string; size?: string; executionOrder: number; validation?: import('./render-validation').RenderValidationReport }
 export interface BatchPreview { shotIds: string[]; items: BatchCandidate[]; previewHash: string; accepted: number; blocked: number; skipped: number; duration: number }
-export interface VideoBatchItem { id: string; batchId?: string; shotId: string; taskId: string; name: string; phase: string; status: string; errorMessage?: string; outputUrl?: string; upstreamStatus?: string; archiveRecoverable?: boolean; continuationRecoverable?: boolean; dynamicWorkflowRecoverable?: boolean; failurePhase?: string; executionStage?: string; stageMessage?: string; stageUpdatedAt?: string }
+export interface VideoBatchItem { id: string; batchId?: string; shotId: string; taskId: string; name: string; phase: string; status: string; errorMessage?: string; outputUrl?: string; upstreamStatus?: string; archiveRecoverable?: boolean; continuationRecoverable?: boolean; dynamicWorkflowRecoverable?: boolean; failurePhase?: string; executionStage?: string; stageMessage?: string; progress?: number; stageUpdatedAt?: string }
 export interface VideoBatch {
   id: string; dramaId: string; name: string; status: string; cancelRequested: boolean; options: VideoBatchRequest
   total: number; processed: number; succeeded: number; failed: number; cancelled: number; skipped: number; progress: number

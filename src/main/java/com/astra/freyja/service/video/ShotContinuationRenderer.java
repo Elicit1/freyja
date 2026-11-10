@@ -28,6 +28,7 @@ public class ShotContinuationRenderer {
         if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=true;
         try{
             for(int i=0;i<parent.getContinuationSegments().size();i++){
+                VideoExecutionState.segment(i);
                 VideoExecutionState.progress("RENDERING","接续片段 "+(i+1)+" / "+parent.getContinuationSegments().size());
                 var child=parent.getContinuationSegments().get(i);var range=parent.getContinuationPlan().getRanges().get(i);
                 var generation=new LinkedHashMap<String,Object>();var options=new LinkedHashMap<>(child.getRequest().getH3Options());options.remove("continuation");options.remove("latent_context");

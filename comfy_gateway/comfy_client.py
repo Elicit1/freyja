@@ -33,6 +33,7 @@ class ComfyAsyncClient:
         self.ws_base = ws_url.rstrip("/")
         self.timeout = timeout
         self._http_client: Optional[httpx.AsyncClient] = None
+        self._progress_listeners = {}
         self.ws_ping_interval = 30.0
         self.ws_ping_timeout = 120.0
         self.recovery_check_interval = 15.0
@@ -256,6 +257,7 @@ class ComfyAsyncClient:
                 if output_assets:
                     return output_assets
                 deadline = asyncio.get_running_loop().time() + timeout
+                active_prompt_id = None
                 while True:
                     remaining = deadline - asyncio.get_running_loop().time()
                     message = await asyncio.wait_for(ws.recv(), timeout=max(0, remaining))
@@ -266,6 +268,16 @@ class ComfyAsyncClient:
                     data = json.loads(message)
                     msg_type = data.get("type")
                     msg_data = data.get("data", {})
+
+                    if msg_type == "executing":
+                        active_prompt_id = msg_data.get("prompt_id")
+                    owner = msg_data.get("prompt_id") or (active_prompt_id if msg_type == "progress" else None)
+                    listener = self._progress_listeners.get(prompt_id)
+                    if listener and owner == prompt_id and msg_type in {"progress", "executing", "execution_cached"}:
+                        try:
+                            await listener(msg_type, msg_data)
+                        except Exception as error:
+                            logger.debug("Progress update unavailable: %s", type(error).__name__)
 
                     if msg_type == "progress":
                         val = msg_data.get("value")

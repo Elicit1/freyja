@@ -12,7 +12,7 @@ public class DynamicWorkflowOptions {
     private double upscaleDenoise = .25;
     private double faceDenoise = .4;
     private UpscaleTiling upscaleTiling = new UpscaleTiling();
-    // Missing fields in historical presets keep their original pixel-stage semantics.
+    // Missing fields in historical tasks keep their original pixel-stage semantics.
     private String upscaleEngine = "PIXEL";
     private String upscaleMethod = "LATENT_BICUBIC";
     private String upscaleLatentModel;
@@ -53,16 +53,14 @@ public class DynamicWorkflowOptions {
                 throw new BizException(400,"二采时间窗口须为 39–124 帧，窗口和重叠须满足 17n+5，重叠小于窗口");
         }
     }
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"presetId","version"})
     @Data public static class Selection {
-        private Long presetId;
-        private Integer version;
         private DynamicWorkflowOptions options;
         private boolean reusePrevious;
         private String reuseFromTaskId;
     }
+    @com.fasterxml.jackson.annotation.JsonIgnoreProperties({"presetId","version"})
     @Data public static class Plan {
-        private Long presetId;
-        private Integer version;
         private String name;
         private String capabilityRevision;
         private String nodeId;

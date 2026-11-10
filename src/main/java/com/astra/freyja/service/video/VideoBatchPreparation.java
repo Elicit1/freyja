@@ -219,6 +219,7 @@ public class VideoBatchPreparation {
         var request=snap.getRequest();String node=request.getReferenceVideoNodeId();
         if(node==null&&request.getContinuationPlan()!=null)node=request.getContinuationPlan().getNodeId();
         var plan=dynamicWorkflows.resolve(selection,request.getProviderId(),model.getId(),request.getSize(),node);
+        if(plan==null)return;
         plan.setReuseFromTaskId(selection.getReuseFromTaskId()!=null?selection.getReuseFromTaskId():selection.isReusePrevious()?dynamicWorkflows.previousTask(snap.getShot().getId()):null);
         if(plan.getReuseFromTaskId()==null&&request.getContinuationPlan()!=null)plan.setReuseFromTaskId(request.getContinuationPlan().getDraft().getReuseFromTaskId());
         request.setDynamicWorkflow(selection);request.setDynamicWorkflowPlan(plan);

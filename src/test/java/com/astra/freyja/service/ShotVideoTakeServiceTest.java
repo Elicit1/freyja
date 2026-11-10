@@ -142,7 +142,7 @@ class ShotVideoTakeServiceTest {
     @Test void enhancedTakeRecordsOutputSizeAndFrozenWorkflowWithoutChangingBaseSize(){
         when(videoTakeMapper.selectMaxTakeNoByShotId(1001L)).thenReturn(0);
         when(videoTakeMapper.insert(any(DramaShotVideoTake.class))).thenAnswer(call->{DramaShotVideoTake take=call.getArgument(0);take.setId(2001L);return 1;});
-        var plan=new com.astra.freyja.dto.drama.DynamicWorkflowOptions.Plan();plan.setOutputSize("1440x2560");plan.setName("高清成片");plan.setVersion(3);mockRequestDTO.setDynamicWorkflowPlan(plan);
+        var plan=new com.astra.freyja.dto.drama.DynamicWorkflowOptions.Plan();plan.setOutputSize("1440x2560");plan.setName("高清成片");mockRequestDTO.setDynamicWorkflowPlan(plan);
         var created=videoTakeService.recordGeneratedTake(mockShot,mockRenderTask,mockRequestDTO,mockResultVO);
         assertEquals("1440x2560",created.getSize());assertEquals("720x1280",mockRequestDTO.getSize());assertTrue(created.getRequestSnapshotJson().contains("dynamicWorkflowPlan"));
     }

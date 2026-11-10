@@ -1,6 +1,6 @@
-# 动态工作流
+# 视频渲染增强：二采放大与人脸修复
 
-入口：视频中心 → 动态工作流（`/production/dynamic-workflows`）。基础生成、二采放大和人脸修复拆成独立执行阶段。两个增强开关独立；同时开启时先放大再修脸。
+入口为普通视频渲染、接续视频渲染及批量视频渲染中的「二采放大」「人脸修复」两个独立开关，默认关闭。提交时系统按固定顺序拼接所选功能：基础生成 → 可选二采放大 → 可选人脸修复。没有独立管理页面、工作流预设或流程编辑器。
 
 ## 执行与产物
 
@@ -21,11 +21,11 @@
 
 ### FREYJA 自定义二采（组件 v1）
 
-新建预设默认使用 FREYJA 潜空间二采、1080P、2 步高清重绘和原生时间分窗。旧预设缺少新字段时继续使用原有像素二采、宽高两倍；旧第三方分块选项若曾开启，会明确要求重新选择组件并保存新版本，不静默改变执行语义。
+新开启二采默认使用 FREYJA 潜空间二采、1080P、2 步高清重绘和原生时间分窗。历史任务缺少新字段时继续使用原有像素二采、宽高两倍；旧第三方分块选项若曾开启，会明确要求重新选择二采方式后重新提交，不静默改变执行语义。
 
 执行：源视频按原尺寸 VAE 编码 → 潜空间放大 → 选定步数的 H3 高清重绘 → 解码 → 最后一个增强阶段裁切输出。该实现是完成一采后的独立增强，保留分阶段持久化、复用和恢复；不是 TimelineDirector 的同一采样进程 6+2，也没有减少一采原来的步数。独立阶段目前需要对归档源视频重新编码一次；不能声称全流程无 VAE 往返。
 
-- `upscaleEngine`: `FREYJA`；旧 `PIXEL` 用于兼容已有预设。
+- `upscaleEngine`: `FREYJA`；旧 `PIXEL` 用于兼容已有任务。
 - `upscaleMethod`: `LATENT_BICUBIC`（FREYJA 在 CPU 逐 latent 时间位置插值，不改变时间轴，不需附加权重），或 `H3_LEARNED`（ComfyUI 原生 `LatentUpscaleModelLoader`、`MiniMaxH3LatentUpscaleWithModel`，需要在 `upscaleLatentModel` 显式填入已安装的兼容 H3 权重文件名）。不根据文件名猜测模型架构，不自动下载权重，不能使用 LTX 放大权重冒充 H3。
 - `upscaleOutput`: `FULL_HD` 或 `DOUBLE`。FULL_HD 要求近 16:9/9:16，横屏采样 1920×1088、成片 1920×1080；竖屏采样 1088×1920、成片 1080×1920。若后面还有修脸，放大阶段保留完整采样尺寸，最后修脸阶段才裁切，Take 记录真实成片尺寸。
 - `upscaleSteps`: 默认 2，至少 1 且不能超过模型登记的采样步数。沿用模型的 sampler 和 scheduler；该参数只改变二采，少步数不保证更低的峰值显存或更好画质。
@@ -58,47 +58,46 @@
 
 当前首尾帧模型支持基础生成和二采放大；人脸修复暂要求参考生成基础模型，由能力接口明确返回。全局动作 ControlNet 不直接注入裁剪修脸分支。模型重绘可能改变动作细节，离线接线检查不等于画质或口型已验证。
 
-## 预设、版本与任务参数
+## 提交参数与接口
 
-`dynamic_workflow_preset` 保存预设，`dynamic_workflow_version` 保存每次版本快照。修改、删除使用乐观版本检查；已经排队或执行的任务保存解析后的完整计划，不随预设后续修改而改变。
-
-单镜提交和批量模式配置均可带 `dynamicWorkflow`：
+单镜提交和批量模式配置使用现有请求的 `dynamicWorkflow.options` 承载两个开关及增强参数；这个名称只是已有任务的内部兼容协议。用户不创建或选择工作流。两个开关都关闭时不创建增强计划，也不要求增强节点或增强能力接口可用。开启时服务端冻结参数、模型版本及输出尺寸，再按固定顺序执行。
 
 ```json
 {
   "dynamicWorkflow": {
-    "presetId": "2032095628944588803",
-    "version": 3,
     "options": {
       "upscale": true,
       "faceRepair": true,
-      "scale": 2,
+      "upscaleEngine": "FREYJA",
+      "upscaleOutput": "FULL_HD",
+      "upscaleSteps": 2,
+      "upscaleMemory": "TEMPORAL",
       "upscaleDenoise": 0.25,
       "faceDenoise": 0.4
-    },
-    "reusePrevious": true
+    }
   }
 }
 ```
 
-省略 `presetId/version` 是本次自定义；选预设而省略 `options` 则读取该版本默认值。ID 全程保持字符串。`dynamicWorkflowPlan`、`dynamicWorkflowStage` 只允许服务端生成，客户端不能提交。
-
-选择 `reusePrevious=true` 时服务端冻结本镜头最近具有已完成动态步骤的任务；也可显式指定 `reuseFromTaskId`。只复用同镜头、阶段输入摘要完全一致的成功结果。改变修脸参数时，一采与放大可复用；改变放大参数会重做放大及后续修脸；改变基础生成输入会使相关结果失效。不指定复用时，新任务正常执行。
-
-## API 与 MCP
+`dynamicWorkflowPlan`、`dynamicWorkflowStage` 只允许服务端生成。任务阶段仍持久化于 `dynamic_workflow_step`，用于故障恢复和同一执行的结果核对；不新建预设表或版本管理表，也不删除已有历史表或任务数据。
 
 | 接口 | 用途 |
 | --- | --- |
-| `GET /production/dynamic-workflows` | 按可选 providerId/modelId 查询预设 |
-| `POST /production/dynamic-workflows` | 创建或按 id/version 保存新版本 |
-| `DELETE /production/dynamic-workflows/{id}?version=...` | 乐观版本删除 |
-| `GET /production/dynamic-workflows/capabilities?providerId=...` | 读取网关登记的模块能力，不探测 GPU |
-| `POST /production/dynamic-workflows/preview` | 解析 providerId/modelId/size/selection，返回有效计划 |
-| `GET /production/dynamic-workflows/tasks/{taskId}/steps` | 查询阶段状态及产物 |
+| `GET /production/video-enhancements/capabilities?providerId=...` | 读取所选提供商的增强能力 |
+| `POST /production/video-enhancements/preview` | 预览开关、基础/输出尺寸和有效参数 |
+| `GET /production/video-enhancements/tasks/{taskId}/steps` | 查询处理阶段及产物 |
 
-网关通过 `GET /v1/dynamic-workflows/capabilities` 提供静态登记能力和模块 revision；实际提交时验证精确模型/节点、revision，以及所选阶段依赖的已加载节点。不使用人工验收标记。关闭增强不要求增强节点已安装。
+网关内部保留 `GET /v1/dynamic-workflows/capabilities` 的阶段协议。实际提交检查当前模型、节点和版本；不使用人工验收标记。
 
-MCP 使用已发布能力平台注册的 `get_dynamic_workflow_options`、`preview_dynamic_workflow` 查询/预览；`render_shot_video`、`render_shot_continuation` 接受可选 `dynamicWorkflow`。生成仍需创作者授权，并遵循原素材准备和幂等要求。`get_shot_continuation_render` 返回工作流阶段状态；不能通过原始工具注册表绕过发布状态或项目权限。
+MCP 使用已发布能力平台中的 `get_video_enhancement_options`、`preview_video_enhancements`；`render_shot_video` 和 `render_shot_continuation` 接受上述两个开关。工具不提供创建、选择或管理预设的功能。生成仍遵循创作者授权、素材准备和任务幂等要求。
+
+## 渲染进度
+
+网关监听当前 prompt 的 ComfyUI WebSocket 节点与进度事件，记录当前节点类型、节点步数、已执行节点数及更新时间。按 prompt 隔离，其他任务的事件不会更新此任务。遥测缺失不改变真实任务状态。
+
+Java 在等待提交响应和查询上游结果时更新任务进度。接续显示片段 n/N，按基础生成、二采放大、人脸修复分阶段计入总体百分比；实际节点计数原样展示。没有步数或遥测过期时按当前阶段耗时平滑估算，明确显示「总体估算」「等待实际完成」，不伪造步数或预计完成时间。
+
+估算进度保持单调，运行期间最多 99%；仅结果提交成功后置 100%。排队不持续上涨，取消、失败和中断后停止更新。拼接、下载、MinIO 归档及结果保存均显示实际阶段。任务中心、渲染中心及批次抽屉读取同一持久化进度；批次进度包含当前镜头的部分进度，不再只按已完成镜头数跳变。页面重开读取已保存的进度。
 
 ## 失败恢复
 
@@ -107,17 +106,17 @@ MCP 使用已发布能力平台注册的 `get_dynamic_workflow_options`、`previ
 - 前置准备失败、明确拒绝：可以重试该阶段。
 - 已提交或结果不明：查询原 execution/prompt/node，未确认结束时不重复提交。
 - 上游已成功、视频归档失败：重新取回并归档该结果，不重跑采样。
-- 某增强失败：任务中心展开步骤查看已有产物，点击“继续工作流”恢复。已完成阶段保留。
+- 某增强失败：任务中心展开步骤查看已有产物，点击“继续视频处理”恢复。已完成阶段保留。
 - 取消：定位当前阶段真实 execution，沿用既有取消与中断机制。
 
-旧任务未提供 dynamicWorkflow 时保持原模板行为；固定 FaceRefine 模板保留用于历史兼容。新制作入口使用基础模型和可选模块。
+旧任务未提供 dynamicWorkflow 时保持原模板行为；固定 FaceRefine 模板保留用于历史兼容。渲染使用基础模型和两个增强开关。
 
 ## 安装与验证边界
 
-更新 Java、前端与网关代码。数据库启动时幂等新增三张表及步骤来源列，不重写历史 JSON。
+更新 Java、前端与网关代码。数据库启动时幂等维护处理阶段表及步骤来源列，不重写历史 JSON。
 
 算力节点更新 `comfy_nodes/freyja_h3_continuation`，新增 `FreyjaH3CheckFrames`；安装方式继续使用 `scripts/install_h3_continuation.py --comfy-root ...`，脚本不会重启 ComfyUI。放大还需现有 `H3InjectVideoLatent`，修脸需 H3 FaceRefine 的裁剪、逐帧重绘和贴回节点。代码仅在用户选择对应阶段时连接它们。
 
 自定义二采需更新 FREYJA 节点包，加载 `FreyjaH3UpscaleEncode`、`FreyjaH3LatentResize`、`FreyjaH3TileModel`、`FreyjaH3FinishSize`。原生时间窗需当前 ComfyUI；选择学习式放大时才需要原生 latent 模型加载节点和兼容权重，权重放在 `models/latent_upscale_models/`。不再安装第三方 SpatialTiles；若以前安装过也无须由 FREYJA 自动卸载，当前图不会引用它。静态能力仅表示网关支持，不证明算力节点在线或依赖已安装。
 
-本次不提交视频渲染任务，不探测或重启离线算力节点。验证覆盖阶段组装、引用契约、失败恢复、复用、版本、MCP、前端构建及四套主题模拟交互；真实画质、显存和接缝效果仍需节点恢复后评估。
+本次不提交视频渲染任务，不探测或重启离线算力节点。验证覆盖阶段组装、引用契约、失败恢复、复用、任务快照、MCP、前端构建及四套主题模拟交互；真实画质、显存和接缝效果仍需节点恢复后评估。

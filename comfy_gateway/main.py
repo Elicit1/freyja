@@ -495,7 +495,7 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
     client_id = str(uuid.uuid4())
     async_submit = http_req.headers.get("x-freyja-async-submit")=="true"
     if async_submit:
-        if not request.task_id or not (request.h3_options or request.dynamic_workflow): raise ValueError("H3_ASYNC_REQUIRES_EXECUTION_ID")
+        if not request.task_id: raise ValueError("ASYNC_REQUIRES_EXECUTION_ID")
         redis=task_tracker._redis_client
         if redis is None: raise RuntimeError("H3_TRACKING_UNAVAILABLE: Redis is required")
         canonical=request.model_dump(exclude={"extra_body"})
@@ -525,6 +525,8 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
             await redis.delete(key)
             raise
         await task_tracker.register(prompt_id=prompt_id,node_id=target_node_id,task_id=request.task_id,shot_id=request.shot_id,strict=True)
+        from render_progress import start
+        start(client, prompt_id, client_id, prompt_workflow, timeout_override)
         return ImageGenerationResponse(execution={"taskId":request.task_id,"promptId":prompt_id,"nodeId":target_node_id,"status":"QUEUED"})
     http_req.state.submission_started = True
     prompt_id = await client.submit_prompt(prompt_workflow, client_id)
@@ -547,11 +549,8 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
     completion_state = "UNKNOWN"
     try:
         # 7. Wait for WebSocket execution completion on target machine
-        output_asset_meta = await client.wait_for_completion(
-            prompt_id=prompt_id,
-            client_id=client_id,
-            timeout_override=timeout_override
-        )
+        from render_progress import follow
+        output_asset_meta = await follow(client, prompt_id, client_id, prompt_workflow, timeout_override)
 
         # FREYJA can take over result transfer as soon as rendering finishes. Other
         # OpenAI clients keep the existing eager-download response contract.
@@ -763,6 +762,9 @@ async def tracked_task_state(task_id: str, prompt_id: Optional[str] = None, node
     client = await get_client_pool().get_client_for_node(node)
     state = await client.task_state(prompt_id)
     state.update(task_id=task_id, prompt_id=prompt_id, node_id=node_id)
+    progress = await task_tracker.progress(prompt_id)
+    if progress is not None:
+        state["progress"] = progress
     return client, state
 
 

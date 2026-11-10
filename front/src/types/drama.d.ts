@@ -638,7 +638,7 @@ export interface DramaShotFirstFrame {
 }
 
 export interface DramaShotRenderRequest {
-  dynamicWorkflow?: import('@/api/dynamic-workflow').WorkflowSelection
+  dynamicWorkflow?: import('@/api/video-enhancements').WorkflowSelection
   controlNet?: { enabled: boolean; referenceId?: string; controlType: string; strength: number }
   expectedRenderFingerprint?: string
   preflightId?: string

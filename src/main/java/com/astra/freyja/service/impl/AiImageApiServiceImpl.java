@@ -782,7 +782,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(requestUrl))
                     .header("X-Freyja-Deferred-Video", "true")
-                    .header("X-Freyja-Async-Submit", dto!=null&&(dto.getDynamicWorkflowStage()!=null||dto.getH3Options()!=null&&Boolean.TRUE.equals(dto.getH3Options().get("continuation_enabled")))?"true":"false")
+                    .header("X-Freyja-Async-Submit", dto!=null&&StringUtils.isNotBlank(dto.getTaskId())?"true":"false")
                     .header("Content-Type", "application/json")
                     .header("Authorization", "Bearer " + (apiKey != null ? apiKey : ""))
                     .timeout(Duration.ofSeconds(Math.max(videoHttpTimeoutSeconds,
@@ -791,7 +791,14 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                     .build();
 
             com.astra.freyja.service.video.VideoExecutionState.phase("SENT");
-            HttpResponse<String> response = HTTP_CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response;
+            var pending=HTTP_CLIENT.sendAsync(request,HttpResponse.BodyHandlers.ofString());
+            try{
+                while(true){
+                    try{response=pending.get(1,java.util.concurrent.TimeUnit.SECONDS);break;}
+                    catch(java.util.concurrent.TimeoutException waiting){com.astra.freyja.service.video.VideoExecutionState.sampling(null);}
+                }
+            }finally{if(!pending.isDone())pending.cancel(true);}
             if (response.statusCode() >= 300) {
                 try {
                     JsonNode error = objectMapper.readTree(response.body()).path("error");
@@ -817,6 +824,8 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                     if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException("视频任务已取消");
                     if(System.nanoTime()>deadline)throw new BizException(504,"上游仍未返回结果，可从接续步骤恢复");
                     var state=queryVideoTask(provider.getId(),dto.getTaskId(),promptId,nodeId);
+                    if("QUEUED".equals(state.status()))com.astra.freyja.service.video.VideoExecutionState.progress("UPSTREAM_QUEUED","算力节点排队中");
+                    else com.astra.freyja.service.video.VideoExecutionState.sampling(state.progress());
                     if("SUCCESS".equals(state.status())){root=objectMapper.createObjectNode().set("data",objectMapper.createArrayNode().add(objectMapper.createObjectNode().put("url",state.videoUrl())));break;}
                     if(java.util.Set.of("FAILED","CANCELLED").contains(state.status())){com.astra.freyja.service.video.VideoExecutionState.phase("REJECTED");throw new BizException(502,"上游任务已结束："+state.status());}
                     Thread.sleep(1000);
@@ -937,7 +946,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             String url = "SUCCESS".equals(state) && StringUtils.isNotBlank(result.path("video_url").asText()) ? taskUrl + "/output"+query : null;
             if ("SUCCESS".equals(state) && url == null) state = "UNKNOWN";
             return new com.astra.freyja.dto.render.RemoteVideoTaskVO(state,url,
-                    result.path("prompt_id").asText(null),result.path("node_id").asText(null));
+                    result.path("prompt_id").asText(null),result.path("node_id").asText(null),result.get("progress"));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new BizException(502, "上游任务查询已中断");

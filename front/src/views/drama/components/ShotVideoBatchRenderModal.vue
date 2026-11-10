@@ -28,7 +28,7 @@
             <el-checkbox v-model="configs.FIRST_LAST_FRAME.autoUsePreviousVideoTailAsFirstFrame">自动使用上一镜视频尾帧作为首帧</el-checkbox>
             <el-checkbox v-model="configs.FIRST_LAST_FRAME.autoUseNextVideoHeadAsLastFrame">自动使用下一镜视频首帧作为尾帧</el-checkbox>
           </div>
-          <DynamicWorkflowSelector v-model="configs[mode.key].dynamicWorkflow" :provider-id="configs[mode.key].providerId" :model-id="configs[mode.key].modelId" :model-code="modelLists[mode.key].find(m => String(m.id) === configs[mode.key].modelId)?.modelCode" :size="size" :disabled="checking || submitting" />
+          <VideoEnhancementOptions v-model="configs[mode.key].dynamicWorkflow" :provider-id="configs[mode.key].providerId" :model-id="configs[mode.key].modelId" :model-code="modelLists[mode.key].find(m => String(m.id) === configs[mode.key].modelId)?.modelCode" :size="size" :disabled="checking || submitting" />
         </div>
         <el-alert type="info" :closable="false" title="先参考模式，后首尾帧模式；始终逐个渲染。提示词和实际素材须匹配，首尾帧须有有效来源。请修复或明确排除未通过检查的镜头。" />
         <el-table :data="preview?.items || []" height="240" empty-text="选择分镜和模型后，点击检查" size="small">
@@ -60,8 +60,8 @@
 import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage, ElTree } from 'element-plus'
 import { useRouter } from 'vue-router'
-import DynamicWorkflowSelector from '@/components/workflow/DynamicWorkflowSelector.vue'
-import { dynamicWorkflowApi } from '@/api/dynamic-workflow'
+import VideoEnhancementOptions from '@/components/workflow/VideoEnhancementOptions.vue'
+import { videoEnhancementApi } from '@/api/video-enhancements'
 import { aiProviderApi } from '@/api/ai-provider'
 import type { AiModel, AiProviderVO } from '@/types/ai-provider'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
@@ -105,12 +105,13 @@ async function excludeAndCheck(id: string) {
 async function loadModels(mode: VideoMode) {
   configs[mode].modelId = undefined; modelLists[mode] = []; const provider = configs[mode].providerId
   if (!provider) return
-  try { const list = await aiProviderApi.getModelList(provider, modes.find(m => m.key === mode)!.type); let legacy: string[] = []; try { legacy = (await dynamicWorkflowApi.capabilities(provider)).models.filter(c => c.legacyFixedFace).map(c => c.modelCode) } catch { /* Providers without H3 modules keep their existing model catalog. */ }; if (configs[mode].providerId === provider) modelLists[mode] = list.filter(m => m.status === 1 && !legacy.includes(m.modelCode)) }
+  try { const list = await aiProviderApi.getModelList(provider, modes.find(m => m.key === mode)!.type); let legacy: string[] = []; try { legacy = (await videoEnhancementApi.capabilities(provider)).models.filter(c => c.legacyFixedFace).map(c => c.modelCode) } catch { /* Providers without H3 modules keep their existing model catalog. */ }; if (configs[mode].providerId === provider) modelLists[mode] = list.filter(m => m.status === 1 && !legacy.includes(m.modelCode)) }
   catch (e: any) { ElMessage.error(e.message || '加载视频模型失败') }
 }
 async function open(id: string | number, aspectRatio?: string) {
   visible.value = true; loading.value = true; dramaId.value = String(id); selectedIds.value = []; preview.value = null; nodes.value = []; filter.value = ''
   name.value = '批量视频渲染'; policy.value = 'SKIP'; ratio.value = ratios.includes(aspectRatio || '') ? aspectRatio! : '16:9'; invalidate()
+  for (const mode of modes) configs[mode.key].dynamicWorkflow = undefined
   size.value = resolveGenerationSize(ratio.value, 'video')
   try { const [data, enabled] = await Promise.all([videoBatchApi.tree(dramaId.value), aiProviderApi.getListEnabled()]); nodes.value = data; providers.value = enabled; await nextTick(); clearSelection() }
   catch (e: any) { ElMessage.error(e.message || '加载分镜失败') } finally { loading.value = false }

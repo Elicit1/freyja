@@ -75,10 +75,11 @@ public class DynamicWorkflowExecutor {
         var previous=state==null?null:state.upstream;
         if(state!=null){state.continuationChild=true;state.recoveryUrl=null;}
         try {
-            VideoExecutionState.progress(stage,"BASE".equals(stage)?"动态工作流：基础视频生成":"UPSCALE".equals(stage)?"动态工作流：二采放大":"动态工作流：人脸修复");
+            VideoExecutionState.stage(stage);
+            VideoExecutionState.progress(stage,"BASE".equals(stage)?"基础视频生成":"UPSCALE".equals(stage)?"二采放大":"人脸修复");
             if(!rows.isEmpty()){
                 var row=rows.getFirst();
-                if(!hash.equals(row.get("input_hash")))throw new BizException(409,"动态工作流输入与任务快照不一致");
+                if(!hash.equals(row.get("input_hash")))throw new BizException(409,"视频处理输入与任务快照不一致");
                 if("SUCCESS".equals(row.get("status"))){String url=Objects.toString(row.get("output_url"),"");if(url.isBlank())throw new BizException(500,"工作流成功步骤缺少产物");return url;}
                 execution=row.get("execution_id").toString();
                 if("SUBMITTING".equals(row.get("status"))){
@@ -123,7 +124,7 @@ public class DynamicWorkflowExecutor {
         } finally { if(state!=null){state.upstream=previous;state.continuationChild=child;state.recoveryUrl=null;} }
     }
     private void success(String task,String key,String stage,String url)throws Exception {
-        if(url==null||url.isBlank())throw new BizException(502,"动态工作流步骤未返回视频");
+        if(url==null||url.isBlank())throw new BizException(502,"视频处理步骤未返回视频");
         if(jdbc.update("UPDATE dynamic_workflow_step SET status='SUCCESS',output_url=?,error_message=NULL,updated_at=? WHERE task_id=? AND step_key=?",url,LocalDateTime.now(),task,key)!=1)throw new BizException(500,"工作流产物保存失败");
         events.append(task,"DYNAMIC_WORKFLOW_STAGE_COMPLETE",json.writeValueAsString(Map.of("stepKey",key,"stage",stage,"videoUrl",url)));
     }

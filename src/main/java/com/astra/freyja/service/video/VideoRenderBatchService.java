@@ -175,18 +175,25 @@ public class VideoRenderBatchService {
                 .requestSnapshotJson(com.astra.freyja.util.VideoReferenceSnapshotJson.write(snap.getRequest(),json)).status("QUEUED").progress(0).currentNode("等待全局串行渲染队列").build());
     }
     private void rejectInternalDynamic(DramaShotRenderRequestDTO request){
-        if(request!=null&&(request.getDynamicWorkflowPlan()!=null||request.getDynamicWorkflowStage()!=null))throw new BizException(400,"动态工作流执行快照必须由服务端生成");
+        if(request!=null&&(request.getDynamicWorkflowPlan()!=null||request.getDynamicWorkflowStage()!=null))throw new BizException(400,"视频处理阶段快照必须由服务端生成");
     }
     public boolean owns(String taskId){return store.task(taskId)!=null;}
     public Long batchForTask(String taskId){Item i=store.task(taskId);return i==null?null:i.getBatchId();}
     public List<Batch> list(boolean active,int limit){return store.batches(active,Math.max(1,Math.min(200,limit))).stream().map(b->detail(b.getId())).toList();}
     public Batch detail(Long id) {
         Batch b=store.batch(id);if(b==null)throw new BizException(404,"批次不存在");List<Item> items=store.items(id);b.setItems(items);
+        var taskIds=items.stream().map(Item::getTaskId).filter(Objects::nonNull).toList();
+        var percentages=new HashMap<String,Integer>();
+        if(!taskIds.isEmpty())for(var task:renders.selectList(new LambdaQueryWrapper<RenderTask>().in(RenderTask::getTaskId,taskIds)))
+            percentages.put(task.getTaskId(),task.getProgress()==null?0:task.getProgress());
+        int activeProgress=0;
         try{b.setOptions(json.readValue(b.getOptionsJson(),VideoRenderBatchRequest.class));}catch(Exception e){throw new IllegalStateException("批次配置快照不可读",e);}
         for(Item i:items){
             if("FAILED".equals(i.getStatus())&&i.getSnapshotJson()!=null){try{i.setContinuationRecoverable(json.readTree(i.getSnapshotJson()).path("request").path("continuationSegments").isArray());i.setDynamicWorkflowRecoverable(json.readTree(i.getSnapshotJson()).path("request").path("dynamicWorkflowPlan").isObject());}catch(Exception e){throw new IllegalStateException("接续快照无法读取",e);}}
             if("SKIPPED".equals(i.getStatus())){b.setSkipped(b.getSkipped()+1);continue;}
             b.setTotal(b.getTotal()+1);boolean done=VideoBatchStore.terminal(i.getStatus());if(done)b.setProcessed(b.getProcessed()+1);
+            i.setProgress("SUCCESS".equals(i.getStatus())?100:Math.clamp(percentages.getOrDefault(i.getTaskId(),0),0,99));
+            if(!done)activeProgress+=i.getProgress();
             if("REF2VA".equals(i.getPhase())){b.setRefTotal(b.getRefTotal()+1);if(done)b.setRefProcessed(b.getRefProcessed()+1);}else{b.setFlTotal(b.getFlTotal()+1);if(done)b.setFlProcessed(b.getFlProcessed()+1);}
             switch(i.getStatus()){case "SUCCESS"->b.setSucceeded(b.getSucceeded()+1);case "FAILED"->b.setFailed(b.getFailed()+1);case "CANCELLED"->b.setCancelled(b.getCancelled()+1);default->{}}
             if("UNCONFIRMED".equals(i.getUpstreamStatus())||"FAILED".equals(i.getUpstreamStatus()))b.setUpstreamStatus(i.getUpstreamStatus());
@@ -195,7 +202,7 @@ public class VideoRenderBatchService {
                 b.setCurrentStage(StringUtils.defaultIfBlank(i.getStageMessage(),"QUEUED".equals(i.getStatus())?"排队中":"正在处理视频"));
             }
         }
-        if(b.getCurrentPhase()==null){b.setCurrentPhase("COMPLETED");b.setCurrentStage("SUCCESS".equals(b.getStatus())?"已完成":"处理结束");}b.setProgress(b.getTotal()==0?100:(int)(100L*b.getProcessed()/b.getTotal()));return b;
+        if(b.getCurrentPhase()==null){b.setCurrentPhase("COMPLETED");b.setCurrentStage("SUCCESS".equals(b.getStatus())?"已完成":"处理结束");}b.setProgress(b.getTotal()==0?100:(int)((100L*b.getProcessed()+activeProgress)/b.getTotal()));return b;
     }
     public TaskCenterItemVO summary(Long id){Batch b=detail(id);return TaskCenterItemVO.builder().sourceType("VIDEO_RENDER_BATCH").taskId(String.valueOf(id)).category("RENDER").taskType("VIDEO_RENDER_BATCH").title(b.getName()).status(b.getStatus()).progress(b.getProgress()).revision(b.getRevision())
             .currentStage(b.getCurrentStage()+" · "+b.getCurrentPhase()+" · 已处理 "+b.getProcessed()+"/"+b.getTotal()+" · 成功 "+b.getSucceeded()+" / 失败 "+b.getFailed()+" / 取消 "+b.getCancelled()+(b.getCurrentShot()==null?"":" · "+b.getCurrentShot()))
@@ -214,6 +221,7 @@ public class VideoRenderBatchService {
             VideoExecutionState.progress("PREPARING","正在准备视频输入");
             if(cancelled(item))return true;
             Snapshot snap=json.readValue(StringUtils.defaultIfBlank(item.getResolvedJson(),item.getSnapshotJson()),Snapshot.class);
+            VideoExecutionState.configure(snap);
             if(item.getRecoveryUrl()==null)preparation.validateRoute(snap);
             if(item.getRecoveryUrl()==null&&StringUtils.isBlank(item.getResolvedJson())){
                 applyFrame(snap,item,true);applyFrame(snap,item,false);
@@ -268,7 +276,8 @@ public class VideoRenderBatchService {
             if(store.progress(item.getTaskId(),stage,message)==0)return false;
             var state=VideoExecutionState.current();
             if(state!=null&&state.recoveryUrl!=null)store.recovery(item.getTaskId(),state.phase,state.recoveryUrl);
-            renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",item.getTaskId()).in("status","QUEUED","RENDERING").set("current_node",message).set("status","RENDERING"));
+            int percentage=state==null?1:Math.clamp(state.percentage,0,99);
+            renders.update(null,new UpdateWrapper<RenderTask>().eq("task_id",item.getTaskId()).in("status","QUEUED","RENDERING").set("current_node",message).set("status","RENDERING").setSql("progress=GREATEST(COALESCE(progress,0),"+percentage+")"));
             store.batchStatus(item.getBatchId(),"RUNNING",false);return true;
         });
         if(Boolean.TRUE.equals(changed)){renderTasks.refreshTaskFromDatabase(item.getTaskId());publish(item.getBatchId());}

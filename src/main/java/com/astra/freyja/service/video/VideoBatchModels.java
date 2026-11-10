@@ -118,6 +118,7 @@ public final class VideoBatchModels {
         private String failurePhase;
         private String executionStage;
         private String stageMessage;
+        private int progress;
         private LocalDateTime stageUpdatedAt;
         @JsonIgnore private String recoveryUrl;
         public boolean isArchiveRecoverable(){return recoveryUrl!=null;}

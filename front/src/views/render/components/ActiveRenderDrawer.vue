@@ -91,11 +91,11 @@
                 />
               </div>
               <el-progress
-                :percentage="100"
+                :percentage="Math.min(99, Math.max(0, task.progress || 0))"
                 :status="task.status === 'QUEUED' ? 'warning' : undefined"
                 :stroke-width="5"
-                :indeterminate="task.status === 'RENDERING'"
-                :show-text="false"
+                :indeterminate="task.status === 'RENDERING' && !task.progress"
+                :show-text="true"
               />
             </div>
 

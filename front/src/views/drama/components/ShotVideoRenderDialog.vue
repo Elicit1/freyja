@@ -9,7 +9,7 @@
         <el-form-item label="画幅"><el-radio-group v-model="ratio" @change="setRatio"><el-radio-button v-for="option in ratioOptions" :key="option" :value="option">{{ option }}</el-radio-button></el-radio-group></el-form-item>
         <el-form-item label="生成尺寸"><el-select v-model="config.size" filterable><el-option v-for="s in sizeOptions" :key="s" :value="s" :label="s.replace('x', ' × ')" /></el-select></el-form-item>
       </el-form>
-      <DynamicWorkflowSelector v-model="config.dynamicWorkflow" :provider-id="config.providerId" :model-id="selectedModelId" :model-code="config.modelCode" :size="config.size" :disabled="submitting" />
+      <VideoEnhancementOptions v-model="config.dynamicWorkflow" :provider-id="config.providerId" :model-id="selectedModelId" :model-code="config.modelCode" :size="config.size" :disabled="submitting" />
       <div v-if="!continuation" class="render-assets"><div v-for="item in anchors" :key="item.label" class="render-anchor"><el-image v-if="item.url" :src="item.url" fit="cover" :preview-src-list="[item.url]" preview-teleported /><span v-else class="anchor-empty">—</span><span>{{ item.label }}</span></div><div class="render-asset-counts"><span>参考图 <b>{{ shot?.refImages?.length || 0 }}</b></span><span>视频 <b>{{ shot?.refVideos?.length || 0 }}</b></span><span>音频 <b>{{ shot?.refAudios?.length || 0 }}</b></span></div></div>
       <p class="render-note">{{ continuation ? '剧本、导演、提示词和素材来自主页面各片段；提交前校验模型能力与最新计划。' : '剧本、提示词与参考素材在镜头中配置，这里只设置本次生成参数。' }}</p>
       <el-collapse v-if="shot?.videoUrl || shot?.videoPrompt || shot?.prompt" class="render-review"><el-collapse-item title="查看提示词与已有结果" name="review"><p class="render-prompt">{{ shot?.generationMode === 'REFERENCE_MODE' ? shot?.prompt : shot?.videoPrompt || shot?.prompt }}</p><video v-if="shot?.videoUrl" :src="shot.videoUrl" controls class="render-result" /><el-button v-if="shot?.id" link type="primary" @click="historyVisible = true">视频历史与版本重选</el-button></el-collapse-item></el-collapse>
@@ -31,8 +31,8 @@ import { resolveGenerationSize, validateGenerationSize } from '@/utils/generatio
 import type { AiModel, AiProviderVO } from '@/types/ai-provider'
 import type { DramaShot } from '@/types/drama'
 import ShotVideoHistoryDrawer from './ShotVideoHistoryDrawer.vue'
-import DynamicWorkflowSelector from '@/components/workflow/DynamicWorkflowSelector.vue'
-import { dynamicWorkflowApi, type WorkflowSelection } from '@/api/dynamic-workflow'
+import VideoEnhancementOptions from '@/components/workflow/VideoEnhancementOptions.vue'
+import { videoEnhancementApi, type WorkflowSelection } from '@/api/video-enhancements'
 export interface VideoRenderConfiguration { providerId: string; modelCode: string; size: string; dynamicWorkflow?: WorkflowSelection }
 export type ContinuationSubmit = (configuration: VideoRenderConfiguration, onProgress: (message: string) => void) => Promise<void>
 const emit = defineEmits<{ success: [shotId: string | number]; edit: [shot: DramaShot] }>()
@@ -62,6 +62,7 @@ function setRatio() { config.size = resolveGenerationSize(ratio.value, 'video') 
 async function open(value: DramaShot, aspectRatio?: string, onSubmit?: ContinuationSubmit, count = 0) {
   const token = ++session; shot.value = JSON.parse(JSON.stringify(value)); visible.value = true; loading.value = true; error.value = ''; status.value = ''
   continuation.value = Boolean(onSubmit); segmentCount.value = count; submitContinuation = onSubmit; models.value = []; config.providerId = ''; config.modelCode = ''
+  config.dynamicWorkflow = undefined
   ratio.value = ['16:9','9:16','1:1'].includes(aspectRatio || '') ? aspectRatio! : '16:9'; setRatio()
   try {
     const type = value.generationMode === 'REFERENCE_MODE' ? 'TXT2VIDEO_REF' : 'TXT2VIDEO_FIRST_LAST'
@@ -78,7 +79,7 @@ async function open(value: DramaShot, aspectRatio?: string, onSubmit?: Continuat
 }
 async function loadModels() {
   const token = ++modelRequest, currentSession = session, provider = config.providerId; modelsLoading.value = true; models.value = []; config.modelCode = ''; error.value = ''
-  try { const all = await aiProviderApi.getModelList(provider, shot.value?.generationMode === 'REFERENCE_MODE' ? 'TXT2VIDEO_REF' : 'TXT2VIDEO_FIRST_LAST'); let legacy: string[] = []; try { legacy = (await dynamicWorkflowApi.capabilities(provider)).models.filter(c => c.legacyFixedFace).map(c => c.modelCode) } catch { /* Other providers may not offer H3 modules. */ }; if (token === modelRequest && currentSession === session) models.value = all.filter(m => m.status === 1 && !legacy.includes(m.modelCode)) }
+  try { const all = await aiProviderApi.getModelList(provider, shot.value?.generationMode === 'REFERENCE_MODE' ? 'TXT2VIDEO_REF' : 'TXT2VIDEO_FIRST_LAST'); let legacy: string[] = []; try { legacy = (await videoEnhancementApi.capabilities(provider)).models.filter(c => c.legacyFixedFace).map(c => c.modelCode) } catch { /* Other providers may not offer H3 modules. */ }; if (token === modelRequest && currentSession === session) models.value = all.filter(m => m.status === 1 && !legacy.includes(m.modelCode)) }
   catch (e: any) { if (token === modelRequest && currentSession === session) error.value = e.message || '加载模型失败' }
   finally { if (token === modelRequest && currentSession === session) modelsLoading.value = false }
 }
