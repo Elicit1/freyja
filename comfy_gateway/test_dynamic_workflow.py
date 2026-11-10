@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 from starlette.requests import Request
 from pydantic import ValidationError
-from dynamic_workflow import DynamicStage, UpscaleTiling, describe, validate_stage_nodes, stage_nodes
+from dynamic_workflow import DynamicStage, UpscaleTiling, describe, validate_stage_nodes, stage_nodes, require_stage
 from schemas import ImageGenerationRequest
 from test_video_reference import setup_model, BASE
 from test_continuation_modes import assert_acyclic
@@ -120,14 +120,25 @@ class DynamicWorkflowTests(unittest.TestCase):
             for stage in ("BASE", "UPSCALE", "FACE"):
                 with self.subTest(model=model, stage=stage): self.graph(stage, model)
 
-    def test_tiled_upscale_supports_reference_and_first_last_model_bindings(self):
+    def test_tiled_upscale_supports_only_reference_model_bindings(self):
         for name in ("minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8",
-                     "minimax-h3-fl2va", "minimax-h3-fl2va-turbo4", "minimax-h3-fl2va-turbo8",
-                     "pika-h3-flex-ref2va", "pika-h3-flex-fl2va"):
+                     "pika-h3-flex-ref2va"):
             with self.subTest(model=name):
                 _, _, graph = self.graph("UPSCALE", name, component={"memory":"SPATIAL"})
                 self.assertEqual(1, sum(n["class_type"] == "SamplerCustomAdvanced" for n in graph.values()))
                 self.assertEqual("FreyjaH3TileModel", graph["dynamic_tiles"]["class_type"])
+
+    def test_fl2va_catalog_and_submission_reject_both_enhancements(self):
+        for name in ("minimax-h3-fl2va", "minimax-h3-fl2va-turbo4", "minimax-h3-fl2va-turbo8", "pika-h3-flex-fl2va"):
+            model, _ = setup_model(name)
+            capability = describe(model, BASE)
+            self.assertFalse(capability["supported"]); self.assertEqual([], capability["stages"])
+            self.assertFalse(capability["freyjaUpscale"]["supported"])
+            for stage in ("UPSCALE", "FACE"):
+                request = ImageGenerationRequest(model=name, prompt="motion", size="960x544", length=124,
+                    dynamic_workflow={"stage":stage,"revision":"old-revision","source_url":"http://archive/source.mp4","source_sha256":"a"*64,"scale":2 if stage=="UPSCALE" else 1})
+                with self.subTest(model=name,stage=stage), self.assertRaisesRegex(ValueError,"REF2VA"):
+                    require_stage(request,model,BASE)
 
     def test_legacy_face_templates_keep_fixed_behavior_without_dynamic_request(self):
         model, cfg = setup_model("minimax-h3-ref-turbo8-face-refine")

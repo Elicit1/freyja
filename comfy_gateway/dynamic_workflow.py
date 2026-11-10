@@ -76,7 +76,7 @@ class DynamicStage(BaseModel):
         return self
 
 
-SUPPORTED_HANDLERS = {"minimax_h3_ref2va", "minimax_h3_fl2va"}
+SUPPORTED_HANDLERS = {"minimax_h3_ref2va"}
 MODULE = Path(__file__).parent / "workflow_modules/h3_face_v1.json"
 COMPONENT_NODES = ["FreyjaH3UpscaleEncode", "FreyjaH3LatentResize", "FreyjaH3FinishSize"]
 
@@ -125,7 +125,7 @@ def describe(model, base_dir):
         revision = digest.hexdigest()
     return {"modelCode": model.model_name, "nodeId": model.node_id, "supported": supported,
             "legacyFixedFace": model.handler == "minimax_h3_face_refine", "revision": revision,
-            "stages": (["BASE", "UPSCALE", "FACE"] if model.handler == "minimax_h3_ref2va" else ["BASE", "UPSCALE"]) if supported else [],
+            "stages": ["BASE", "UPSCALE", "FACE"] if supported else [],
             "scales": [2], "maxDenoise": .6, "maxTargetPixels": 4194304,
             "upscaleTiling": {"supported": supported, "node": "FreyjaH3TileModel", "apiVersion": "1",
                               "tileMin": 256, "tileMax": 2048, "tileStep": 32,
@@ -144,7 +144,7 @@ def require_stage(request, model, base_dir):
         return
     capability = describe(model, base_dir)
     if not capability["supported"]:
-        raise ValueError("DYNAMIC_WORKFLOW_UNSUPPORTED: select a base H3 model")
+        raise ValueError("DYNAMIC_WORKFLOW_UNSUPPORTED: enhancements require a base REF2VA model")
     if stage.stage not in capability["stages"]:
         raise ValueError("DYNAMIC_STAGE_UNSUPPORTED: face repair requires a reference-video base model")
     if stage.revision != capability["revision"]:

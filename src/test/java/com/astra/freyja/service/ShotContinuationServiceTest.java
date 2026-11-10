@@ -36,6 +36,37 @@ class ShotContinuationServiceTest {
         var children=result.getRequest().getContinuationSegments();assertNull(children.getFirst().getShot().getPreviewImageUrl());
         assertEquals("https://archive/explicit.png",children.get(1).getShot().getPreviewImageUrl());assertNull(children.getLast().getShot().getEndFrameImageUrl());
     }
+    @Test void fl2vaUsesOnlyPerSegmentFramesAndPreservesInactiveReferenceDraft() throws Exception {
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(8);new ShotContinuationPlanner().plan(draft,true);
+        for(int i=0;i<draft.getSegments().size();i++){
+            var segment=draft.getSegments().get(i);segment.setPrompt("Continuous motion");
+            segment.setFirstFrameImageUrl("https://archive/first-"+i+".png");segment.setLastFrameImageUrl("https://archive/last-"+i+".png");
+            var image=new ShotRefImageDTO();image.setId("image");image.setImageUrl("https://archive/ref.png");segment.getReferenceImages().add(image);
+            var video=new ShotRefVideoDTO();video.setId("video");video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive/motion.mp4");segment.getReferenceVideos().add(video);
+            var audio=new ShotRefAudioDTO();audio.setAudioUrl("https://archive/audio.wav");segment.getReferenceAudios().add(audio);segment.setControlNetEnabled(true);segment.setControlVideoId("video");
+        }
+        var service=service();var model=model("TXT2VIDEO_FIRST_LAST");var plan=service.preview(draft,false,model,provider());assertTrue(plan.isRenderable(),plan.getIssues().toString());
+        var shot=shot(draft,"FIRST_LAST_FRAME");var children=service.prepare(shot,model,provider(),"960x544",null).getRequest().getContinuationSegments();
+        assertEquals(2,children.size());
+        for(int i=0;i<children.size();i++){
+            var child=children.get(i);assertEquals("https://archive/first-"+i+".png",child.getShot().getPreviewImageUrl());assertEquals("https://archive/last-"+i+".png",child.getShot().getEndFrameImageUrl());
+            assertEquals("[]",child.getShot().getRefImagesJson());assertEquals("[]",child.getShot().getRefVideosJson());assertEquals("[]",child.getShot().getRefAudiosJson());
+            assertFalse((Boolean)((Map<?,?>)child.getRequest().getH3Options().get("control_net")).get("enabled"));assertNull(child.getRequest().getResolvedRefVideos());
+        }
+        var first=draft.getSegments().getFirst();assertEquals(1,first.getReferenceVideos().size());assertTrue(first.isControlNetEnabled());
+        first.getReferenceImages().getFirst().setImageUrl("https://archive/other-ref.png");assertEquals(plan.getPlanHash(),service.preview(draft,false,model,provider()).getPlanHash());
+    }
+    @Test void ref2vaUsesReferenceMediaWithoutActivatingSavedFrameAnchors() throws Exception {
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(8);new ShotContinuationPlanner().plan(draft,true);draft.getSegments().forEach(s->s.setPrompt("Continuous action"));
+        var segment=draft.getSegments().getFirst();segment.setFirstFrameImageUrl("https://archive/first.png");segment.setLastFrameImageUrl("https://archive/last.png");
+        var image=new ShotRefImageDTO();image.setId("ref");image.setImageUrl("https://archive/ref.png");segment.getReferenceImages().add(image);
+        var service=service();var model=model("TXT2VIDEO_REF");var first=service.preview(draft,false,model,provider());assertTrue(first.isRenderable(),first.getIssues().toString());
+        var children=service.prepare(shot(draft,"REFERENCE_MODE"),model,provider(),"960x544",null).getRequest().getContinuationSegments();
+        assertNull(children.getFirst().getShot().getPreviewImageUrl());assertNull(children.getFirst().getShot().getEndFrameImageUrl());assertTrue(children.getFirst().getShot().getRefImagesJson().contains("ref.png"));
+        segment.setFirstFrameImageUrl("https://archive/other-first.png");assertEquals(first.getPlanHash(),service.preview(draft,false,model,provider()).getPlanHash());assertNotNull(segment.getLastFrameImageUrl());
+        var empty=new ShotContinuation();empty.setEnabled(true);empty.setDurationSeconds(8);new ShotContinuationPlanner().plan(empty,true);empty.getSegments().forEach(s->s.setPrompt("Continuous action"));
+        assertNotEquals(service.preview(empty,false,model,provider()).getPlanHash(),service.preview(empty,false,model("TXT2VIDEO_FIRST_LAST"),provider()).getPlanHash());
+    }
     @Test void segmentMetadataIsExplicitAndParentIdentityDoesNotLeak()throws Exception{
         var d=new ShotContinuation();d.setEnabled(true);d.setDurationSeconds(10);new ShotContinuationPlanner().plan(d,true);d.getSegments().forEach(s->s.setPrompt("Continuous walk"));
         var segment=d.getSegments().getFirst();segment.setName("独立片段");segment.setScriptContent("本段剧本");segment.setResSceneId(2032095628944588801L);

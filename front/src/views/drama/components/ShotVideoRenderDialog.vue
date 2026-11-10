@@ -9,8 +9,8 @@
         <el-form-item label="画幅"><el-radio-group v-model="ratio" @change="setRatio"><el-radio-button v-for="option in ratioOptions" :key="option" :value="option">{{ option }}</el-radio-button></el-radio-group></el-form-item>
         <el-form-item label="生成尺寸"><el-select v-model="config.size" filterable><el-option v-for="s in sizeOptions" :key="s" :value="s" :label="s.replace('x', ' × ')" /></el-select></el-form-item>
       </el-form>
-      <VideoEnhancementOptions v-model="config.dynamicWorkflow" :provider-id="config.providerId" :model-id="selectedModelId" :model-code="config.modelCode" :size="config.size" :disabled="submitting" />
-      <div v-if="!continuation" class="render-assets"><div v-for="item in anchors" :key="item.label" class="render-anchor"><el-image v-if="item.url" :src="item.url" fit="cover" :preview-src-list="[item.url]" preview-teleported /><span v-else class="anchor-empty">—</span><span>{{ item.label }}</span></div><div class="render-asset-counts"><span>参考图 <b>{{ shot?.refImages?.length || 0 }}</b></span><span>视频 <b>{{ shot?.refVideos?.length || 0 }}</b></span><span>音频 <b>{{ shot?.refAudios?.length || 0 }}</b></span></div></div>
+      <VideoEnhancementOptions v-if="shot?.generationMode === 'REFERENCE_MODE'" v-model="config.dynamicWorkflow" :provider-id="config.providerId" :model-id="selectedModelId" :model-code="config.modelCode" :size="config.size" :disabled="submitting" />
+      <div v-if="!continuation" class="render-assets"><div v-for="item in anchors" :key="item.label" class="render-anchor"><el-image v-if="item.url" :src="item.url" fit="cover" :preview-src-list="[item.url]" preview-teleported /><span v-else class="anchor-empty">—</span><span>{{ item.label }}</span></div><div v-if="shot?.generationMode === 'REFERENCE_MODE'" class="render-asset-counts"><span>参考图 <b>{{ shot?.refImages?.length || 0 }}</b></span><span>视频 <b>{{ shot?.refVideos?.length || 0 }}</b></span><span>音频 <b>{{ shot?.refAudios?.length || 0 }}</b></span></div></div>
       <p class="render-note">{{ continuation ? '剧本、导演、提示词和素材来自主页面各片段；提交前校验模型能力与最新计划。' : '剧本、提示词与参考素材在镜头中配置，这里只设置本次生成参数。' }}</p>
       <el-collapse v-if="shot?.videoUrl || shot?.videoPrompt || shot?.prompt" class="render-review"><el-collapse-item title="查看提示词与已有结果" name="review"><p class="render-prompt">{{ shot?.generationMode === 'REFERENCE_MODE' ? shot?.prompt : shot?.videoPrompt || shot?.prompt }}</p><video v-if="shot?.videoUrl" :src="shot.videoUrl" controls class="render-result" /><el-button v-if="shot?.id" link type="primary" @click="historyVisible = true">视频历史与版本重选</el-button></el-collapse-item></el-collapse>
       <el-alert v-if="error" type="error" :closable="false" :title="error" />
@@ -87,7 +87,7 @@ async function submit() {
   if (submitting.value || !shot.value?.id || !models.value.some(m => m.modelCode === config.modelCode)) return
   if (!providers.value.some(p => String(p.id) === config.providerId) || !ratioOptions.value.includes(ratio.value) || !sizeOptions.value.includes(config.size)) return ElMessage.warning('提供商、画幅或尺寸选项已变化，请重新选择')
   const validated = validateGenerationSize(config.size, 'video'); if (!validated.valid) return ElMessage.warning(validated.message)
-  const token = session, id = String(shot.value.id), values = { ...config, size: validated.normalized! }; submitting.value = true; error.value = ''
+  const token = session, id = String(shot.value.id), values = { ...config, size: validated.normalized!, dynamicWorkflow: shot.value.generationMode === 'REFERENCE_MODE' ? config.dynamicWorkflow : undefined }; submitting.value = true; error.value = ''
   const current = () => token === session && visible.value
   try {
     if (submitContinuation) await submitContinuation(values, message => { if (current()) status.value = message })

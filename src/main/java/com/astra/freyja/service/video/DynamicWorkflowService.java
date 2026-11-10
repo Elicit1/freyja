@@ -57,6 +57,7 @@ public class DynamicWorkflowService {
         if(selection==null)return null;
         var base=route(provider,model);DynamicWorkflowOptions options=selection.getOptions();
         if(options==null||!options.isUpscale()&&!options.isFaceRepair())return null;
+        if(!"TXT2VIDEO_REF".equals(base.getModelType()))throw new BizException(400,"二采放大和人脸修复仅支持 REF2VA 参考生成模式");
         options.validate();options=json.convertValue(options,DynamicWorkflowOptions.class);
         Plan plan=new Plan();plan.setName("视频增强");
         JsonNode match=null;
@@ -66,7 +67,7 @@ public class DynamicWorkflowService {
             if(!match.path("freyjaUpscale").path("supported").asBoolean())throw new BizException(400,"请更新网关以使用 FREYJA 二采组件");
             if(options.getUpscaleSteps()>match.path("freyjaUpscale").path("maxSteps").asInt(0))throw new BizException(400,"高清采样步数超过当前基础模型上限");
         }
-        if(options.isFaceRepair()&&!java.util.stream.StreamSupport.stream(match.path("stages").spliterator(),false).anyMatch(n->"FACE".equals(n.asText())))throw new BizException(400,"当前人脸修复需要参考生成基础模型；首尾帧模型可使用二采放大");
+        if(options.isFaceRepair()&&!java.util.stream.StreamSupport.stream(match.path("stages").spliterator(),false).anyMatch(n->"FACE".equals(n.asText())))throw new BizException(400,"当前 REF2VA 基础模型未提供人脸修复能力");
         plan.setCapabilityRevision(match.path("revision").asText());plan.setNodeId(match.path("nodeId").asText());plan.setBaseSize(VideoBatchPreparation.normalizeSize(size));plan.setOptions(options);
         var wh=plan.getBaseSize().split("x");int scale=options.isUpscale()?2:1;
         long w=(long)Integer.parseInt(wh[0])*scale,h=(long)Integer.parseInt(wh[1])*scale;

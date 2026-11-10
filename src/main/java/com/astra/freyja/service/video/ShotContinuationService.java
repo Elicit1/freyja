@@ -39,6 +39,7 @@ public class ShotContinuationService {
         catch(BizException e){throw e;}catch(Exception e){throw new BizException(502,"无法读取 H3 网关能力，请检查提供商连接");}
     }
     public ShotContinuationPlan preview(ShotContinuation draft,boolean auto,AiModel model,AiProvider provider){
+        draft=inputsForModel(draft,model.getModelType());
         var result=planner.plan(draft,auto);JsonNode cap;
         try{cap=capabilities(model,provider);}catch(BizException e){result.getIssues().add(e.getMessage());return result;}
         var h3=cap.path("h3");
@@ -99,13 +100,14 @@ public class ShotContinuationService {
         // Include both so media prepared before an adapter update cannot be reused.
         String referenceRevision=hasVideos?cap.path("workflowRevision").asText(""):"";
         result.setReferenceVideoRevision(referenceRevision);
-        result.setPlanHash(VideoBatchPreparation.hash(result.getPlanHash()+"|"+result.getCapabilityRevision()+"|"+model.getId()+"|"+provider.getBaseUrl()+"|"+result.getNodeId()+"|"+referenceRevision+"|"+Objects.toString(result.getBackendSignature(),"")));return result;
+        result.setPlanHash(VideoBatchPreparation.hash(result.getPlanHash()+"|"+result.getCapabilityRevision()+"|"+model.getId()+"|"+model.getModelType()+"|"+provider.getBaseUrl()+"|"+result.getNodeId()+"|"+referenceRevision+"|"+Objects.toString(result.getBackendSignature(),"")));return result;
     }
     public VideoBatchModels.Snapshot prepare(DramaShot shot,AiModel model,AiProvider provider,String size,DramaShotRenderRequestDTO supplied){
         return prepare(shot,model,provider,size,supplied,(completed,total)->{});
     }
     public VideoBatchModels.Snapshot prepare(DramaShot shot,AiModel model,AiProvider provider,String size,DramaShotRenderRequestDTO supplied,java.util.function.BiConsumer<Integer,Integer> progress){
         var draft=read(shot);var plan=preview(draft,false,model,provider);
+        draft=plan.getDraft();
         if(!plan.isRenderable())throw new BizException(409,String.join("；",plan.getIssues()));
         if(supplied!=null&&!Objects.equals(supplied.getExpectedRenderFingerprint(),plan.getPlanHash()))throw new BizException(409,"接续计划已变化，请先预览最新分段计划");
         if(!Objects.equals(model.getModelType(),"REFERENCE_MODE".equals(shot.getGenerationMode())?"TXT2VIDEO_REF":"TXT2VIDEO_FIRST_LAST"))throw new BizException(400,"模型类型与镜头生成模式不一致");
@@ -161,6 +163,22 @@ public class ShotContinuationService {
         var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",false);options.put("capability_revision",h3.path("revision").asText());options.put("length",ShotContinuationPlanner.align((int)Math.round(shot.getDuration().doubleValue()*24)));options.put("node_id",cap.path("nodeId").asText());
         options.put("control_required_frames",(int)Math.round(shot.getDuration().doubleValue()*24));
         options.put("control_net",Map.of("enabled",true,"reference_id",control.getReferenceId(),"control_type",control.getControlType(),"strength",control.getStrength()));return options;
+    }
+    /** Preserve both editing drafts; only the selected mode enters validation, hashes and execution. */
+    private ShotContinuation inputsForModel(ShotContinuation source,String modelType){
+        if(source==null)throw new BizException(400,"接续草稿不能为空");
+        var effective=json.convertValue(source,ShotContinuation.class);
+        boolean frames="TXT2VIDEO_FIRST_LAST".equals(modelType);
+        if(!frames&&!"TXT2VIDEO_REF".equals(modelType))throw new BizException(400,"请选择 REF2VA 或 FL2VA 基础模型");
+        if(frames){effective.setVideoSources(new ArrayList<>());effective.setControlNet(new ShotControlNetOptions());}
+        if(effective.getSegments()!=null)for(var segment:effective.getSegments()){
+            if(segment==null)continue;
+            if(frames){
+                segment.setReferenceImages(new ArrayList<>());segment.setReferenceVideos(new ArrayList<>());segment.setReferenceAudios(new ArrayList<>());
+                segment.setControlNetEnabled(false);segment.setControlVideoId(null);segment.setControlType("CANNY");segment.setControlStrength(1);
+            }else{segment.setFirstFrameImageUrl(null);segment.setLastFrameImageUrl(null);}
+        }
+        return effective;
     }
     private DramaShot copy(DramaShot shot){return json.convertValue(shot,DramaShot.class);}
     private String write(Object value){return com.astra.freyja.util.VideoReferenceSnapshotJson.write(value,json);}

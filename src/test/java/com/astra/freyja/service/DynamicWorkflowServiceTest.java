@@ -13,10 +13,10 @@ import static org.mockito.Mockito.*;
 import static org.mockito.ArgumentMatchers.*;
 
 class DynamicWorkflowServiceTest {
-    DynamicWorkflowService service;ObjectMapper json=new ObjectMapper();
+    DynamicWorkflowService service;AiModel baseModel;ObjectMapper json=new ObjectMapper();
     @BeforeEach void setup()throws Exception{
         var models=mock(AiModelMapper.class);
-        var model=new AiModel();model.setId(2L);model.setProviderId(1L);model.setStatus(1);model.setModelType("TXT2VIDEO_REF");model.setModelCode("h3");when(models.selectById(2L)).thenReturn(model);
+        var model=baseModel=new AiModel();model.setId(2L);model.setProviderId(1L);model.setStatus(1);model.setModelType("TXT2VIDEO_REF");model.setModelCode("h3");when(models.selectById(2L)).thenReturn(model);
         service=spy(new DynamicWorkflowService(models,mock(AiProviderMapper.class),mock(CryptoUtil.class),json,mock(JdbcTemplate.class)));
         doReturn(json.readTree("{\"models\":[{\"modelCode\":\"h3\",\"nodeId\":\"node\",\"supported\":true,\"revision\":\"r1\",\"stages\":[\"BASE\",\"UPSCALE\",\"FACE\"],\"maxTargetPixels\":4194304}]}" )).when(service).capabilities(1L);
     }
@@ -37,6 +37,16 @@ class DynamicWorkflowServiceTest {
         assertThrows(RuntimeException.class,()->service.resolve(selection,1L,2L,"960x544","other-node"));
         assertThrows(RuntimeException.class,()->service.resolve(selection,1L,2L,"1920x1088",null));
         assertThrows(RuntimeException.class,()->service.resolve(selection,4L,2L,"960x544",null));
+    }
+    @Test void fl2vaRejectsEitherEnhancementEvenWhenGatewayClaimsSupport(){
+        baseModel.setModelType("TXT2VIDEO_FIRST_LAST");
+        for(boolean upscale:new boolean[]{false,true})for(boolean face:new boolean[]{false,true}){
+            var selection=new DynamicWorkflowOptions.Selection();var options=new DynamicWorkflowOptions();options.setUpscale(upscale);options.setFaceRepair(face);selection.setOptions(options);
+            if(!upscale&&!face){assertNull(service.resolve(selection,1L,2L,"960x544",null));continue;}
+            var error=assertThrows(com.astra.freyja.common.BizException.class,()->service.resolve(selection,1L,2L,"960x544",null));
+            assertEquals(400,error.getCode());assertTrue(error.getMessage().contains("REF2VA"));
+        }
+        verify(service,never()).capabilities(any());
     }
     @Test void rejectsFaceOnBaseModelsWithoutThatStage()throws Exception{
         doReturn(json.readTree("{\"models\":[{\"modelCode\":\"h3\",\"supported\":true,\"nodeId\":\"node\",\"stages\":[\"BASE\",\"UPSCALE\"]}]}" )).when(service).capabilities(1L);
