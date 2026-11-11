@@ -229,7 +229,10 @@ curl -X POST http://127.0.0.1:8000/v1/images/generations \
 | `minimax-h3-ref2va` | Fast |
 | `minimax-h3-ref` | Turbo4 |
 | `minimax-h3-ref-turbo8` | Turbo8 |
+| `minimax-h3-ref2va-int8` | INT8 基础，无加速 LoRA，默认20步 |
 | `pika-h3-flex-ref2va` | Pika Flex，一采固定六步 LCM |
+
+另提供首尾帧型号 `minimax-h3-fl2va-int8`，同样使用 INT8 底模直接采样、默认20步，两种模式均支持二采与人脸修复。权重、可导入 UI 工作流与 Studio 注册方式见 [H3 INT8 基础工作流](../docs/h3-int8-base.md)。
 
 放大与人脸修复统一通过 `dynamic_workflow` 的 `UPSCALE`、`FACE` 阶段配置，直接使用所选基础 REF 模型；不再登记独立的人脸修复模型或保留其专用 API 模板。修脸继承同一组参考图片、`<Video N>`、独立音频及原声轨，按请求的 `denoise` 重绘裁剪区域后贴回。未开启时只执行一采。
 

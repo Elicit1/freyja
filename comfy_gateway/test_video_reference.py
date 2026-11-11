@@ -22,7 +22,7 @@ from test_render_input_validation import bind_contract
 BASE = Path(__file__).resolve().parent
 REF_MODELS = (
     "minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8",
-    "pika-h3-flex-ref2va",
+    "pika-h3-flex-ref2va", "minimax-h3-ref2va-int8",
 )
 
 

@@ -73,6 +73,7 @@ front/dist/
 !/docs/scene-reference-workflow.md
 !/docs/render-input-validation.md
 !/docs/pika-h3-flex.md
+!/docs/h3-int8-base.md
 !/docs/minimax-h3-long-video-gateway-design.md
 !/docs/minimax-h3-continuation-deployment.md
 !/docs/minimax-h3-continuation-modes-design.md

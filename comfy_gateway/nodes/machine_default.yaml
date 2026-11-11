@@ -804,3 +804,185 @@ models:
       clip_name: ["128", "inputs", "clip_name"]
       video_vae_name: ["119", "inputs", "vae_name"]
       audio_vae_name: ["120", "inputs", "vae_name"]
+
+  - model_name: "minimax-h3-fl2va-int8"
+    description: "MiniMax H3 FL2VA INT8 base, default 20 steps, no LoRA or acceleration"
+    template_file: "comfyUIApi/minimax_h3_fl2va_int8.json"
+    handler: "minimax_h3_fl2va"
+    h3_extensions:
+      continuation: true
+      context_windows: true
+      control_net: true
+      context_windows_with_control_net: false
+      control_version: '2.0'
+      control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
+      model_output:
+        id: '6'
+        class_type: UNETLoader
+      conditioning:
+        id: '104'
+        class_type: MiniMaxH3ImageToVideo
+      video_vae:
+        id: '11'
+        class_type: VAELoader
+      audio_vae:
+        id: '24'
+        class_type: VAELoader
+      model_consumers:
+      - id: '9'
+        class_type: BasicScheduler
+        input: model
+      - id: '16'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '16'
+        class_type: BasicGuider
+        input: conditioning
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+            bbox_detector: yolox_l.onnx
+            pose_estimator: dw-ll_ucoco_384.onnx
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
+        HED:
+          class_type: HEDPreprocessor
+          inputs:
+            safe: enable
+            resolution: 512
+        MLSD:
+          class_type: M-LSDPreprocessor
+          inputs:
+            score_threshold: 0.1
+            dist_threshold: 0.1
+            resolution: 512
+        SCRIBBLE:
+          class_type: FakeScribblePreprocessor
+          inputs:
+            safe: enable
+            resolution: 512
+      prepared_control_types:
+      - LAYOUT
+      - PREPARED
+    default_steps: 20
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    mappings:
+      steps: ["9", "inputs", "steps"]
+      prompt: ["104", "inputs", "prompt"]
+      width: ["104", "inputs", "width"]
+      height: ["104", "inputs", "height"]
+      length: ["104", "inputs", "length"]
+      seed: ["15", "inputs", "noise_seed"]
+      unet_name: ["6", "inputs", "unet_name"]
+      clip_name: ["13", "inputs", "clip_name"]
+      video_vae_name: ["11", "inputs", "vae_name"]
+      audio_vae_name: ["24", "inputs", "vae_name"]
+
+  - model_name: "minimax-h3-ref2va-int8"
+    description: "MiniMax H3 REF2VA INT8 base, default 20 steps, no LoRA or acceleration"
+    template_file: "comfyUIApi/minimax_h3_ref2va_int8.json"
+    handler: "minimax_h3_ref2va"
+    h3_extensions:
+      continuation: true
+      context_windows: true
+      control_net: true
+      context_windows_with_control_net: false
+      control_version: '2.0'
+      control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors
+      model_output:
+        id: '127'
+        class_type: UNETLoader
+      conditioning:
+        id: '136'
+        class_type: MiniMaxH3ReferenceToVideo
+      video_vae:
+        id: '119'
+        class_type: VAELoader
+      audio_vae:
+        id: '120'
+        class_type: VAELoader
+      model_consumers:
+      - id: '124'
+        class_type: BasicScheduler
+        input: model
+      - id: '126'
+        class_type: BasicGuider
+        input: model
+      conditioning_consumers:
+      - id: '126'
+        class_type: BasicGuider
+        input: conditioning
+      preprocessors:
+        CANNY:
+          class_type: Canny
+          inputs:
+            low_threshold: 0.4
+            high_threshold: 0.8
+        POSE:
+          class_type: DWPreprocessor
+          inputs:
+            detect_hand: enable
+            detect_body: enable
+            detect_face: enable
+            resolution: 512
+            bbox_detector: yolox_l.onnx
+            pose_estimator: dw-ll_ucoco_384.onnx
+        DEPTH:
+          class_type: DepthAnythingV2Preprocessor
+          inputs:
+            ckpt_name: depth_anything_v2_vitl.pth
+            resolution: 512
+        HED:
+          class_type: HEDPreprocessor
+          inputs:
+            safe: enable
+            resolution: 512
+        MLSD:
+          class_type: M-LSDPreprocessor
+          inputs:
+            score_threshold: 0.1
+            dist_threshold: 0.1
+            resolution: 512
+        SCRIBBLE:
+          class_type: FakeScribblePreprocessor
+          inputs:
+            safe: enable
+            resolution: 512
+      prepared_control_types:
+      - LAYOUT
+      - PREPARED
+    reference_video:
+      condition_node_id: "136"
+      output_node_ids: ["130"]
+      # Reference input slots declared by this model/node; platform maxVideos may be lower.
+      max_videos: 3
+      decode_fps: 24
+    default_steps: 20
+    default_cfg: 1.0
+    timeout_seconds: 1800
+    mappings:
+      steps: ["124", "inputs", "steps"]
+      prompt: ["136", "inputs", "prompt"]
+      width: ["136", "inputs", "width"]
+      height: ["136", "inputs", "height"]
+      length: ["136", "inputs", "length"]
+      seed: ["129", "inputs", "noise_seed"]
+      unet_name: ["127", "inputs", "unet_name"]
+      clip_name: ["128", "inputs", "clip_name"]
+      video_vae_name: ["119", "inputs", "vae_name"]
+      audio_vae_name: ["120", "inputs", "vae_name"]

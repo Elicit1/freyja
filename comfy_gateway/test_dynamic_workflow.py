@@ -14,7 +14,7 @@ from video_reference import workflow_revision
 
 class DynamicWorkflowTests(unittest.TestCase):
     def test_fl2va_face_keeps_both_frames_in_the_validated_transport_contract(self):
-        for name in ("minimax-h3-fl2va","minimax-h3-fl2va-turbo4","minimax-h3-fl2va-turbo8","pika-h3-flex-fl2va"):
+        for name in ("minimax-h3-fl2va","minimax-h3-fl2va-turbo4","minimax-h3-fl2va-turbo8","pika-h3-flex-fl2va", "minimax-h3-fl2va-int8"):
             model,cfg=setup_model(name);model.reference_video=None
             for stage in ("UPSCALE","FACE"):
                 with self.subTest(model=name,stage=stage):
@@ -41,7 +41,7 @@ class DynamicWorkflowTests(unittest.TestCase):
         self.assertEqual(11,mixed_reference_count(request))
 
     def test_selflift_is_on_all_reference_variants_and_pins_context_after_the_lift(self):
-        for model in ("minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8", "pika-h3-flex-ref2va"):
+        for model in ("minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8", "pika-h3-flex-ref2va", "minimax-h3-ref2va-int8"):
             for memory in ("FULL","TEMPORAL","SPATIAL"):
                 with self.subTest(model=model,memory=memory):
                     _, request, graph=self.graph("UPSCALE",model,component={"sampler":"SELFLIFT","memory":memory},save_latent=True,
@@ -240,20 +240,20 @@ class DynamicWorkflowTests(unittest.TestCase):
         self.assertEqual("person.png", graph[face_ref[0]]["inputs"]["image"])
 
     def test_all_reference_base_variants_support_standalone_stages(self):
-        for model in ("minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8", "pika-h3-flex-ref2va"):
+        for model in ("minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8", "pika-h3-flex-ref2va", "minimax-h3-ref2va-int8"):
             for stage in ("BASE", "UPSCALE", "FACE"):
                 with self.subTest(model=model, stage=stage): self.graph(stage, model)
 
     def test_tiled_upscale_supports_only_reference_model_bindings(self):
         for name in ("minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8",
-                     "pika-h3-flex-ref2va"):
+                     "pika-h3-flex-ref2va", "minimax-h3-ref2va-int8"):
             with self.subTest(model=name):
                 _, _, graph = self.graph("UPSCALE", name, component={"memory":"SPATIAL"})
                 self.assertEqual(1, sum(n["class_type"] == "SamplerCustomAdvanced" for n in graph.values()))
                 self.assertEqual("FreyjaH3TileModel", graph["dynamic_tiles"]["class_type"])
 
     def test_all_fl2va_variants_support_both_second_pass_modes_and_face(self):
-        for name in ("minimax-h3-fl2va", "minimax-h3-fl2va-turbo4", "minimax-h3-fl2va-turbo8", "pika-h3-flex-fl2va"):
+        for name in ("minimax-h3-fl2va", "minimax-h3-fl2va-turbo4", "minimax-h3-fl2va-turbo8", "pika-h3-flex-fl2va", "minimax-h3-fl2va-int8"):
             model, _ = setup_model(name)
             capability = describe(model, BASE)
             self.assertTrue(capability["supported"])

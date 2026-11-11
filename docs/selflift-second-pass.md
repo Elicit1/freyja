@@ -6,7 +6,7 @@
 
 SelfLift 增加一次 VAE 解码/重编码。H3 VAE 负责完整时间轴的编码，相邻像素帧不会独立编码而改变 17n+5 时间相位。原始一采 latent 和音频保持不变，音轨仍来自本段基础视频。二采前缀接续在 SelfLift 修正之后挂载，以免覆盖前序锁定区域；保存二采 latent 后才进行修脸。
 
-支持当前配置的 8 个 H3 视频生成型号：`minimax-h3-fl2va`、`minimax-h3-fl2va-turbo4`、`minimax-h3-fl2va-turbo8`、`pika-h3-flex-fl2va`、`minimax-h3-ref2va`、`minimax-h3-ref`、`minimax-h3-ref-turbo8`、`pika-h3-flex-ref2va`。图像生成、超分后处理和补帧模型不是二采底模，不进入此能力目录。能力由显式 handler 和节点绑定声明，不依赖型号名称猜测。
+支持当前配置的 10 个 H3 视频生成型号：`minimax-h3-fl2va`、`minimax-h3-fl2va-turbo4`、`minimax-h3-fl2va-turbo8`、`pika-h3-flex-fl2va`、`minimax-h3-fl2va-int8`、`minimax-h3-ref2va`、`minimax-h3-ref`、`minimax-h3-ref-turbo8`、`pika-h3-flex-ref2va`、`minimax-h3-ref2va-int8`。两个 INT8 基础型号不加载加速 LoRA，基础采样默认20步，见 [接入说明](h3-int8-base.md)。图像生成、超分后处理和补帧模型不是二采底模，不进入此能力目录。能力由显式 handler 和节点绑定声明，不依赖型号名称猜测。
 
 部署须同步更新 Java 后端、前端、FastAPI 网关和 `custom_nodes/freyja_h3_continuation`，队列空闲后重启 ComfyUI。新版网关的 `freyjaUpscale.samplers` 返回两种方式；旧网关不显示可用的 SelfLift 选择，后端拒绝向旧网关提交该方式。缺少节点包时 ComfyUI 会拒绝工作流，不会回退为标准二采。
 
