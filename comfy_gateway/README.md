@@ -227,13 +227,15 @@ curl -X POST http://127.0.0.1:8000/v1/images/generations \
 | 模型编码 | 工作流 |
 | --- | --- |
 | `minimax-h3-ref2va` | Fast |
-| `minimax-h3-face-refine` | Fast + FaceRefine |
 | `minimax-h3-ref` | Turbo4 |
-| `minimax-h3-ref-turbo4-face-refine` | Turbo4 + FaceRefine |
 | `minimax-h3-ref-turbo8` | Turbo8 |
-| `minimax-h3-ref-turbo8-face-refine` | Turbo8 + FaceRefine |
+| `pika-h3-flex-ref2va` | Pika Flex，一采固定六步 LCM |
 
-FaceRefine 两个阶段共享同一组 `<Video N>` 输入及可选原音，不重复创建视频加载节点；原有参考图片、独立音频、采样步数和最终精修输出保持各模板约定。
+放大与人脸修复统一通过 `dynamic_workflow` 的 `UPSCALE`、`FACE` 阶段配置，直接使用所选基础 REF 模型；不再登记独立的人脸修复模型或保留其专用 API 模板。修脸继承同一组参考图片、`<Video N>`、独立音频及原声轨，按请求的 `denoise` 重绘裁剪区域后贴回。未开启时只执行一采。
+
+Pika 一采保留原始 `ManualSigmas` 六步序列及 LCM。增强阶段从该曲线的末尾按重绘强度选择区间，再进行分段线性重采样：放大生成 `component.steps + 1` 个 Sigma 值，修脸沿用基础模型的六步。步数控制区间内的采样次数，重绘强度控制起始位置；不会向 `ManualSigmas` 写入无效的 `steps`、`denoise` 或 `model` 输入。这个增强调度是网关适配，不是官方六步一采配方，画质与动作保持仍需 GPU 对照。
+
+模型 ID 必须匹配登记项，已移除的 ID 会报错，不会按部分名称回退到其他基础模型；历史任务快照不重写。
 
 每个模型分别配置 `reference_video` 的媒体限制。人工验收状态及其签名字段已移除，旧配置字段会被忽略；节点声明的视频槽位上限为 3，模型中心的 `maxVideos` 可进一步限制每个生成片段的数量。默认限制为 24fps、每段/总计最多 15 秒、360 帧、768×768 解码范围和 12 个混合素材，模型显式配置可覆盖这些值。Java 读取网关实时能力，并保留模型中心设置的更小预算；工作流、节点路由、媒体摘要、真实帧数和快照版本仍校验。详细流程见 [接续部署说明](../docs/minimax-h3-continuation-deployment.md)。
 

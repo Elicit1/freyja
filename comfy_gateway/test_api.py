@@ -19,7 +19,8 @@ class TestGatewayAPI(unittest.TestCase):
         base = next(m for m in models if m["modelCode"] == "minimax-h3-ref-turbo8")
         self.assertEqual(["BASE", "UPSCALE", "FACE"], base["stages"])
         self.assertEqual(64, len(base["revision"]))
-        self.assertTrue(next(m for m in models if m["modelCode"] == "minimax-h3-ref-turbo8-face-refine")["legacyFixedFace"])
+        self.assertTrue(next(m for m in models if m["modelCode"] == "pika-h3-flex-ref2va")["supported"])
+        self.assertFalse(any("face-refine" in model["modelCode"] for model in models))
         pool.assert_not_called()
 
 
@@ -90,8 +91,17 @@ class TestGatewayAPI(unittest.TestCase):
         self.assertIn("minimax-h3-fl2va-turbo4", model_ids)
         self.assertIn("minimax-h3-fl2va-turbo8", model_ids)
         self.assertIn("minimax-h3-ref-turbo8", model_ids)
-        self.assertIn("minimax-h3-ref-turbo8-face-refine", model_ids)
+        self.assertFalse(any("face-refine" in name for name in model_ids))
         self.assertIn("minimax-h3-ref2va", model_ids)
+
+    def test_removed_model_ids_fail_before_accessing_compute(self):
+        with patch("main.get_client_pool") as pool:
+            for name in ("minimax-h3-face-refine", "minimax-h3-ref-turbo4-face-refine", "minimax-h3-ref-turbo8-face-refine"):
+                with self.subTest(model=name):
+                    response = self.client.post("/v1/images/generations", json={"model": name, "prompt": "portrait"})
+                    self.assertEqual(400, response.status_code)
+                    self.assertIn("not supported", response.text)
+            pool.assert_not_called()
 
     def test_upscale_model_inventory_is_read_from_the_selected_node(self):
         http = Mock(); response = Mock()

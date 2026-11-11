@@ -33,11 +33,9 @@ def bindings(model, graph):
 def configure(path, refresh=False):
     base=Path(__file__).parent;text=path.read_text(encoding="utf-8");data=yaml.safe_load(text)
     for model in data["models"]:
-        if model["handler"] not in {"minimax_h3_fl2va","minimax_h3_ref2va","minimax_h3_face_refine"}:continue
+        if model["handler"] not in {"minimax_h3_fl2va","minimax_h3_ref2va"}:continue
         graph=json.loads((base/model["template_file"]).read_text(encoding="utf-8"))
         cfg=bindings(model,graph)
-        # Keep crop-refinement on its original model: global control frames cannot be injected into a cropped face pass.
-        if model["handler"]=="minimax_h3_face_refine":cfg["refine_pass_policy"]="UNCHANGED_CROP_REFINEMENT"
         block="\n"+"\n".join("    "+line for line in yaml.safe_dump({"h3_extensions":cfg},sort_keys=False,allow_unicode=True).splitlines())
         pattern=r'(  - model_name: "'+re.escape(model["model_name"])+r'"[\s\S]*?    handler: "[^"\n]+")'
         if refresh:

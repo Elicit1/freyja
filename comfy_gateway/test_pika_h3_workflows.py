@@ -5,6 +5,7 @@ from pathlib import Path
 import yaml
 
 from config import GatewayConfig, NodeConfig
+from dynamic_workflow import describe
 from schemas import ImageGenerationRequest
 from workflow_engine import WorkflowEngine
 
@@ -17,6 +18,50 @@ class PikaH3WorkflowTests(unittest.TestCase):
             (cls.root / "nodes/machine_default.yaml").read_text(encoding="utf-8")))
         cls.models = {m.model_name: m for m in node.models}
         cls.engine = WorkflowEngine(GatewayConfig(models=node.models))
+
+    def refinement(self, stage, steps=2, denoise=.25):
+        model = self.models["pika-h3-flex-ref2va"]
+        before = self.engine.get_template(model)
+        options = {"stage": stage, "revision": describe(model, self.root)["revision"],
+            "source_url": "http://archive/source.mp4", "source_sha256": "a"*64, "denoise": denoise}
+        if stage == "UPSCALE":
+            options.update(scale=2, component={"steps": steps, "memory": "FULL"})
+        graph = self.engine.assemble_workflow(
+            ImageGenerationRequest(model=model.model_name, prompt="portrait", length=124,
+                size="1920x1088" if stage == "UPSCALE" else "960x544", dynamic_workflow=options),
+            uploaded_ref_images=[f"ref{i}.png" for i in range(9)], uploaded_ref_audios=["voice.wav"], dynamic_source_filename="source.mp4")
+        self.assertEqual(before, self.engine.get_template(model))
+        sampler = next(node for node in graph.values() if node["class_type"] == "SamplerCustomAdvanced")
+        self.assertEqual("lcm", graph[sampler["inputs"]["sampler"][0]]["inputs"]["sampler_name"])
+        schedule = graph[sampler["inputs"]["sigmas"][0]]
+        self.assertEqual("ManualSigmas", schedule["class_type"])
+        self.assertEqual({"sigmas"}, set(schedule["inputs"]))
+        values = [float(value) for value in schedule["inputs"]["sigmas"].split(",")]
+        self.assertLess(values[0], 1)
+        self.assertEqual(0, values[-1])
+        self.assertEqual(["dynamic_source", 2], graph["130"]["inputs"]["audio"])
+        return graph, values
+
+    def test_upscale_changes_the_actual_schedule_for_steps_and_denoise(self):
+        _, two = self.refinement("UPSCALE", steps=2)
+        _, four = self.refinement("UPSCALE", steps=4)
+        _, stronger = self.refinement("UPSCALE", steps=2, denoise=.5)
+        self.assertEqual(3, len(two))
+        self.assertEqual(5, len(four))
+        self.assertEqual(two[0], four[0])
+        self.assertGreater(stronger[0], two[0])
+
+    def test_face_repair_uses_pika_schedule_and_preserves_all_reference_slots(self):
+        graph, values = self.refinement("FACE", denoise=.4)
+        self.assertEqual(7, len(values))
+        self.assertNotIn("125", graph, "face-only requests must not regenerate the base video")
+        self.assertNotIn("136", graph)
+        self.assertEqual(["145", 0], graph["dynamic_face_160"]["inputs"]["model"])
+        inputs = graph["dynamic_face_158"]["inputs"]
+        for index in range(9):
+            self.assertEqual(graph[inputs[f"ref_images.ref_image_{index}"][0]]["inputs"]["image"], f"ref{index}.png")
+        _, weaker = self.refinement("FACE", denoise=.2)
+        self.assertLess(weaker[0], values[0])
 
     def test_fixed_official_schedule_survives_generic_overrides(self):
         for kind, sampler, sigmas, guider, lora in (

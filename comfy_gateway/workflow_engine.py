@@ -204,32 +204,6 @@ class WorkflowEngine:
                 uploaded_audio=uploaded_audio,
                 uploaded_ref_audios=uploaded_ref_audios
             )
-        elif handler_name == "minimax_h3_face_refine":
-            self._apply_minimax_h3_ref2va(
-                workflow, model_cfg, ref_images, request, uploaded_audio, uploaded_ref_audios
-            )
-            refine_inputs = workflow["158"]["inputs"]
-            for key in list(refine_inputs):
-                if key.startswith("ref_images.ref_image_"):
-                    del refine_inputs[key]
-            for idx, filename in enumerate(ref_images[:5]):
-                node_id = f"158_ref_img_{idx}"
-                workflow[node_id] = {
-                    "class_type": "LoadImage", "inputs": {"image": filename}
-                }
-                refine_inputs[f"ref_images.ref_image_{idx}"] = [node_id, 0]
-            # A shared prompt requires the same Audio namespace in both passes.
-            for key in list(refine_inputs):
-                if key.startswith("ref_audios.ref_audio_"):
-                    del refine_inputs[key]
-            if request.render_input_contract:
-                main_inputs = workflow[model_cfg.mappings["prompt"][0]]["inputs"]
-                for key, value in main_inputs.items():
-                    if key.startswith("ref_audios.ref_audio_"):
-                        refine_inputs[key] = copy.deepcopy(value)
-            else:
-                refine_inputs["ref_audios.ref_audio_0"] = ["121", 0]
-            refine_inputs["prompt"] = final_prompt
         elif handler_name == "standard":
             self._apply_standard_handler(workflow, model_cfg, ref_images)
         else:
@@ -238,7 +212,7 @@ class WorkflowEngine:
         if model_cfg.reference_video:
             self._apply_reference_videos(workflow, model_cfg, uploaded_ref_videos or [])
 
-        if handler_name in {"minimax_h3_fl2va", "minimax_h3_ref2va", "minimax_h3_face_refine"}:
+        if handler_name in {"minimax_h3_fl2va", "minimax_h3_ref2va"}:
             used = {value[0] for node in workflow.values() for value in node.get("inputs", {}).values()
                     if isinstance(value, list) and len(value) == 2 and isinstance(value[0], str)}
             for node_id in list(workflow):
@@ -258,11 +232,7 @@ class WorkflowEngine:
     def _apply_reference_videos(self, workflow, model_cfg, videos):
         capability = model_cfg.reference_video
         cond = capability.condition_node_id
-        # FaceRefine reuses the prompt in its second pass, including <Video N> labels.
-        # Share the same ordered inputs so those labels stay bound in both passes.
         conditioning_nodes = [cond]
-        if model_cfg.handler == "minimax_h3_face_refine":
-            conditioning_nodes.append("158")
         previous_loaders = set()
         for node_id in conditioning_nodes:
             if node_id not in workflow or workflow[node_id].get("class_type") != "MiniMaxH3ReferenceToVideo":

@@ -21,19 +21,6 @@ class MiniMaxH3WorkflowTests(unittest.TestCase):
             uploaded_ref_audios=[f"audio{i}.wav" for i in range(3)]
         )
 
-    def test_face_refine_conditions_both_passes_on_all_images(self):
-        workflow = self.assemble("minimax-h3-face-refine")
-        for index in range(5):
-            key = f"ref_images.ref_image_{index}"
-            for node_id in ("136", "158"):
-                load_id = workflow[node_id]["inputs"][key][0]
-                self.assertEqual(workflow[load_id]["inputs"]["image"], f"image{index}.png")
-        for index in range(3):
-            key = f"ref_audios.ref_audio_{index}"
-            self.assertIn(key, workflow["136"]["inputs"])
-        self.assertEqual(workflow["158"]["inputs"]["ref_audios.ref_audio_0"], ["121", 0])
-        self.assertEqual(workflow["130"]["inputs"]["images"], ["165", 0])
-
     def test_official_turbo_uses_lora_and_four_steps(self):
         workflow = self.assemble("minimax-h3-ref")
         self.assertEqual(workflow["124"]["inputs"]["steps"], 4)
@@ -120,26 +107,8 @@ class MiniMaxH3WorkflowTests(unittest.TestCase):
                 self.assertEqual(workflow["91"]["inputs"]["audio"], ["23", 0])
                 self.assertEqual(sum(n["class_type"] == "LoadImage" for n in workflow.values()), len(images))
 
-    def test_official_turbo_face_refine_uses_four_steps_in_both_passes(self):
-        workflow = self.assemble("minimax-h3-ref-turbo4-face-refine")
-        self.assertEqual(workflow["124"]["inputs"]["steps"], 4)
-        self.assertEqual(workflow["162"]["inputs"]["steps"], 4)
-        self.assertEqual(workflow["124"]["inputs"]["model"], ["145", 0])
-        self.assertEqual(workflow["160"]["inputs"]["model"], ["145", 0])
-        self.assertEqual(workflow["130"]["inputs"]["images"], ["165", 0])
-        self.assertEqual(workflow["119"]["inputs"]["vae_name"],
-                         "minimax_h3_video_vae_int8_convrot.safetensors")
-        for index in range(5):
-            key = f"ref_images.ref_image_{index}"
-            for node_id in ("136", "158"):
-                load_id = workflow[node_id]["inputs"][key][0]
-                self.assertEqual(workflow[load_id]["inputs"]["image"], f"image{index}.png")
-        for index in range(3):
-            self.assertIn(f"ref_audios.ref_audio_{index}", workflow["136"]["inputs"])
-
     def test_ref2va_turbo8_preserves_references_and_fixed_steps(self):
-        for model, face in (("minimax-h3-ref-turbo8", False),
-                            ("minimax-h3-ref-turbo8-face-refine", True)):
+        for model in ("minimax-h3-ref-turbo8",):
             with self.subTest(model=model):
                 workflow = self.engine.assemble_workflow(
                     ImageGenerationRequest(model=model, prompt="portrait dialogue",
@@ -159,7 +128,7 @@ class MiniMaxH3WorkflowTests(unittest.TestCase):
                 self.assertEqual(workflow["136"]["inputs"]["length"], 124)
                 for index in range(5):
                     key = f"ref_images.ref_image_{index}"
-                    for node_id in (("136", "158") if face else ("136",)):
+                    for node_id in ("136",):
                         load_id = workflow[node_id]["inputs"][key][0]
                         self.assertEqual(workflow[load_id]["inputs"]["image"], f"image{index}.png")
                 for index in range(3):
@@ -167,19 +136,11 @@ class MiniMaxH3WorkflowTests(unittest.TestCase):
                     load_id = workflow["136"]["inputs"][key][0]
                     self.assertEqual(workflow[load_id]["inputs"]["audio"], f"audio{index}.wav")
                 self.assertEqual(workflow["130"]["inputs"]["audio"], ["121", 0])
-                if face:
-                    self.assertEqual(workflow["162"]["inputs"]["steps"], 8)
-                    self.assertEqual(workflow["162"]["inputs"]["denoise"], 0.4)
-                    self.assertEqual(workflow["160"]["inputs"]["model"], ["145", 0])
-                    self.assertEqual(workflow["158"]["inputs"]["ref_audios.ref_audio_0"], ["121", 0])
-                    self.assertEqual(workflow["158"]["inputs"]["prompt"], "portrait dialogue")
-                    self.assertEqual(workflow["130"]["inputs"]["images"], ["165", 0])
-                else:
-                    self.assertEqual(workflow["130"]["inputs"]["images"], ["122", 0])
+                self.assertEqual(workflow["130"]["inputs"]["images"], ["122", 0])
 
     def test_four_reference_audios_are_rejected_instead_of_truncated(self):
         request = ImageGenerationRequest(
-            model="minimax-h3-ref-turbo4-face-refine", prompt="test", ref_images=["face.png"],
+            model="minimax-h3-ref", prompt="test", ref_images=["face.png"],
             references=[{"referenceType": "REFERENCE_AUDIO", "referenceAudio": f"a{i}.wav"}
                         for i in range(4)],
         )

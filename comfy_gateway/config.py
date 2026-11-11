@@ -96,13 +96,10 @@ class GatewayConfig(BaseModel):
                      and (node_id is None or m.node_id == node_id)), None)
 
     def get_model(self, model_name: str) -> Optional[ModelConfig]:
-        """Find model configuration by name (case-insensitive with fallback partial matching)"""
+        """Resolve a registered model ID without aliasing removed or unknown IDs."""
         target = model_name.strip().lower()
         for m in self.models:
             if m.model_name.lower() == target:
-                return m
-        for m in self.models:
-            if target in m.model_name.lower() or m.model_name.lower() in target:
                 return m
         return None
 

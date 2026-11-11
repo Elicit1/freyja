@@ -202,7 +202,7 @@
 
 `schemas.py` 提供 `get_all_ref_videos()`，只从合法 `REFERENCE_VIDEO` binding 收集，保留素材 ID 与顺序。不使用“相同 URL 自动去重”：同一源视频的不同片段或不同语义引用可能是不同素材；不同片段使用独立稳定标识，并按列表顺序编号。
 
-`main.py` 在上传媒体前完成模型精确匹配、能力状态、数量、混合素材、目标节点版本验证。参考视频模型匹配不能走 `GatewayConfig.get_model()` 的部分名称回退；不存在的编码直接失败，防止新增名称误落到相似模型。
+`main.py` 在上传媒体前完成模型精确匹配、能力状态、数量、混合素材、目标节点版本验证。模型 ID 不做部分名称回退；不存在或已移除的编码直接失败，防止误落到相似模型。
 
 向选定节点上传准备好的片段。当前 `load_and_upload_media()` 通过 `/upload/image` 写入 ComfyUI input，文件名与 `overwrite=true` 有并发覆盖风险；本功能上传名必须带任务与素材唯一标识，并保留返回 `subfolder/name`，不能丢弃子目录。不同节点必须分别上传，不能复用其他机器的 input 文件名。
 
@@ -352,7 +352,7 @@ Java 的 `freyja.reference-video` 默认准备限制为：源文件 256 MiB、�
 
 ### 11.3 在线验收后的能力配置
 
-现有 6 个 H3 REF 模型均登记参考视频适配：`minimax-h3-ref2va`、`minimax-h3-ref`、`minimax-h3-ref-turbo8`，以及各自的 FaceRefine 版本（`minimax-h3-face-refine`、`minimax-h3-ref-turbo4-face-refine`、`minimax-h3-ref-turbo8-face-refine`）。每个模型独立维护接线与媒体限制，实际任务绑定当前 revision。节点私有 YAML 会覆盖默认节点配置：部署使用 `machine_local.yaml` 时，应在该文件的对应模型维护 `reference_video`，不能只改 `machine_default.yaml`。
+现有 4 个 H3 REF 基础模型均登记参考视频适配：`minimax-h3-ref2va`、`minimax-h3-ref`、`minimax-h3-ref-turbo8`、`pika-h3-flex-ref2va`。人脸修复统一作为这些模型的可选 `FACE` 阶段，独立修脸模型及其网关模板已移除。每个基础模型独立维护接线与媒体限制，实际任务绑定当前 revision。节点私有 YAML 会覆盖默认节点配置：部署使用 `machine_local.yaml` 时，应在该文件的对应模型维护 `reference_video`，不能只改 `machine_default.yaml`。
 
 普通 REF 将参考视频连接到 `136`；FaceRefine 在首阶段 `136` 和精修阶段 `158` 共享同一组有序视频加载节点及可选原音，两个阶段的 `<Video N>` 对应关系一致。精修阶段继续使用首阶段生成的独立音频条件，保留各模板原有采样步数和最终拼接输出 `130`；装配时检查每个阶段到最终输出的连通性。
 

@@ -61,7 +61,6 @@ import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { ElMessage, ElTree } from 'element-plus'
 import { useRouter } from 'vue-router'
 import VideoEnhancementOptions from '@/components/workflow/VideoEnhancementOptions.vue'
-import { videoEnhancementApi } from '@/api/video-enhancements'
 import { aiProviderApi } from '@/api/ai-provider'
 import type { AiModel, AiProviderVO } from '@/types/ai-provider'
 import { resolveGenerationSize, validateGenerationSize } from '@/utils/generation-size'
@@ -105,7 +104,7 @@ async function excludeAndCheck(id: string) {
 async function loadModels(mode: VideoMode) {
   configs[mode].dynamicWorkflow = undefined; configs[mode].modelId = undefined; modelLists[mode] = []; const provider = configs[mode].providerId
   if (!provider) return
-  try { const list = await aiProviderApi.getModelList(provider, modes.find(m => m.key === mode)!.type); let legacy: string[] = []; try { legacy = (await videoEnhancementApi.capabilities(provider)).models.filter(c => c.legacyFixedFace).map(c => c.modelCode) } catch { /* Providers without H3 modules keep their existing model catalog. */ }; if (configs[mode].providerId === provider) modelLists[mode] = list.filter(m => m.status === 1 && !legacy.includes(m.modelCode)) }
+  try { const list = await aiProviderApi.getModelList(provider, modes.find(m => m.key === mode)!.type); if (configs[mode].providerId === provider) modelLists[mode] = list.filter(m => m.status === 1) }
   catch (e: any) { ElMessage.error(e.message || '加载视频模型失败') }
 }
 async function open(id: string | number, aspectRatio?: string) {

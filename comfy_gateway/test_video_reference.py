@@ -21,9 +21,7 @@ from test_render_input_validation import bind_contract
 
 BASE = Path(__file__).resolve().parent
 REF_MODELS = (
-    "minimax-h3-ref2va", "minimax-h3-face-refine", "minimax-h3-ref",
-    "minimax-h3-ref-turbo4-face-refine", "minimax-h3-ref-turbo8",
-    "minimax-h3-ref-turbo8-face-refine",
+    "minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8",
     "pika-h3-flex-ref2va",
 )
 
@@ -56,7 +54,7 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
     def test_all_ref_models_declare_video_capability_without_claiming_online_acceptance(self):
         node = NodeConfig(**yaml.safe_load((BASE / "nodes/machine_default.yaml").read_text(encoding="utf-8")))
         models = {model.model_name: model for model in node.models
-                  if model.handler in {"minimax_h3_ref2va", "minimax_h3_face_refine"}}
+                  if model.handler == "minimax_h3_ref2va"}
         self.assertEqual(set(models), set(REF_MODELS))
         for name, model in models.items():
             with self.subTest(model=name):
@@ -82,15 +80,14 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
                     uploaded_ref_audios=["voice.wav"], uploaded_ref_videos=[{
                         "reference_id": f"video{index + 1}", "filename": f"task/{index}.mp4",
                         "include_audio": index == 1} for index in range(3)])
-                face = model.handler == "minimax_h3_face_refine"
-                self.assertEqual(graph["130"]["inputs"]["images"], ["165" if face else "122", 0])
+                self.assertEqual(graph["130"]["inputs"]["images"], ["122", 0])
                 self.assertEqual(graph["130"]["inputs"]["audio"], ["121", 0])
                 if graph["124"]["class_type"]=="ManualSigmas":
                     self.assertEqual(len(graph["124"]["inputs"]["sigmas"].split(","))-1,model.default_steps)
                 else:self.assertEqual(graph["124"]["inputs"]["steps"], model.default_steps)
                 self.assertEqual(sum(node["class_type"] == "VHS_LoadVideo" for node in graph.values()), 3)
                 self.assertEqual(graph["136"]["inputs"]["ref_audios.ref_audio_0"], ["136_ref_aud_0", 0])
-                for cond in (("136", "158") if face else ("136",)):
+                for cond in ("136",):
                     self.assertEqual(graph[cond]["inputs"]["prompt"], req.prompt)
                     image_loader = graph[cond]["inputs"]["ref_images.ref_image_0"][0]
                     self.assertEqual(graph[image_loader]["inputs"]["image"], "portrait.png")
@@ -100,12 +97,9 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
                         self.assertEqual(graph[loader]["inputs"]["video"], f"task/{index}.mp4")
                         self.assertEqual(f"ref_video_audios.ref_video_audio_{index}" in graph[cond]["inputs"], index == 1)
                     self.assertEqual(graph[cond]["inputs"]["ref_video_audios.ref_video_audio_1"], ["136_ref_vid_1", 2])
-                if face:
-                    self.assertEqual(graph["162"]["inputs"]["steps"], engine.get_template(model)["162"]["inputs"]["steps"])
-                    self.assertEqual(graph["158"]["inputs"]["ref_audios.ref_audio_0"], ["136_ref_aud_0", 0])
                 empty = engine.assemble_workflow(ImageGenerationRequest(model=name, size="960x544", prompt="text only"))
                 self.assertFalse(any(node["class_type"] == "VHS_LoadVideo" for node in empty.values()))
-                for cond in (("136", "158") if face else ("136",)):
+                for cond in ("136",):
                     self.assertFalse(any(key.startswith(("ref_videos.", "ref_video_audios.")) for key in empty[cond]["inputs"]))
 
     def test_every_ref_variant_can_bind_video_without_manual_acceptance(self):
@@ -114,15 +108,6 @@ class VideoReferenceAssemblyTests(unittest.TestCase):
                 model, config = setup_model(model_name=name)
                 graph = WorkflowEngine(config).assemble_workflow(request(model), uploaded_ref_videos=[{"filename":"clip.mp4","include_audio":False}])
                 self.assertEqual(graph["136"]["inputs"]["ref_videos.ref_video_0"],["136_ref_vid_0",0])
-
-    def test_face_refine_disconnected_second_pass_is_rejected(self):
-        model, config = setup_model(model_name="minimax-h3-ref-turbo8-face-refine")
-        engine = WorkflowEngine(config)
-        template = engine.get_template(model)
-        template["165"]["inputs"].pop("refined_crops")
-        engine._template_cache[str((BASE / model.template_file).resolve())] = template
-        with self.assertRaisesRegex(ValueError, "disconnected from output"):
-            engine.assemble_workflow(request(model), uploaded_ref_videos=[{"filename": "clip.mp4", "include_audio": False}])
 
     def test_other_handlers_cannot_opt_in_by_copying_ref_configuration(self):
         model, _ = setup_model()

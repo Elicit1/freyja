@@ -56,7 +56,7 @@ def require_supported(model, base_dir: Path, backend_url=None):
                 capability.max_decoded_frames, capability.max_decode_width, capability.max_decode_height, capability.max_mixed_assets)
     if any(value is None for value in required) or capability.min_clip_seconds > min(capability.max_clip_seconds, capability.max_total_clip_seconds):
         raise ValueError("REFERENCE_VIDEO_LIMITS_INVALID: configure valid media limits")
-    if model.handler not in {"minimax_h3_ref2va", "minimax_h3_face_refine"}:
+    if model.handler != "minimax_h3_ref2va":
         raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: handler does not support video references")
     return capability
 

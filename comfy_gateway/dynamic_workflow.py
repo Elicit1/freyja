@@ -1,10 +1,8 @@
-"""Versioned, bounded H3 stages. A stage is a separate recoverable prompt.
-
-Legacy templates remain untouched when dynamic_workflow is absent.
-"""
+"""Versioned, bounded H3 stages. A stage is a separate recoverable prompt."""
 import copy
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -101,6 +99,45 @@ MODULE = Path(__file__).parent / "workflow_modules/h3_face_v1.json"
 COMPONENT_NODES = ["FreyjaH3UpscaleEncode", "LatentUpscaleModelLoader", "MiniMaxH3LatentUpscaleWithModel", "FreyjaH3FinishSize"]
 
 
+def refinement_schedule(source, steps, denoise, model_link=None):
+    """Refine over the tail of the base schedule without changing base sampling.
+
+    Manual schedules have no steps/denoise inputs. Resample their piecewise-linear
+    curve over its final `denoise` fraction, producing exactly `steps` updates.
+    This is an enhancement schedule, not Pika's original six-step generation.
+    """
+    if not isinstance(steps, int) or isinstance(steps, bool) or steps < 1 or not math.isfinite(denoise) or not 0 < denoise <= 1:
+        raise ValueError("DYNAMIC_REFINEMENT_SCHEDULE_INVALID")
+    schedule = copy.deepcopy(source)
+    kind = schedule.get("class_type")
+    if kind == "BasicScheduler":
+        schedule["inputs"].update(steps=steps, denoise=denoise)
+        if model_link is not None:
+            schedule["inputs"]["model"] = copy.deepcopy(model_link)
+        return schedule
+    if kind != "ManualSigmas":
+        raise ValueError("DYNAMIC_REFINEMENT_SCHEDULE_UNSUPPORTED: " + str(kind))
+    try:
+        values = [float(value) for value in schedule["inputs"]["sigmas"].split(",")]
+    except (KeyError, AttributeError, TypeError, ValueError) as error:
+        raise ValueError("DYNAMIC_MANUAL_SIGMAS_INVALID") from error
+    if (len(values) < 2 or values[-1] != 0 or any(not math.isfinite(value) or not 0 <= value <= 1 for value in values)
+            or any(left <= right for left, right in zip(values, values[1:]))):
+        raise ValueError("DYNAMIC_MANUAL_SIGMAS_INVALID")
+    intervals = len(values) - 1
+    refined = []
+    for index in range(steps):
+        position = intervals * (1 - denoise + denoise * index / steps)
+        lower = min(int(position), intervals - 1)
+        fraction = position - lower
+        refined.append(values[lower] * (1 - fraction) + values[lower + 1] * fraction)
+    refined.append(0.0)
+    if any(left <= right for left, right in zip(refined, refined[1:])):
+        raise ValueError("DYNAMIC_REFINEMENT_SCHEDULE_INVALID")
+    schedule["inputs"] = {"sigmas": ", ".join(format(value, ".12g") for value in refined)}
+    return schedule
+
+
 def stage_nodes(stage, capability):
     required = set(capability["requiredNodes"].get(stage.stage, []))
     if stage.component:
@@ -148,7 +185,7 @@ def describe(model, base_dir):
                                   "steps": model.default_steps, "upscaleModel": model.default_upscale_model}, sort_keys=True).encode())
         revision = digest.hexdigest()
     return {"modelCode": model.model_name, "nodeId": model.node_id, "supported": supported,
-            "legacyFixedFace": model.handler == "minimax_h3_face_refine", "revision": revision,
+            "revision": revision,
             "stages": ["BASE", "UPSCALE", "FACE"] if supported else [],
             "scales": [2], "maxDenoise": .6, "maxTargetPixels": 4194304,
             "upscaleTiling": {"supported": supported, "node": "FreyjaH3TileModel", "apiVersion": "1",
@@ -282,8 +319,8 @@ def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=
             for binding in cfg["model_consumers"]:
                 workflow[binding["id"]]["inputs"][binding.get("input", "model")] = final_model
         schedule_id = sampler["inputs"]["sigmas"][0]
-        workflow[schedule_id]["inputs"]["denoise"] = stage.denoise
-        workflow[schedule_id]["inputs"]["steps"] = stage.component.steps if stage.component else model.default_steps
+        workflow[schedule_id] = refinement_schedule(
+            workflow[schedule_id], stage.component.steps if stage.component else model.default_steps, stage.denoise)
         if stage.save_latent:
             # Resolve before inserting context nodes so the digest is independent
             # of predecessor identity, frame count, prompt and expiring URLs.
@@ -331,7 +368,9 @@ def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=
         for key, value in cond["inputs"].items():
             if key.startswith(("ref_images.", "ref_audios.", "ref_videos.", "ref_video_audios.")):
                 face_cond[key] = copy.deepcopy(value)
-        workflow["dynamic_face_162"]["inputs"].update(denoise=stage.denoise, steps=model.default_steps)
+        schedule_id = sampler["inputs"]["sigmas"][0]
+        workflow["dynamic_face_162"] = refinement_schedule(
+            workflow[schedule_id], model.default_steps, stage.denoise, ["dynamic_face_160", 2])
         workflow[video_id]["inputs"].update(images=["dynamic_face_165", 0], audio=audio)
     output_width, output_height = stage.output_width or width, stage.output_height or height
     if stage.output_width is not None:

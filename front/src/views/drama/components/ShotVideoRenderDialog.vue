@@ -32,7 +32,7 @@ import type { AiModel, AiProviderVO } from '@/types/ai-provider'
 import type { DramaShot } from '@/types/drama'
 import ShotVideoHistoryDrawer from './ShotVideoHistoryDrawer.vue'
 import VideoEnhancementOptions from '@/components/workflow/VideoEnhancementOptions.vue'
-import { videoEnhancementApi, type WorkflowSelection } from '@/api/video-enhancements'
+import type { WorkflowSelection } from '@/api/video-enhancements'
 export interface VideoRenderConfiguration { providerId: string; modelCode: string; size: string; dynamicWorkflow?: WorkflowSelection }
 export type ContinuationSubmit = (configuration: VideoRenderConfiguration, onProgress: (message: string) => void) => Promise<void>
 const emit = defineEmits<{ success: [shotId: string | number]; edit: [shot: DramaShot] }>()
@@ -79,7 +79,7 @@ async function open(value: DramaShot, aspectRatio?: string, onSubmit?: Continuat
 }
 async function loadModels() {
   const token = ++modelRequest, currentSession = session, provider = config.providerId; modelsLoading.value = true; models.value = []; config.modelCode = ''; error.value = ''
-  try { const all = await aiProviderApi.getModelList(provider, shot.value?.generationMode === 'REFERENCE_MODE' ? 'TXT2VIDEO_REF' : 'TXT2VIDEO_FIRST_LAST'); let legacy: string[] = []; try { legacy = (await videoEnhancementApi.capabilities(provider)).models.filter(c => c.legacyFixedFace).map(c => c.modelCode) } catch { /* Other providers may not offer H3 modules. */ }; if (token === modelRequest && currentSession === session) models.value = all.filter(m => m.status === 1 && !legacy.includes(m.modelCode)) }
+  try { const all = await aiProviderApi.getModelList(provider, shot.value?.generationMode === 'REFERENCE_MODE' ? 'TXT2VIDEO_REF' : 'TXT2VIDEO_FIRST_LAST'); if (token === modelRequest && currentSession === session) models.value = all.filter(m => m.status === 1) }
   catch (e: any) { if (token === modelRequest && currentSession === session) error.value = e.message || '加载模型失败' }
   finally { if (token === modelRequest && currentSession === session) modelsLoading.value = false }
 }

@@ -107,7 +107,7 @@ def validate_workflow(request, workflow, model, images, audios, videos):
                 visit(value[0])
     for nid in outputs:
         visit(nid)
-    nodes = [main_node] + (["158"] if model.handler == "minimax_h3_face_refine" else [])
+    nodes = [main_node]
     for nid in nodes:
         if nid not in reachable:
             fail(f"conditioning node {nid} is not connected to video output")

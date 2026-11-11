@@ -275,8 +275,6 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
     Dynamically routes to the corresponding compute node machine, uploads media assets,
     submits prompt to that machine's ComfyUI, monitors WebSocket, and returns standardized response.
     """
-    engine = get_workflow_engine()
-    pool = get_client_pool()
 
     logger.info(f"Received generation request for model '{request.model}'")
     if request.references:
@@ -292,6 +290,9 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
     if not model_cfg:
         available = [m.model_name for m in config.models]
         raise ValueError(f"Model '{request.model}' not supported. Available models: {available}")
+
+    engine = get_workflow_engine()
+    pool = get_client_pool()
 
     # 2. Resolve target compute node / ComfyUI client
     # Priority:
@@ -346,7 +347,7 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         if any(control.required_capability() not in accepted["controlTypes"] for control in request.h3_options.control_net.active_inputs()):raise ValueError("H3_PREPROCESSOR_UNSUPPORTED")
         request.node_id=target_node.node_id
         if request.h3_options.control_net.is_active() and not video_references: raise ValueError("H3_CONTROL_SOURCE_MISSING")
-    elif model_cfg.handler in {"minimax_h3_fl2va","minimax_h3_ref2va","minimax_h3_face_refine"} and (request.duration and request.duration>15 or request.length and request.length>362):
+    elif model_cfg.handler in {"minimax_h3_fl2va","minimax_h3_ref2va"} and (request.duration and request.duration>15 or request.length and request.length>362):
         raise ValueError("H3_CONTINUATION_REQUIRED: requests longer than 15 seconds require continuation mode")
     if video_references:
         model_cfg = config.get_exact_model(request.model, target_node.node_id)
@@ -376,9 +377,7 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
     is_minimax = "minimax" in model_cfg.model_name.lower() or "minimax" in model_cfg.handler.lower()
     if is_minimax:
         request.validate_minimax_h3_limits()
-        if model_cfg.model_name in {
-            "minimax-h3-face-refine", "minimax-h3-ref", "minimax-h3-ref-turbo4-face-refine"
-        }:
+        if model_cfg.model_name == "minimax-h3-ref":
             if len(request.get_all_ref_images()) > 5:
                 raise ValueError("This MiniMax H3 workflow supports at most 5 reference images.")
 

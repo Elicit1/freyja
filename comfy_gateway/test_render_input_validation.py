@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import unittest
+from pathlib import Path
 from config import load_config
 from schemas import ImageGenerationRequest
 from workflow_engine import WorkflowEngine
@@ -50,18 +51,29 @@ class RenderInputValidationTests(unittest.TestCase):
                 dict(referenceId="voice", referenceType="REFERENCE_AUDIO", referenceAudio="voice.wav")]))
 
     def assemble(self, request):
-        return self.engine.assemble_workflow(request, uploaded_ref_images=["image-a.png", "image-b.png"], uploaded_ref_audios=["voice-a.wav"])
+        return self.engine.assemble_workflow(request, uploaded_ref_images=["image-a.png", "image-b.png"], uploaded_ref_audios=["voice-a.wav"],
+            dynamic_source_filename="source.mp4" if request.dynamic_workflow else None)
+
+    def enable_face(self, request):
+        from dynamic_workflow import DynamicStage, describe
+        model = self.engine.config.get_model(request.model)
+        request.dynamic_workflow = DynamicStage(stage="FACE", revision=describe(model, Path(__file__).resolve().parent)["revision"],
+            source_url="http://archive/source.mp4", source_sha256="a"*64, denoise=.4)
+        request.length = 124
+        return request
 
     def test_duplicate_media_keep_distinct_slots_and_face_refine_namespace(self):
-        for model in ("minimax-h3-ref-turbo8", "minimax-h3-ref-turbo4-face-refine", "minimax-h3-face-refine"):
-            with self.subTest(model=model):
-                request = self.request(model)
-                self.assertEqual(request.get_all_ref_images(), ["same.png", "same.png"])
-                workflow = self.assemble(request)
-                inputs = workflow["136"]["inputs"]
-                self.assertEqual(workflow[inputs["ref_images.ref_image_1"][0]]["inputs"]["image"], "image-b.png")
-                if model != "minimax-h3-ref-turbo8":
-                    self.assertEqual(inputs["ref_audios.ref_audio_0"], workflow["158"]["inputs"]["ref_audios.ref_audio_0"])
+        for model in ("minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8", "pika-h3-flex-ref2va"):
+            for face in (False, True):
+                with self.subTest(model=model, face=face):
+                    request = self.request(model)
+                    if face:
+                        self.enable_face(request)
+                    self.assertEqual(request.get_all_ref_images(), ["same.png", "same.png"])
+                    workflow = self.assemble(request)
+                    inputs = workflow["dynamic_face_158" if face else "136"]["inputs"]
+                    self.assertEqual(workflow[inputs["ref_images.ref_image_1"][0]]["inputs"]["image"], "image-b.png")
+                    self.assertEqual(inputs["ref_audios.ref_audio_0"], ["136_ref_aud_0", 0])
 
     def test_prompt_or_order_changes_fail_before_assembly(self):
         request = self.request(); request.prompt += " changed"
@@ -84,13 +96,25 @@ class RenderInputValidationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 validate_workflow(request, workflow, model, ["image-a.png", "image-b.png"], ["voice-a.wav"], [])
 
-    def test_refine_cannot_truncate_references(self):
-        request = self.request("minimax-h3-face-refine")
+    def test_configurable_refine_preserves_more_than_five_references(self):
+        request = self.enable_face(self.request())
         for i in range(4):
             request.references.append(request.references[0].model_copy(update={"reference_id": f"more{i}"}))
         bind_contract(request)
-        with self.assertRaisesRegex(ValueError, "image slots differ"):
-            self.engine.assemble_workflow(request, uploaded_ref_images=[f"{i}.png" for i in range(6)], uploaded_ref_audios=["voice-a.wav"])
+        workflow = self.engine.assemble_workflow(request, uploaded_ref_images=[f"{i}.png" for i in range(6)],
+            uploaded_ref_audios=["voice-a.wav"], dynamic_source_filename="source.mp4")
+        inputs = workflow["dynamic_face_158"]["inputs"]
+        for index in range(6):
+            self.assertEqual(workflow[inputs[f"ref_images.ref_image_{index}"][0]]["inputs"]["image"], f"{index}.png")
+
+    def test_disconnected_face_refinement_is_rejected(self):
+        request = self.enable_face(self.request())
+        workflow = self.assemble(request)
+        workflow["dynamic_face_165"]["inputs"].pop("refined_crops")
+        model = self.engine.config.get_model(request.model)
+        face_model = model.model_copy(update={"mappings": {**model.mappings, "prompt": ["dynamic_face_158", "inputs", "prompt"]}})
+        with self.assertRaisesRegex(ValueError, "not connected to video output"):
+            validate_workflow(request, workflow, face_model, ["image-a.png", "image-b.png"], ["voice-a.wav"], [])
 
     def test_identical_first_last_frames_are_two_explicit_inputs(self):
         for model in ("minimax-h3-fl2va-turbo4", "minimax-h3-fl2va"):
