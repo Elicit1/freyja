@@ -93,6 +93,20 @@ test('late opens cannot overwrite a different source and unsupported services ca
     assert.equal(view.calls.length, 0)
   } finally { view.stop() }
 })
+
+test('rerun scope allows fresh base without native latent and is included in idempotency', async () => {
+  const view = setup(), s = view.state
+  try {
+    await s.open('source')
+    s.rerunMode.value = 'BASE_ONLY'
+    await vue.nextTick()
+    s.toggleAll(true)
+    assert.deepEqual(Array.from(s.selected.value, clip => clip.id), ids)
+    await s.submit()
+    assert.equal(view.calls[0][4], 'BASE_ONLY')
+    assert.equal(s.selected.value.length, 3)
+  } finally { view.stop() }
+})
 test('result steps name the original segment and preserve whether its output was reused', async () => {
   const source = await readFile(new URL('../src/components/workflow/DynamicWorkflowSteps.vue', import.meta.url), 'utf8')
   const compiled = ts.transpileModule(compileScript(parse(source).descriptor, { id: 'steps-test' }).content, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText

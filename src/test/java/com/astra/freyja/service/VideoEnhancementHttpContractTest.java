@@ -21,7 +21,12 @@ class VideoEnhancementHttpContractTest {
                 .content("""
                 {"requestId":"multi-request-id","segmentIds":["2032095628944588801","2032095628944588802"],"options":{"upscale":true}}
                 """)).andExpect(status().isOk());
-        verify(batches).enqueueSegmentEnhancements(eq("source"),eq(java.util.List.of("2032095628944588801","2032095628944588802")),any(),eq("multi-request-id"));
+        verify(batches).enqueueSegmentEnhancements(eq("source"),eq(java.util.List.of("2032095628944588801","2032095628944588802")),any(),eq("multi-request-id"),isNull());
+        mvc.perform(post("/production/video-enhancements/tasks/source/segments/upscale").contentType("application/json")
+                .content("""
+                {"requestId":"both-request-id","segmentIds":["2032095628944588801"],"rerunMode":"BASE_AND_UPSCALE","options":{"upscale":true,"upscaleSampler":"SELFLIFT"}}
+                """)).andExpect(status().isOk());
+        verify(batches).enqueueSegmentEnhancements(eq("source"),eq(java.util.List.of("2032095628944588801")),argThat(o->"SELFLIFT".equals(o.getUpscaleSampler())),eq("both-request-id"),eq("BASE_AND_UPSCALE"));
         mvc.perform(post("/production/video-enhancements/tasks/source/segments/2032095628944588801/upscale").contentType("application/json")
                 .content("{\"requestId\":\"single-request-id\",\"options\":{\"upscale\":true}}")).andExpect(status().isOk());
         verify(batches).enqueueSegmentEnhancement(eq("source"),eq("2032095628944588801"),any(),eq("single-request-id"));

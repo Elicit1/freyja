@@ -28,7 +28,7 @@
             <el-checkbox v-model="configs.FIRST_LAST_FRAME.autoUsePreviousVideoTailAsFirstFrame">自动使用上一镜视频尾帧作为首帧</el-checkbox>
             <el-checkbox v-model="configs.FIRST_LAST_FRAME.autoUseNextVideoHeadAsLastFrame">自动使用下一镜视频首帧作为尾帧</el-checkbox>
           </div>
-          <VideoEnhancementOptions v-if="mode.key === 'REFERENCE_MODE'" v-model="configs[mode.key].dynamicWorkflow" :provider-id="configs[mode.key].providerId" :model-id="configs[mode.key].modelId" :model-code="modelLists[mode.key].find(m => String(m.id) === configs[mode.key].modelId)?.modelCode" :size="size" :disabled="checking || submitting" />
+          <VideoEnhancementOptions v-model="configs[mode.key].dynamicWorkflow" :provider-id="configs[mode.key].providerId" :model-id="configs[mode.key].modelId" :model-code="modelLists[mode.key].find(m => String(m.id) === configs[mode.key].modelId)?.modelCode" :size="size" :disabled="checking || submitting" />
         </div>
         <el-alert type="info" :closable="false" title="先参考模式，后首尾帧模式；始终逐个渲染。提示词和实际素材须匹配，首尾帧须有有效来源。请修复或明确排除未通过检查的镜头。" />
         <el-table :data="preview?.items || []" height="240" empty-text="选择分镜和模型后，点击检查" size="small">
@@ -121,7 +121,7 @@ async function check() {
   if (!sizeValidation.valid || !sizeValidation.normalized) { ElMessage.warning(sizeValidation.message || '请选择有效的统一渲染尺寸'); return }
   size.value = sizeValidation.normalized
   const current = revision; checking.value = true
-  const request: VideoBatchRequest = { dramaId: dramaId.value, name: name.value, shotIds: [...selectedIds.value], aspectRatio: ratio.value, size: sizeValidation.normalized, existingVideoPolicy: policy.value, modeConfigs: JSON.parse(JSON.stringify({ ...configs, FIRST_LAST_FRAME: { ...configs.FIRST_LAST_FRAME, dynamicWorkflow: undefined } })) }
+  const request: VideoBatchRequest = { dramaId: dramaId.value, name: name.value, shotIds: [...selectedIds.value], aspectRatio: ratio.value, size: sizeValidation.normalized, existingVideoPolicy: policy.value, modeConfigs: JSON.parse(JSON.stringify(configs)) }
   try { const result = await videoBatchApi.preview(request); if (current !== revision) return; preview.value = result; pendingRequest = { ...request, shotIds: result.shotIds, expectedPreviewHash: result.previewHash, clientRequestId: requestId } }
   catch (e: any) { ElMessage.error(e.message || '检查失败') } finally { checking.value = false }
 }

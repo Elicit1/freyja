@@ -24,7 +24,8 @@ public class ShotContinuationRenderer {
         var rows=jdbc.query("SELECT execution_id FROM render_task_step WHERE task_id=? AND status IN ('SUBMITTING','ARCHIVING') ORDER BY updated_at DESC LIMIT 1",(rs,n)->rs.getString(1),task);return rows.isEmpty()?task:rows.getFirst();
     }
     public VideoGenerationResultVO render(VideoBatchModels.Snapshot snapshot)throws Exception{
-        if(snapshot.getSegmentReplacement()!=null)return replaceSegment(snapshot);
+        var replacement=snapshot.getSegmentReplacement();
+        if(replacement!=null&&"UPSCALE_ONLY".equals(replacement.getRerunMode()))return replaceSegment(snapshot);
         var parent=snapshot.getRequest();String task=parent.getTaskId();var urls=new ArrayList<String>();var enhanced=new ArrayList<String>();var handoffs=new LinkedHashMap<String,Map<String,Object>>();
         Map<String,Object> previousUpscale=null;
         if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=true;
@@ -33,6 +34,11 @@ public class ShotContinuationRenderer {
                 VideoExecutionState.segment(i);
                 VideoExecutionState.progress("RENDERING","接续片段 "+(i+1)+" / "+parent.getContinuationSegments().size());
                 var child=parent.getContinuationSegments().get(i);var range=parent.getContinuationPlan().getRanges().get(i);
+                if(replacement!=null&&!replacement.indices().contains(i)){
+                    var saved=replacement.getOutputs().get(i);urls.add(saved.getBaseVideoUrl());enhanced.add(saved.getVideoUrl());
+                    if(saved.getLatent()!=null)handoffs.put(range.getSegmentId(),saved.getLatent());
+                    previousUpscale=saved.getUpscaleLatent();continue;
+                }
                 var generation=new LinkedHashMap<String,Object>();var options=new LinkedHashMap<>(child.getRequest().getH3Options());options.remove("continuation");options.remove("latent_context");
                 generation.put("options",options);generation.put("provider",parent.getProviderId());generation.put("model",parent.getWorkflowTemplateId());generation.put("modelFingerprint",snapshot.getModelFingerprint());generation.put("size",parent.getSize());generation.put("prompt",child.getRequest().getPrompt());generation.put("seed",child.getRequest().getSeed());generation.put("images",child.getShot().getRefImagesJson());generation.put("firstFrame",child.getShot().getPreviewImageUrl());generation.put("lastFrame",child.getShot().getEndFrameImageUrl());generation.put("overlap",range.getOverlapFrames());
                 if(child.getRequest().getDynamicWorkflowStage()!=null)generation.put("dynamicBase",child.getRequest().getDynamicWorkflowStage());
@@ -112,7 +118,7 @@ public class ShotContinuationRenderer {
                 VideoExecutionState.phase("CONTINUATION");
             }
             VideoExecutionState.progress("ASSEMBLING","正在裁去接续重叠并合成完整视频");
-            String url=media.assemble(enhanced,parent.getContinuationPlan());
+            String url=replacement==null?media.assemble(enhanced,parent.getContinuationPlan()):media.assemble(enhanced,parent.getContinuationPlan(),parent.getDynamicWorkflowPlan()==null?parent.getSize():parent.getDynamicWorkflowPlan().getOutputSize());
             if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=false;
             return api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),url,snapshot.getRequest().getProviderId());
         }catch(Exception e){if(VideoExecutionState.current()!=null&&VideoExecutionState.current().continuationChild)VideoExecutionState.current().recoveryUrl=null;throw e;}
@@ -143,7 +149,9 @@ public class ShotContinuationRenderer {
                 }else{urls.add(output.getVideoUrl());previousUpscale=output.getUpscaleLatent();}
             }
             VideoExecutionState.progress("ASSEMBLING","正在替换片段并按原时间轴重新合成");
-            String merged=media.assemble(urls,parent.getContinuationPlan());
+            boolean mixedBase=parent.getContinuationSegments().stream().anyMatch(c->c.getRequest().getDynamicWorkflowPlan()==null
+                    ||c.getRequest().getDynamicWorkflowPlan().getOptions()!=null&&!c.getRequest().getDynamicWorkflowPlan().getOptions().isUpscale());
+            String merged=mixedBase&&parent.getDynamicWorkflowPlan()!=null?media.assemble(urls,parent.getContinuationPlan(),parent.getDynamicWorkflowPlan().getOutputSize()):media.assemble(urls,parent.getContinuationPlan());
             if(VideoExecutionState.current()!=null)VideoExecutionState.current().continuationChild=false;
             return api.archiveExistingVideo(snapshot.getShot().getId(),snapshot.getShot().getDramaId(),merged,parent.getProviderId());
         }finally{if(VideoExecutionState.current()!=null){VideoExecutionState.current().continuationChild=false;VideoExecutionState.current().upstream=null;VideoExecutionState.current().recoveryUrl=null;}}

@@ -7,6 +7,7 @@ import com.astra.freyja.dao.AiProviderMapper;
 import com.astra.freyja.dao.ResKeyframeMapper;
 import com.astra.freyja.dto.drama.DramaShotFirstFrameDTO;
 import com.astra.freyja.dto.drama.ShotRefImageDTO;
+import com.astra.freyja.dto.drama.ShotControlNetOptions;
 import com.astra.freyja.entity.AiModel;
 import com.astra.freyja.entity.AiProvider;
 import com.astra.freyja.entity.ResKeyframe;
@@ -630,6 +631,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
             payload.put("reference_video_revision", dto.getReferenceVideoRevision());
             payload.put("node_id", dto.getReferenceVideoNodeId());
             int videoIndex = 0, pairedAudioIndex = 0;
+            var controlSources=ShotControlNetOptions.sourceIds(dto.getH3Options(),dto.getDynamicWorkflowStage());
             for (var video : dto.getResolvedRefVideos()) {
                 Map<String,Object> binding = new HashMap<>();
                 binding.put("referenceId", video.getId()); binding.put("referenceType", "REFERENCE_VIDEO");
@@ -638,7 +640,7 @@ public class AiImageApiServiceImpl implements AiImageApiService {
                 binding.put("contentSha256", video.getContentSha256()); binding.put("includeAudio", video.getIncludeAudio());
                 binding.put("referenceDescription", video.getReferenceDescription()); references.add(binding);
                 String transport = (String) binding.get("referenceVideo");
-                transportByLabel.put("<Video " + (++videoIndex) + ">", transport);
+                if(!controlSources.contains(video.getId()))transportByLabel.put("<Video " + (++videoIndex) + ">", transport);
                 if (Boolean.TRUE.equals(video.getIncludeAudio())) transportByLabel.put("<Audio " + (++pairedAudioIndex) + ">", transport);
             }
         }

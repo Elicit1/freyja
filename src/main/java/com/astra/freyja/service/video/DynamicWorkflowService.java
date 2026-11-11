@@ -80,7 +80,6 @@ public class DynamicWorkflowService {
         if(selection==null)return null;
         var base=route(provider,model);DynamicWorkflowOptions options=selection.getOptions();
         if(options==null||!options.isUpscale()&&!options.isFaceRepair())return null;
-        if(!"TXT2VIDEO_REF".equals(base.getModelType()))throw new BizException(400,"二采放大和人脸修复仅支持 REF2VA 参考生成模式");
         options=json.convertValue(options,DynamicWorkflowOptions.class);
         // resolve prepares a new submission; historical snapshots are read without this normalization.
         if(options.isUpscale()&&"PIXEL".equals(options.getUpscaleEngine())) {
@@ -93,6 +92,8 @@ public class DynamicWorkflowService {
         if(match==null)throw new BizException(400,"所选模型不支持视频增强，请选择基础 H3 模型");
         if(options.isUpscale()&&"FREYJA".equals(options.getUpscaleEngine())) {
             if(!match.path("freyjaUpscale").path("supported").asBoolean())throw new BizException(400,"请更新网关以使用 FREYJA 二采组件");
+            if("SELFLIFT".equals(options.getUpscaleSampler())&&!java.util.stream.StreamSupport.stream(match.path("freyjaUpscale").path("samplers").spliterator(),false).anyMatch(n->"SELFLIFT".equals(n.asText())))
+                throw new BizException(400,"当前网关未提供 SelfLift 二采，请更新网关与 FREYJA 节点包");
             if(options.getUpscaleSteps()>match.path("freyjaUpscale").path("maxSteps").asInt(0))throw new BizException(400,"高清采样步数超过当前基础模型上限");
             // Freeze the configured default without contacting the compute node or its model inventory.
             if(options.getUpscaleLatentModel()==null||options.getUpscaleLatentModel().isBlank()) {

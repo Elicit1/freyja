@@ -1,6 +1,6 @@
 <template>
   <section class="workflow-steps" v-loading="loading">
-    <div class="flex justify-between items-center"><strong>视频处理进度</strong><div><el-button v-if="status === 'SUCCESS' && steps.some(step => step.step_key.startsWith('segment-'))" link type="primary" @click="replacement?.open(taskId)">片段二采替换</el-button><el-button link @click="load">刷新</el-button></div></div>
+    <div class="flex justify-between items-center"><strong>视频处理进度</strong><div><el-button v-if="status === 'SUCCESS' && steps.some(step => step.step_key.startsWith('segment-'))" link type="primary" @click="replacement?.open(taskId)">重跑片段</el-button><el-button link @click="load">刷新</el-button></div></div>
     <p v-if="error" role="alert">{{ error }}</p><p v-else-if="!steps.length">此任务尚无独立增强步骤。</p>
     <div v-for="step in steps" :key="step.step_key" class="workflow-step"><div><strong>{{ stepLabel(step) }}</strong><small>{{ step.source_task_id ? '沿用来源版本' : '本次处理' }}</small></div><span>{{ statuses[step.status] || step.status }}</span><el-button v-if="step.output_url" link type="primary" @click="preview = step.output_url">预览产物</el-button><p v-if="step.error_message">{{ step.error_message }}</p></div>
     <el-dialog :model-value="!!preview" title="步骤产物" width="min(900px,90vw)" append-to-body @close="preview = ''"><video v-if="preview" :src="preview" controls class="w-full max-h-[70vh]" /></el-dialog>

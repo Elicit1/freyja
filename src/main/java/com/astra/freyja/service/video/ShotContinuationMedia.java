@@ -24,23 +24,31 @@ public class ShotContinuationMedia {
         finally{cleanup(folder);}
     }
     public String assemble(List<String> urls,com.astra.freyja.dto.drama.ShotContinuationPlan plan)throws Exception{
+        return assemble(urls,plan,null);
+    }
+    public String assemble(List<String> urls,com.astra.freyja.dto.drama.ShotContinuationPlan plan,String size)throws Exception{
         Path folder=Files.createTempDirectory("freyja-h3-join-");
         try{
             List<Path> clips=new ArrayList<>();
             for(int i=0;i<urls.size();i++){
                 var range=plan.getRanges().get(i);Path source=folder.resolve("source.mp4"),clip=folder.resolve("clip-"+i+".mp4");
-                media.downloadPrepared(urls.get(i),source);trim(source,clip,range.getKeepStartFrame()-range.getStartFrame(),range.getKeepEndFrame()-range.getStartFrame());clips.add(clip);
+                media.downloadPrepared(urls.get(i),source);trim(source,clip,range.getKeepStartFrame()-range.getStartFrame(),range.getKeepEndFrame()-range.getStartFrame(),size);clips.add(clip);
             }
             Path output=folder.resolve("merged.mp4");concat.concat(clips,output,()->!Thread.currentThread().isInterrupted());
             checkFrames(output,plan.getOutputFrames());return media.archiveContinuation(output).url();
         }finally{cleanup(folder);}
     }
     private void trim(Path source,Path target,int start,int end)throws Exception{
+        trim(source,target,start,end,null);
+    }
+    private void trim(Path source,Path target,int start,int end,String size)throws Exception{
         var format=concat.probe(source,()->!Thread.currentThread().isInterrupted());
         if(start<0||end<=start||format.duration().doubleValue()*24+1<end)throw new IllegalStateException("生成片段帧数不足，不能截取接续范围");
         var cmd=new ArrayList<>(List.of(tools.getFfmpegPath(),"-hide_banner","-loglevel","error","-nostdin","-y","-i",source.toString()));
         if(!format.hasAudio())cmd.addAll(List.of("-f","lavfi","-i","anullsrc=r=48000:cl=stereo"));
-        String filter="[0:v]fps=24,trim=start_frame="+start+":end_frame="+end+",setpts=PTS-STARTPTS[v];["+(format.hasAudio()?"0:a":"1:a")+"]atrim=start="+(start/24.0)+":end="+(end/24.0)+",asetpts=PTS-STARTPTS,aresample=48000,apad[a]";
+        String scale="";
+        if(size!=null){var wh=size.split("x");int w=Integer.parseInt(wh[0]),h=Integer.parseInt(wh[1]);if(w<2||h<2)throw new IllegalArgumentException("输出尺寸无效");scale=",scale="+w+":"+h+":force_original_aspect_ratio=decrease,pad="+w+":"+h+":(ow-iw)/2:(oh-ih)/2,setsar=1";}
+        String filter="[0:v]fps=24,trim=start_frame="+start+":end_frame="+end+",setpts=PTS-STARTPTS"+scale+"[v];["+(format.hasAudio()?"0:a":"1:a")+"]atrim=start="+(start/24.0)+":end="+(end/24.0)+",asetpts=PTS-STARTPTS,aresample=48000,apad[a]";
         cmd.addAll(List.of("-filter_complex",filter,"-map","[v]","-map","[a]","-c:v","libx264","-preset","fast","-crf","18","-pix_fmt","yuv420p","-c:a","aac","-ar","48000","-ac","2","-t",Double.toString((end-start)/24.0),"-movflags","+faststart",target.toString()));
         run(cmd);checkFrames(target,end-start);
     }

@@ -1,7 +1,7 @@
 <template>
   <div class="control-editor">
     <div class="control-heading">
-      <div><strong>ControlNet 动作控制</strong><p>每行独立使用一个参考视频，可分别提供骨架、深度等控制视频。</p></div>
+      <div><strong>ControlNet 动作控制</strong><p>每条启用的控制源各占一个参考槽位；对应原视频仅作为控制输入，不再占普通视频参考槽位。同源的多条控制分别计数。当前占用 {{ controlSlotCount(modelValue) }} 个槽位。</p></div>
       <el-switch :model-value="modelValue.enabled" :disabled="!videos.length" aria-label="启用 ControlNet" @update:model-value="toggle(Boolean($event))" />
     </div>
     <p v-if="!videos.length">添加参考视频后可配置控制源。</p>
@@ -24,7 +24,7 @@
 import { computed, watch } from 'vue'
 import { H3_CONTROL_TYPES } from '@/constants/h3ControlTypes'
 import type { ShotRefVideo } from '@/types/drama'
-import { controlInputs, MAX_CONTROL_INPUTS, type ControlNetConfiguration, type ControlNetInput } from '@/utils/control-net'
+import { controlInputs, controlSlotCount, MAX_CONTROL_INPUTS, type ControlNetConfiguration, type ControlNetInput } from '@/utils/control-net'
 export type { ControlNetConfiguration } from '@/utils/control-net'
 const props = defineProps<{ modelValue: ControlNetConfiguration; videos: ShotRefVideo[] }>()
 const emit = defineEmits<{ 'update:modelValue': [value: ControlNetConfiguration] }>()

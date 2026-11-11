@@ -31,6 +31,22 @@ class ReferenceVideoCapability(BaseModel):
         return self
 
 
+def control_source_ids(request):
+    """Transport sources remain available to ControlNet, without visual reference bindings."""
+    if request.h3_options:
+        return {row.reference_id for row in request.h3_options.control_net.active_inputs() if row.reference_id}
+    stage = request.dynamic_workflow
+    return set(stage.control_source_ids) if stage else set()
+
+
+def mixed_reference_count(request):
+    videos = request.get_all_ref_videos()
+    controls = request.h3_options.control_net.active_inputs() if request.h3_options else []
+    sources = control_source_ids(request)
+    return (len(request.get_all_ref_images()) + len(request.get_all_ref_audios()) + sum(video.reference_id not in sources for video in videos)
+            + sum(1 for video in videos if video.include_audio) + len(controls))
+
+
 def workflow_revision(model, base_dir: Path) -> str:
     path = Path(model.template_file)
     if not path.is_absolute():

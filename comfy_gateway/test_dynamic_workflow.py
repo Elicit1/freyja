@@ -13,6 +13,43 @@ from video_reference import workflow_revision
 
 
 class DynamicWorkflowTests(unittest.TestCase):
+    def test_fl2va_face_keeps_both_frames_in_the_validated_transport_contract(self):
+        for name in ("minimax-h3-fl2va","minimax-h3-fl2va-turbo4","minimax-h3-fl2va-turbo8","pika-h3-flex-fl2va"):
+            model,cfg=setup_model(name);model.reference_video=None
+            for stage in ("UPSCALE","FACE"):
+                with self.subTest(model=name,stage=stage):
+                    request=bind_contract(ImageGenerationRequest(model=name,prompt="<Picture 1> to <Picture 2>",size="960x544",length=124,
+                        first_frame="http://archive/first.png",last_frame="http://archive/last.png",prompt_format="MINIMAX_H3_FL2VA_V1",
+                        dynamic_workflow={"stage":stage,"revision":describe(model,BASE)["revision"],"source_url":"http://archive/base.mp4",
+                            "source_sha256":"a"*64,"scale":2 if stage=="UPSCALE" else 1,**({"component":{"sampler":"SELFLIFT"}} if stage=="UPSCALE" else {})}))
+                    graph=WorkflowEngine(cfg).assemble_workflow(request,uploaded_ref_images=["first.png","last.png"],dynamic_source_filename="base.mp4")
+                    assert_acyclic(graph)
+                    if stage=="FACE":self.assertIn("ref_images.ref_image_1",graph["dynamic_face_158"]["inputs"])
+
+    def test_control_rows_each_consume_a_slot_even_with_the_same_video(self):
+        from types import SimpleNamespace
+        from h3_extensions import ControlOptions
+        from video_reference import mixed_reference_count
+        controls = ControlOptions(enabled=True, controls=[
+            {"reference_id":"video1", "control_type":"POSE"},
+            {"reference_id":"video1", "control_type":"DEPTH"},
+            {"reference_id":"video1", "control_type":"CANNY", "enabled":False}])
+        request=SimpleNamespace(get_all_ref_images=lambda:[1]*8, get_all_ref_audios=lambda:[1],
+            get_all_ref_videos=lambda:[SimpleNamespace(reference_id="video1",include_audio=True)], h3_options=SimpleNamespace(control_net=controls))
+        self.assertEqual(12,mixed_reference_count(request))
+        controls.enabled=False
+        self.assertEqual(11,mixed_reference_count(request))
+
+    def test_selflift_is_on_all_reference_variants_and_pins_context_after_the_lift(self):
+        for model in ("minimax-h3-ref2va", "minimax-h3-ref", "minimax-h3-ref-turbo8", "pika-h3-flex-ref2va"):
+            for memory in ("FULL","TEMPORAL","SPATIAL"):
+                with self.subTest(model=model,memory=memory):
+                    _, request, graph=self.graph("UPSCALE",model,component={"sampler":"SELFLIFT","memory":memory},save_latent=True,
+                        latent_context={"url":"https://archive/latent","content_sha256":"b"*64,"frames":22})
+                    self.assertEqual(["dynamic_selflift",0],graph["dynamic_continue"]["inputs"]["latent"])
+                    self.assertEqual(["dynamic_encode",0],graph["dynamic_selflift"]["inputs"]["source"])
+                    self.assertIn("FreyjaH3SelfLift",stage_nodes(request.dynamic_workflow,describe(setup_model(model)[0],BASE)))
+
     def test_model_choices_come_from_the_installed_node_schema(self):
         for field in ([["h3.safetensors", "h3.safetensors", "", None]],
                       ["COMBO", {"options": ["h3.safetensors"]}]):
@@ -215,17 +252,18 @@ class DynamicWorkflowTests(unittest.TestCase):
                 self.assertEqual(1, sum(n["class_type"] == "SamplerCustomAdvanced" for n in graph.values()))
                 self.assertEqual("FreyjaH3TileModel", graph["dynamic_tiles"]["class_type"])
 
-    def test_fl2va_catalog_and_submission_reject_both_enhancements(self):
+    def test_all_fl2va_variants_support_both_second_pass_modes_and_face(self):
         for name in ("minimax-h3-fl2va", "minimax-h3-fl2va-turbo4", "minimax-h3-fl2va-turbo8", "pika-h3-flex-fl2va"):
             model, _ = setup_model(name)
             capability = describe(model, BASE)
-            self.assertFalse(capability["supported"]); self.assertEqual([], capability["stages"])
-            self.assertFalse(capability["freyjaUpscale"]["supported"])
-            for stage in ("UPSCALE", "FACE"):
-                request = ImageGenerationRequest(model=name, prompt="motion", size="960x544", length=124,
-                    dynamic_workflow={"stage":stage,"revision":"old-revision","source_url":"http://archive/source.mp4","source_sha256":"a"*64,"scale":2 if stage=="UPSCALE" else 1})
-                with self.subTest(model=name,stage=stage), self.assertRaisesRegex(ValueError,"REF2VA"):
-                    require_stage(request,model,BASE)
+            self.assertTrue(capability["supported"])
+            self.assertIn("SELFLIFT", capability["freyjaUpscale"]["samplers"])
+            for sampler in ("STANDARD", "SELFLIFT"):
+                with self.subTest(model=name,sampler=sampler):
+                    _, _, graph = self.graph("UPSCALE", name, component={"sampler":sampler})
+                    self.assertEqual(sampler == "SELFLIFT", "dynamic_selflift" in graph)
+                    self.assertEqual(1, sum(n["class_type"] == "SamplerCustomAdvanced" for n in graph.values()))
+            self.graph("FACE", name)
 
     def test_reject_stale_revision_and_missing_sources(self):
         model, cfg = setup_model()

@@ -2,10 +2,12 @@
   <div class="upscale-options">
     <div class="fields primary-fields">
       <template v-if="modelValue.upscaleEngine === 'FREYJA'">
+        <label>二采方式<el-select :model-value="modelValue.upscaleSampler" :disabled="disabled" @update:model-value="patch('upscaleSampler', $event)"><el-option value="STANDARD" label="标准二采" /><el-option value="SELFLIFT" label="SelfLift 二采" :disabled="!capability?.samplers?.includes('SELFLIFT')" /></el-select></label>
         <label>输出尺寸<el-select :model-value="modelValue.upscaleOutput" :disabled="disabled || preserveSize" @update:model-value="patch('upscaleOutput', $event)"><el-option value="FULL_HD" label="1080P（横屏 / 竖屏）" /><el-option value="DOUBLE" label="宽高各两倍" /></el-select></label>
         <label>高清重绘步数<el-input-number :model-value="modelValue.upscaleSteps" :min="1" :max="capability?.maxSteps || 8" :step="1" :disabled="disabled" @update:model-value="patch('upscaleSteps', $event ?? 2)" /></label>
       </template>
     </div>
+    <p v-if="modelValue.upscaleSampler === 'SELFLIFT'">SelfLift-zero 使用像素重编码与 latent 放大的差异修正高风险区域，再进行高清采样。人脸修复仍在二采完成后执行。</p>
     <template v-if="modelValue.upscaleEngine === 'FREYJA'">
       <div class="memory-settings">
         <strong>显存使用方式</strong>

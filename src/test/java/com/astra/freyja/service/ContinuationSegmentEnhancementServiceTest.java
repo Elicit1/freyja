@@ -50,6 +50,40 @@ class ContinuationSegmentEnhancementServiceTest {
         assertEquals(3,jdbc.queryForObject("SELECT COUNT(*) FROM dynamic_workflow_step WHERE task_id='source'",Integer.class));
         verifyNoInteractions(videoCapabilities,videoReferences);
     }
+    @Test void baseOnlyDropsSelectedBaseAndEnhancementsAndKeepsFaceRepairOnNewBase()throws Exception{
+        plan.setCapabilityRevision("current");
+        var original=snapshot.getRequest().getContinuationSegments().get(1).getRequest();
+        var facePlan=json.convertValue(plan,DynamicWorkflowOptions.Plan.class);facePlan.getOptions().setFaceRepair(true);facePlan.getOptions().setFaceDenoise(.3);
+        original.setDynamicWorkflowPlan(facePlan);original.setSeed(42L);
+        item.setSnapshotJson(json.writeValueAsString(snapshot));
+        jdbc.update("INSERT INTO dynamic_workflow_step(task_id,step_key,status,output_url) VALUES ('source','segment-001:02:FACE','SUCCESS','old-face')");
+        when(workflows.resolve(any(),any(),any(),any(),any())).thenAnswer(call->{
+            var resolved=json.convertValue(plan,DynamicWorkflowOptions.Plan.class);
+            resolved.setOptions(((DynamicWorkflowOptions.Selection)call.getArgument(0)).getOptions());resolved.setNativeLatentInput(false);resolved.setOutputSize("544x960");return resolved;
+        });
+        var prepared=service.prepare("source",List.of("seg-1"),plan.getOptions(),"BASE_ONLY");
+        var child=prepared.getRequest().getContinuationSegments().get(1).getRequest();
+        assertFalse(child.getDynamicWorkflowPlan().getOptions().isUpscale());assertTrue(child.getDynamicWorkflowPlan().getOptions().isFaceRepair());
+        assertEquals(.3,child.getDynamicWorkflowPlan().getOptions().getFaceDenoise());assertNotEquals(42L,child.getSeed());
+        assertEquals("1080x1920",prepared.getRequest().getDynamicWorkflowPlan().getOutputSize());
+        service.copySteps("source","base-only",List.of(1),"BASE_ONLY");
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM render_task_step WHERE task_id='base-only'",Integer.class));
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM dynamic_workflow_step WHERE task_id='base-only'",Integer.class));
+        assertEquals(4,jdbc.queryForObject("SELECT COUNT(*) FROM dynamic_workflow_step WHERE task_id='source'",Integer.class));
+    }
+    @Test void bothPassesCanRegenerateWithoutArchivedFirstPassAndRequestFreshLatent()throws Exception{
+        for(var child:snapshot.getRequest().getContinuationSegments())child.getRequest().setH3Options(new LinkedHashMap<>());
+        plan.setCapabilityRevision("current");item.setSnapshotJson(json.writeValueAsString(snapshot));
+        jdbc.update("UPDATE render_task_step SET result_manifest_json=NULL WHERE step_key='segment-1'");
+        var prepared=service.prepare("source",List.of("seg-1"),plan.getOptions(),"BASE_AND_UPSCALE");
+        var child=prepared.getRequest().getContinuationSegments().get(1).getRequest();
+        assertEquals("BASE_AND_UPSCALE",prepared.getSegmentReplacement().getRerunMode());
+        assertTrue(prepared.getRequest().getContinuationPlan().getRanges().get(1).isSaveLatent());
+        assertEquals(true,child.getH3Options().get("save_latent"));assertEquals("current",child.getDynamicWorkflowStage().get("revision"));
+        service.copySteps("source","both",List.of(1),"BASE_AND_UPSCALE");
+        assertEquals(2,jdbc.queryForObject("SELECT COUNT(*) FROM render_task_step WHERE task_id='both'",Integer.class));
+        assertThrows(RuntimeException.class,()->service.prepare("source",List.of("seg-1"),plan.getOptions(),"INVALID"));
+    }
     @Test void secondPassManifestsSurvivePartialReplacementAndMissingHistoricalPredecessorsRequireContiguousRerun()throws Exception{
         plan.setSecondPassContinuity(true);
         assertThrows(RuntimeException.class,()->service.prepare("source","seg-1",plan.getOptions()));

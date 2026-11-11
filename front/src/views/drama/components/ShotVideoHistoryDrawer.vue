@@ -120,7 +120,7 @@
               </span>
 
               <div>
-                <el-button v-if="take.taskId && hasEnhancedSegments(take)" size="small" plain @click="segmentUpscale?.open(take.taskId)">片段二采替换</el-button>
+                <el-button v-if="take.taskId && hasEnhancedSegments(take)" size="small" plain @click="segmentUpscale?.open(take.taskId)">重跑片段</el-button>
                 <el-button
                   size="small"
                   type="danger"
@@ -203,7 +203,7 @@ const pageSize = 12
 const selectingTakeId = ref<string | null>(null)
 const deletingTakeId = ref<string | null>(null)
 function hasEnhancedSegments(take: ShotVideoTake) {
-  try { const snapshot = JSON.parse(take.requestSnapshotJson || '{}'); return Array.isArray(snapshot.continuationSegments) && !!snapshot.dynamicWorkflowPlan?.options?.upscale }
+  try { const snapshot = JSON.parse(take.requestSnapshotJson || '{}'); return Array.isArray(snapshot.continuationSegments) && snapshot.continuationSegments.length > 0 }
   catch { return false }
 }
 

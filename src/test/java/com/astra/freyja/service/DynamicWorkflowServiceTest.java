@@ -63,21 +63,27 @@ class DynamicWorkflowServiceTest {
         assertTrue(service.resolve(selection,1L,2L,"960x544","node").isSecondPassContinuity());
         assertFalse(json.readValue("{\"nativeLatentInput\":true}",DynamicWorkflowOptions.Plan.class).isSecondPassContinuity());
     }
+    @Test void selfLiftRequiresAdvertisedSamplerAndPreservesTheAuthoredChoice()throws Exception{
+        var selection=new DynamicWorkflowOptions.Selection();var options=new DynamicWorkflowOptions();options.setUpscale(true);options.setUpscaleEngine("FREYJA");options.setUpscaleSampler("SELFLIFT");selection.setOptions(options);
+        assertThrows(com.astra.freyja.common.BizException.class,()->service.resolve(selection,1L,2L,"960x544","node"));
+        doReturn(json.readTree("{\"models\":[{\"modelCode\":\"h3\",\"nodeId\":\"node\",\"supported\":true,\"revision\":\"r1\",\"freyjaUpscale\":{\"supported\":true,\"samplers\":[\"STANDARD\",\"SELFLIFT\"],\"maxSteps\":8}}]}" )).when(service).capabilities(1L);
+        assertEquals("SELFLIFT",service.resolve(selection,1L,2L,"960x544","node").getOptions().getUpscaleSampler());
+        options.setUpscaleSampler("INVALID");assertThrows(com.astra.freyja.common.BizException.class,options::validate);
+    }
     @Test void refusesWrongNodeModelAndPixelBudget(){
         var selection=new DynamicWorkflowOptions.Selection();var options=new DynamicWorkflowOptions();options.setUpscale(true);selection.setOptions(options);
         assertThrows(RuntimeException.class,()->service.resolve(selection,1L,2L,"960x544","other-node"));
         assertThrows(RuntimeException.class,()->service.resolve(selection,1L,2L,"1920x1088",null));
         assertThrows(RuntimeException.class,()->service.resolve(selection,4L,2L,"960x544",null));
     }
-    @Test void fl2vaRejectsEitherEnhancementEvenWhenGatewayClaimsSupport(){
+    @Test void fl2vaSupportsEnhancementsAdvertisedByGateway(){
         baseModel.setModelType("TXT2VIDEO_FIRST_LAST");
         for(boolean upscale:new boolean[]{false,true})for(boolean face:new boolean[]{false,true}){
             var selection=new DynamicWorkflowOptions.Selection();var options=new DynamicWorkflowOptions();options.setUpscale(upscale);options.setFaceRepair(face);selection.setOptions(options);
             if(!upscale&&!face){assertNull(service.resolve(selection,1L,2L,"960x544",null));continue;}
-            var error=assertThrows(com.astra.freyja.common.BizException.class,()->service.resolve(selection,1L,2L,"960x544",null));
-            assertEquals(400,error.getCode());assertTrue(error.getMessage().contains("REF2VA"));
+            var plan=service.resolve(selection,1L,2L,"960x544",null);
+            assertNotNull(plan);assertEquals(upscale,plan.getOptions().isUpscale());assertEquals(face,plan.getOptions().isFaceRepair());
         }
-        verify(service,never()).capabilities(any());
     }
     @Test void rejectsFaceOnBaseModelsWithoutThatStage()throws Exception{
         doReturn(json.readTree("{\"models\":[{\"modelCode\":\"h3\",\"supported\":true,\"nodeId\":\"node\",\"stages\":[\"BASE\",\"UPSCALE\"]}]}" )).when(service).capabilities(1L);

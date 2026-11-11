@@ -35,6 +35,7 @@ class FreyjaUpscale(BaseModel):
     latent_model: Optional[str] = None
     steps: int = Field(default=2, ge=1, le=32, strict=True)
     memory: Literal["FULL", "TEMPORAL", "SPATIAL"] = "TEMPORAL"
+    sampler: Literal["STANDARD", "SELFLIFT"] = "STANDARD"
     tiles: UpscaleTiling = Field(default_factory=UpscaleTiling)
 
 
@@ -53,6 +54,7 @@ class DynamicStage(BaseModel):
     stage: Literal["BASE", "UPSCALE", "FACE"] = "BASE"
     revision: str
     source_url: Optional[str] = None
+    control_source_ids: list[str] = Field(default_factory=list, max_length=3)
     source_sha256: Optional[str] = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     denoise: float = Field(default=.25, gt=0, le=.6)
     scale: Literal[1, 2] = 1
@@ -94,7 +96,7 @@ class DynamicStage(BaseModel):
         return self
 
 
-SUPPORTED_HANDLERS = {"minimax_h3_ref2va"}
+SUPPORTED_HANDLERS = {"minimax_h3_ref2va", "minimax_h3_fl2va"}
 MODULE = Path(__file__).parent / "workflow_modules/h3_face_v1.json"
 COMPONENT_NODES = ["FreyjaH3UpscaleEncode", "LatentUpscaleModelLoader", "MiniMaxH3LatentUpscaleWithModel", "FreyjaH3FinishSize"]
 
@@ -144,6 +146,7 @@ def stage_nodes(stage, capability):
         required.discard("ImageScale")
         required.discard("H3InjectVideoLatent")
         required.update(COMPONENT_NODES)
+        if stage.component.sampler == "SELFLIFT": required.add("FreyjaH3SelfLift")
         if stage.source_latent:
             required.discard("FreyjaH3UpscaleEncode")
             required.add("FreyjaH3LoadLatent")
@@ -196,6 +199,7 @@ def describe(model, base_dir):
                               "secondPassContinuity": supported,
                               "defaultLatentModel": model.default_upscale_model,
                               "methods": ["H3_LEARNED"], "memoryModes": ["FULL", "TEMPORAL", "SPATIAL"],
+                              "samplers": ["STANDARD", "SELFLIFT"],
                               "outputs": ["DOUBLE", "FULL_HD"], "maxSteps": model.default_steps},
             "requiredNodes": {"UPSCALE": ["VHS_LoadVideo", "ImageScale", "H3InjectVideoLatent", "FreyjaH3CheckFrames"],
                               "FACE": ["VHS_LoadVideo", "H3FaceTrackCrop", "H3InjectVideoLatent",
@@ -208,7 +212,7 @@ def require_stage(request, model, base_dir):
         return
     capability = describe(model, base_dir)
     if not capability["supported"]:
-        raise ValueError("DYNAMIC_WORKFLOW_UNSUPPORTED: enhancements require a base REF2VA model")
+        raise ValueError("DYNAMIC_WORKFLOW_UNSUPPORTED: enhancements require an H3 generation model")
     if stage.stage not in capability["stages"]:
         raise ValueError("DYNAMIC_STAGE_UNSUPPORTED: face repair requires a reference-video base model")
     if stage.revision != capability["revision"]:
@@ -305,6 +309,10 @@ def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=
             workflow["dynamic_lift"] = {"class_type": "MiniMaxH3LatentUpscaleWithModel", "inputs": {
                 "model": ["dynamic_upscale_model", 0], "samples": ["dynamic_encode", 0], "width": width, "height": height}}
             sampler["inputs"]["latent_image"] = ["dynamic_lift", 0]
+            if component.sampler == "SELFLIFT":
+                workflow["dynamic_selflift"] = {"class_type": "FreyjaH3SelfLift", "inputs": {
+                    "source": ["dynamic_encode", 0], "lifted": ["dynamic_lift", 0], "vae": vae}}
+                sampler["inputs"]["latent_image"] = ["dynamic_selflift", 0]
             final_model = model_link
             if component.memory == "SPATIAL":
                 workflow["dynamic_tiles"] = {"class_type": "FreyjaH3TileModel", "inputs": {
@@ -368,6 +376,9 @@ def apply_stage(workflow, request, model, uploaded_source=None, uploaded_latent=
         for key, value in cond["inputs"].items():
             if key.startswith(("ref_images.", "ref_audios.", "ref_videos.", "ref_video_audios.")):
                 face_cond[key] = copy.deepcopy(value)
+        if model.handler == "minimax_h3_fl2va":
+            for index, key in enumerate(key for key in ("first_frame", "last_frame") if key in cond["inputs"]):
+                face_cond[f"ref_images.ref_image_{index}"] = copy.deepcopy(cond["inputs"][key])
         schedule_id = sampler["inputs"]["sigmas"][0]
         workflow["dynamic_face_162"] = refinement_schedule(
             workflow[schedule_id], model.default_steps, stage.denoise, ["dynamic_face_160", 2])

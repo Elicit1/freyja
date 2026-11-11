@@ -43,6 +43,35 @@ def load_nodes(folder):
 
 
 class ContinuationCpuTest(unittest.TestCase):
+    def test_selflift_corrects_only_high_residual_locations_without_mutating_inputs(self):
+        from freyja_nodes.selflift import consistency_lift
+        direct=torch.zeros(2,24,7,2,4)
+        anchor=torch.zeros_like(direct)
+        anchor[...,0,0]=1
+        before=anchor.clone()
+        corrected=consistency_lift(direct,anchor)
+        self.assertTrue(torch.equal(anchor,before));self.assertTrue(torch.count_nonzero(direct)==0)
+        self.assertTrue(torch.all(corrected[...,0,0]==.5));self.assertTrue(torch.all(corrected[...,1,:]==0))
+        self.assertTrue(torch.equal(consistency_lift(direct,direct),direct))
+        with self.assertRaisesRegex(ValueError,'LAYOUT'):consistency_lift(direct,anchor[:1])
+
+    def test_selflift_encodes_one_complete_timeline_and_preserves_audio_and_source(self):
+        from freyja_nodes.selflift import FreyjaH3SelfLift
+        original=torch.ones(1,24,7,2,2);audio=torch.ones(1,32,2,37)
+        lifted=torch.zeros(1,24,7,4,4);calls=[]
+        class Vae:
+            def decode(self,latent):
+                calls.append(('decode',tuple(latent.shape)))
+                return torch.ones(22,32,32,3)*.5
+            def encode(self,pixels):
+                calls.append(('encode',tuple(pixels.shape)))
+                return torch.ones_like(lifted)
+        output=FreyjaH3SelfLift().apply({'samples':Nested((original,audio))},{'samples':Nested((lifted,audio*2))},Vae())[0]
+        video,sound=output['samples'].unbind()
+        self.assertEqual([('decode',(1,24,7,2,2)),('encode',(22,64,64,3))],calls)
+        self.assertTrue(torch.all(video==.5));self.assertTrue(torch.equal(sound,audio))
+        self.assertTrue(torch.all(original==1));self.assertTrue(torch.all(lifted==0))
+
     def test_second_pass_handoff_pins_video_tail_without_carrying_audio_or_changing_source(self):
         from freyja_nodes.upscale import FreyjaH3UpscaleContinue
         from unittest.mock import patch

@@ -17,6 +17,14 @@ export interface ControlNetConfiguration {
 
 export const MAX_CONTROL_INPUTS = 3
 
+export function controlSlotCount(value: ControlNetConfiguration): number {
+  return value.enabled ? controlInputs(value).filter(input => input.enabled).length : 0
+}
+
+export function controlSourceIds(value: ControlNetConfiguration): Set<string> {
+  return new Set(value.enabled ? controlInputs(value).filter(input => input.enabled && input.referenceId).map(input => String(input.referenceId)) : [])
+}
+
 export function controlInputs(value: ControlNetConfiguration): ControlNetInput[] {
   if (value.controls != null) return value.controls
   const controlType = value.controlType || 'CANNY'

@@ -8,7 +8,7 @@
     <p v-else-if="loading" role="status">正在读取视频增强能力…</p>
     <p v-else-if="error" role="alert">{{ error }}。可直接进行基础渲染。<el-button link type="primary" :disabled="disabled" @click="loadCapabilities(true)">重试</el-button></p>
     <p v-else-if="loaded && !capability">网关未登记模型 {{ modelCode }}，请核对模型编码及网关配置。<el-button link type="primary" :disabled="disabled" @click="loadCapabilities(true)">刷新能力</el-button></p>
-    <p v-else-if="loaded && !capability?.supported">当前模型未提供二采放大和人脸修复能力，请选择基础 REF2VA 模型。<el-button link type="primary" :disabled="disabled" @click="loadCapabilities(true)">刷新能力</el-button></p>
+    <p v-else-if="loaded && !capability?.supported">当前模型未提供视频增强能力，请选择支持增强的 H3 视频模型。<el-button link type="primary" :disabled="disabled" @click="loadCapabilities(true)">刷新能力</el-button></p>
     <template v-if="options.upscale || options.faceRepair">
       <div class="enhancement-path" aria-label="本次处理顺序"><span>基础生成</span><span v-if="options.upscale">→ 二采放大</span><span v-if="options.faceRepair">→ 人脸修复</span><span>→ 输出 {{ outputSize }}</span></div>
       <el-collapse><el-collapse-item title="增强参数" name="parameters">
@@ -18,7 +18,7 @@
         </div>
         <FreyjaUpscaleOptions v-if="options.upscale" :model-value="options" :capability="capability?.freyjaUpscale" :disabled="disabled" @update:model-value="update" />
       </el-collapse-item></el-collapse>
-      <p>提交后按开关自动追加处理。接续时，每段分别增强，下一段仍使用基础视频和原始 latent。</p>
+      <p>每段依次执行基础生成、所选二采与修脸。一采和二采分别传递自己的原始 latent；修脸结果仅用于成片。</p>
     </template>
   </section>
 </template>

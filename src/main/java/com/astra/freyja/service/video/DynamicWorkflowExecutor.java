@@ -67,6 +67,8 @@ public class DynamicWorkflowExecutor {
         var plan=request.getDynamicWorkflowPlan();
         var transport=new LinkedHashMap<String,Object>();transport.put("schema_version",1);transport.put("stage",stage);transport.put("revision",plan.getCapabilityRevision());
         if(!"BASE".equals(stage)){
+            var controlSources=ShotControlNetOptions.sourceIds(request.getH3Options(),request.getDynamicWorkflowStage());
+            if(!controlSources.isEmpty())transport.put("control_source_ids",new ArrayList<>(controlSources));
             request.setH3Options(null);request.setSize("UPSCALE".equals(stage)||plan.getOptions().isUpscale()?Objects.requireNonNullElse(plan.getProcessingSize(),plan.getOutputSize()):plan.getBaseSize());
             transport.put("scale","UPSCALE".equals(stage)?2:1);
             transport.put("denoise","UPSCALE".equals(stage)?plan.getOptions().getUpscaleDenoise():plan.getOptions().getFaceDenoise());
@@ -77,6 +79,7 @@ public class DynamicWorkflowExecutor {
                 if("H3_LEARNED".equals(plan.getOptions().getUpscaleMethod())&&plan.getOptions().getUpscaleLatentModel()!=null
                         &&!plan.getOptions().getUpscaleLatentModel().isBlank())component.put("latent_model",plan.getOptions().getUpscaleLatentModel());
                 component.put("steps",plan.getOptions().getUpscaleSteps());component.put("memory",plan.getOptions().getUpscaleMemory());
+                if(!"STANDARD".equals(plan.getOptions().getUpscaleSampler()))component.put("sampler",plan.getOptions().getUpscaleSampler());
                 component.put("tiles",Map.of("tile_width",tiling.getTileWidth(),"tile_height",tiling.getTileHeight(),"overlap",tiling.getOverlap(),
                         "window_frames",tiling.getWindowFrames(),"overlap_frames",tiling.getOverlapFrames()));
                 transport.put("component",component);

@@ -21,7 +21,7 @@ import uvicorn
 import aiofiles
 
 from config import get_config, get_base_dir, GatewayConfig, NodeConfig
-from video_reference import require_supported, workflow_revision
+from video_reference import require_supported, workflow_revision, mixed_reference_count
 from reference_media import upload_reference_video
 from render_input_validation import validate_transport
 from h3_extensions import require_options, revision as h3_revision, inspect_backend
@@ -362,8 +362,7 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
             raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: expected video reference prompt format")
         if len(video_references) > video_capability.max_videos:
             raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: too many reference videos")
-        total = len(request.get_all_ref_images()) + len(request.get_all_ref_audios()) + len(video_references)
-        total += sum(1 for ref in video_references if ref.include_audio)
+        total = mixed_reference_count(request)
         if total > video_capability.max_mixed_assets:
             raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: mixed reference limit exceeded")
         if any(ref.include_audio for ref in video_references) and not video_capability.supports_video_audio:
@@ -525,6 +524,10 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         if canonical.get("dynamic_workflow") and canonical["dynamic_workflow"].get("source_sha256"):canonical["dynamic_workflow"].pop("source_url",None)
         if canonical.get("dynamic_workflow"):
             dynamic = canonical["dynamic_workflow"]
+            if not dynamic.get("control_source_ids"):
+                dynamic.pop("control_source_ids", None)
+            if (dynamic.get("component") or {}).get("sampler") == "STANDARD":
+                dynamic["component"].pop("sampler", None)  # Preserve pre-SelfLift execution hashes.
             if dynamic.get("source_latent"):
                 dynamic["source_latent"].pop("url", None)
             else:

@@ -37,6 +37,8 @@
 
 ### 二采段间接续
 
+新增可选 `FreyjaH3SelfLift`：对专用模型放大后的 latent 与像素/VAE 重编码锚点执行 SelfLift-zero 一致性修正，再进入原二采调度。该节点在挂载前序二采前缀之前运行，不覆盖锁定区域，不改写一采产物和音频。REF2VA / FL2VA 的 Fast、Turbo 与 Pika 模型共用此增强接口；画质与显存须在目标 GPU 单独验收。更新本节点包后需重启 ComfyUI。
+
 新建接续任务开启 FREYJA 放大时，一采 latent 仍只交给下一段一采；二采结束另存
 `SECOND_PASS` 原始 AV latent，交给下一段二采。`FreyjaH3UpscaleContinue` 在当前段放大后、
 高清采样前，将上一段二采视频尾部复制到当前段前缀，按真实重叠帧数对齐并锁定；

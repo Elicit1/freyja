@@ -17,6 +17,10 @@ class ShotContinuationSelectionsTest {
     final ShotContinuationSelections selections=new ShotContinuationSelections(dictionaries,characters,looks,mock(ResSceneMapper.class),mock(ResPropMapper.class),mock(ResKeyframeMapper.class),mock(DubbingService.class),mock(ResAudioService.class),mock(ShotVideoReferenceService.class));
     DramaShot shot(){var s=new DramaShot();s.setId(1L);s.setDramaId(2L);return s;}
     ShotContinuation draft(){var d=new ShotContinuation();d.setEnabled(true);d.setDurationSeconds(5);new ShotContinuationPlanner().plan(d,true);return d;}
+    @Test void sceneAndKeyframeCannotBothBeSaved(){
+        var d=draft();var segment=d.getSegments().getFirst();segment.setResSceneId(2032095628944588801L);segment.setResKeyframeId(2032095628944588802L);
+        assertTrue(assertThrows(BizException.class,()->selections.validate(shot(),d)).getMessage().contains("只能选择一个"));
+    }
     @Test void disabledDictionaryAndWrongCharacterLookCannotBeSaved(){
         var d=draft();var segment=d.getSegments().getFirst();segment.setShotType("CLOSE_UP");assertThrows(BizException.class,()->selections.validate(shot(),d));segment.setShotType(null);
         var c=new ResCharacter();c.setId(3L);c.setDramaId(2L);c.setStatus(1);when(characters.selectById(3L)).thenReturn(c);

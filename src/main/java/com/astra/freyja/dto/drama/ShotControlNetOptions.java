@@ -30,6 +30,16 @@ import java.util.*;
         return List.of(input);
     }
     public List<Input> activeInputs(){return enabled?inputs().stream().filter(Objects::nonNull).filter(Input::isEnabled).toList():List.of();}
+    public static Set<String> sourceIds(Map<String,Object> h3,Map<String,Object> stage){
+        var ids=new LinkedHashSet<String>();
+        if(h3!=null&&h3.get("control_net") instanceof Map<?,?> control&&Boolean.TRUE.equals(control.get("enabled"))){
+            if(control.get("controls") instanceof List<?> rows){
+                for(var row:rows)if(row instanceof Map<?,?> input&&!Boolean.FALSE.equals(input.get("enabled"))&&input.get("reference_id") instanceof String id&&!id.isBlank())ids.add(id);
+            }else if(control.get("reference_id") instanceof String id&&!id.isBlank())ids.add(id);
+        }
+        if(stage!=null&&stage.get("control_source_ids") instanceof List<?> sources)for(var source:sources)if(source instanceof String id&&!id.isBlank())ids.add(id);
+        return ids;
+    }
     @JsonIgnore public boolean isActive(){return !activeInputs().isEmpty();}
     public void validate(){
         if(controls!=null&&controls.size()>MAX_CONTROLS)throw new BizException(400,"ControlNet 最多配置 "+MAX_CONTROLS+" 行");

@@ -43,6 +43,7 @@ public class ShotContinuationSelections {
             if(segment==null)throw new BizException(400,"片段不能为空");
             if(segment.getCharacterRefs()!=null&&segment.getCharacterRefs().size()>30||segment.getPropRefs()!=null&&segment.getPropRefs().size()>30||segment.getReferenceImages()!=null&&segment.getReferenceImages().size()>9||segment.getReferenceVideos()!=null&&segment.getReferenceVideos().size()>3||segment.getReferenceAudios()!=null&&segment.getReferenceAudios().size()>3)throw new BizException(400,"片段素材数量超过选项上限");
             String path="片段 "+segment.getId();
+            if(segment.getResSceneId()!=null&&segment.getResKeyframeId()!=null)throw new BizException(400,path+" 的环境场景与关键图参考只能选择一个");
             choice(segment.getShotType(),sizes,path+".shotType");choice(segment.getCameraMovement(),movements,path+".cameraMovement");
             segment.controlOptions().validateSources(segment.getReferenceVideos());
             if(segment.getResSceneId()!=null)asset(scenes.selectById(segment.getResSceneId()),shot);

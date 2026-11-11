@@ -1,10 +1,12 @@
 <template>
-  <el-dialog v-model="visible" title="重跑片段二采" width="min(1120px,94vw)" top="5vh" append-to-body destroy-on-close :close-on-click-modal="!submitting" :close-on-press-escape="!submitting" :show-close="!submitting">
+  <el-dialog v-model="visible" title="重跑接续片段" width="min(1120px,94vw)" top="5vh" append-to-body destroy-on-close :close-on-click-modal="!submitting" :close-on-press-escape="!submitting" :show-close="!submitting">
     <div v-loading="loading" class="segment-upscale">
       <el-alert v-if="error" :title="error" type="error" :closable="false" show-icon />
-      <el-alert v-if="submittedTask" :title="`已提交 ${selected.length} 个片段的二采重跑`" :description="`完成后在视频历史中查看新的完整版本。任务：${submittedTask}`" type="success" :closable="false" show-icon />
+      <el-alert v-if="submittedTask" :title="`已提交 ${selected.length} 个片段的重跑`" :description="`完成后在视频历史中查看新的完整版本。任务：${submittedTask}`" type="success" :closable="false" show-icon />
       <template v-if="summary?.supported">
         <p>选择需要重新处理的片段，完成后合成为一个新版本。其余片段沿用当前结果。</p>
+        <el-radio-group v-model="rerunMode" :disabled="locked" aria-label="重跑范围"><el-radio-button value="BASE_ONLY">仅一采</el-radio-button><el-radio-button value="UPSCALE_ONLY">仅二采</el-radio-button><el-radio-button value="BASE_AND_UPSCALE">一采和二采</el-radio-button></el-radio-group>
+        <p>{{ rerunMode === 'UPSCALE_ONLY' ? '复用原始一采 latent，重新二采后按原设置修脸。' : rerunMode === 'BASE_ONLY' ? '使用新种子重新一采，跳过二采，按原设置修脸，合成时对齐原输出尺寸。' : '使用新种子重新一采，再执行所选二采方式，最后按原设置修脸。' }} 未选片段保持原结果；若接续处动作变化，建议连同相邻片段重跑。</p>
         <div class="selection-workspace">
           <section class="segment-picker" aria-label="选择重跑片段">
             <div class="section-heading"><h3>选择片段 <span>{{ selected.length }} / {{ summary.segments.length }}</span></h3><div class="selection-actions">
@@ -12,15 +14,15 @@
               <el-button link :disabled="locked || !selected.length" @click="selectedIds = []">清空</el-button>
             </div></div>
             <el-checkbox-group v-model="selectedIds" :disabled="locked" aria-label="待重跑片段" class="segment-grid">
-              <article v-for="segment in summary.segments" :key="segment.id" class="segment-card" :class="{ 'is-selected': selectedIds.includes(segment.id), 'is-unavailable': !segment.allowed }">
-                <el-checkbox :value="segment.id" :disabled="!segment.allowed" class="segment-checkbox"><strong>片段 {{ segment.index }}</strong><span class="segment-name">{{ segment.name }}</span></el-checkbox>
+              <article v-for="segment in summary.segments" :key="segment.id" class="segment-card" :class="{ 'is-selected': selectedIds.includes(segment.id), 'is-unavailable': !isAllowed(segment) }">
+                <el-checkbox :value="segment.id" :disabled="!isAllowed(segment)" class="segment-checkbox"><strong>片段 {{ segment.index }}</strong><span class="segment-name">{{ segment.name }}</span></el-checkbox>
                 <div class="clip-poster">
                   <video :src="segment.videoUrl" muted playsinline preload="metadata" aria-hidden="true" />
-                  <span class="clip-state">{{ !segment.allowed ? '不可重跑' : selectedIds.includes(segment.id) ? '本次重跑' : '沿用当前结果' }}</span>
+                  <span class="clip-state">{{ !isAllowed(segment) ? '不可重跑' : selectedIds.includes(segment.id) ? '本次重跑' : '沿用当前结果' }}</span>
                   <el-button size="small" class="preview-button" :aria-label="`预览片段 ${segment.index}`" @click="previewId = segment.id">预览</el-button>
                 </div>
                 <p class="clip-range">保留范围 {{ time(segment.startFrame) }}–{{ time(segment.endFrame) }}</p>
-                <p v-if="!segment.allowed" class="unavailable-reason">{{ segment.reason }}</p>
+                <p v-if="!isAllowed(segment)" class="unavailable-reason">{{ segment.reason }}</p>
               </article>
             </el-checkbox-group>
           </section>
@@ -36,11 +38,11 @@
             <div v-if="previewSegment" class="preview-panel">
               <div class="preview-heading"><strong>片段 {{ previewSegment.index }} · {{ previewSegment.name }}</strong><span>原片段预览</span></div>
               <video :key="previewSegment.id" :src="previewSegment.videoUrl" controls playsinline preload="metadata" class="segment-preview" />
-              <p>这里展示当前版本。新的二采结果将在重跑完成后保存到视频历史。</p>
+              <p>这里展示当前版本。新的结果将在重跑完成后保存到视频历史。</p>
             </div>
           </section>
         </div>
-        <section class="parameter-settings" aria-label="本次二采参数">
+        <section v-if="rerunMode !== 'BASE_ONLY'" class="parameter-settings" aria-label="本次二采参数">
           <div class="section-heading"><h3>二采参数</h3><small>统一应用于选中的 {{ selected.length }} 个片段</small></div>
           <div class="denoise-row"><span>重绘强度</span><el-input-number v-model="options.upscaleDenoise" aria-label="重绘强度" :min="0.05" :max="0.6" :step="0.05" :precision="2" :disabled="locked" /><p>数值越高，重绘变化越明显；出现双轮廓时可先降低。</p></div>
           <FreyjaUpscaleOptions v-model="options" :capability="capability?.freyjaUpscale" :disabled="locked" preserve-size />
@@ -55,19 +57,22 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { videoEnhancementApi, defaultWorkflowOptions, normalizeWorkflowOptions, type ContinuationEnhancementSummary, type WorkflowCapability } from '@/api/video-enhancements'
+import { videoEnhancementApi, defaultWorkflowOptions, normalizeWorkflowOptions, type ContinuationEnhancementSummary, type WorkflowCapability, type SegmentRerunMode } from '@/api/video-enhancements'
 import FreyjaUpscaleOptions from './FreyjaUpscaleOptions.vue'
 const visible = ref(false), loading = ref(false), submitting = ref(false), error = ref(''), taskId = ref(''), previewId = ref(''), submittedTask = ref('')
 const selectedIds = ref<string[]>([])
+const rerunMode = ref<SegmentRerunMode>('UPSCALE_ONLY')
 const summary = ref<ContinuationEnhancementSummary>(), options = ref(defaultWorkflowOptions()), capability = ref<WorkflowCapability>()
-const selectable = computed(() => summary.value?.segments.filter(segment => segment.allowed) || [])
+function isAllowed(segment: ContinuationEnhancementSummary['segments'][number]) { return rerunMode.value === 'UPSCALE_ONLY' ? segment.allowed : segment.baseAllowed !== false }
+const selectable = computed(() => summary.value?.segments.filter(isAllowed) || [])
 const selected = computed(() => selectable.value.filter(segment => selectedIds.value.includes(segment.id)))
 const previewSegment = computed(() => summary.value?.segments.find(segment => segment.id === previewId.value))
 const allSelected = computed(() => !!selectable.value.length && selected.value.length === selectable.value.length)
 const partlySelected = computed(() => selected.value.length > 0 && !allSelected.value)
 const selectedSeconds = computed(() => (selected.value.reduce((frames, segment) => frames + segment.endFrame - segment.startFrame, 0) / 24).toFixed(1))
 const locked = computed(() => submitting.value || !!submittedTask.value)
-const canSubmit = computed(() => !loading.value && !locked.value && !!selected.value.length && !!capability.value?.freyjaUpscale?.supported)
+const canSubmit = computed(() => !loading.value && !locked.value && !!selected.value.length && (rerunMode.value === 'BASE_ONLY' || !!capability.value?.freyjaUpscale?.supported))
+watch(rerunMode, () => { selectedIds.value = selectedIds.value.filter(id => selectable.value.some(segment => segment.id === id)) })
 watch(selected, segments => {
   if (!segments.some(segment => segment.id === previewId.value)) previewId.value = segments[0]?.id || ''
 })
@@ -78,6 +83,7 @@ let requestId = '', submittedBody = '', revision = 0
 async function open(task: string) {
   if (submitting.value) return
   const token = ++revision
+  rerunMode.value = 'UPSCALE_ONLY'
   visible.value = true; loading.value = true; error.value = ''; summary.value = undefined; capability.value = undefined; selectedIds.value = []; previewId.value = ''; submittedTask.value = ''; taskId.value = task; requestId = ''; submittedBody = ''
   try {
     const result = await videoEnhancementApi.segments(task)
@@ -97,11 +103,11 @@ async function open(task: string) {
 async function submit() {
   if (!canSubmit.value) return
   const ids = selected.value.map(segment => segment.id)
-  const body = JSON.stringify([taskId.value, ids, options.value])
+  const body = JSON.stringify([taskId.value, ids, options.value, rerunMode.value])
   if (body !== submittedBody) { requestId = crypto.randomUUID(); submittedBody = body }
   submitting.value = true; error.value = ''
   try {
-    const result = await videoEnhancementApi.replaceSegments(taskId.value, ids, options.value, requestId)
+    const result = await videoEnhancementApi.replaceSegments(taskId.value, ids, options.value, requestId, rerunMode.value)
     submittedTask.value = result.taskId
     ElMessage.success(`已提交 ${ids.length} 个片段，将合成为一个新的完整版本。`)
   } catch (e: any) { error.value = e.message || '提交失败，可重试原请求' }

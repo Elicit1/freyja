@@ -36,6 +36,7 @@ public final class VideoBatchModels {
 
     @Data
     public static class SegmentReplacement {
+        private String rerunMode = "UPSCALE_ONLY";
         private String sourceTaskId;
         private Integer segmentIndex;
         private List<Integer> segmentIndices;

@@ -3,6 +3,7 @@
 No prose semantics, no label renumbering, no silently discarded references.
 """
 import hashlib
+from video_reference import control_source_ids
 
 VERSION = "h3-render-input/1"
 FORMATS = {"MINIMAX_H3_REF2VA_V1", "MINIMAX_H3_REF2VA_VIDEO_V1", "MINIMAX_H3_FL2VA_V1"}
@@ -47,8 +48,12 @@ def validate_transport(request):
         label=f"<Picture {2 if role=='LAST_FRAME' else 1}>" if fl else f"<Picture {index+1}>"
         actual.append((label, "IMAGE", role, ref_id, digest(source)))
     audio_index = 0
-    for index, video in enumerate(request.get_all_ref_videos()):
-        actual.append((f"<Video {index + 1}>", "VIDEO", "REFERENCE_VIDEO", video.reference_id, digest(video.video_url)))
+    visual_index = 0
+    controls = control_source_ids(request)
+    for video in request.get_all_ref_videos():
+        if video.reference_id not in controls:
+            visual_index += 1
+            actual.append((f"<Video {visual_index}>", "VIDEO", "REFERENCE_VIDEO", video.reference_id, digest(video.video_url)))
         if video.include_audio:
             audio_index += 1
             actual.append((f"<Audio {audio_index}>", "AUDIO", "VIDEO_AUDIO", video.reference_id, digest(video.video_url)))
@@ -118,7 +123,10 @@ def validate_workflow(request, workflow, model, images, audios, videos):
         if inputs.get("prompt") != request.prompt:
             fail(f"prompt differs at conditioning node {nid}")
         if request.prompt_format == "MINIMAX_H3_FL2VA_V1":
-            keys=[key for key,source in (("first_frame",request.first_frame),("last_frame",request.last_frame)) if source]
+            if request.dynamic_workflow and request.dynamic_workflow.stage == "FACE" and nid == "dynamic_face_158":
+                keys = _slots(inputs, "ref_images.ref_image_")
+            else:
+                keys=[key for key,source in (("first_frame",request.first_frame),("last_frame",request.last_frame)) if source]
             if [_image_file(workflow, inputs, key) for key in keys] != images:
                 fail("first/last frame order changed")
             continue
@@ -135,19 +143,24 @@ def validate_workflow(request, workflow, model, images, audios, videos):
             actual_audios.append(loader.get("inputs", {}).get("audio"))
         if actual_audios != audios:
             fail(f"audio slots were truncated or changed at {nid}")
+        controls = control_source_ids(request)
+        visual_videos = [video for video in videos if video.get("reference_id") not in controls]
         video_keys = _slots(inputs, "ref_videos.ref_video_")
-        if len(video_keys) != len(videos):
+        if len(video_keys) != len(visual_videos):
             fail("video slot count changed")
         expected_audio_keys = []
         for i, key in enumerate(video_keys):
             link = inputs[key]
             loader = workflow.get(str(link[0]), {}) if isinstance(link, list) and len(link) == 2 else {}
-            if loader.get("class_type") != "VHS_LoadVideo" or link[1] != 0 or loader.get("inputs", {}).get("video") != videos[i]["filename"]:
+            if loader.get("class_type") != "VHS_LoadVideo" or link[1] != 0 or loader.get("inputs", {}).get("video") != visual_videos[i]["filename"]:
                 fail("video order changed")
-            if videos[i]["include_audio"]:
+        for i, video in enumerate(videos):
+            if video["include_audio"]:
                 audio_key = f"ref_video_audios.ref_video_audio_{i}"
                 expected_audio_keys.append(audio_key)
-                if inputs.get(audio_key) != [link[0], 2]:
+                audio_link = inputs.get(audio_key)
+                loader = workflow.get(str(audio_link[0]), {}) if isinstance(audio_link, list) and len(audio_link) == 2 else {}
+                if loader.get("class_type") != "VHS_LoadVideo" or audio_link[1] != 2 or loader.get("inputs", {}).get("video") != video["filename"]:
                     fail("video soundtrack binding changed")
         if set(k for k in inputs if k.startswith("ref_video_audios.ref_video_audio_")) != set(expected_audio_keys):
             fail("video soundtrack slots changed")

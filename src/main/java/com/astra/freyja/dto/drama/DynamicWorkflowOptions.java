@@ -19,6 +19,7 @@ public class DynamicWorkflowOptions {
     private String upscaleOutput = "DOUBLE";
     private int upscaleSteps = 2;
     private String upscaleMemory = "TEMPORAL";
+    private String upscaleSampler = "STANDARD";
     public void validate() {
         if(scale!=2 || !Double.isFinite(upscaleDenoise) || upscaleDenoise<=0 || upscaleDenoise>.6
                 || !Double.isFinite(faceDenoise) || faceDenoise<=0 || faceDenoise>.6)
@@ -30,6 +31,7 @@ public class DynamicWorkflowOptions {
                 ||!java.util.Set.of("LATENT_BICUBIC","H3_LEARNED").contains(upscaleMethod)
                 ||!java.util.Set.of("DOUBLE","FULL_HD").contains(upscaleOutput)
                 ||!java.util.Set.of("FULL","TEMPORAL","SPATIAL").contains(upscaleMemory)
+                ||!java.util.Set.of("STANDARD","SELFLIFT").contains(java.util.Objects.toString(upscaleSampler,""))
                 ||upscaleSteps<1||upscaleSteps>32)throw new BizException(400,"FREYJA 二采组件参数无效");
         if("PIXEL".equals(upscaleEngine)&&(upscaleTiling.isEnabled()||!"DOUBLE".equals(upscaleOutput)))
             throw new BizException(400,"旧分块插件已移除，请选择 FREYJA 二采组件后重新保存");

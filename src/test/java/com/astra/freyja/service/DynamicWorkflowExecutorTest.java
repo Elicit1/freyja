@@ -44,6 +44,30 @@ class DynamicWorkflowExecutorTest {
         var snap=snapshot(true,true);var plan=snap.getRequest().getDynamicWorkflowPlan();
         plan.setSecondPassContinuity(true);plan.getOptions().setUpscaleEngine("FREYJA");return snap;
     }
+    @Test void enhancementRetainsControlOnlySourceIdsAfterRemovingControlNet()throws Exception{
+        var snap=snapshot(true,true);
+        snap.getRequest().setH3Options(Map.of("control_net",Map.of("enabled",true,"controls",List.of(Map.of("reference_id","2032095628944588801","enabled",true)))));
+        var captured=org.mockito.ArgumentCaptor.forClass(DramaShotRenderRequestDTO.class);
+        executor.enhance(snap,"http://archive/base","task","segment-000");
+        verify(api,times(2)).generateAndArchiveVideo(anyLong(),anyLong(),any(),captured.capture());
+        for(var request:captured.getAllValues()){
+            assertNull(request.getH3Options());
+            assertEquals(List.of("2032095628944588801"),request.getDynamicWorkflowStage().get("control_source_ids"));
+        }
+    }
+    @Test void selfLiftChoiceIsTransportedAndStandardKeepsHistoricalStageShape()throws Exception{
+        for(String sampler:List.of("STANDARD","SELFLIFT")){
+            jdbc.update("DELETE FROM dynamic_workflow_step");
+            var snap=snapshot(true,false);var options=snap.getRequest().getDynamicWorkflowPlan().getOptions();
+            options.setUpscaleEngine("FREYJA");options.setUpscaleSampler(sampler);
+            var captured=org.mockito.ArgumentCaptor.forClass(DramaShotRenderRequestDTO.class);
+            clearInvocations(api);executor.enhance(snap,"http://archive/base","task","segment-000");
+            verify(api).generateAndArchiveVideo(anyLong(),anyLong(),any(),captured.capture());
+            var component=(Map<?,?>)captured.getValue().getDynamicWorkflowStage().get("component");
+            assertEquals("SELFLIFT".equals(sampler),component.containsKey("sampler"));
+            if("SELFLIFT".equals(sampler))assertEquals(sampler,component.get("sampler"));
+        }
+    }
     @Test void secondPassHandoffPersistsBeforeFaceAndResumesWithoutRepeatedGpuOrArchive()throws Exception{
         var snap=chainedSnapshot();var predecessor=secondPass("b");var saved=secondPass("c");
         when(artifacts.archive(eq(3L),anyString(),eq("prompt-UPSCALE"),eq("node"),eq(2L),eq(1L),eq("SECOND_PASS"))).thenReturn(saved);

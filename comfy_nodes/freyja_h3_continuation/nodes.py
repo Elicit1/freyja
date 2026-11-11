@@ -287,4 +287,6 @@ class FreyjaH3CheckFrames:
 NODE_CLASS_MAPPINGS = {c.__name__:c for c in (FreyjaH3ChromaNoise,FreyjaH3Continue,FreyjaH3Restore,FreyjaH3SaveLatent,FreyjaH3CheckFrames)}
 from .upscale import CLASSES as UPSCALE_CLASSES
 NODE_CLASS_MAPPINGS.update({c.__name__: c for c in UPSCALE_CLASSES})
+from .selflift import FreyjaH3SelfLift
+NODE_CLASS_MAPPINGS["FreyjaH3SelfLift"] = FreyjaH3SelfLift
 NODE_DISPLAY_NAME_MAPPINGS = {name:name.replace("FreyjaH3", "FREYJA H3 · ") for name in NODE_CLASS_MAPPINGS}

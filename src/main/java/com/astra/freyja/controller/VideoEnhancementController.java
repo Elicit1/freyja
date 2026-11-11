@@ -29,6 +29,6 @@ public class VideoEnhancementController {
     @GetMapping("/tasks/{taskId}/segments") public R<?> segments(@PathVariable String taskId){return R.ok(segments.summary(taskId));}
     public record SegmentUpscale(String requestId,com.astra.freyja.dto.drama.DynamicWorkflowOptions options){}
     @PostMapping("/tasks/{taskId}/segments/{segmentId}/upscale") public R<?> upscaleSegment(@PathVariable String taskId,@PathVariable String segmentId,@RequestBody SegmentUpscale req){return R.ok(batches.enqueueSegmentEnhancement(taskId,segmentId,req.options(),req.requestId()));}
-    public record SegmentsUpscale(String requestId,List<String> segmentIds,com.astra.freyja.dto.drama.DynamicWorkflowOptions options){}
-    @PostMapping("/tasks/{taskId}/segments/upscale") public R<?> upscaleSegments(@PathVariable String taskId,@RequestBody SegmentsUpscale req){return R.ok(batches.enqueueSegmentEnhancements(taskId,req.segmentIds(),req.options(),req.requestId()));}
+    public record SegmentsUpscale(String requestId,List<String> segmentIds,com.astra.freyja.dto.drama.DynamicWorkflowOptions options,String rerunMode){}
+    @PostMapping("/tasks/{taskId}/segments/upscale") public R<?> upscaleSegments(@PathVariable String taskId,@RequestBody SegmentsUpscale req){return R.ok(batches.enqueueSegmentEnhancements(taskId,req.segmentIds(),req.options(),req.requestId(),req.rerunMode()));}
 }

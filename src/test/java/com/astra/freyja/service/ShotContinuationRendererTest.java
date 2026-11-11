@@ -31,6 +31,20 @@ class ShotContinuationRendererTest {
         renderer=new ShotContinuationRenderer(dynamic=mock(DynamicWorkflowExecutor.class),jdbc,new ObjectMapper(),api,media,refs,mock(AiTaskEventStore.class),artifacts);
     }
     private ContinuationArtifactService artifacts;
+    @Test void baseRetakeRendersOnlySelectedAndUsesRawPredecessorThenNewBaseForFace()throws Exception{
+        var snap=replacementSnapshot(List.of(1));snap.getSegmentReplacement().setRerunMode("BASE_ONLY");
+        var plan=new DynamicWorkflowOptions.Plan();var options=new DynamicWorkflowOptions();options.setFaceRepair(true);plan.setOptions(options);plan.setOutputSize("960x544");snap.getRequest().setDynamicWorkflowPlan(plan);
+        snap.getRequest().getContinuationSegments().get(1).getRequest().setDynamicWorkflowPlan(plan);
+        when(api.generateAndArchiveVideo(anyLong(),anyLong(),any(),any())).thenReturn(VideoGenerationResultVO.builder().videoUrl("https://new/base").build());
+        when(dynamic.enhance(any(),eq("https://new/base"),anyString(),eq("segment-001"))).thenReturn("https://new/face");
+        when(media.assemble(anyList(),any(),eq("960x544"))).thenReturn("https://new/full");
+        assertEquals("https://new/full",renderer.render(snap).getVideoUrl());
+        renderer.render(snap);
+        verify(api,times(1)).generateAndArchiveVideo(anyLong(),anyLong(),any(),any());
+        verify(media).tail(eq("https://base/0"),anyInt(),anyInt());
+        verify(dynamic,times(2)).enhance(any(),eq("https://new/base"),anyString(),eq("segment-001"));
+        verify(media,times(2)).assemble(eq(List.of("https://enhanced/0","https://new/face","https://enhanced/2")),any(),eq("960x544"));
+    }
     @Test void firstAndSecondPassesUseSeparatePredecessorsAndRestoreTheirChainsOnResume()throws Exception{
         var snap=snapshot("dual-pass");var count=new AtomicInteger();
         for(var child:snap.getRequest().getContinuationSegments()){
