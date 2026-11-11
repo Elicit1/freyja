@@ -25,6 +25,15 @@ export function controlSourceIds(value: ControlNetConfiguration): Set<string> {
   return new Set(value.enabled ? controlInputs(value).filter(input => input.enabled && input.referenceId).map(input => String(input.referenceId)) : [])
 }
 
+export function videoReferenceBindings(videos: Array<{ id: string | number }>, value: ControlNetConfiguration): Array<{ sourceId: string; controlIndex?: number }> {
+  const active = value.enabled ? controlInputs(value).filter(input => input.enabled) : []
+  return videos.flatMap(video => {
+    const sourceId = String(video.id)
+    const controls = active.flatMap((input, controlIndex) => input.referenceId === sourceId ? [{ sourceId, controlIndex }] : [])
+    return controls.length ? controls : [{ sourceId }]
+  })
+}
+
 export function controlInputs(value: ControlNetConfiguration): ControlNetInput[] {
   if (value.controls != null) return value.controls
   const controlType = value.controlType || 'CANNY'

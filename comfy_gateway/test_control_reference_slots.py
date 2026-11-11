@@ -9,10 +9,10 @@ from test_render_input_validation import bind_contract
 
 
 class ControlReferenceSlotsTest(unittest.TestCase):
-    def request(self, enabled=True, audio=False, stage=None):
+    def request(self, enabled=True, audio=False, stage=None, rows=None):
         model, config = setup_model()
         model.reference_video.max_videos = 3
-        controls = {"enabled": enabled, "controls": [
+        controls = {"enabled": enabled, "controls": rows if rows is not None else [
             {"reference_id": "control", "control_type": "POSE"},
             {"reference_id": "control", "control_type": "DEPTH"}]}
         refs = [{"referenceId": source, "referenceType": "REFERENCE_VIDEO",
@@ -22,10 +22,10 @@ class ControlReferenceSlotsTest(unittest.TestCase):
         extra = {"h3_options": {"capability_revision": revision(model, BASE), "length": 124, "control_net": controls}}
         if stage:
             extra = {"dynamic_workflow": {"stage": stage, "revision": describe(model, BASE)["revision"],
-                "control_source_ids": ["control"], "source_url": "http://archive/base.mp4",
+                "control_source_ids": ["control"], "control_inputs": controls["controls"], "source_url": "http://archive/base.mp4",
                 "source_sha256": "c"*64, "scale": 2 if stage == "UPSCALE" else 1,
                 **({"component": {}} if stage == "UPSCALE" else {})}}
-        request = bind_contract(ImageGenerationRequest(model=model.model_name, prompt="Continue the action.",
+        request = bind_contract(ImageGenerationRequest(model=model.model_name, prompt="Follow the motion in <Video 1>.",
             size="960x544", length=124, references=refs, node_id=model.node_id,
             prompt_format="MINIMAX_H3_REF2VA_VIDEO_V1", reference_video_revision=workflow_revision(model, BASE), **extra))
         uploaded = [{"reference_id": source, "filename": f"{source}.mp4", "frames": 124,
@@ -38,10 +38,11 @@ class ControlReferenceSlotsTest(unittest.TestCase):
         model, request, graph = self.request()
         self.assertEqual(3, mixed_reference_count(request))  # two controls + one ordinary video
         cond = graph[model.h3_extensions["conditioning"]["id"]]["inputs"]
-        self.assertEqual([("<Video 1>", "ordinary")], [(slot["label"], slot["referenceId"]) for slot in request.render_input_contract["slots"]])
+        self.assertEqual([("<Video 1>", "control"),("<Video 2>", "control"),("<Video 3>", "ordinary")], [(slot["label"], slot["referenceId"]) for slot in request.render_input_contract["slots"]])
         visual = [value for key, value in cond.items() if key.startswith("ref_videos.")]
-        self.assertEqual(1, len(visual))
-        self.assertEqual("ordinary.mp4", graph[visual[0][0]]["inputs"]["video"])
+        self.assertEqual(3, len(visual))
+        self.assertEqual(["h3_control_preprocess",0],visual[0]);self.assertEqual(["h3_control_preprocess_1",0],visual[1])
+        self.assertEqual("ordinary.mp4", graph[visual[2][0]]["inputs"]["video"])
         self.assertEqual("control.mp4", graph["h3_control_video"]["inputs"]["video"])
         self.assertEqual("control.mp4", graph["h3_control_video_1"]["inputs"]["video"])
 
@@ -59,7 +60,7 @@ class ControlReferenceSlotsTest(unittest.TestCase):
         audio = cond["ref_video_audios.ref_video_audio_0"]
         self.assertEqual(2, audio[1])
         self.assertEqual("control.mp4", graph[audio[0]]["inputs"]["video"])
-        self.assertEqual(1, sum(key.startswith("ref_videos.") for key in cond))
+        self.assertEqual(3, sum(key.startswith("ref_videos.") for key in cond))
 
     def test_enhancements_do_not_reintroduce_control_sources_as_visual_references(self):
         for stage in ("UPSCALE", "FACE"):
@@ -67,11 +68,29 @@ class ControlReferenceSlotsTest(unittest.TestCase):
                 model, request, graph = self.request(audio=True, stage=stage)
                 cond_id = "dynamic_face_158" if stage == "FACE" else model.h3_extensions["conditioning"]["id"]
                 cond = graph[cond_id]["inputs"]
-                self.assertEqual(2, mixed_reference_count(request))  # ordinary video + explicit source audio
+                self.assertEqual(4, mixed_reference_count(request))  # two controls + ordinary video + explicit source audio
                 visual = [value for key, value in cond.items() if key.startswith("ref_videos.")]
-                self.assertEqual(1, len(visual))
-                self.assertEqual("ordinary.mp4", graph[visual[0][0]]["inputs"]["video"])
+                self.assertEqual(3, len(visual))
+                self.assertEqual(["h3_control_preprocess",0],visual[0]);self.assertEqual(["h3_control_preprocess_1",0],visual[1])
+                self.assertEqual("ordinary.mp4", graph[visual[2][0]]["inputs"]["video"])
+                self.assertNotIn("h3_patch",graph)
                 self.assertIn("ref_video_audios.ref_video_audio_0", cond)
+
+    def test_single_control_keeps_video_one_binding_without_a_raw_duplicate(self):
+        model,request,graph=self.request(rows=[{"reference_id":"control","control_type":"POSE"}])
+        cond=graph[model.h3_extensions["conditioning"]["id"]]["inputs"]
+        self.assertEqual(["h3_control_preprocess",0],cond["ref_videos.ref_video_0"])
+        self.assertEqual("CONTROL_VIDEO",request.render_input_contract["slots"][0]["role"])
+        self.assertEqual("<Video 1>",request.render_input_contract["slots"][0]["label"])
+        self.assertEqual(2,mixed_reference_count(request))
+
+    def test_preprocessing_cannot_be_bypassed_while_reusing_a_video_label(self):
+        from render_input_validation import validate_workflow
+        model,request,graph=self.request()
+        graph["h3_control_preprocess"]["inputs"][model.h3_extensions["preprocessors"]["POSE"].get("image_input","image")]=[model.h3_extensions["conditioning"]["id"]+"_ref_vid_1",0]
+        uploaded=[{"reference_id":source,"filename":source+".mp4","include_audio":False} for source in ("control","ordinary")]
+        with self.assertRaisesRegex(ValueError,"preprocessing path changed"):
+            validate_workflow(request,graph,model,[],[],uploaded)
 
 
 if __name__ == "__main__":

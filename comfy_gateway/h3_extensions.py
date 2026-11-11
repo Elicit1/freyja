@@ -172,6 +172,35 @@ def require_options(request, model, base_dir):
             raise ValueError("H3_WINDOW_CONTROL_UNVERIFIED")
 
 
+def control_frame_link(index, control, cfg):
+    suffix="" if index==0 else "_"+str(index)
+    if control.input_mode=="RAW" and control.control_type!="GRAY" and control.control_type not in cfg.get("prepared_control_types",["PREPARED"]):
+        preset=cfg.get("preprocessors",{}).get(control.control_type)
+        if not preset: raise ValueError("H3_PREPROCESSOR_UNSUPPORTED: "+control.control_type)
+        return ["h3_control_preprocess"+suffix,preset.get("output_slot",0)]
+    return ["h3_control_video"+suffix,0]
+
+
+def prepare_control_inputs(workflow, model, videos, controls, length, required_frames=None):
+    cfg=model.h3_extensions
+    for index, control in enumerate(controls):
+        suffix="" if index==0 else "_"+str(index)
+        video_id="h3_control_video"+suffix
+        video=next((v for v in videos if v["reference_id"]==control.reference_id), None)
+        if video is None: raise ValueError("H3_CONTROL_SOURCE_MISSING: "+str(control.reference_id))
+        if video.get("frames",0)<(required_frames or length):
+            raise ValueError("H3_CONTROL_RANGE_INVALID: control video does not cover the requested output interval")
+        raw_gray=control.control_type=="GRAY" and control.input_mode=="RAW"
+        if raw_gray and not video.get("control_filename"):
+            raise ValueError("H3_GRAY_SOURCE_MISSING: prepare a separate grayscale control video")
+        filename=video["control_filename"] if raw_gray else video["filename"]
+        workflow[video_id]={"class_type":"VHS_LoadVideo","inputs":{"video":filename,"force_rate":24,"custom_width":0,"custom_height":0,"frame_load_cap":length,"skip_first_frames":0,"select_every_nth":1,"format":"None"}}
+        link=control_frame_link(index,control,cfg)
+        if link[0]!=video_id:
+            preset=cfg["preprocessors"][control.control_type]
+            workflow[link[0]]={"class_type":preset["class_type"],"inputs":dict(preset.get("inputs",{}),**{preset.get("image_input","image"):[video_id,0]})}
+
+
 def apply_extensions(workflow, request, model, videos, continuation_filename=None, latent_filename=None, anchor_filename=None):
     options=request.h3_options
     if options is None: return
@@ -189,26 +218,11 @@ def apply_extensions(workflow, request, model, videos, continuation_filename=Non
     final=[model_id,0]
     if options.control_net.is_active():
         workflow["h3_patch"]={"class_type":"ModelPatchLoader","inputs":{"name":cfg["control_patch"]}}
+    prepare_control_inputs(workflow,model,videos,options.control_net.active_inputs(),options.length,options.control_required_frames)
     for index, control in enumerate(options.control_net.active_inputs()):
         suffix="" if index==0 else "_"+str(index)
-        video_id="h3_control_video"+suffix
-        preprocess_id="h3_control_preprocess"+suffix
         apply_id="h3_control"+suffix
-        video=next((v for v in videos if v["reference_id"]==control.reference_id), None)
-        if video is None: raise ValueError("H3_CONTROL_SOURCE_MISSING: "+str(control.reference_id))
-        if video.get("frames",0)<(options.control_required_frames or options.length):
-            raise ValueError("H3_CONTROL_RANGE_INVALID: control video does not cover the requested output interval")
-        raw_gray=control.control_type=="GRAY" and control.input_mode=="RAW"
-        if raw_gray and not video.get("control_filename"):
-            raise ValueError("H3_GRAY_SOURCE_MISSING: prepare a separate grayscale control video")
-        filename=video["control_filename"] if raw_gray else video["filename"]
-        workflow[video_id]={"class_type":"VHS_LoadVideo","inputs":{"video":filename,"force_rate":24,"custom_width":0,"custom_height":0,"frame_load_cap":options.length,"skip_first_frames":0,"select_every_nth":1,"format":"None"}}
-        source=[video_id,0]
-        if control.input_mode=="RAW" and control.control_type!="GRAY" and control.control_type not in cfg.get("prepared_control_types",["PREPARED"]):
-            preset=cfg.get("preprocessors",{}).get(control.control_type)
-            if not preset: raise ValueError("H3_PREPROCESSOR_UNSUPPORTED: "+control.control_type)
-            workflow[preprocess_id]={"class_type":preset["class_type"],"inputs":dict(preset.get("inputs",{}),**{preset.get("image_input","image"):source})}
-            source=[preprocess_id,preset.get("output_slot",0)]
+        source=control_frame_link(index,control,cfg)
         workflow[apply_id]={"class_type":"MiniMaxH3FunControlNetApply","inputs":{"model":final,"model_patch":["h3_patch",0],"vae":[vae_id,0],"strength":control.strength,"start_percent":0.0,"end_percent":1.0,"control_video":source}}
         final=[apply_id,0]
     if options.context_windows.enabled:

@@ -46,13 +46,16 @@ class DynamicWorkflowExecutorTest {
     }
     @Test void enhancementRetainsControlOnlySourceIdsAfterRemovingControlNet()throws Exception{
         var snap=snapshot(true,true);
-        snap.getRequest().setH3Options(Map.of("control_net",Map.of("enabled",true,"controls",List.of(Map.of("reference_id","2032095628944588801","enabled",true)))));
+        snap.getRequest().setH3Options(Map.of("control_required_frames",119,"control_net",Map.of("enabled",true,"controls",List.of(Map.of("reference_id","2032095628944588801","enabled",true,"control_type","POSE","input_mode","RAW","strength",.8)))));
         var captured=org.mockito.ArgumentCaptor.forClass(DramaShotRenderRequestDTO.class);
         executor.enhance(snap,"http://archive/base","task","segment-000");
         verify(api,times(2)).generateAndArchiveVideo(anyLong(),anyLong(),any(),captured.capture());
         for(var request:captured.getAllValues()){
             assertNull(request.getH3Options());
             assertEquals(List.of("2032095628944588801"),request.getDynamicWorkflowStage().get("control_source_ids"));
+            assertEquals(119,request.getDynamicWorkflowStage().get("control_required_frames"));
+            var inputs=(List<?>)request.getDynamicWorkflowStage().get("control_inputs");
+            assertEquals("POSE",((Map<?,?>)inputs.getFirst()).get("control_type"));
         }
     }
     @Test void selfLiftChoiceIsTransportedAndStandardKeepsHistoricalStageShape()throws Exception{

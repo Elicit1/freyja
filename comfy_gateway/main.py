@@ -21,7 +21,7 @@ import uvicorn
 import aiofiles
 
 from config import get_config, get_base_dir, GatewayConfig, NodeConfig
-from video_reference import require_supported, workflow_revision, mixed_reference_count
+from video_reference import require_supported, workflow_revision, mixed_reference_count, control_inputs, video_reference_bindings
 from reference_media import upload_reference_video
 from render_input_validation import validate_transport
 from h3_extensions import require_options, revision as h3_revision, inspect_backend
@@ -360,7 +360,7 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
             raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: H3 references use video bindings, not video_url or first/last frames")
         if request.prompt_format != "MINIMAX_H3_REF2VA_VIDEO_V1":
             raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: expected video reference prompt format")
-        if len(video_references) > video_capability.max_videos:
+        if len(video_references) > video_capability.max_videos or len(video_reference_bindings(request)) > video_capability.max_videos:
             raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: too many reference videos")
         total = mixed_reference_count(request)
         if total > video_capability.max_mixed_assets:
@@ -398,9 +398,10 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
         hosts = {host.strip().lower() for host in os.getenv("REFERENCE_MEDIA_HOSTS", "").split(",") if host.strip()}
         for binding in video_references:
             control_upload = {}
-            controls = [control for control in request.h3_options.control_net.active_inputs() if control.reference_id == binding.reference_id] if request.h3_options else []
+            controls = [control for control in control_inputs(request) if control.reference_id == binding.reference_id]
             if controls:
-                control_upload = {"required_frames":request.h3_options.control_required_frames or request.h3_options.length,
+                required_frames=(request.h3_options.control_required_frames or request.h3_options.length) if request.h3_options else request.dynamic_workflow.control_required_frames or request.length
+                control_upload = {"required_frames":required_frames,
                                   "grayscale":any(control.control_type=="GRAY" and control.input_mode=="RAW" for control in controls)}
             uploaded_ref_videos.append(await asyncio.wait_for(upload_reference_video(client, binding, video_capability, hosts, **control_upload), timeout=120))
             if sum(video["duration"] for video in uploaded_ref_videos) > video_capability.max_total_clip_seconds + len(uploaded_ref_videos) / video_capability.decode_fps:
@@ -526,6 +527,10 @@ async def _generate_images(request: ImageGenerationRequest, http_req: Request):
             dynamic = canonical["dynamic_workflow"]
             if not dynamic.get("control_source_ids"):
                 dynamic.pop("control_source_ids", None)
+            if not dynamic.get("control_inputs"):
+                dynamic.pop("control_inputs", None)
+            if dynamic.get("control_required_frames") is None:
+                dynamic.pop("control_required_frames", None)
             if (dynamic.get("component") or {}).get("sampler") == "STANDARD":
                 dynamic["component"].pop("sampler", None)  # Preserve pre-SelfLift execution hashes.
             if dynamic.get("source_latent"):

@@ -39,12 +39,32 @@ def control_source_ids(request):
     return set(stage.control_source_ids) if stage else set()
 
 
+def control_inputs(request):
+    if request.h3_options:
+        return request.h3_options.control_net.active_inputs()
+    return [row for row in request.dynamic_workflow.control_inputs if row.enabled] if request.dynamic_workflow else []
+
+
+def video_reference_bindings(request, videos=None):
+    """One visual slot per active control; never an additional raw source slot."""
+    videos = request.get_all_ref_videos() if videos is None else videos
+    controls = control_inputs(request)
+    legacy_sources = control_source_ids(request) if not controls else set()
+    bindings = []
+    for source_index, video in enumerate(videos):
+        source_id = video.get("reference_id") if isinstance(video, dict) else video.reference_id
+        matches = [index for index, control in enumerate(controls) if control.reference_id == source_id]
+        if matches:
+            bindings.extend((source_index, index) for index in matches)
+        elif source_id not in legacy_sources:
+            bindings.append((source_index, None))
+    return bindings
+
+
 def mixed_reference_count(request):
     videos = request.get_all_ref_videos()
-    controls = request.h3_options.control_net.active_inputs() if request.h3_options else []
-    sources = control_source_ids(request)
-    return (len(request.get_all_ref_images()) + len(request.get_all_ref_audios()) + sum(video.reference_id not in sources for video in videos)
-            + sum(1 for video in videos if video.include_audio) + len(controls))
+    return (len(request.get_all_ref_images()) + len(request.get_all_ref_audios()) + len(video_reference_bindings(request, videos))
+            + sum(1 for video in videos if video.include_audio))
 
 
 def workflow_revision(model, base_dir: Path) -> str:
@@ -77,7 +97,7 @@ def require_supported(model, base_dir: Path, backend_url=None):
     return capability
 
 
-def assert_video_paths(workflow, capability, loader_ids):
+def assert_video_paths(workflow, capability, loader_ids, links=None):
     """Validate an actual path from each loader to conditioning and configured output."""
     cond = capability.condition_node_id
     if cond not in workflow or workflow[cond].get("class_type") != "MiniMaxH3ReferenceToVideo":
@@ -98,7 +118,7 @@ def assert_video_paths(workflow, capability, loader_ids):
 
     outputs = [ancestors(node_id) for node_id in capability.output_node_ids]
     for index, loader in enumerate(loader_ids):
-        if workflow[cond]["inputs"].get(f"ref_videos.ref_video_{index}") != [loader, 0]:
+        if workflow[cond]["inputs"].get(f"ref_videos.ref_video_{index}") != (links[index] if links else [loader, 0]):
             raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: video frames are not connected")
         if not any(cond in upstream and loader in upstream for upstream in outputs):
             raise ValueError("REFERENCE_VIDEO_WORKFLOW_MISMATCH: reference is disconnected from output")

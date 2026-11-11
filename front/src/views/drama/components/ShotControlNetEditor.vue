@@ -1,13 +1,13 @@
 <template>
   <div class="control-editor">
     <div class="control-heading">
-      <div><strong>ControlNet 动作控制</strong><p>每条启用的控制源各占一个参考槽位；对应原视频仅作为控制输入，不再占普通视频参考槽位。同源的多条控制分别计数。当前占用 {{ controlSlotCount(modelValue) }} 个槽位。</p></div>
+      <div><strong>ControlNet 动作控制</strong><p>每条启用的控制输入各占一个 Video 参考槽位，可在提示词中引用对应编号；原视频不再额外挂载。同源的多条控制分别编号。当前占用 {{ controlSlotCount(modelValue) }} 个槽位。</p></div>
       <el-switch :model-value="modelValue.enabled" :disabled="!videos.length" aria-label="启用 ControlNet" @update:model-value="toggle(Boolean($event))" />
     </div>
     <p v-if="!videos.length">添加参考视频后可配置控制源。</p>
     <template v-if="modelValue.enabled">
       <div v-for="(input, index) in inputs" :key="index" class="control-row">
-        <div class="control-heading"><strong>控制源 {{ index + 1 }}</strong><div class="row-actions"><el-switch :model-value="input.enabled" :aria-label="`启用控制源 ${index + 1}`" @update:model-value="patch(index, 'enabled', Boolean($event))" /><el-button text type="danger" :aria-label="`移除控制源 ${index + 1}`" @click="remove(index)">移除</el-button></div></div>
+        <div class="control-heading"><strong>控制源 {{ index + 1 }} <span v-if="slotLabel(index)">· {{ slotLabel(index) }}</span></strong><div class="row-actions"><el-switch :model-value="input.enabled" :aria-label="`启用控制源 ${index + 1}`" @update:model-value="patch(index, 'enabled', Boolean($event))" /><el-button text type="danger" :aria-label="`移除控制源 ${index + 1}`" @click="remove(index)">移除</el-button></div></div>
         <div class="control-fields">
           <label>参考视频<el-select :model-value="input.referenceId" :disabled="!input.enabled" placeholder="请选择控制源" clearable @update:model-value="patch(index, 'referenceId', $event || undefined)"><el-option v-for="(video, i) in videos" :key="String(video.id)" :value="String(video.id)" :label="video.name || `Video ${i + 1}`" /></el-select></label>
           <label>控制类型<el-select :model-value="input.controlType" :disabled="!input.enabled" @update:model-value="patch(index, 'controlType', $event)"><el-option v-for="type in H3_CONTROL_TYPES" :key="type.value" :value="type.value" :label="type.label" /></el-select></label>
@@ -24,11 +24,17 @@
 import { computed, watch } from 'vue'
 import { H3_CONTROL_TYPES } from '@/constants/h3ControlTypes'
 import type { ShotRefVideo } from '@/types/drama'
-import { controlInputs, controlSlotCount, MAX_CONTROL_INPUTS, type ControlNetConfiguration, type ControlNetInput } from '@/utils/control-net'
+import { controlInputs, controlSlotCount, videoReferenceBindings, MAX_CONTROL_INPUTS, type ControlNetConfiguration, type ControlNetInput } from '@/utils/control-net'
 export type { ControlNetConfiguration } from '@/utils/control-net'
 const props = defineProps<{ modelValue: ControlNetConfiguration; videos: ShotRefVideo[] }>()
 const emit = defineEmits<{ 'update:modelValue': [value: ControlNetConfiguration] }>()
 const inputs = computed(() => controlInputs(props.modelValue))
+function slotLabel(index: number) {
+  if (!props.modelValue.enabled || !inputs.value[index]?.enabled) return ''
+  const activeIndex = inputs.value.slice(0,index).filter(input => input.enabled).length
+  const slot = videoReferenceBindings(props.videos,props.modelValue).findIndex(binding => binding.controlIndex === activeIndex)
+  return slot < 0 ? '' : `Video ${slot + 1}`
+}
 function update(controls: ControlNetInput[], enabled = props.modelValue.enabled) { emit('update:modelValue', { enabled, controls }) }
 function newInput(): ControlNetInput { return { enabled: true, referenceId: props.videos.length === 1 ? String(props.videos[0]!.id) : undefined, controlType: 'POSE', inputMode: 'RAW', strength: 1 } }
 function toggle(enabled: boolean) {

@@ -3,7 +3,7 @@
 No prose semantics, no label renumbering, no silently discarded references.
 """
 import hashlib
-from video_reference import control_source_ids
+from video_reference import video_reference_bindings, control_inputs
 
 VERSION = "h3-render-input/1"
 FORMATS = {"MINIMAX_H3_REF2VA_V1", "MINIMAX_H3_REF2VA_VIDEO_V1", "MINIMAX_H3_FL2VA_V1"}
@@ -49,11 +49,13 @@ def validate_transport(request):
         actual.append((label, "IMAGE", role, ref_id, digest(source)))
     audio_index = 0
     visual_index = 0
-    controls = control_source_ids(request)
-    for video in request.get_all_ref_videos():
-        if video.reference_id not in controls:
+    videos = request.get_all_ref_videos()
+    bindings = video_reference_bindings(request, videos)
+    for source_index, video in enumerate(videos):
+        for bound_source, control in bindings:
+            if bound_source != source_index: continue
             visual_index += 1
-            actual.append((f"<Video {visual_index}>", "VIDEO", "REFERENCE_VIDEO", video.reference_id, digest(video.video_url)))
+            actual.append((f"<Video {visual_index}>", "VIDEO", "REFERENCE_VIDEO" if control is None else "CONTROL_VIDEO", video.reference_id, digest(video.video_url)))
         if video.include_audio:
             audio_index += 1
             actual.append((f"<Audio {audio_index}>", "AUDIO", "VIDEO_AUDIO", video.reference_id, digest(video.video_url)))
@@ -143,16 +145,31 @@ def validate_workflow(request, workflow, model, images, audios, videos):
             actual_audios.append(loader.get("inputs", {}).get("audio"))
         if actual_audios != audios:
             fail(f"audio slots were truncated or changed at {nid}")
-        controls = control_source_ids(request)
-        visual_videos = [video for video in videos if video.get("reference_id") not in controls]
+        controls = control_inputs(request)
+        bindings = video_reference_bindings(request, videos)
         video_keys = _slots(inputs, "ref_videos.ref_video_")
-        if len(video_keys) != len(visual_videos):
+        if len(video_keys) != len(bindings):
             fail("video slot count changed")
         expected_audio_keys = []
         for i, key in enumerate(video_keys):
+            source_index,control_index=bindings[i]
             link = inputs[key]
+            if control_index is not None:
+                from h3_extensions import control_frame_link
+                if link!=control_frame_link(control_index,controls[control_index],model.h3_extensions):fail("control reference binding changed")
+                suffix="" if control_index==0 else "_"+str(control_index)
+                source=workflow.get("h3_control_video"+suffix,{})
+                control=controls[control_index]
+                expected=videos[source_index].get("control_filename") if control.control_type=="GRAY" and control.input_mode=="RAW" else videos[source_index]["filename"]
+                if source.get("class_type")!="VHS_LoadVideo" or source.get("inputs",{}).get("video")!=expected:fail("control source changed")
+                if link[0]!="h3_control_video"+suffix:
+                    preset=model.h3_extensions["preprocessors"][control.control_type]
+                    preprocessing=workflow.get(link[0],{})
+                    if preprocessing.get("class_type")!=preset["class_type"] or preprocessing.get("inputs",{}).get(preset.get("image_input","image"))!=["h3_control_video"+suffix,0]:
+                        fail("control preprocessing path changed")
+                continue
             loader = workflow.get(str(link[0]), {}) if isinstance(link, list) and len(link) == 2 else {}
-            if loader.get("class_type") != "VHS_LoadVideo" or link[1] != 0 or loader.get("inputs", {}).get("video") != visual_videos[i]["filename"]:
+            if loader.get("class_type") != "VHS_LoadVideo" or link[1] != 0 or loader.get("inputs", {}).get("video") != videos[source_index]["filename"]:
                 fail("video order changed")
         for i, video in enumerate(videos):
             if video["include_audio"]:

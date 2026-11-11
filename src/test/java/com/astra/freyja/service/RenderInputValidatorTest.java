@@ -14,17 +14,28 @@ class RenderInputValidatorTest {
         var shot=new DramaShot();shot.setId(1L);shot.setGenerationMode("REFERENCE_MODE");shot.setRefImagesJson("[]");shot.setRefAudiosJson("[]");shot.setRefVideosJson("[]");
         var controlled=new ResolvedShotVideoReference();controlled.setId("2032095628944588801");controlled.setObjectPath("control.mp4");controlled.setIncludeAudio(true);
         var ordinary=new ResolvedShotVideoReference();ordinary.setId("2032095628944588802");ordinary.setObjectPath("ordinary.mp4");
-        var request=new DramaShotRenderRequestDTO();request.setResolvedRefVideos(List.of(controlled,ordinary));request.setPrompt("<Video 1> <Audio 1>");
+        var request=new DramaShotRenderRequestDTO();request.setResolvedRefVideos(List.of(controlled,ordinary));request.setPrompt("<Video 1> <Video 3> <Audio 1>");
         var control=java.util.Map.<String,Object>of("enabled",true,"controls",List.of(java.util.Map.of("enabled",true,"reference_id",controlled.getId()),java.util.Map.of("enabled",true,"reference_id",controlled.getId())));
         request.setH3Options(java.util.Map.of("continuation_enabled",true,"control_net",control));
         var snapshot=new VideoBatchModels.Snapshot();snapshot.setShot(shot);snapshot.setRequest(request);
         var result=RenderInputResolver.inspect(snapshot,false,json);
-        assertTrue(result.isSubmissionReady());assertEquals(2,result.getSlots().size());
-        assertEquals("ordinary.mp4",result.getSlots().stream().filter(s->"<Video 1>".equals(s.label())).findFirst().orElseThrow().source());
-        request.setH3Options(null);request.setDynamicWorkflowStage(java.util.Map.of("stage","FACE","control_source_ids",List.of(controlled.getId())));
+        assertTrue(result.isSubmissionReady());assertEquals(4,result.getSlots().size());
+        assertEquals("CONTROL_VIDEO",result.getSlots().getFirst().role());
+        assertEquals("ordinary.mp4",result.getSlots().stream().filter(s->"<Video 3>".equals(s.label())).findFirst().orElseThrow().source());
+        request.setH3Options(null);request.setDynamicWorkflowStage(java.util.Map.of("stage","FACE","control_source_ids",List.of(controlled.getId()),"control_inputs",control.get("controls")));
         assertEquals(result.getSlots(),RenderInputResolver.inspect(snapshot,false,json).getSlots());
         request.setDynamicWorkflowStage(java.util.Map.of("stage","FACE"));request.setPrompt("<Video 1> <Video 2> <Audio 1>");
         assertEquals(3,RenderInputResolver.inspect(snapshot,false,json).getSlots().size());
+    }
+    @Test void singleControlRetainsVideoOneAndStillRejectsTrulyMissingVideoLabels(){
+        var shot=new DramaShot();shot.setId(1L);shot.setGenerationMode("REFERENCE_MODE");
+        var video=new ResolvedShotVideoReference();video.setId("source");video.setObjectPath("prepared.mp4");
+        var request=new DramaShotRenderRequestDTO();request.setResolvedRefVideos(List.of(video));request.setPrompt("Follow <Video 1>.");
+        request.setH3Options(java.util.Map.of("continuation_enabled",true,"control_net",java.util.Map.of("enabled",true,"reference_id","source","control_type","POSE","strength",1)));
+        var snapshot=new VideoBatchModels.Snapshot();snapshot.setShot(shot);snapshot.setRequest(request);
+        var report=RenderInputResolver.inspect(snapshot,false,json);assertTrue(report.isSubmissionReady());assertEquals(1,report.getSlots().size());
+        assertEquals("<Video 1>",report.getSlots().getFirst().label());assertEquals("CONTROL_VIDEO",report.getSlots().getFirst().role());
+        request.setPrompt("Follow <Video 2>.");assertFalse(RenderInputResolver.inspect(snapshot,false,json).isSubmissionReady());
     }
     private final ObjectMapper json = new ObjectMapper();
     private Slot image(int n) { return new Slot("<Picture " + n + ">", "p" + n, "IMAGE", "image" + n, "REFERENCE_IMAGE", false); }

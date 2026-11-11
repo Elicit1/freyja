@@ -55,7 +55,7 @@
 </template>
 
 <script setup lang="ts">
-import { removeControlVideo, controlSlotCount, controlSourceIds, type ControlNetConfiguration } from '@/utils/control-net'
+import { removeControlVideo, controlSlotCount, videoReferenceBindings, type ControlNetConfiguration } from '@/utils/control-net'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import DictSelect from '@/components/DictSelect.vue'
@@ -94,9 +94,9 @@ function mountImage(url: string | undefined, name: string, sourceType: ShotRefIm
 function chooseAssets() { assetPicker.value?.open({ dramaId: props.dramaId, maxSelectable: 9 - props.segment.referenceImages.length, alreadySelectedUrls: props.segment.referenceImages.map(i => i.imageUrl), title: '选择本段参考资产' }) }
 function mountAssets(items: AssetSelectItem[]) { for (const item of items) mountImage(item.imageUrl, item.name, item.sourceType) }
 const control = computed<ControlNetConfiguration>({ get: () => ({ enabled: props.segment.controlNetEnabled, controls: props.segment.controlInputs, referenceId: props.segment.controlVideoId, controlType: props.segment.controlType, strength: props.segment.controlStrength }), set: value => { props.segment.controlNetEnabled = value.enabled; props.segment.controlInputs = value.controls; props.segment.controlVideoId = undefined } })
-const controlledSources = computed(() => controlSourceIds(control.value))
-const referenceSlots = computed(() => props.segment.referenceImages.length + props.segment.referenceVideos.filter(video => !controlledSources.value.has(String(video.id))).length + (props.segment.referenceAudios?.length || 0) + props.segment.referenceVideos.filter(video => video.includeAudio).length + controlSlotCount(control.value))
-function videoLabel(video: ShotRefVideo) { return controlledSources.value.has(String(video.id)) ? '控制源' : `Video ${props.segment.referenceVideos.filter(v => !controlledSources.value.has(String(v.id))).findIndex(v => v.id === video.id) + 1}` }
+const videoBindings = computed(() => videoReferenceBindings(props.segment.referenceVideos,control.value))
+const referenceSlots = computed(() => props.segment.referenceImages.length + videoBindings.value.length + (props.segment.referenceAudios?.length || 0) + props.segment.referenceVideos.filter(video => video.includeAudio).length)
+function videoLabel(video: ShotRefVideo) { return videoBindings.value.flatMap((binding,index) => binding.sourceId === String(video.id) ? [`Video ${index + 1}${binding.controlIndex === undefined ? '' : '（ControlNet）'}`] : []).join(' / ') }
 function clearFrameRange(v: ShotRefVideo) { delete v.sourceStartFrame; delete v.sourceEndFrame }
 function removeVideo(index: number) { const video = props.segment.referenceVideos.splice(index, 1)[0]; if (video) control.value = removeControlVideo(control.value, String(video.id), props.segment.referenceVideos.length) }
 async function addVideo(value: ShotRefVideo) { if (props.segment.referenceVideos.length >= 3) throw new Error('本段参考视频最多3段'); const probe = await shotVideoReferenceApi.probe(props.shotId, value); if (alive) props.segment.referenceVideos.push({ ...value, endSeconds: Math.min(probe.duration || duration.value, duration.value) }) }

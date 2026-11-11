@@ -36,12 +36,11 @@ public final class RenderInputResolver {
             }
             int audioIndex = 0, videoIndex = 0;
             var videos = request.getResolvedRefVideos();
-            var controlSources=ShotControlNetOptions.sourceIds(request.getH3Options(),request.getDynamicWorkflowStage());
             if (videos != null) for (var video : videos) {
                 String videoLabel=null;
-                if(!controlSources.contains(video.getId())){
+                for(var binding:ShotControlNetOptions.videoBindings(List.of(video.getId()),request.getH3Options(),request.getDynamicWorkflowStage())){
                     videoLabel="<Video " + (++videoIndex) + ">";
-                    slots.add(new Slot(videoLabel,video.getId(), "VIDEO", video.getObjectPath(), "REFERENCE_VIDEO", false));
+                    slots.add(new Slot(videoLabel,video.getId(), "VIDEO", video.getObjectPath(),binding.controlIndex()==null?"REFERENCE_VIDEO":"CONTROL_VIDEO", false));
                 }
                 if(StringUtils.isBlank(video.getObjectPath()))issues.add(issue(shot,"MEDIA_SOURCE_MISSING",videoLabel,"refVideos","素材 " + videoLabel + " 缺少已冻结视频","重新准备参考视频"));
                 if (Boolean.TRUE.equals(video.getIncludeAudio()))

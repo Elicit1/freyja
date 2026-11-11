@@ -66,17 +66,17 @@ public class ShotContinuationService {
         int segmentNumber=0;
         for(var segment:draft.getSegments()) {
             segmentNumber++;
-            int mixed=segment.getReferenceImages().size()+segment.getReferenceVideos().size()+segment.getReferenceAudios().size()
-                    +(int)segment.getReferenceVideos().stream().filter(v->Boolean.TRUE.equals(v.getIncludeAudio())).count()+segment.controlOptions().activeInputs().size();
             var controlled=segment.controlOptions().activeInputs().stream().map(ShotControlNetOptions.Input::getReferenceId).collect(java.util.stream.Collectors.toSet());
-            mixed-=(int)segment.getReferenceVideos().stream().filter(v->controlled.contains(v.getId())).count();
+            int videoSlots=segment.getReferenceVideos().size()-(int)segment.getReferenceVideos().stream().filter(v->controlled.contains(v.getId())).count()+segment.controlOptions().activeInputs().size();
+            int mixed=segment.getReferenceImages().size()+videoSlots+segment.getReferenceAudios().size()
+                    +(int)segment.getReferenceVideos().stream().filter(v->Boolean.TRUE.equals(v.getIncludeAudio())).count();
             if(mixed>videoCap.path("maxMixedAssets").asInt(12))result.getIssues().add("片段 "+segmentNumber+" 参考槽位超限（"+mixed+"），每条启用的 ControlNet 独立占用一个槽位");
             if(segment.getDirectorPlan()!=null)try{
                 new com.astra.freyja.director.service.DirectorPlanValidator().validateManual(segment.getDirectorPlan(),BigDecimal.valueOf((segment.getEndFrame()-segment.getStartFrame())/24.0).setScale(3,java.math.RoundingMode.HALF_UP),segment.getShotType(),segment.getCameraMovement(),segment.isShotTypeLocked(),segment.isCameraMovementLocked());
             }catch(BizException e){result.getIssues().add("片段 "+segment.getId()+" · 导演计划："+e.getMessage());}
             if(model.getMaxImages()!=null&&segment.getReferenceImages().size()>model.getMaxImages())result.getIssues().add("片段参考图超过所选模型上限");
             if(!segment.getReferenceVideos().isEmpty()){
-                if(segment.getReferenceVideos().size()>videoLimit)excessiveVideoSegments.add(String.valueOf(segmentNumber));
+                if(videoSlots>videoLimit)excessiveVideoSegments.add(String.valueOf(segmentNumber));
                 double maxSeconds=Math.min(referenceLimits.getMaxClipSeconds(),videoCap.path("maxClipSeconds").asDouble(referenceLimits.getMaxClipSeconds()));
                 int maxFrames=Math.min(referenceLimits.getMaxDecodedFrames(),videoCap.path("maxDecodedFrames").asInt(referenceLimits.getMaxDecodedFrames()));
                 double totalSeconds=0;

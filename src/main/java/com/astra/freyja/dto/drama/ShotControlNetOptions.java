@@ -40,6 +40,32 @@ import java.util.*;
         if(stage!=null&&stage.get("control_source_ids") instanceof List<?> sources)for(var source:sources)if(source instanceof String id&&!id.isBlank())ids.add(id);
         return ids;
     }
+    public record VideoBinding(String sourceId,Integer controlIndex){}
+    public static List<Map<String,Object>> transportInputs(Map<String,Object> h3,Map<String,Object> stage){
+        Object rows=null;
+        if(h3!=null&&h3.get("control_net") instanceof Map<?,?> control&&Boolean.TRUE.equals(control.get("enabled"))){
+            rows=control.get("controls");
+            if(rows==null&&control.get("reference_id") instanceof String id){
+                var input=new LinkedHashMap<String,Object>();input.put("reference_id",id);input.put("control_type",Objects.toString(control.get("control_type"),"CANNY"));
+                input.put("input_mode","RAW");input.put("strength",control.get("strength")==null?1:control.get("strength"));rows=List.of(input);
+            }
+        }else if(stage!=null)rows=stage.get("control_inputs");
+        var result=new ArrayList<Map<String,Object>>();
+        if(rows instanceof List<?> inputs)for(var value:inputs)if(value instanceof Map<?,?> input&&!Boolean.FALSE.equals(input.get("enabled"))){
+            var item=new LinkedHashMap<String,Object>();for(var entry:input.entrySet())if(entry.getKey() instanceof String key)item.put(key,entry.getValue());result.add(item);
+        }
+        return result;
+    }
+    public static List<VideoBinding> videoBindings(List<String> sources,Map<String,Object> h3,Map<String,Object> stage){
+        var inputs=transportInputs(h3,stage);var legacy=inputs.isEmpty()?sourceIds(h3,stage):Set.<String>of();
+        var bindings=new ArrayList<VideoBinding>();
+        for(var source:sources){
+            boolean matched=false;
+            for(int index=0;index<inputs.size();index++)if(Objects.equals(source,inputs.get(index).get("reference_id"))){bindings.add(new VideoBinding(source,index));matched=true;}
+            if(!matched&&!legacy.contains(source))bindings.add(new VideoBinding(source,null));
+        }
+        return bindings;
+    }
     @JsonIgnore public boolean isActive(){return !activeInputs().isEmpty();}
     public void validate(){
         if(controls!=null&&controls.size()>MAX_CONTROLS)throw new BizException(400,"ControlNet 最多配置 "+MAX_CONTROLS+" 行");

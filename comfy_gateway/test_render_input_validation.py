@@ -6,7 +6,7 @@ from config import load_config
 from schemas import ImageGenerationRequest
 from workflow_engine import WorkflowEngine
 from render_input_validation import validate_transport, validate_workflow
-from video_reference import control_source_ids
+from video_reference import video_reference_bindings
 
 
 def bind_contract(request):
@@ -26,10 +26,13 @@ def bind_contract(request):
                 slots.append(slot(f"<Picture {picture_index}>", "IMAGE", "REFERENCE_IMAGE", ref.reference_id, image))
         audio_index = 0
         visual_index = 0
-        for video in request.get_all_ref_videos():
-            if video.reference_id not in control_source_ids(request):
+        videos=request.get_all_ref_videos()
+        bindings=video_reference_bindings(request,videos)
+        for source_index,video in enumerate(videos):
+            for bound_source,control in bindings:
+                if bound_source!=source_index:continue
                 visual_index += 1
-                slots.append(slot(f"<Video {visual_index}>", "VIDEO", "REFERENCE_VIDEO", video.reference_id, video.video_url))
+                slots.append(slot(f"<Video {visual_index}>", "VIDEO", "REFERENCE_VIDEO" if control is None else "CONTROL_VIDEO", video.reference_id, video.video_url))
             if video.include_audio:
                 audio_index += 1
                 slots.append(slot(f"<Audio {audio_index}>", "AUDIO", "VIDEO_AUDIO", video.reference_id, video.video_url))

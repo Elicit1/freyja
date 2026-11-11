@@ -75,7 +75,8 @@ public final class RenderInputValidator {
         for (String label : used) if (!attached.contains(label))
             add(report, shotId, "REFERENCE_NOT_ATTACHED", label, labelLine(text, label),
                     "提示词引用了 " + label + "，但本次未挂载该素材", "补充对应素材，或修改提示词引用后重新检查");
-        for (String label : attached) if (!used.contains(label))
+        Set<String> controlled = new HashSet<>(); slots.stream().filter(slot->"CONTROL_VIDEO".equals(slot.role())).forEach(slot->controlled.add(slot.label()));
+        for (String label : attached) if (!used.contains(label)&&!controlled.contains(label))
             add(report, shotId, "ATTACHED_REFERENCE_UNUSED", label, null,
                     "已挂载 " + label + "，但提示词未引用该素材", "补充正式引用，或移除该素材后重新检查");
         int definitionSection = names.indexOf("subject_definitions");

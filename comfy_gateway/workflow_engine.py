@@ -6,9 +6,9 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 from config import GatewayConfig, ModelConfig, HandlerConfig, get_base_dir
 from schemas import ImageGenerationRequest
-from video_reference import require_supported, assert_video_paths, workflow_revision, control_source_ids
+from video_reference import require_supported, assert_video_paths, workflow_revision, video_reference_bindings, control_inputs
 from render_input_validation import validate_transport, validate_workflow
-from h3_extensions import require_options, apply_extensions
+from h3_extensions import require_options, apply_extensions, prepare_control_inputs, control_frame_link
 from dynamic_workflow import require_stage, apply_stage
 
 logger = logging.getLogger("workflow_engine")
@@ -209,8 +209,11 @@ class WorkflowEngine:
         else:
             logger.warning(f"Unknown handler '{handler_name}', skipping custom node modifications.")
 
+        apply_extensions(workflow, request, model_cfg, uploaded_ref_videos or [], continuation_filename, latent_filename, anchor_filename)
+        if request.dynamic_workflow and request.dynamic_workflow.stage != "BASE":
+            prepare_control_inputs(workflow,model_cfg,uploaded_ref_videos or [],control_inputs(request),request.length,request.dynamic_workflow.control_required_frames)
         if model_cfg.reference_video:
-            self._apply_reference_videos(workflow, model_cfg, uploaded_ref_videos or [], control_source_ids(request))
+            self._apply_reference_videos(workflow, model_cfg, uploaded_ref_videos or [], request)
 
         if handler_name in {"minimax_h3_fl2va", "minimax_h3_ref2va"}:
             used = {value[0] for node in workflow.values() for value in node.get("inputs", {}).values()
@@ -220,7 +223,6 @@ class WorkflowEngine:
                     workflow.pop(node_id)
 
         validate_workflow(request, workflow, model_cfg, ref_images, uploaded_ref_audios or [], uploaded_ref_videos or [])
-        apply_extensions(workflow, request, model_cfg, uploaded_ref_videos or [], continuation_filename, latent_filename, anchor_filename)
         workflow = apply_stage(workflow, request, model_cfg, dynamic_source_filename, dynamic_latent_filename, dynamic_context_filename)
         if request.dynamic_workflow and request.dynamic_workflow.stage != "BASE":
             stage_model = model_cfg
@@ -229,8 +231,7 @@ class WorkflowEngine:
             validate_workflow(request, workflow, stage_model, ref_images, uploaded_ref_audios or [], uploaded_ref_videos or [])
         return workflow
 
-    def _apply_reference_videos(self, workflow, model_cfg, videos, control_sources=None):
-        control_sources = control_sources or set()
+    def _apply_reference_videos(self, workflow, model_cfg, videos, request=None):
         capability = model_cfg.reference_video
         cond = capability.condition_node_id
         conditioning_nodes = [cond]
@@ -254,13 +255,15 @@ class WorkflowEngine:
         if len(videos) > capability.max_videos:
             raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: too many videos")
         loaders = []
-        visual_index = 0
+        links = []
+        bindings=video_reference_bindings(request,videos) if request else [(i,None) for i in range(len(videos))]
+        if len(bindings)>capability.max_videos:raise ValueError("REFERENCE_VIDEO_LIMIT_EXCEEDED: control and ordinary video slots exceed model limit")
+        controls=control_inputs(request) if request else []
         for index, video in enumerate(videos):
-            visual = video.get("reference_id") not in control_sources
+            visual = (index,None) in bindings
             if not visual and not video["include_audio"]:
                 continue
             node_id = f"{cond}_ref_vid_{index}"
-            if visual: loaders.append(node_id)
             workflow[node_id] = {"class_type": "VHS_LoadVideo", "inputs": {
                 "video": video["filename"], "force_rate": capability.decode_fps,
                 "custom_width": 0, "custom_height": 0, "frame_load_cap": 0,
@@ -269,12 +272,14 @@ class WorkflowEngine:
                 raise ValueError("REFERENCE_VIDEO_UNSUPPORTED: video audio is not supported")
             for conditioning_node in conditioning_nodes:
                 inputs = workflow[conditioning_node]["inputs"]
-                if visual: inputs[f"ref_videos.ref_video_{visual_index}"] = [node_id, 0]
                 if video["include_audio"]:
                     inputs[f"ref_video_audios.ref_video_audio_{index}"] = [node_id, 2]
-            if visual: visual_index += 1
+        for index,(source_index,control_index) in enumerate(bindings):
+            link=[f"{cond}_ref_vid_{source_index}",0] if control_index is None else control_frame_link(control_index,controls[control_index],model_cfg.h3_extensions)
+            loaders.append(link[0]);links.append(link)
+            for conditioning_node in conditioning_nodes:workflow[conditioning_node]["inputs"][f"ref_videos.ref_video_{index}"]=link
         for conditioning_node in conditioning_nodes:
-            assert_video_paths(workflow, capability.model_copy(update={"condition_node_id": conditioning_node}), loaders)
+            assert_video_paths(workflow, capability.model_copy(update={"condition_node_id": conditioning_node}), loaders,links)
 
     def _apply_flux2_reference_chain(
         self,

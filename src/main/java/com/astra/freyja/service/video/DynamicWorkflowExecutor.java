@@ -69,6 +69,10 @@ public class DynamicWorkflowExecutor {
         if(!"BASE".equals(stage)){
             var controlSources=ShotControlNetOptions.sourceIds(request.getH3Options(),request.getDynamicWorkflowStage());
             if(!controlSources.isEmpty())transport.put("control_source_ids",new ArrayList<>(controlSources));
+            var controlInputs=ShotControlNetOptions.transportInputs(request.getH3Options(),request.getDynamicWorkflowStage());
+            if(!controlInputs.isEmpty())transport.put("control_inputs",controlInputs);
+            if(!controlInputs.isEmpty()&&request.getH3Options()!=null&&request.getH3Options().get("control_required_frames")!=null)
+                transport.put("control_required_frames",request.getH3Options().get("control_required_frames"));
             request.setH3Options(null);request.setSize("UPSCALE".equals(stage)||plan.getOptions().isUpscale()?Objects.requireNonNullElse(plan.getProcessingSize(),plan.getOutputSize()):plan.getBaseSize());
             transport.put("scale","UPSCALE".equals(stage)?2:1);
             transport.put("denoise","UPSCALE".equals(stage)?plan.getOptions().getUpscaleDenoise():plan.getOptions().getFaceDenoise());

@@ -8,6 +8,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from h3_continuation import ArtifactInput, compatibility_key, sampler_binding
+from h3_extensions import ControlInput
 
 
 class UpscaleTiling(BaseModel):
@@ -55,6 +56,8 @@ class DynamicStage(BaseModel):
     revision: str
     source_url: Optional[str] = None
     control_source_ids: list[str] = Field(default_factory=list, max_length=3)
+    control_inputs: list[ControlInput] = Field(default_factory=list, max_length=3)
+    control_required_frames: Optional[int] = Field(default=None, ge=1, le=362, strict=True)
     source_sha256: Optional[str] = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     denoise: float = Field(default=.25, gt=0, le=.6)
     scale: Literal[1, 2] = 1
