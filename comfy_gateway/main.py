@@ -24,7 +24,7 @@ from config import get_config, get_base_dir, GatewayConfig, NodeConfig
 from video_reference import require_supported, workflow_revision, mixed_reference_count, control_inputs, video_reference_bindings
 from reference_media import upload_reference_video
 from render_input_validation import validate_transport
-from h3_extensions import require_options, revision as h3_revision, inspect_backend
+from h3_extensions import require_options, revision as h3_revision, inspect_backend, control_unavailable_reason
 from schemas import (
     ImageGenerationRequest,
     ImageGenerationResponse,
@@ -686,7 +686,8 @@ async def model_capabilities(model_code: str, node_id: Optional[str] = None):
     h3=model.h3_extensions or {}
     h3_public={"revision":h3_revision(model,get_base_dir()) if h3 else None,
                "continuation":bool(h3.get("continuation")),"contextWindows":bool(h3.get("context_windows")),
-               "controlNet":bool(h3.get("control_net")),"contextWindowsWithControlNet":bool(h3.get("context_windows_with_control_net"))}
+               "controlNet":bool(h3.get("control_net")),"contextWindowsWithControlNet":bool(h3.get("context_windows_with_control_net")),
+               "controlNetUnavailableReason":control_unavailable_reason(model)}
     if node and node.enabled:
         client=await get_client_pool().get_client_for_node(node)
         if h3:

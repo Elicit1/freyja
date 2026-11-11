@@ -92,8 +92,8 @@ public class ShotContinuationService {
             if("TXT2VIDEO_REF".equals(model.getModelType())&&(segment.getFirstFrameImageUrl()!=null||segment.getLastFrameImageUrl()!=null))result.getIssues().add("参考生成工作流请挂载普通参考图，不使用首尾帧锚点");
             if(segment.getLastFrameImageUrl()!=null&&segment.getEndFrame()>result.getOutputFrames())result.getIssues().add("末段尾帧位于网格补齐区，请将时长调整为 "+(result.getRenderFrames()/24.0)+" 秒，或移除该尾帧，避免锚点被裁掉");
             if(segment.getPrompt()==null||segment.getPrompt().isBlank())result.getIssues().add("片段 "+segment.getId()+" 需要填写本段提示词");
-            if(segment.controlOptions().isActive()&&!h3.path("controlNet").asBoolean())result.getIssues().add("所选工作流未验证 ControlNet");
-            for(var input:segment.controlOptions().activeInputs())if(h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->input.requiredCapability().equals(type.asText())))result.getIssues().add("算力节点未安装 "+input.requiredCapability()+" 控制预处理器或直入能力");
+            if(segment.controlOptions().isActive()&&!h3.path("controlNet").asBoolean())result.getIssues().add("片段 "+segmentNumber+"："+controlUnavailableReason(h3));
+            if(h3.path("controlNet").asBoolean())for(var input:segment.controlOptions().activeInputs())if(h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->input.requiredCapability().equals(type.asText())))result.getIssues().add("算力节点未安装 "+input.requiredCapability()+" 控制预处理器或直入能力");
             if(segment.controlOptions().isActive()&&draft.isContextWindows()&&!h3.path("contextWindowsWithControlNet").asBoolean())result.getIssues().add("官方上下文窗口与 ControlNet 联用尚未验收，请关闭片段内窗口或 ControlNet");
         }
         if(!excessiveVideoSegments.isEmpty())result.getIssues().add("片段 "+String.join("、",excessiveVideoSegments)+" 的参考视频数量超过上限 "+videoLimit
@@ -162,12 +162,17 @@ public class ShotContinuationService {
     }
     public Map<String,Object> controlOptions(DramaShot shot,AiModel model,AiProvider provider,ShotControlNetOptions control){
         var cap=capabilities(model,provider);var h3=cap.path("h3");
-        if(!h3.path("controlNet").asBoolean()||!cap.path("healthy").asBoolean())throw new BizException(409,"ControlNet 所需节点或权重不可用，或算力节点离线");
+        if(!h3.path("controlNet").asBoolean())throw new BizException(409,controlUnavailableReason(h3));
+        if(!cap.path("healthy").asBoolean())throw new BizException(409,"算力节点离线");
         control.validate();
         for(var input:control.activeInputs())if(h3.path("controlTypes").isArray()&&java.util.stream.StreamSupport.stream(h3.path("controlTypes").spliterator(),false).noneMatch(type->input.requiredCapability().equals(type.asText())))throw new BizException(409,"算力节点未安装 "+input.requiredCapability()+" 控制预处理器或直入能力");
         var options=new LinkedHashMap<String,Object>();options.put("schema_version",1);options.put("continuation_enabled",false);options.put("capability_revision",h3.path("revision").asText());options.put("length",ShotContinuationPlanner.align((int)Math.round(shot.getDuration().doubleValue()*24)));options.put("node_id",cap.path("nodeId").asText());
         options.put("control_required_frames",(int)Math.round(shot.getDuration().doubleValue()*24));
         options.put("control_net",control.transport());return options;
+    }
+    private String controlUnavailableReason(JsonNode h3){
+        String reason=h3.path("controlNetUnavailableReason").asText(null);
+        return reason==null||reason.isBlank()?"ControlNet 所需节点或权重不可用，或当前模型不支持动作控制":reason;
     }
     /** Preserve both editing drafts; only the selected mode enters validation, hashes and execution. */
     private ShotContinuation inputsForModel(ShotContinuation source,String modelType){

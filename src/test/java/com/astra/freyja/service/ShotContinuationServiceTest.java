@@ -231,5 +231,43 @@ class ShotContinuationServiceTest {
         draft.setContextWindows(true);var preview=service.preview(draft,false,model("TXT2VIDEO_REF"),provider());
         assertFalse(preview.isRenderable());assertTrue(preview.getIssues().stream().anyMatch(issue->issue.contains("官方上下文窗口与 ControlNet 联用尚未验收")));
     }
+    @Test void incompatibleModelRejectsAllOrdinaryControlsWithGatewayReason() throws Exception {
+        var service=service();
+        String reason="当前 16GB HiFi 模型与所配 ControlNet 权重不兼容（AdaLN 结构不匹配），请关闭动作控制或切换官方 Ref2VA 模型。";
+        var caps=json.createObjectNode().put("healthy",true);
+        caps.putObject("h3").put("controlNet",false).put("controlNetUnavailableReason",reason).putArray("controlTypes");
+        doReturn(caps).when(service).capabilities(any(),any());
+        var shot=new DramaShot();shot.setDuration(BigDecimal.valueOf(5));
+        var control=new ShotControlNetOptions();control.setEnabled(true);
+        var input=new ShotControlNetOptions.Input();input.setReferenceId("video");control.setControls(List.of(input));
+        for(String kind:ShotControlNetOptions.CONTROL_TYPES)for(String mode:ShotControlNetOptions.INPUT_MODES){
+            input.setControlType(kind);input.setInputMode(mode);
+            var error=assertThrows(com.astra.freyja.common.BizException.class,
+                    ()->service.controlOptions(shot,model("TXT2VIDEO_REF"),provider(),control));
+            assertEquals(reason,error.getMessage());
+            assertTrue(control.isActive());
+        }
+    }
+    @Test void incompatibleModelBlocksContinuationBeforeMediaPreparationButAllowsPlainReference() throws Exception {
+        var videos=mock(ShotVideoReferenceService.class);
+        var service=spy(new ShotContinuationService(new ShotContinuationPlanner(),videos,json,mock(CryptoUtil.class),new com.astra.freyja.config.ReferenceVideoProperties()));
+        String reason="当前模型与 ControlNet 权重不兼容，请关闭动作控制或切换官方 Ref2VA 模型。";
+        var caps=json.createObjectNode().put("healthy",true).put("nodeId","gpu");
+        caps.putObject("referenceVideo").put("adapter","MINIMAX_H3_REF_VIDEO_V1");
+        caps.putObject("h3").put("continuation",true).put("controlNet",false)
+                .put("controlNetUnavailableReason",reason).putArray("controlTypes");
+        doReturn(caps).when(service).capabilities(any(),any());
+        var draft=new ShotContinuation();draft.setEnabled(true);draft.setDurationSeconds(5);new ShotContinuationPlanner().plan(draft,true);
+        var segment=draft.getSegments().getFirst();segment.setPrompt("Follow <Video 1>");segment.setControlNetEnabled(true);
+        var video=new ShotRefVideoDTO();video.setId("video");video.setSourceType("DIRECT_URL");video.setSourceVideoUrl("https://archive.test/clip.mp4");segment.getReferenceVideos().add(video);
+        var preview=service.preview(draft,false,model("TXT2VIDEO_REF"),provider());
+        assertFalse(preview.isRenderable());assertEquals(List.of("片段 1："+reason),preview.getIssues());
+        assertThrows(com.astra.freyja.common.BizException.class,
+                ()->service.prepare(shot(draft,"REFERENCE_MODE"),model("TXT2VIDEO_REF"),provider(),"960x544",null));
+        verifyNoInteractions(videos);
+        assertTrue(segment.isControlNetEnabled());assertEquals("video",segment.getReferenceVideos().getFirst().getId());
+        segment.setControlNetEnabled(false);
+        assertTrue(service.preview(draft,false,model("TXT2VIDEO_REF"),provider()).isRenderable());
+    }
     private AiProvider provider(){var provider=new AiProvider();provider.setId(4L);provider.setBaseUrl("http://gateway/v1");return provider;}
 }

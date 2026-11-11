@@ -301,7 +301,8 @@ models:
     h3_extensions:
       continuation: true
       context_windows: true
-      control_net: true
+      control_net: false
+      control_net_unavailable_reason: "当前 16GB HiFi 模型与所配 ControlNet 权重不兼容（AdaLN 结构不匹配），请关闭动作控制或切换官方 Ref2VA 模型。"
       context_windows_with_control_net: false
       control_version: '2.0'
       control_patch: minimax_h3_fun_controlnet_union_2.0_pruned_int8_convrot.safetensors

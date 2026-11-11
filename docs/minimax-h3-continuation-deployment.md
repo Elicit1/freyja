@@ -174,6 +174,7 @@ Java 为每个执行段调用现有视频生成端点，使用 `X-Freyja-Async-S
 
 ## 当前实现边界
 
+- `minimax-h3-ref2va` 的 16GB HiFi 底模与当前 Union 2.0 ControlNet 权重的 AdaLN 结构不匹配（底模宽度 16，控制权重宽度 8）。该模型在节点 YAML 中显式配置 `control_net: false` 和 `control_net_unavailable_reason`；能力接口返回 `h3.controlNet=false`、空 `controlTypes` 及 `controlNetUnavailableReason`。单镜、批量和接续预检在入队前拒绝所有启用的 ControlNet 类型（包括已预处理视频），网关在提交算力节点前再次拒绝，不自动关闭或忽略用户的控制设置。普通语义参考视频、接续与模板中的 Sol Attention、Fused Modulation、Chunk FeedForward、EasyCache 仍保留。其他官方 Ref2VA 模型沿用各自的能力配置。部署时同步更新后端与网关，并同步本地覆盖文件 `nodes/machine_local.yaml`；旧预检需重新生成，未来使用匹配权重并完成验证后再调整此组合配置。
 - 手动范围遵守当前 H3 的 `17k+5` 帧数、17 的倍数起点与真实重叠约束。300 秒 / 最多 100 段是产品保护上限。
 - 采用固定重叠裁切与 24fps 合成；尚未实现自动找最佳动作切点、几何/亮度修复、局部补帧或接缝视频预览。
 - 保留各段生成音频并按相同范围裁切；无音轨时补静音。尚未提供源母带、外部母带和静音策略切换，未自动消除对白重复。

@@ -106,10 +106,24 @@ def revision(model, base_dir):
     return digest.hexdigest()
 
 
+def control_unavailable_reason(model):
+    cfg = model.h3_extensions or {}
+    if cfg.get("control_net"):
+        return None
+    return cfg.get("control_net_unavailable_reason") or "当前模型不支持 ControlNet 动作控制，请关闭动作控制或切换支持的模型。"
+
+
+def require_control_support(model):
+    reason = control_unavailable_reason(model)
+    if reason:
+        raise ValueError("H3_CONTROL_UNSUPPORTED: " + reason)
+
+
 async def inspect_backend(model, client):
     cfg=model.h3_extensions or {}
     public={"continuation":False,"backendSignature":None,"missingNodes":[],"controlTypes":[],"controlVersion":cfg.get("control_version"),
-            "maxControlInputs":3,"controlInputModes":["RAW","PREPROCESSED"]}
+            "maxControlInputs":3,"controlInputModes":["RAW","PREPROCESSED"],
+            "controlNet":False,"controlNetUnavailableReason":control_unavailable_reason(model)}
     if not cfg:return public
     baseline={cfg["conditioning"]["class_type"],"MiniMaxH3AddGuide"}
     required=set(baseline)
@@ -127,7 +141,6 @@ async def inspect_backend(model, client):
         public["missingNodes"]=sorted(required-set(nodes))
         public["continuationModes"]=mode_capabilities(nodes)
         public["continuation"]=bool(cfg.get("continuation") and baseline<=nodes.keys())
-        public["controlTypes"]=[name for name,preset in preprocessors.items() if preset["class_type"] in nodes]+["GRAY"]+cfg.get("prepared_control_types",["PREPARED"])
         def normalized(value):
             # File inventories change independently of a node's protocol. Check the selected patch below.
             if isinstance(value,list) and value and isinstance(value[0],list):return ["COMBO"]+value[1:]
@@ -138,6 +151,8 @@ async def inspect_backend(model, client):
         patch_available=cfg.get("control_patch") in patch_choices
         public["contextWindows"]=bool(cfg.get("context_windows") and "MiniMaxH3ContextWindows" in nodes)
         public["controlNet"]=bool(cfg.get("control_net") and patch_available and {"MiniMaxH3FunControlNetApply","ModelPatchLoader"}<=nodes.keys())
+        if public["controlNet"]:
+            public["controlTypes"]=[name for name,preset in preprocessors.items() if preset["class_type"] in nodes]+["GRAY"]+cfg.get("prepared_control_types",["PREPARED"])
         public["contextWindowsWithControlNet"]=bool(cfg.get("context_windows_with_control_net") and public["controlNet"] and public["contextWindows"])
         if cfg.get("control_net") and not patch_available:public["missingNodes"].append("weight:"+str(cfg.get("control_patch")))
         fingerprint={"backend":client.http_base,"versions":{key:system.get(key) for key in ("comfyui_version","pytorch_version","python_version")},"nodes":schemas,"controlPatch":cfg.get("control_patch"),"patchAvailable":patch_available}
@@ -164,7 +179,7 @@ def require_options(request, model, base_dir):
     if options.continuation_enabled and not cfg.get("continuation"): raise ValueError("H3_CONTINUATION_UNSUPPORTED")
     if options.context_windows.enabled and not cfg.get("context_windows"): raise ValueError("H3_CONTEXT_UNSUPPORTED")
     if options.control_net.is_active():
-        if not cfg.get("control_net"): raise ValueError("H3_CONTROL_UNSUPPORTED")
+        require_control_support(model)
         for control in options.control_net.active_inputs():
             if not control.reference_id or not any(v.reference_id==control.reference_id for v in request.get_all_ref_videos()):
                 raise ValueError("H3_CONTROL_SOURCE_MISSING: select an attached reference video for every enabled control")
@@ -205,6 +220,8 @@ def apply_extensions(workflow, request, model, videos, continuation_filename=Non
     options=request.h3_options
     if options is None: return
     cfg=model.h3_extensions
+    if options.control_net.is_active():
+        require_control_support(model)
     if options.control_net.is_active() and options.context_windows.enabled and not cfg.get("context_windows_with_control_net"):
         raise ValueError("H3_WINDOW_CONTROL_UNVERIFIED: use per-segment control without context windows")
     def node(key):
