@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "id": "minimax-h3-image",
+  "title": "MiniMax H3 Image",
+  "description": "Text-to-image and reference-image editing with prompt expansion and up to 20 MP.",
+  "modes": {
+    "t2i": {
+      "template": "t2i.api.json",
+      "bindings": {
+        "prompt": {
+          "node": "24",
+          "input": "value"
+        },
+        "seed": {
+          "node": "7",
+          "input": "seed"
+        },
+        "expand_prompt": {
+          "node": "101",
+          "input": "value"
+        },
+        "megapixels": {
+          "node": "100",
+          "input": "megapixels"
+        },
+        "aspect_ratio": {
+          "node": "100",
+          "input": "aspect_ratio"
+        }
+      },
+      "model_node": "1",
+      "output_node": "102",
+      "prompt_preview_node": "18"
+    },
+    "i2i": {
+      "template": "i2i.api.json",
+      "bindings": {
+        "prompt": {
+          "node": "43",
+          "input": "value"
+        },
+        "seed": {
+          "node": "38",
+          "input": "seed"
+        },
+        "expand_prompt": {
+          "node": "61",
+          "input": "value"
+        },
+        "megapixels": {
+          "node": "56",
+          "input": "resize_type.megapixels"
+        },
+        "image": {
+          "node": "45",
+          "input": "image"
+        }
+      },
+      "model_node": "29",
+      "output_node": "9",
+      "prompt_preview_node": "37"
+    }
+  },
+  "profiles": {
+    "pro": {
+      "description": "INT8 precision profile for detail-sensitive final candidates; compare results rather than assuming a guaranteed quality ranking.",
+      "loader": "UNETLoader",
+      "inputs": {
+        "unet_name": "minimax_h3_image_pruned_int8_convrot.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "standard": {
+      "description": "W4A8 balanced default for routine generation and editing.",
+      "loader": "UNETLoader",
+      "inputs": {
+        "unet_name": "minimax_h3_image_pruned_w4a8.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "fast": {
+      "description": "Q4_K_M GGUF profile for resource-conscious previews and iteration. Actual speed depends on hardware and cache state.",
+      "loader": "UnetLoaderGGUF",
+      "inputs": {
+        "unet_name": "MiniMax-H3-Image-Pruned-Q4_K_M.gguf"
+      }
+    }
+  }
+}

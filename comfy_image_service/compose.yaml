@@ -1,0 +1,33 @@
+name: comfy-image-service
+services:
+  image-api:
+    image: comfy-image-service:local
+    build:
+      context: .
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+    container_name: comfy-image-service
+    environment:
+      COMFY_URL: ${COMFY_URL:-http://host.docker.internal:8188}
+      IMAGE_API_KEY: ${IMAGE_API_KEY:?Set an independent IMAGE_API_KEY with at least 24 characters}
+      IMAGE_HOST: 0.0.0.0
+      IMAGE_PORT: 8011
+      IMAGE_TIMEOUT_SECONDS: ${IMAGE_TIMEOUT_SECONDS:-1800}
+      IMAGE_PUBLIC_BASE_URL: ${IMAGE_PUBLIC_BASE_URL:-http://127.0.0.1:8011}
+    ports:
+      - "127.0.0.1:${IMAGE_PORT:-8011}:8011"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - image_data:/app/comfy_image_service/data
+      - ./apps:/app/comfy_image_service/apps:ro
+      - ./skills:/app/comfy_image_service/skills:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8011/health')); assert d['worker_alive'] and d['configured']"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+volumes:
+  image_data:
