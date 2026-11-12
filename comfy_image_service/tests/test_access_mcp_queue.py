@@ -167,7 +167,7 @@ class GatedComfy(FakeComfy):
         self.max_active = max(self.max_active, self.active)
         return prompt_id
 
-    async def wait(self, prompt_id):
+    async def wait(self, prompt_id, client_id=None):
         if self.timeout_next:
             self.timeout_next = False
             raise ServiceError("backend_timeout", "test polling timeout", 504)

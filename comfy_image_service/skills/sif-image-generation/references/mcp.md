@@ -43,6 +43,8 @@ Choose a unique `idempotency_key` for each intended render. After losing a submi
 
 The waiting call subscribes to committed queue/job-state changes. It can stream `notifications/progress` when the client supplies a progress token; messages report real job state, waiting position, and monotonically increasing elapsed wait time, not an invented GPU completion percentage. Pending waits also send a status update about every ten seconds. Clients decide how to display these notifications.
 
+SIF normally receives backend completion through ComfyUI WebSocket events rather than a fixed sleep/history-poll loop. Reconnecting preserves the original client/job identity and does not submit another render. This backend transport does not change how the Agent connects: keep using authenticated HTTP MCP and `wait_for_job`.
+
 `wait_for_job` returns immediately for `succeeded`, `failed`, or `unknown`. For pending jobs it returns by its deadline, with `wait_timed_out=true` and `next_action="wait_for_job"`. Call the waiting tool again with the same ID and no extra sleep. A `succeeded` result includes authenticated image URLs; `failed` calls for error inspection; `unknown` calls for backend inspection and must not trigger a replacement render. Disconnecting or cancelling a wait only ends that wait, leaving the durable job and the serial worker intact.
 
 Keep `timeout_seconds` below the client's tool-call deadline. Default 25 seconds fits clients with a 30-second tool timeout; use a larger value only when the host permits it. Progress does not universally reset client timeouts. A wait timeout or connection loss must resume the existing job rather than submit again. The server cannot control the host's scheduling after a tool call returns.

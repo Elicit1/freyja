@@ -61,7 +61,7 @@ class Runner:
                     await self.submit(job)
                     job = self.store.get_job(job_id)
                 if job["status"] == "running":
-                    entry = await self.client.wait(job["prompt_id"])
+                    entry = await self.client.wait(job["prompt_id"], client_id=job["id"])
                     await self.finish(job, entry)
             except asyncio.CancelledError:
                 raise

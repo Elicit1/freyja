@@ -59,7 +59,7 @@ class FakeComfy:
         self.entries[prompt_id] = {"status": {"status_str": "success"}, "outputs": outputs}
         return prompt_id
 
-    async def wait(self, prompt_id):
+    async def wait(self, prompt_id, client_id=None):
         await asyncio.sleep(0)
         return self.entries[prompt_id]
 

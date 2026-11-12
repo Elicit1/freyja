@@ -36,6 +36,8 @@ SIF 是给本地 AI / Agent 使用的独立命令行生图服务。代码、App 
 
 `wait_for_job(job_id, timeout_seconds=25)` 默认等待最多 25 秒，可设置 1–600 秒，但应小于客户端工具超时。支持的客户端可接收状态、排队顺位和等待时间通知。超时返回 `wait_timed_out=true` 时，用同一任务 ID 再调用等待工具，不额外 sleep 或重新提交。连接断开或取消等待不会取消生图。`unknown` 状态直接返回以便人工检查。进度通知不能保证客户端自动延长超时。
 
+SIF 到 ComfyUI 的正常完成等待也使用 WebSocket `/ws?clientId=原任务ID`，不再由 `ComfyClient.wait` 每两秒轮询历史。建立订阅后读取一次历史以覆盖快速完成或重启恢复；随后监听所属 `prompt_id` 的完成/失败事件，收到事件后读取最终历史。断线按原客户端 ID 重连，连接失败使用 WebSocket 库的退避机制；不重提 `/prompt`。`execution_success` 可能早于历史写入，因此尚无历史时继续等待最终 `executing(node=null)`。超时只做一次有界恢复快照，仍无法确认则保留未决状态；原有 `unknown` 检查与人工恢复规则继续适用。
+
 参考图片需上传为字节或 Data URI，不能把 Windows 文件路径交给 Docker 读取。可使用 MCP `upload_image` 或 REST 二进制上传，大图片适合 CLI `--image`。完整图片通过返回的地址下载，下载也需携带 API Key；CLI `status JOB_ID --output 图片.png` 可以恢复并下载。详见 [MCP 参考](skills/sif-image-generation/references/mcp.md)。
 
 ## 直接调用
