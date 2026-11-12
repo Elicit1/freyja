@@ -3,6 +3,7 @@ import base64
 from typing import Annotated, Any, Literal
 
 from mcp.server import MCPServer
+from mcp.server.mcpserver import Context
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
@@ -10,7 +11,7 @@ from .models import GenerateRequest
 
 
 def create_mcp(state, settings):
-    mcp = MCPServer("SIF", log_level="WARNING", instructions="Generate or edit images through SIF. Use standard for routine work, pro for INT8, fast for Q4_K_M. Tasks run serially; poll get_job instead of submitting a replacement. Prompt expansion defaults OFF. Images require the same Bearer API key to download.")
+    mcp = MCPServer("SIF", log_level="WARNING", instructions="Generate or edit images with English prompts. When settings are unspecified, prefer fast, 2K (2048x1152, 2.25 MP), 16:9 for t2i; preserve the source ratio for i2i. Prompt expansion defaults OFF. Every API/MCP request and image download requires the configured Bearer API key. Tasks run serially. After submission, call wait_for_job with the returned job ID instead of sleeping or repeatedly calling get_job. If wait_timed_out is true, call wait_for_job again with the SAME job ID; never resubmit the render because waiting timed out. Unknown jobs need backend inspection.")
 
     @mcp.tool(structured_output=True)
     def get_capabilities() -> dict[str, Any]:
@@ -33,7 +34,7 @@ def create_mcp(state, settings):
         seed: Annotated[int | None, Field(ge=0, le=9007199254740991)] = None,
         app: str = "minimax-h3-image",
     ) -> dict[str, Any]:
-        """Queue one text-to-image render. Returns a persisted job ID and queue position; poll get_job until completion."""
+        """Queue one text-to-image render. Preserve the returned ID, then call wait_for_job; do not sleep or resubmit."""
         return await state.service.submit("t2i", GenerateRequest(prompt=prompt, tier=tier, megapixels=megapixels,
                                           aspect_ratio=aspect_ratio, expand_prompt=expand_prompt, seed=seed, app=app), idempotency_key)
 
@@ -48,7 +49,7 @@ def create_mcp(state, settings):
         seed: Annotated[int | None, Field(ge=0, le=9007199254740991)] = None,
         app: str = "minimax-h3-image",
     ) -> dict[str, Any]:
-        """Queue an edit of <Picture 1>, preserving its aspect ratio. Describe requested changes and preservation requirements."""
+        """Queue an edit of <Picture 1>, preserving its ratio. Describe changes and preservation requirements, then call wait_for_job."""
         return await state.service.submit("i2i", GenerateRequest(prompt=prompt, image=image, tier=tier, megapixels=megapixels,
                                           expand_prompt=expand_prompt, seed=seed, app=app), idempotency_key)
 
@@ -59,8 +60,19 @@ def create_mcp(state, settings):
 
     @mcp.tool(structured_output=True)
     async def get_job(job_id: str) -> dict[str, Any]:
-        """Read a queued/running/completed job and its authenticated image URLs. An unknown job may still be rendering."""
+        """Read current state once for inspection. Use wait_for_job to await completion without client-side sleep loops."""
         return await state.service.job(job_id)
+
+    @mcp.tool(structured_output=True)
+    async def wait_for_job(
+        job_id: Annotated[str, Field(description="The existing persisted SIF job ID returned by generation. Never submit a replacement to wait.")],
+        ctx: Context,
+        timeout_seconds: Annotated[float, Field(ge=1, le=600, description="Server-side wait deadline. Default 25 seconds; choose less than the MCP client's tool timeout.")] = 25,
+    ) -> dict[str, Any]:
+        """Wait on the server until completion, failure, unknown status, or deadline; stream status/elapsed-time notifications when supported. On wait_timed_out=true, call again with the SAME job_id, without sleep. Disconnecting or cancelling this wait never cancels or resubmits the render."""
+        async def progress(elapsed, message):
+            await ctx.report_progress(elapsed, message=message)
+        return await state.service.wait_for_job(job_id, timeout_seconds, progress)
 
     @mcp.tool(structured_output=True)
     def get_queue() -> dict[str, Any]:
@@ -74,7 +86,7 @@ def create_mcp(state, settings):
 
     # The parent app authenticates every request, including tool discovery and notifications.
     # Keep the SDK's localhost Host/Origin checks, matching the service's loopback deployment.
-    transport = mcp.streamable_http_app(stateless_http=True, json_response=True,
+    transport = mcp.streamable_http_app(stateless_http=True, json_response=False,
                                         max_request_body_size=(settings.max_upload_bytes + 2) // 3 * 4 + 65536,
                                         transport_security=TransportSecuritySettings(
                                             allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*"],

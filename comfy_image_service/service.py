@@ -1,6 +1,8 @@
 """Shared image operations used by the REST API, console, and MCP tools."""
+import asyncio
 import hashlib
 import json
+import math
 from pathlib import Path
 
 from .media import resolve_image, save_upload
@@ -8,6 +10,8 @@ from .models import ASPECT_RATIOS, GenerateRequest, ServiceError
 
 
 class ImageService:
+    wait_progress_seconds = 10.0
+
     def __init__(self, settings, store, registry, runner, client):
         self.settings, self.store, self.registry, self.runner, self.client = settings, store, registry, runner, client
 
@@ -22,6 +26,8 @@ class ImageService:
                 "endpoints": {"t2i": "/v1/t2i", "i2i": "/v1/i2i", "upload": "/v1/uploads", "job": "/v1/jobs/{job_id}", "mcp": "/mcp"},
                 "defaults": {"app": "minimax-h3-image", "tier": "standard", "megapixels": 4, "expand_prompt": True},
                 "mcp_defaults": {"expand_prompt": False}, "parameters": GenerateRequest.model_json_schema(),
+                "waiting": {"tool": "wait_for_job", "default_timeout_seconds": 25, "max_timeout_seconds": 600,
+                            "transport": "Streamable HTTP / SSE", "client_sleep_required": False},
                 "limits": {"max_megapixels": 20, "max_upload_bytes": self.settings.max_upload_bytes,
                            "source_formats": ["png", "jpeg", "webp"], "t2i_aspect_ratios": list(ASPECT_RATIOS), "i2i_aspect_ratio": "original"},
                 "fixed_sampling": {"steps": 6, "cfg": 1, "sampler": "euler", "scheduler": "simple", "denoise": 1},
@@ -90,6 +96,40 @@ class ImageService:
 
     async def job(self, job_id, base_url=""):
         return self.public_job(await self.runner.reconcile(self.store.get_job(job_id)), base_url)
+
+    async def wait_for_job(self, job_id, timeout_seconds=25, progress=None):
+        """Wait for committed job-state events; never submit, retry, or cancel a render."""
+        if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 600:
+            raise ServiceError("invalid_wait_timeout", "Wait timeout must be greater than zero and at most 600 seconds.", 422)
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        deadline = started + timeout_seconds
+        previous, last_report = None, started - self.wait_progress_seconds
+        progress_value = -1.0
+        with self.store.watch_jobs() as changed:
+            while True:
+                changed.clear()
+                job = self.public_job(self.store.get_job(job_id))
+                now = loop.time()
+                terminal = job["status"] in {"succeeded", "failed", "unknown"}
+                signature = (job["status"], job["queue_position"])
+                if progress and (signature != previous or now - last_report >= self.wait_progress_seconds):
+                    progress_value = max(progress_value + 0.001, now - started)
+                    message = "Job " + job["id"] + ": " + job["status"]
+                    if job["queue_position"] is not None:
+                        message += "; queue position " + str(job["queue_position"])
+                    # Elapsed wait time is monotonic; it is not a fabricated sampling percentage.
+                    await progress(progress_value, message)
+                    last_report = loop.time()
+                previous = signature
+                remaining = deadline - loop.time()
+                if terminal or remaining <= 0:
+                    action = {"succeeded": "download", "failed": "inspect_error", "unknown": "inspect_backend"}.get(job["status"], "wait_for_job")
+                    return {**job, "wait_timed_out": not terminal, "next_action": action}
+                try:
+                    await asyncio.wait_for(changed.wait(), timeout=min(remaining, self.wait_progress_seconds))
+                except asyncio.TimeoutError:
+                    pass
 
     def image_path(self, job_id, index):
         job = self.store.get_job(job_id)

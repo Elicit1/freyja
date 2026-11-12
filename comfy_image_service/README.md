@@ -32,7 +32,9 @@ SIF 是给本地 AI / Agent 使用的独立命令行生图服务。代码、App 
 
 将 `YOUR_API_KEY` 替换为在 SIF 控制台创建的密钥，具体字段与密钥存储方式以客户端要求为准。管理页「MCP 接入」也可复制当前服务地址和配置示例。
 
-工具：`get_capabilities`、`get_readiness`、`text_to_image`、`image_to_image`、`upload_image`、`get_job`、`get_queue`、`get_result`。生图工具立即返回持久化任务 ID 和排队顺位，使用 `get_job` 查询结果；MCP 默认关闭扩写。为每次预期生成传入唯一 `idempotency_key`，丢失响应后用同一 Key 和参数恢复。
+工具：`get_capabilities`、`get_readiness`、`text_to_image`、`image_to_image`、`upload_image`、`wait_for_job`、`get_job`、`get_queue`、`get_result`。生图工具立即返回持久化任务 ID 和排队顺位，然后调用 `wait_for_job` 由服务端等待状态事件，避免 Agent 反复 sleep / 查询。MCP 使用标准 Streamable HTTP / SSE 响应，原 REST JSON 接口兼容保留。MCP 默认关闭扩写。为每次预期生成传入唯一 `idempotency_key`，丢失响应后用同一 Key 和参数恢复。
+
+`wait_for_job(job_id, timeout_seconds=25)` 默认等待最多 25 秒，可设置 1–600 秒，但应小于客户端工具超时。支持的客户端可接收状态、排队顺位和等待时间通知。超时返回 `wait_timed_out=true` 时，用同一任务 ID 再调用等待工具，不额外 sleep 或重新提交。连接断开或取消等待不会取消生图。`unknown` 状态直接返回以便人工检查。进度通知不能保证客户端自动延长超时。
 
 参考图片需上传为字节或 Data URI，不能把 Windows 文件路径交给 Docker 读取。可使用 MCP `upload_image` 或 REST 二进制上传，大图片适合 CLI `--image`。完整图片通过返回的地址下载，下载也需携带 API Key；CLI `status JOB_ID --output 图片.png` 可以恢复并下载。详见 [MCP 参考](skills/sif-image-generation/references/mcp.md)。
 

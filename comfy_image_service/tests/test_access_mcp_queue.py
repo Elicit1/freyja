@@ -113,14 +113,21 @@ class MCPTests(ServiceFixture):
             body["params"] = params
         response = self.client.post("/mcp", headers={**self.auth, "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25"}, json=body)
         self.assertEqual(response.status_code, 200, response.text[:500])
-        return response.json()
+        if response.headers.get("content-type", "").startswith("application/json"):
+            return response.json()
+        for line in response.text.splitlines():
+            if line.startswith("data: ") and line[6:].strip():
+                message = json.loads(line[6:])
+                if message.get("id") == request_id and ("result" in message or "error" in message):
+                    return message
+        self.fail("MCP stream did not contain a final JSON-RPC response")
 
     def test_protocol_discovery_and_t2i_i2i_return_durable_jobs(self):
         initialized = self.rpc("initialize", {"protocolVersion": "2025-11-25", "capabilities": {}, "clientInfo": {"name": "sif-test", "version": "1"}})
         self.assertIn("result", initialized)
         tools = self.rpc("tools/list")["result"]["tools"]
         names = {tool["name"] for tool in tools}
-        self.assertEqual(names, {"get_capabilities", "get_readiness", "text_to_image", "image_to_image", "upload_image", "get_job", "get_queue", "get_result"})
+        self.assertEqual(names, {"get_capabilities", "get_readiness", "text_to_image", "image_to_image", "upload_image", "get_job", "wait_for_job", "get_queue", "get_result"})
         params = {"prompt": "A red teapot", "tier": "fast", "megapixels": 0.25, "seed": 42, "idempotency_key": "mcp-t2i"}
         result = self.rpc("tools/call", {"name": "text_to_image", "arguments": params})["result"]
         self.assertFalse(result.get("isError", False), result)

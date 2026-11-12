@@ -1,8 +1,10 @@
+import asyncio
 import json
 import sqlite3
 import threading
 import time
 import uuid
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from .models import ServiceError
@@ -13,6 +15,7 @@ class Store:
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
+        self._job_watchers = set()
         self.db = sqlite3.connect(self.directory / "jobs.sqlite3", check_same_thread=False)
         self.db.row_factory = sqlite3.Row
         self.db.executescript("""
@@ -31,6 +34,25 @@ class Store:
 
     def close(self):
         self.db.close()
+
+    @contextmanager
+    def watch_jobs(self):
+        """Subscribe before reading state so a completion cannot fall between read and wait."""
+        watcher = (asyncio.get_running_loop(), asyncio.Event())
+        with self.lock:
+            self._job_watchers.add(watcher)
+        try:
+            yield watcher[1]
+        finally:
+            with self.lock:
+                self._job_watchers.discard(watcher)
+
+    def _notify_jobs(self):
+        with self.lock:
+            watchers = tuple(self._job_watchers)
+        for loop, event in watchers:
+            with suppress(RuntimeError):  # A disconnected caller's event loop may already be closed.
+                loop.call_soon_threadsafe(event.set)
 
     def upload(self, upload_id):
         with self.lock:
@@ -61,6 +83,7 @@ class Store:
             self.db.execute("INSERT INTO jobs(id,status,created,updated,fingerprint,idempotency_key,request,graph,metadata) VALUES (?,?,?,?,?,?,?,?,?)",
                             (job_id, "queued", now, now, fingerprint, idempotency_key,
                              json.dumps(values), json.dumps(graph), json.dumps(metadata)))
+        self._notify_jobs()
         return self.get_job(job_id), True
 
     def idempotent_job(self, key, fingerprint):
@@ -120,8 +143,11 @@ class Store:
 
     def claim(self, job_id):
         with self.lock, self.db:
-            return self.db.execute("UPDATE jobs SET status='preparing',updated=? WHERE id=? AND status='queued'",
-                                   (time.time(), job_id)).rowcount == 1
+            claimed = self.db.execute("UPDATE jobs SET status='preparing',updated=? WHERE id=? AND status='queued'",
+                                      (time.time(), job_id)).rowcount == 1
+        if claimed:
+            self._notify_jobs()
+        return claimed
 
     def update(self, job_id, status, *, prompt_id=None, result=None, error=None):
         with self.lock, self.db:
@@ -130,3 +156,4 @@ class Store:
                                       json.dumps(error) if error is not None else None, job_id)).rowcount
             if changed != 1:
                 raise RuntimeError("Job persistence failed: job does not exist.")
+        self._notify_jobs()

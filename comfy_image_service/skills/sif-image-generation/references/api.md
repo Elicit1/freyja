@@ -23,11 +23,13 @@ The user signs in to the standalone SIF web console, creates a key by name, and 
 
 ## Commands
 
+Skill recommendation for unspecified settings: **fast, 2K, 16:9, expansion OFF**. For t2i, use `--tier fast --mp 2.25 --aspect-ratio 16:9 --no-expand` to target **2048×1152**. These must be explicit because the underlying CLI/REST defaults differ. Preserve user-specified settings. For i2i, keep the source ratio and calculate MP for a 2048-pixel long edge when the user does not specify size; the example below assumes a 16:9 input.
+
 ```bash
 python scripts/generate.py capabilities
 python scripts/generate.py readiness
-python scripts/generate.py t2i --tier standard --prompt "A moonlit botanical garden" --mp 4 --aspect-ratio 16:9 --no-expand --output garden.png
-python scripts/generate.py i2i --tier fast --image source.png --prompt "Edit <Picture 1>. Change daylight to golden-hour lighting; preserve the subject and composition." --mp 1 --no-expand --output edited.png
+python scripts/generate.py t2i --tier fast --prompt "A moonlit botanical garden" --mp 2.25 --aspect-ratio 16:9 --no-expand --output garden.png
+python scripts/generate.py i2i --tier fast --image source.png --prompt "Edit <Picture 1>. Change daylight to golden-hour lighting; preserve the subject and composition." --mp 2.25 --no-expand --output edited.png
 python scripts/generate.py status JOB_UUID --output recovered.png
 ```
 
@@ -35,10 +37,10 @@ python scripts/generate.py status JOB_UUID --output recovered.png
 | --- | --- | --- |
 | command | `t2i`, `i2i` | New image or edit an existing image |
 | `--app` | `minimax-h3-image` | Discover other registered apps with `capabilities` |
-| `--tier` | `pro`, `standard`, `fast`; default `standard` | INT8 / W4A8 / Q4_K_M respectively |
-| `--prompt` | Required, 1–32000 characters | Description or reference-image editing instruction |
-| `--mp`, `--megapixels` | 0.1–20; default 4 | Target area; 1 MP means 1024×1024 pixels |
-| `--aspect-ratio` | t2i: `1:1`, `2:3`, `3:2`, `3:4`, `4:3`, `9:16`, `16:9`, `21:9`; default `1:1` | i2i accepts `original` and preserves its input ratio |
+| `--tier` | `pro`, `standard`, `fast`; raw CLI default `standard` | INT8 / W4A8 / Q4_K_M respectively; explicitly use `fast` when the user leaves the tier unspecified |
+| `--prompt` | Required, 1–32000 characters, written in English | Translate non-English requests before submission; preserve exact requested lettering in its original language |
+| `--mp`, `--megapixels` | 0.1–20; raw CLI default 4 | Target area; 1 MP means 1024×1024 pixels; explicitly use 2.25 for the default 2K 16:9 recommendation |
+| `--aspect-ratio` | t2i: `1:1`, `2:3`, `3:2`, `3:4`, `4:3`, `9:16`, `16:9`, `21:9`; raw CLI default `1:1` | Explicitly use `16:9` for unspecified t2i ratios; i2i accepts `original` and preserves its input ratio |
 | `--image` | Required local path for i2i | PNG, JPEG, or WebP; at most 25 MiB and 40 source MP |
 | `--no-expand` | Recommended for every generation unless the user requests expansion | Turns off expansion and preserves input text; CLI/service defaults remain ON when omitted |
 | `--seed` | 0–9007199254740991; random by default | Reproducibility within the selected model and workflow |
@@ -54,14 +56,16 @@ Dimensions are aligned to 32, so actual pixel area can differ slightly from the 
 Progress goes to stderr. A successful command prints one JSON object to stdout:
 
 ```json
-{"job_id":"UUID","status":"succeeded","app":"minimax-h3-image","mode":"t2i","tier":"standard","seed":42,"effective_prompt":"...","images":[{"path":"/absolute/output.png","width":2048,"height":2048}]}
+{"job_id":"UUID","status":"succeeded","app":"minimax-h3-image","mode":"t2i","tier":"fast","seed":42,"effective_prompt":"...","images":[{"path":"/absolute/output.png","width":2048,"height":1152}]}
 ```
 
 A nonzero exit code is a failure or incomplete job. Preserve any printed job ID. `status JOB_UUID` checks/downloads that job without new submission. Check the actual output before claiming an edit met the user's request.
 
 ## HTTP interface
 
-All `/v1/**`, `/mcp`, `/health`, and API documentation routes require `Authorization: Bearer sk-…`, including image downloads and Skill downloads. The public HTML/login shell is accessible before signing in; `/admin/**` uses an administrator session instead. This independent REST API uses asynchronous jobs; it is not the existing FREYJA gateway's OpenAI endpoint.
+Every Agent-facing interface requires an API key: all `/v1/**`, `/mcp`, `/health`, and API documentation routes require `Authorization: Bearer sk-…`, including discovery, uploads, polling, image downloads and Skill downloads. Attach the header to every request, even when following a URL returned by the service. Do not attempt an unauthenticated health or capability probe. The CLI attaches the configured key automatically. The public HTML/login shell is accessible before signing in; `/admin/**` uses an administrator session instead. This independent REST API uses asynchronous jobs; it is not the existing FREYJA gateway's OpenAI endpoint.
+
+Both `POST /v1/t2i` and `POST /v1/i2i` must receive an English `prompt`. Translate the user's request before submission; keep exact requested image lettering in its original language and preserve `<Picture 1>` reference markers. Prompt expansion is not needed for translation and remains disabled under this Skill's recommendation.
 
 - `GET /v1/capabilities`: discover parameter schema, apps, tiers, and limits.
 - `GET /v1/readiness`: check installed nodes and model filenames; this does not certify VRAM capacity.
@@ -76,9 +80,9 @@ All `/v1/**`, `/mcp`, `/health`, and API documentation routes require `Authoriza
 Example body:
 
 ```json
-{"app":"minimax-h3-image","tier":"standard","prompt":"A red ceramic teapot","megapixels":4,"aspect_ratio":"16:9","expand_prompt":false,"seed":42}
+{"app":"minimax-h3-image","tier":"fast","prompt":"A red ceramic teapot","megapixels":2.25,"aspect_ratio":"16:9","expand_prompt":false,"seed":42}
 ```
 
-Generation returns HTTP 202 with a durable job ID and queue position. All REST and MCP submissions share one persisted FIFO queue and one rendering worker. Poll until `succeeded`, `failed`, or `unknown`. Results include authenticated image URLs. States `queued`, `preparing`, and `running` are pending; an `unknown` render blocks subsequent submissions from executing until completion is confirmed. Restarted services finish existing backend jobs before new queued jobs, without resubmission. An administrator can resolve an unknown task in the console after confirming the backend render ended.
+Generation returns HTTP 202 with a durable job ID and queue position. All REST and MCP submissions share one persisted FIFO queue and one rendering worker. For MCP, call `wait_for_job` to await completion on the server; do not use Agent-issued sleep calls or repeated `get_job` polling. If a wait deadline expires, call the waiting tool again with the same job ID. REST/CLI integrations may retain their existing status-polling implementation; REST responses remain JSON. Results include authenticated image URLs. States `queued`, `preparing`, and `running` are pending; an `unknown` render blocks subsequent submissions from executing until completion is confirmed. Restarted services finish existing backend jobs before new queued jobs, without resubmission. An administrator can resolve an unknown task in the console after confirming the backend render ended.
 
-Use `Idempotency-Key` for programmatic submissions. Reusing a key with changed parameters returns HTTP 409. Invalid profile, resolution, aspect ratio, unknown fields, or missing image returns 422; wrong credentials return 401; a missing service key returns 503. Resolve the cause before retrying. Do not retry render failures as an unlimited loop.
+Use `Idempotency-Key` for programmatic submissions. Reusing a key with changed parameters returns HTTP 409. Invalid profile, resolution, aspect ratio, unknown fields, or missing image returns 422; missing, invalid, or revoked API keys return 401. Resolve the cause before retrying. Do not retry render failures as an unlimited loop.

@@ -1,4 +1,4 @@
 interface:
   display_name: "SIF Image Generation"
   short_description: "Generate and edit images through SIF MCP or CLI"
-  default_prompt: "Use $sif-image-generation with the configured SIF MCP tools to generate or edit an image using the appropriate profile and resolution."
+  default_prompt: "Use $sif-image-generation with English prompts, an API key on every request, and wait_for_job instead of sleep/poll loops; default to fast, 2K and 16:9 for t2i, preserving the input ratio for i2i."
