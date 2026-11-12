@@ -96,13 +96,12 @@ def parse_args():
 
 def main():
     args = parse_args()
-    config_path = args.config or (Path(os.environ["COMFY_IMAGE_CONFIG"]) if os.environ.get("COMFY_IMAGE_CONFIG") else None)
-    candidate = Path(__file__).resolve().parents[3] / ".client.json"
-    if config_path is None and candidate.is_file(): config_path = candidate
+    config_env = os.environ.get("SIF_CONFIG") or os.environ.get("COMFY_IMAGE_CONFIG")
+    config_path = args.config or (Path(config_env) if config_env else None)
     config = json.loads(config_path.read_text(encoding="utf-8-sig")) if config_path else {}
-    base_url = args.base_url or os.environ.get("COMFY_IMAGE_BASE_URL") or config.get("base_url", "http://127.0.0.1:8011")
-    key = os.environ.get("COMFY_IMAGE_API_KEY") or config.get("api_key", "")
-    if not key: raise ValueError("Set COMFY_IMAGE_API_KEY or use --config with a private connection JSON file.")
+    base_url = args.base_url or os.environ.get("SIF_BASE_URL") or os.environ.get("COMFY_IMAGE_BASE_URL") or config.get("base_url", "http://127.0.0.1:8011")
+    key = os.environ.get("SIF_API_KEY") or os.environ.get("COMFY_IMAGE_API_KEY") or config.get("api_key", "")
+    if not key or not key.startswith("sk-"): raise ValueError("Create an API key in the SIF console, then set SIF_API_KEY or pass --config with your private client configuration.")
     client = Client(base_url, key)
     if args.command in {"capabilities", "readiness"}:
         print(json.dumps(client.request("/v1/" + args.command), ensure_ascii=False, indent=2));return

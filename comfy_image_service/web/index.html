@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>SIF · 图像服务控制台</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <main id="login-view" class="login-shell" hidden>
+    <section class="login-form-panel">
+      <form id="login-form" class="login-form">
+        <h2>SIF 登录</h2>
+        <label for="login-password">管理员密码</label>
+        <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="输入密码" required maxlength="128">
+        <p id="login-error" class="error-text" role="alert"></p>
+        <button class="primary full" type="submit">登录</button>
+        <div class="login-help"><span class="info-mark">i</span><p>首次使用？初始密码在当前启动日志中查看。设置自己的密码前，重启会生成新密码。</p></div>
+      </form>
+    </section>
+  </main>
+
+  <div id="console-view" class="console-shell" hidden>
+    <aside class="sidebar">
+      <div class="brand"><span class="rune" aria-hidden="true">ᛋ</span><span>SIF</span></div>
+      <nav aria-label="控制台导航">
+        <button data-page="overview" class="nav-item selected"><span>◫</span>概览</button>
+        <button data-page="keys" class="nav-item"><span>⚿</span>API Keys</button>
+        <button data-page="mcp" class="nav-item"><span>⌘</span>MCP 接入</button>
+        <button data-page="security" class="nav-item"><span>◇</span>安全设置</button>
+      </nav>
+    </aside>
+    <div class="workspace">
+      <header class="topbar"><span>SIF 控制台 <span class="slash">/</span> <span id="breadcrumb">概览</span></span><div class="topbar-right"><span class="avatar">A</span><span>管理员</span><span class="separator"></span><button id="logout" class="text-button">退出登录</button></div></header>
+      <main class="content">
+        <section class="page-heading"><div><h1 id="page-title">概览</h1></div><span id="service-status" class="badge status"><i class="dot"></i>连接中</span></section>
+        <div id="password-notice" class="notice" hidden>当前使用系统生成的初始密码。<button class="text-button" data-page="security">设置自己的密码</button></div>
+        <section id="overview-page" class="page">
+          <div class="metrics"><article class="metric"><div><span>当前执行</span><span class="metric-icon">↯</span></div><strong id="active-count">—</strong></article><article class="metric"><div><span>等待队列</span><span class="metric-icon">≡</span></div><strong id="waiting-count">—</strong><p id="queue-hint" hidden></p></article><article class="metric"><div><span>有效 API Keys</span><span class="metric-icon">⚿</span></div><strong id="key-count">—</strong></article></div>
+          <div class="overview-grid"><article class="card queue-card"><div class="card-heading"><h2>生成队列</h2></div><div id="queue-list" class="queue-list"><p class="empty">正在读取队列…</p></div></article><div class="right-stack"><article class="card"><div class="card-heading"><h2>MCP 接入</h2></div><div class="card-body"><p class="muted compact">在 Agent 客户端配置端点与 API Key，即可调用文生图和图生图。</p><div class="endpoint"><code class="mcp-url">—</code><button class="icon-button copy-endpoint" aria-label="复制 MCP 地址">⧉</button></div><button class="text-button accent" data-page="mcp">查看接入配置</button></div></article><article class="note-card"><h3>模型档位</h3><p><code>pro</code> · INT8<br><code>standard</code> · W4A8<br><code>fast</code> · Q4_K_M</p><p class="muted compact">文生图 / 图生图 · 最高 20 MP<br>MCP 默认关闭提示词扩展</p></article></div></div>
+          <article class="card history-card"><div class="card-heading"><h2>最近任务</h2></div><div class="table-wrap"><table><thead><tr><th>任务</th><th>模式 / 档位</th><th>提示词</th><th>状态</th><th>提交时间</th></tr></thead><tbody id="history-body"></tbody></table></div></article>
+        </section>
+        <section id="keys-page" class="page" hidden><article class="card"><div class="card-heading"><div><h2>API Keys</h2></div><button class="primary create-key">＋ 创建 API Key</button></div><div class="inline-note">完整密钥仅在创建时展示一次。请在你的 Agent 客户端中保存；撤销后立即停止接受该 Key 的新请求。</div><div class="table-wrap"><table><thead><tr><th>名称</th><th>Key 标识</th><th>创建时间</th><th>最近使用</th><th>状态</th><th>操作</th></tr></thead><tbody id="keys-body"></tbody></table></div><div class="table-footer" id="keys-summary"></div></article></section>
+        <section id="mcp-page" class="page" hidden><div class="mcp-grid"><article class="card"><div class="card-heading"><h2>客户端配置</h2></div><div class="card-body"><p class="step-label">01 / 服务地址</p><div class="endpoint"><code class="mcp-url">—</code><button class="icon-button copy-endpoint" aria-label="复制 MCP 地址">⧉</button></div><p class="step-label">02 / 创建访问凭据</p><p class="muted">进入 API Keys，输入一个名称，复制系统生成的 <code>sk-</code> 开头密钥。</p><button class="secondary" data-page="keys">管理 API Keys</button><p class="step-label">03 / 添加到客户端</p><p class="muted">选择 Streamable HTTP，填写服务地址，并配置 <code>Authorization: Bearer sk-…</code> 请求头。字段名称以客户端要求为准。</p></div></article><article class="code-card"><div class="code-heading"><span>mcp.json · 示例</span><button id="copy-config" class="dark-button">复制配置</button></div><pre id="mcp-config"></pre><p>将 YOUR_API_KEY 替换为创建时复制的密钥。</p></article></div><article class="card tool-card"><div class="card-heading"><h2>已提供的工具</h2></div><div class="tools-grid"><div><code>text_to_image</code><p>提交文生图任务</p></div><div><code>image_to_image</code><p>上传参考图后提交编辑任务</p></div><div><code>upload_image</code><p>上传 PNG / JPEG / WebP</p></div><div><code>get_job / get_result</code><p>查询任务与获取图片下载地址</p></div><div><code>get_queue</code><p>查看当前执行和等待队列</p></div><div><code>get_capabilities / get_readiness</code><p>查询参数和模型就绪状态</p></div></div></article></section>
+        <section id="security-page" class="page" hidden><article class="card security-card"><div class="card-heading"><div><h2>管理员密码</h2><p class="muted compact">管理页使用密码登录；生图 API 和 MCP 使用 API Key。</p></div></div><form id="password-form" class="card-body"><label for="current-password">当前密码</label><input id="current-password" type="password" autocomplete="current-password" required maxlength="128"><label for="new-password">新密码</label><input id="new-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required placeholder="12–128 个字符"><label for="confirm-password">确认新密码</label><input id="confirm-password" type="password" autocomplete="new-password" minlength="12" maxlength="128" required><p class="muted compact">修改后所有管理页会话将退出，已创建的 API Keys 继续有效。</p><button class="primary" type="submit">保存新密码</button></form></article></section>
+        <footer class="content-footer"><span id="last-updated">等待同步</span></footer>
+      </main>
+    </div>
+  </div>
+  <dialog id="key-dialog"><form id="key-form"><div class="dialog-heading"><button type="button" class="icon-button close-dialog" aria-label="关闭">×</button></div><h2>创建 API Key</h2><label for="key-name">Key 名称</label><input id="key-name" maxlength="80" required placeholder="例如：我的桌面 Agent" autocomplete="off"><p class="error-text" id="key-error" role="alert"></p><div class="dialog-actions"><button type="button" class="secondary close-dialog">取消</button><button type="submit" class="primary">生成 API Key</button></div></form><section id="key-result" hidden><h2>API Key 已创建</h2><p class="muted">请现在复制并保存。关闭此窗口后无法再次查看完整密钥。</p><textarea id="new-key" readonly rows="3" aria-label="新 API Key" spellcheck="false"></textarea><div class="dialog-actions"><button class="secondary" id="copy-key">复制密钥 ⧉</button><button class="primary close-dialog">我已保存</button></div></section></dialog>
+  <dialog id="confirm-dialog"><h2 id="confirm-title">确认操作</h2><p id="confirm-description" class="muted"></p><div class="dialog-actions"><button id="confirm-cancel" class="secondary">取消</button><button id="confirm-accept" class="primary">确认</button></div></dialog>
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

@@ -23,8 +23,8 @@ from comfy_image_service.store import Store
 
 
 SOURCE = Path(__file__).resolve().parents[1]
-TOKEN = "test-image-service-token-123456789"
-AUTH = {"Authorization": "Bearer " + TOKEN}
+PASSWORD = "test-admin-password-12345"
+CONSOLE = {"X-SIF-Console": "1"}
 
 
 def png():
@@ -68,16 +68,21 @@ class FakeComfy:
     async def image(self, descriptor):return png()
 
 
-class ServiceTests(unittest.TestCase):
+class ServiceFixture(unittest.TestCase):
+    backend_type = FakeComfy
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.home = Path(self.temp.name)
         shutil.copytree(SOURCE / "apps", self.home / "apps")
-        self.fake = FakeComfy()
-        self.settings = Settings(home=self.home, api_key=TOKEN, poll_seconds=0.001)
+        self.fake = self.backend_type()
+        self.settings = Settings(home=self.home, initial_password=PASSWORD, poll_seconds=0.001)
         self.app = create_app(self.settings, self.fake)
-        self.context = TestClient(self.app)
+        self.context = TestClient(self.app, base_url="http://127.0.0.1:8011")
         self.client = self.context.__enter__()
+        self.client.post("/auth/login", headers=CONSOLE, json={"password": PASSWORD}).raise_for_status()
+        key = self.client.post("/admin/keys", headers=CONSOLE, json={"name": "test-agent"}).json()["key"]
+        self.auth = {"Authorization": "Bearer " + key}
 
     def tearDown(self):
         self.context.__exit__(None, None, None)
@@ -85,28 +90,29 @@ class ServiceTests(unittest.TestCase):
 
     def finished(self, job_id):
         for _ in range(100):
-            body = self.client.get("/v1/jobs/" + job_id, headers=AUTH).json()
+            body = self.client.get("/v1/jobs/" + job_id, headers=self.auth).json()
             if body["status"] in {"succeeded", "failed", "unknown"}:return body
             time.sleep(0.01)
         self.fail("Job did not reach a terminal status")
 
+class ServiceTests(ServiceFixture):
     def test_auth_and_validation_before_submission(self):
         self.assertEqual(self.client.get("/v1/apps").status_code, 401)
-        self.assertEqual(self.client.post("/v1/t2i", headers=AUTH, json={"prompt":"x","tier":"standrand"}).status_code, 422)
-        self.assertEqual(self.client.post("/v1/t2i", headers=AUTH, json={"prompt":"x","megapixels":20.01}).status_code, 422)
-        self.assertEqual(self.client.post("/v1/t2i", headers=AUTH, json={"prompt":"x","steps":30}).status_code, 422)
-        self.assertEqual(self.client.post("/v1/i2i", headers=AUTH, json={"prompt":"x"}).status_code, 422)
-        self.assertEqual(self.client.post("/v1/uploads", headers=AUTH, content=b"invalid").status_code, 422)
+        self.assertEqual(self.client.post("/v1/t2i", headers=self.auth, json={"prompt":"x","tier":"standrand"}).status_code, 422)
+        self.assertEqual(self.client.post("/v1/t2i", headers=self.auth, json={"prompt":"x","megapixels":20.01}).status_code, 422)
+        self.assertEqual(self.client.post("/v1/t2i", headers=self.auth, json={"prompt":"x","steps":30}).status_code, 422)
+        self.assertEqual(self.client.post("/v1/i2i", headers=self.auth, json={"prompt":"x"}).status_code, 422)
+        self.assertEqual(self.client.post("/v1/uploads", headers=self.auth, content=b"invalid").status_code, 422)
         self.assertEqual(len(self.fake.graphs), 0)
 
     def test_all_six_mode_profile_combinations_and_download_auth(self):
-        upload = self.client.post("/v1/uploads", headers=AUTH, content=png()).json()
+        upload = self.client.post("/v1/uploads", headers=self.auth, content=png()).json()
         for mode in ("t2i", "i2i"):
             for tier, expected in [("pro","int8_convrot"),("standard","w4a8"),("fast","Q4_K_M")]:
                 with self.subTest(mode=mode,tier=tier):
                     values = {"prompt":"A teapot","tier":tier,"megapixels":0.25,"expand_prompt":False,"seed":42}
                     if mode == "i2i":values["image"] = upload["id"]
-                    response = self.client.post("/v1/" + mode, headers=AUTH, json=values)
+                    response = self.client.post("/v1/" + mode, headers=self.auth, json=values)
                     self.assertEqual(response.status_code, 202, response.text)
                     job = self.finished(response.json()["id"])
                     self.assertEqual(job["status"], "succeeded", job)
@@ -118,10 +124,10 @@ class ServiceTests(unittest.TestCase):
                     self.assertEqual(job["result"]["effective_prompt"], "A teapot")
                     image_path = f"/v1/jobs/{job['id']}/images/0"
                     self.assertEqual(self.client.get(image_path).status_code, 401)
-                    self.assertEqual(self.client.get(image_path, headers=AUTH).content, png())
+                    self.assertEqual(self.client.get(image_path, headers=self.auth).content, png())
 
     def test_idempotency_reuses_one_job_and_rejects_changed_parameters(self):
-        headers = {**AUTH,"Idempotency-Key":"same-request"}
+        headers = {**self.auth,"Idempotency-Key":"same-request"}
         first = self.client.post("/v1/t2i", headers=headers, json={"prompt":"teapot"}).json()
         second = self.client.post("/v1/t2i", headers=headers, json={"prompt":"teapot"}).json()
         self.assertEqual(first["id"], second["id"])
@@ -130,14 +136,14 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(self.client.post("/v1/t2i", headers=headers, json={"prompt":"different"}).status_code, 409)
 
     def test_expansion_defaults_on_and_seed_is_persisted(self):
-        job = self.client.post("/v1/t2i", headers=AUTH, json={"prompt":"red teapot"}).json()
+        job = self.client.post("/v1/t2i", headers=self.auth, json={"prompt":"red teapot"}).json()
         finished = self.finished(job["id"])
         self.assertTrue(finished["request"]["expand_prompt"])
         self.assertEqual(finished["request"]["seed"], job["request"]["seed"])
         self.assertEqual(finished["result"]["effective_prompt"], "Expanded: red teapot")
 
     def test_idempotent_replay_survives_app_removal(self):
-        headers = {**AUTH,"Idempotency-Key":"existing-job"}
+        headers = {**self.auth,"Idempotency-Key":"existing-job"}
         first = self.client.post("/v1/t2i", headers=headers, json={"prompt":"x"}).json()
         (self.home / "apps/minimax-h3-image/app.json").rename(self.home / "apps/minimax-h3-image/app.disabled")
         second = self.client.post("/v1/t2i", headers=headers, json={"prompt":"x"})
@@ -154,7 +160,7 @@ class ServiceTests(unittest.TestCase):
         manifest = json.loads((copied / "app.json").read_text())
         manifest["id"] = "another"
         (copied / "app.json").write_text(json.dumps(manifest))
-        apps = self.client.get("/v1/apps", headers=AUTH).json()
+        apps = self.client.get("/v1/apps", headers=self.auth).json()
         self.assertEqual({x["id"] for x in apps["data"]}, {"minimax-h3-image","another"})
         changed = json.loads((bundle / "t2i.api.json").read_text())
         changed["24"]["inputs"]["value"] = "changed"
@@ -172,7 +178,7 @@ class ServiceTests(unittest.TestCase):
         self.assertIn("within", errors[0]["error"])
 
     def test_json_body_limit(self):
-        response = self.client.post("/v1/t2i", headers=AUTH, content=b'{"prompt":"' + b'x' * (36*1024*1024) + b'"}')
+        response = self.client.post("/v1/t2i", headers=self.auth, content=b'{"prompt":"' + b'x' * (36*1024*1024) + b'"}')
         self.assertEqual(response.status_code, 413, response.text[:200])
 
 

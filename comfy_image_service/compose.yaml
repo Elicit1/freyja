@@ -10,7 +10,7 @@ services:
     container_name: sif
     environment:
       COMFY_URL: ${COMFY_URL:-http://host.docker.internal:8188}
-      IMAGE_API_KEY: ${IMAGE_API_KEY:?Set an independent IMAGE_API_KEY with at least 24 characters}
+      SIF_ADMIN_PASSWORD: ${SIF_ADMIN_PASSWORD:-}
       IMAGE_HOST: 0.0.0.0
       IMAGE_PORT: 8011
       IMAGE_TIMEOUT_SECONDS: ${IMAGE_TIMEOUT_SECONDS:-1800}
@@ -24,7 +24,7 @@ services:
       - ./apps:/app/comfy_image_service/apps:ro
       - ./skills:/app/comfy_image_service/skills:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8011/health')); assert d['worker_alive'] and d['configured']"]
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://127.0.0.1:8011/'); assert r.status==200 and b'SIF' in r.read()"]
       interval: 15s
       timeout: 5s
       retries: 3

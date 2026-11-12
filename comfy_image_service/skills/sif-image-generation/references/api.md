@@ -5,8 +5,8 @@
 The terminal client requires only Python 3.10+ and its standard library. Configure:
 
 ```text
-COMFY_IMAGE_BASE_URL=http://127.0.0.1:8011
-COMFY_IMAGE_API_KEY=<private service token>
+SIF_BASE_URL=http://127.0.0.1:8011
+SIF_API_KEY=<sk- key created by the user in the SIF console>
 ```
 
 Alternatively use a private JSON file:
@@ -15,7 +15,9 @@ Alternatively use a private JSON file:
 {"base_url":"http://127.0.0.1:8011","api_key":"<private service token>"}
 ```
 
-Pass `--config /absolute/path/client.json` **before** the subcommand, or set `COMFY_IMAGE_CONFIG` to its path. Do not commit the file. The repository client also discovers `comfy_image_service/.client.json`; a distributed Skill does not contain credentials.
+Pass `--config /absolute/path/client.json` **before** the subcommand, or set `SIF_CONFIG` to its path. Do not commit the file. The client does not search for repository-local credentials. The previous `COMFY_IMAGE_*` client environment variables remain accepted as aliases; the old startup `IMAGE_API_KEY` is no longer accepted by the server.
+
+The user signs in to the standalone SIF web console, creates a key by name, and configures that generated `sk-` value in their client. Only the create response contains the full key. The server stores hashes, and revocation takes effect on subsequent REST/MCP requests. Administrator passwords are not API keys.
 
 `base_url` is the SIF service origin, without `/v1`. The service runs in the user's local WSL Docker as container `sif` and publishes only `127.0.0.1:8011`; the CLI runs on Windows or in WSL. The repository's `start.ps1` starts this independent local container. GPU execution uses the already configured ComfyUI backend.
 
@@ -59,10 +61,11 @@ A nonzero exit code is a failure or incomplete job. Preserve any printed job ID.
 
 ## HTTP interface
 
-All `/v1/**` routes require `Authorization: Bearer TOKEN`, including image downloads and Skill downloads. `/health` is public. This independent REST API uses asynchronous jobs; it is not the existing FREYJA gateway's OpenAI endpoint.
+All `/v1/**`, `/mcp`, `/health`, and API documentation routes require `Authorization: Bearer sk-…`, including image downloads and Skill downloads. The public HTML/login shell is accessible before signing in; `/admin/**` uses an administrator session instead. This independent REST API uses asynchronous jobs; it is not the existing FREYJA gateway's OpenAI endpoint.
 
 - `GET /v1/capabilities`: discover parameter schema, apps, tiers, and limits.
 - `GET /v1/readiness`: check installed nodes and model filenames; this does not certify VRAM capacity.
+- `GET /v1/queue`: single-worker queue counts, active/unknown jobs, and waiting positions.
 - `POST /v1/uploads`: raw image bytes, returns `{id,width,height,sha256}`.
 - `POST /v1/t2i`: JSON `{app?,tier?,prompt,megapixels?,aspect_ratio?,expand_prompt?,seed?}`.
 - `POST /v1/i2i`: same fields plus `image`, an upload ID or a base64 PNG/JPEG/WebP data URI. HTTP image URLs and server file paths are not dereferenced.
@@ -76,6 +79,6 @@ Example body:
 {"app":"minimax-h3-image","tier":"standard","prompt":"A red ceramic teapot","megapixels":4,"aspect_ratio":"16:9","expand_prompt":false,"seed":42}
 ```
 
-Generation returns HTTP 202 with a durable job ID. Poll until `succeeded`, `failed`, or `unknown`. Results include authenticated image URLs. States `queued`, `preparing`, and `running` are pending; `unknown` requires checking the existing job, since the GPU may still be working. Restarted services resume persisted running jobs by their backend IDs. They never resubmit an uncertain backend submission automatically.
+Generation returns HTTP 202 with a durable job ID and queue position. All REST and MCP submissions share one persisted FIFO queue and one rendering worker. Poll until `succeeded`, `failed`, or `unknown`. Results include authenticated image URLs. States `queued`, `preparing`, and `running` are pending; an `unknown` render blocks subsequent submissions from executing until completion is confirmed. Restarted services finish existing backend jobs before new queued jobs, without resubmission. An administrator can resolve an unknown task in the console after confirming the backend render ended.
 
 Use `Idempotency-Key` for programmatic submissions. Reusing a key with changed parameters returns HTTP 409. Invalid profile, resolution, aspect ratio, unknown fields, or missing image returns 422; wrong credentials return 401; a missing service key returns 503. Resolve the cause before retrying. Do not retry render failures as an unlimited loop.

@@ -53,7 +53,7 @@ class Store:
                     if existing["fingerprint"] != fingerprint:
                         raise ServiceError("idempotency_conflict", "The idempotency key was used for different parameters.", 409)
                     return self.decode(existing), False
-            pending = self.db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','preparing','running')").fetchone()[0]
+            pending = self.db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','preparing','running','unknown')").fetchone()[0]
             if pending >= limit:
                 raise ServiceError("queue_full", "The independent image service queue is full.", 429)
             job_id = str(uuid.uuid4())
@@ -94,10 +94,29 @@ class Store:
         if statuses:
             sql += " WHERE status IN (" + ",".join("?" for _ in statuses) + ")"
             values.extend(statuses)
-        sql += " ORDER BY created DESC LIMIT ?"
+        sql += " ORDER BY rowid DESC LIMIT ?"
         values.append(limit)
         with self.lock:
             return [self.decode(row) for row in self.db.execute(sql, values).fetchall()]
+
+    def next_job(self):
+        with self.lock:
+            row = self.db.execute("SELECT * FROM jobs WHERE status IN ('queued','running') ORDER BY CASE status WHEN 'running' THEN 0 ELSE 1 END,rowid LIMIT 1").fetchone()
+        return self.decode(row) if row else None
+
+    def queue_position(self, job_id):
+        with self.lock:
+            row = self.db.execute("SELECT status,rowid AS sequence FROM jobs WHERE id=?", (job_id,)).fetchone()
+            if not row or row["status"] != "queued":
+                return None
+            return self.db.execute("SELECT count(*) FROM jobs WHERE status='queued' AND rowid<=?", (row["sequence"],)).fetchone()[0]
+
+    def queue_summary(self):
+        with self.lock:
+            counts = dict(self.db.execute("SELECT status,count(*) FROM jobs GROUP BY status"))
+        return {"concurrency": 1, "active": counts.get("preparing", 0) + counts.get("running", 0),
+                "waiting": counts.get("queued", 0), "blocked": counts.get("unknown", 0),
+                "completed": counts.get("succeeded", 0), "failed": counts.get("failed", 0)}
 
     def claim(self, job_id):
         with self.lock, self.db:

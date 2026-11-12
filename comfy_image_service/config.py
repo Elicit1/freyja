@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 @dataclass(frozen=True)
 class Settings:
     home: Path
-    api_key: str = ""
+    initial_password: str = ""
     comfy_url: str = "http://127.0.0.1:8188"
     public_base_url: str = ""
     timeout_seconds: float = 1800
@@ -29,7 +29,7 @@ class Settings:
     def from_env(cls):
         home = Path(os.environ.get("IMAGE_SERVICE_HOME", Path(__file__).parent)).resolve()
         load_dotenv(home / ".env", override=False)
-        return cls(home=home, api_key=os.environ.get("IMAGE_API_KEY", ""),
+        return cls(home=home, initial_password=os.environ.get("SIF_ADMIN_PASSWORD", ""),
                    comfy_url=os.environ.get("COMFY_URL", "http://127.0.0.1:8188").rstrip("/"),
                    public_base_url=os.environ.get("IMAGE_PUBLIC_BASE_URL", "").rstrip("/"),
                    timeout_seconds=float(os.environ.get("IMAGE_TIMEOUT_SECONDS", "1800")))

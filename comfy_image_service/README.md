@@ -2,11 +2,43 @@
 
 SIF 是给本地 AI / Agent 使用的独立命令行生图服务。代码、App 注册、认证、SQLite 任务记录和 Docker 数据卷均位于这个模块；运行在本机 Ubuntu WSL 的独立容器 `sif`，访问地址为 `http://127.0.0.1:8011`。GPU 生图继续调用已配置的 ComfyUI。
 
-服务名称为 SIF，Skill 名称为 `sif-image-generation`；三个档位保持 `pro`、`standard`、`fast`。源码目录和 Python 模块名保留 `comfy_image_service`，现有 CLI 路径与连接配置继续可用。
+服务名称为 SIF，Skill 名称为 `sif-image-generation`；三个档位保持 `pro`、`standard`、`fast`。源码目录和 Python 模块名保留 `comfy_image_service`。服务提供独立 HTML 管理页、Streamable HTTP MCP 和 CLI。
+
+## 登录与 API Keys
+
+1. 启动后打开 [SIF 控制台](http://127.0.0.1:8011/)。未设置自定义密码时，SIF 自动生成初始管理员密码，在当前启动日志中显示：`wsl -d Ubuntu --exec docker logs sif`。设置自己的密码前，每次重启都会生成新的初始密码。
+2. 使用密码登录，在「安全设置」设置自己的密码。自定义密码的加盐 scrypt 哈希持久保存，重启不会重新生成或覆盖。修改密码会使全部管理页会话失效。
+3. 进入「API Keys」，输入客户端名称，系统自动生成 `sk-` 开头的随机 Key。完整 Key 只在创建时显示一次；服务器只存 SHA-256 哈希，列表只显示脱敏标识。
+4. 将 Key 手动保存在 MCP 客户端或你自己的 CLI 配置里。不同应用可创建不同名称的 Key，撤销后后续请求立即失效；已在队列中的任务继续完成。
+
+管理页使用 HttpOnly Cookie 会话；创建和撤销 Key 需要管理员登录。API Key 不能管理密码或其他 Key。所有生图 API、MCP 握手和工具发现、健康状态与接口文档都需要 `Authorization: Bearer sk-…`。仅 HTML/静态文件和登录入口供登录前访问。
+
+原 `IMAGE_API_KEY` 启动配置已停用；CLI 不再自动读取仓库里的 `.client.json`。用户登录后自行创建和配置客户端 Key。可选 `SIF_ADMIN_PASSWORD` 仅用于首次初始化，已设置的持久密码始终优先。
+
+## MCP 接入
+
+端点：`http://127.0.0.1:8011/mcp`，使用官方 MCP Python SDK 的 Streamable HTTP。支持以下配置结构的客户端可参考：
+
+```json
+{
+  "mcpServers": {
+    "sif": {
+      "url": "http://127.0.0.1:8011/mcp",
+      "headers": {"Authorization": "Bearer YOUR_API_KEY"}
+    }
+  }
+}
+```
+
+将 `YOUR_API_KEY` 替换为在 SIF 控制台创建的密钥，具体字段与密钥存储方式以客户端要求为准。管理页「MCP 接入」也可复制当前服务地址和配置示例。
+
+工具：`get_capabilities`、`get_readiness`、`text_to_image`、`image_to_image`、`upload_image`、`get_job`、`get_queue`、`get_result`。生图工具立即返回持久化任务 ID 和排队顺位，使用 `get_job` 查询结果；MCP 默认关闭扩写。为每次预期生成传入唯一 `idempotency_key`，丢失响应后用同一 Key 和参数恢复。
+
+参考图片需上传为字节或 Data URI，不能把 Windows 文件路径交给 Docker 读取。可使用 MCP `upload_image` 或 REST 二进制上传，大图片适合 CLI `--image`。完整图片通过返回的地址下载，下载也需携带 API Key；CLI `status JOB_ID --output 图片.png` 可以恢复并下载。详见 [MCP 参考](skills/sif-image-generation/references/mcp.md)。
 
 ## 直接调用
 
-当前机器已准备私有 `.env` 和 `.client.json`，CLI 会自动读取连接配置，命令中无需携带令牌。在仓库根目录执行：
+先将你在控制台创建的 Key 配置为 `SIF_API_KEY`，地址可使用 `SIF_BASE_URL`（默认 `http://127.0.0.1:8011`）。也可显式传入 `--config 你的私有JSON文件`，置于子命令之前；客户端不再自动发现仓库凭据。在仓库根目录执行：
 
 ```powershell
 # 查看能力、参数和模型就绪状态
@@ -38,7 +70,7 @@ CLI 只依赖 Python 3.10+ 标准库，不依赖 FastAPI、Docker Python SDK 或
 
 档位表示模型预设，不保证某次生成的绝对速度或质量排序。
 
-- `t2i` 和 `i2i` 均支持三档、提示词扩写开关和 0.1–20MP。服务默认 4MP、扩写开启；当前 Skill 建议调用时显式加 `--no-expand`，仅在用户明确要求扩写时开启。
+- `t2i` 和 `i2i` 均支持三档、提示词扩写开关和 0.1–20MP。默认 4MP；MCP 默认关闭扩写，REST/CLI 保留原有扩写开启默认值。Skill 建议 CLI 显式加 `--no-expand`，仅在用户明确要求扩写时开启。
 - 文生图提供 1:1、2:3、3:2、3:4、4:3、9:16、16:9、21:9；图生图按目标 MP 缩放并保留原图比例。
 - 沿用官方 `1MP=1024×1024` 的定义，宽高按 32 对齐，实际面积可能略有偏差。
 - 采样固定为 6 步、CFG 1、Euler、Simple、denoise 1，不暴露容易破坏蒸馏模型采样的覆盖参数。
@@ -66,7 +98,7 @@ docker compose up -d --build
 docker compose logs --tail 50
 ```
 
-首次在另一台机器安装：复制 `.env.example` 为 `.env`，配置现有 ComfyUI 的 `COMFY_URL`，用 `python -c "import secrets; print(secrets.token_urlsafe(32))"` 生成独立 `IMAGE_API_KEY`。CLI 使用 `COMFY_IMAGE_BASE_URL` / `COMFY_IMAGE_API_KEY`，或私有 JSON `{"base_url":"http://127.0.0.1:8011","api_key":"..."}`；后者通过 `--config 文件`（放在子命令之前）指定。私有配置已被 Git 和 Docker 构建上下文排除。
+首次在另一台机器安装：复制 `.env.example` 为 `.env`，配置现有 ComfyUI 的 `COMFY_URL`，启动后查看初始密码并登录控制台创建客户端 Key。CLI 私有 JSON 格式为 `{"base_url":"http://127.0.0.1:8011","api_key":"sk-..."}`，通过 `--config 文件` 或 `SIF_CONFIG` 显式指定。原 `COMFY_IMAGE_*` 客户端环境变量仍作为兼容别名接受；服务不再接受原启动 Key。
 
 Docker 镜像为 `sif:local`。Compose 项目标识保留 `comfy-image-service`，以便改名升级时复用现有数据卷 `comfy-image-service_image_data`，保留任务数据库、上传图片和生成结果。`apps/` 与 `skills/` 以只读挂载形式读取本地配置，更新工作流或 Skill 后无需重启。服务代码修改后重新构建本容器。运行使用单 worker，避免同一 GPU 被此服务重复提交任务。
 
@@ -74,12 +106,12 @@ ComfyUI 需要可用的 Image VAE、Qwen3-VL 文本编码器、Qwen3.5 扩写模
 
 ## 给其他 AI 的标准 Skill
 
-入口：`skills/sif-image-generation/SKILL.md`，包含模式选择、档位选择、分辨率、扩写选择、命令调用和恢复规则。`scripts/generate.py` 可直接随 Skill 分发。Skill 本身不包含认证凭据。
+入口：`skills/sif-image-generation/SKILL.md`，优先使用已配置的 SIF MCP，包含模式选择、档位选择、分辨率、扩写选择、命令调用和恢复规则。`scripts/generate.py` 可直接随 Skill 分发。Skill 本身不包含认证凭据，也不会读取服务配置获取 Key。
 
 已启动的服务也提供鉴权下载：
 
 - `GET /v1/skill`：Skill 文本。
-- `GET /v1/skill.zip`：下载 `sif-image-generation.zip`，包含 SKILL.md、UI 元数据、参考文档和调用脚本。
+- `GET /v1/skill.zip`：下载 `sif-image-generation.zip`，包含 SKILL.md、UI 元数据、MCP/API 参考文档和调用脚本。
 
 ## 新工作流 / App 注册
 
@@ -98,9 +130,9 @@ ComfyUI App 模式提供界面；要从 CLI 调用其工作流，需要一次性
 
 ## 任务与接口
 
-`POST /v1/t2i` / `/v1/i2i` 返回 HTTP 202。任务先写 SQLite，成功后才排队；数据库写入失败不会伪造任务 ID。所有 `/v1/**` 接口和图片下载都需要 Bearer 认证，`/health` 仅返回基础状态。
+`POST /v1/t2i` / `/v1/i2i` 返回 HTTP 202。任务先写 SQLite，成功后才排队；数据库写入失败不会伪造任务 ID。所有 REST/MCP 请求共用一条持久化 FIFO 队列，一个任务完成后才提交下一个。`GET /v1/queue` 返回当前执行、等待任务和顺位；管理页也自动刷新队列。进程文件锁阻止多个 SIF worker 同时使用一个数据目录。
 
-`Idempotency-Key` 防止命令行在提交响应丢失后生成重复任务。服务不自动重试 ComfyUI 的提交 POST；已经保存 backend prompt ID 的任务在重启后继续查询。中断发生在无法判断是否已提交的窗口时标记 `unknown`，不自动重复生图。超时不会中断其他 ComfyUI 任务，也不调用全局 interrupt。
+`Idempotency-Key` 防止命令行在提交响应丢失后生成重复任务。服务不自动重试 ComfyUI 的提交 POST；重启后优先完成已有 backend prompt ID 的任务，再执行等待任务。中断或超时导致状态不明时标记 `unknown`，暂停后续生成并继续查询已有结果；无法自动确定时，管理员确认 ComfyUI 中任务已结束后，可在管理页释放队列。超时不会中断其他 ComfyUI 任务，也不调用全局 interrupt。
 
 接口文档：[http://127.0.0.1:8011/docs](http://127.0.0.1:8011/docs)。这是独立的异步 REST 接口；命令行已封装上传、提交、轮询与下载。
 
@@ -110,6 +142,6 @@ ComfyUI App 模式提供界面；要从 CLI 调用其工作流，需要一次性
 comfy_image_service/.venv/Scripts/python.exe -m unittest discover -s comfy_image_service/tests -v
 ```
 
-测试覆盖鉴权、六种模式/档位装配、输入限制、幂等与冲突、数据库持久化、注册热发现、模板越界和 ComfyUI 部分输出拒绝。真实命令行测试记录位于本地 `data/verification/live-verification.json`，图片保存在同目录；20MP 是已校验的参数上限，低分辨率生图验证不等于已经实测 20MP 生图。
+测试覆盖密码初始化与修改、Key 哈希存储/撤销、会话与 API 权限隔离、MCP 握手和生图、严格 FIFO 与单 worker、超时阻塞和重启恢复，以及六种模式/档位装配、输入限制、幂等与冲突、数据库持久化、注册热发现、模板越界和 ComfyUI 部分输出拒绝。真实验收记录与页面截图保存在本地 `data/verification/`，不会纳入 Git。20MP 是参数上限，低分辨率生图验证不等于已经实测 20MP 生图。
 
 2026-11-11：Windows 与实际 Docker 依赖环境均通过 12 项测试；Windows CLI 经本地 Docker 网关完成 t2i/i2i × pro/standard/fast 六次 0.25MP 生图与本地下载。已检查生成图片可解码，并确认图生图茶壶改为蓝色、保留原图构图。

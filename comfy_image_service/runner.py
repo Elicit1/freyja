@@ -6,36 +6,55 @@ import httpx
 
 from .media import image_info
 from .models import ServiceError
+from .worker_lock import WorkerLock
 
 
 class Runner:
     def __init__(self, settings, store, client):
         self.settings, self.store, self.client = settings, store, client
-        self.queue = asyncio.Queue()
+        self.wake = asyncio.Event()
+        self.reconcile_lock = asyncio.Lock()
+        self.lock = WorkerLock(settings.data_dir)
         self.task = None
 
     async def start(self):
+        self.lock.acquire()
         # A crash during POST /prompt is ambiguous; do not submit the same job twice.
         for job in self.store.jobs(["preparing"], limit=100000):
             self.store.update(job["id"], "unknown", error={"code": "submission_unknown", "message": "The service stopped during submission. Inspect ComfyUI before submitting again."})
-        for job in reversed(self.store.jobs(["queued", "running"], limit=100000)):
-            await self.queue.put(job["id"])
         self.task = asyncio.create_task(self.work())
 
     async def stop(self):
-        if self.task:
-            self.task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await self.task
+        try:
+            if self.task:
+                self.task.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await self.task
+        finally:
+            self.lock.release()
 
     async def enqueue(self, job_id):
-        await self.queue.put(job_id)
+        self.wake.set()
+
+    async def idle(self):
+        with contextlib.suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(self.wake.wait(), timeout=max(0.05, self.settings.poll_seconds))
 
     async def work(self):
         while True:
-            job_id = await self.queue.get()
+            self.wake.clear()
+            # A timeout/lost submit response does not prove the GPU stopped. Keep later jobs waiting.
+            for uncertain in self.store.jobs(["unknown"], limit=100000):
+                await self.reconcile(uncertain)
+            if self.store.jobs(["unknown"], limit=1):
+                await self.idle()
+                continue
+            job = self.store.next_job()
+            if not job:
+                await self.idle()
+                continue
+            job_id = job["id"]
             try:
-                job = self.store.get_job(job_id)
                 if job["status"] == "queued":
                     if not self.store.claim(job_id):
                         continue
@@ -49,12 +68,10 @@ class Runner:
             except Exception as error:
                 current = self.store.get_job(job_id)
                 uncertain = current["status"] == "preparing" and isinstance(error, (httpx.HTTPError, OSError))
-                status = "unknown" if uncertain or getattr(error, "code", "") == "backend_timeout" else "failed"
                 prompt_id = getattr(error, "prompt_id", None)
+                status = "unknown" if uncertain or prompt_id or getattr(error, "code", "") == "backend_timeout" else "failed"
                 self.store.update(job_id, status, prompt_id=prompt_id,
                                   error={"code": getattr(error, "code", "backend_error"), "message": str(error)})
-            finally:
-                self.queue.task_done()
 
     async def submit(self, job):
         graph = job["graph"]
@@ -68,6 +85,10 @@ class Runner:
         self.store.update(job["id"], "running", prompt_id=prompt_id)
 
     async def reconcile(self, job):
+        async with self.reconcile_lock:
+            return await self._reconcile(self.store.get_job(job["id"]))
+
+    async def _reconcile(self, job):
         if job["status"] == "unknown" and job["prompt_id"]:
             try:
                 entry = await self.client.history(job["prompt_id"])
