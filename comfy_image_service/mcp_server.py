@@ -7,7 +7,7 @@ from mcp.server.mcpserver import Context
 from mcp.server.transport_security import TransportSecuritySettings
 from pydantic import Field
 
-from .models import GenerateRequest
+from .models import GenerateRequest, PromptExpansion
 
 
 def create_mcp(state, settings):
@@ -28,30 +28,52 @@ def create_mcp(state, settings):
         prompt: Annotated[str, Field(min_length=1, max_length=32000)],
         idempotency_key: Annotated[str, Field(min_length=1, max_length=128, description="A unique ID for this intended render. Reuse it and identical arguments after a lost response.")],
         tier: Literal["pro", "standard", "fast"] = "standard",
-        megapixels: Annotated[float, Field(ge=0.1, le=20)] = 4,
-        aspect_ratio: Literal["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"] = "1:1",
+        megapixels: Annotated[float | None, Field(ge=0.1, le=20)] = None,
+        aspect_ratio: Annotated[str | None, Field(max_length=64, description="W:H between 1:3 and 3:1. Omit with explicit width/height.")] = None,
         expand_prompt: bool = False,
         seed: Annotated[int | None, Field(ge=0, le=9007199254740991)] = None,
         app: str = "minimax-h3-image",
+        width: Annotated[int | None, Field(ge=32, le=16384, multiple_of=32)] = None,
+        height: Annotated[int | None, Field(ge=32, le=16384, multiple_of=32)] = None,
+        n: Annotated[int, Field(ge=1, le=10)] = 1,
+        output_format: Literal["png", "jpeg", "webp"] = "png",
+        output_quality: Annotated[int, Field(ge=0, le=100)] = 95,
+        prompt_expansion: PromptExpansion | None = None,
     ) -> dict[str, Any]:
-        """Queue one text-to-image render. Preserve the returned ID, then call wait_for_job; do not sleep or resubmit."""
-        return await state.service.submit("t2i", GenerateRequest(prompt=prompt, tier=tier, megapixels=megapixels,
-                                          aspect_ratio=aspect_ratio, expand_prompt=expand_prompt, seed=seed, app=app), idempotency_key)
+        """Queue 1–10 serial text-to-image variants. Use MP + custom W:H or exact 32-aligned width/height, up to 20 MP. Preserve the returned ID, then call wait_for_job."""
+        size = {} if megapixels is None else {"megapixels": megapixels}
+        return await state.service.submit("t2i", GenerateRequest(prompt=prompt, tier=tier, **size,
+                                          aspect_ratio=aspect_ratio, expand_prompt=expand_prompt, seed=seed, app=app,
+                                          width=width, height=height, n=n, output_format=output_format,
+                                          output_quality=output_quality, prompt_expansion=prompt_expansion), idempotency_key)
 
     @mcp.tool(structured_output=True)
     async def image_to_image(
         prompt: Annotated[str, Field(min_length=1, max_length=32000)],
-        image: Annotated[str, Field(description="Upload ID returned by upload_image or POST /v1/uploads, or a base64 image data URI. Never a local path or URL.")],
         idempotency_key: Annotated[str, Field(min_length=1, max_length=128)],
+        image: Annotated[str | None, Field(description="Legacy single reference upload ID or data URI. Supply image or images.")] = None,
         tier: Literal["pro", "standard", "fast"] = "standard",
-        megapixels: Annotated[float, Field(ge=0.1, le=20)] = 4,
+        megapixels: Annotated[float | None, Field(ge=0.1, le=20)] = None,
         expand_prompt: bool = False,
         seed: Annotated[int | None, Field(ge=0, le=9007199254740991)] = None,
         app: str = "minimax-h3-image",
+        images: Annotated[list[str] | None, Field(min_length=1, max_length=16, description="Ordered upload IDs or data URIs. First image is <Picture 1>, followed by <Picture 2> through <Picture 16>.")] = None,
+        aspect_ratio: Annotated[str | None, Field(max_length=64, description="original (first reference) or numeric W:H between 1:3 and 3:1. Omit with width/height.")] = None,
+        width: Annotated[int | None, Field(ge=32, le=16384, multiple_of=32)] = None,
+        height: Annotated[int | None, Field(ge=32, le=16384, multiple_of=32)] = None,
+        reference_mode: Literal["latent", "vision"] = "latent",
+        n: Annotated[int, Field(ge=1, le=10)] = 1,
+        output_format: Literal["png", "jpeg", "webp"] = "png",
+        output_quality: Annotated[int, Field(ge=0, le=100)] = 95,
+        prompt_expansion: PromptExpansion | None = None,
     ) -> dict[str, Any]:
-        """Queue an edit of <Picture 1>, preserving its ratio. Describe changes and preservation requirements, then call wait_for_job."""
-        return await state.service.submit("i2i", GenerateRequest(prompt=prompt, image=image, tier=tier, megapixels=megapixels,
-                                          expand_prompt=expand_prompt, seed=seed, app=app), idempotency_key)
+        """Edit or compose using up to 16 separate ordered references. Name each <Picture N> and its purpose in English. Choose original/custom ratio or exact canvas, latent/vision conditioning, optional expansion, and 1–10 serial variants. Then call wait_for_job."""
+        size = {} if megapixels is None else {"megapixels": megapixels}
+        return await state.service.submit("i2i", GenerateRequest(prompt=prompt, image=image, images=images, tier=tier, **size,
+                                          expand_prompt=expand_prompt, seed=seed, app=app, aspect_ratio=aspect_ratio,
+                                          width=width, height=height, reference_mode=reference_mode, n=n,
+                                          output_format=output_format, output_quality=output_quality,
+                                          prompt_expansion=prompt_expansion), idempotency_key)
 
     @mcp.tool(structured_output=True)
     def upload_image(data_base64: Annotated[str, Field(min_length=1, description="Base64-encoded PNG/JPEG/WebP bytes. Prefer REST binary upload for large files.")]) -> dict[str, Any]:
@@ -80,9 +102,9 @@ def create_mcp(state, settings):
         return state.service.queue()
 
     @mcp.tool(structured_output=True)
-    async def get_result(job_id: str) -> dict[str, Any]:
+    async def get_result(job_id: str, response_format: Literal["url", "b64_json"] = "url") -> dict[str, Any]:
         """Return job state, effective prompt, image dimensions, and download URLs. Send your Bearer API key when downloading."""
-        return await state.service.job(job_id)
+        return await state.service.result(job_id, response_format)
 
     # The parent app authenticates every request, including tool discovery and notifications.
     # Keep the SDK's localhost Host/Origin checks, matching the service's loopback deployment.

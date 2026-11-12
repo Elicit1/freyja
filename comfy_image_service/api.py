@@ -2,8 +2,9 @@ import io
 import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
-from fastapi import APIRouter, FastAPI, Header, Request
+from fastapi import APIRouter, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -62,7 +63,7 @@ def create_app(settings=None, client=None):
             await app.state.client.close()
             app.state.store.close()
 
-    app = FastAPI(title="SIF", version="1.1.0", lifespan=lifespan,
+    app = FastAPI(title="SIF", version="1.2.0", lifespan=lifespan,
                   description="Password-managed API keys, authenticated MCP tools, and a persisted serial t2i/i2i queue.")
     app.add_middleware(BodyLimitMiddleware, limit=(settings.max_upload_bytes + 2) // 3 * 4 + 65536)
     app.add_middleware(AuthenticationMiddleware, state=app.state)
@@ -128,6 +129,14 @@ def create_app(settings=None, client=None):
     @router.get("/jobs/{job_id}")
     async def job(job_id: str, request: Request):
         return await app.state.service.job(job_id, str(request.base_url))
+
+    @router.get("/jobs/{job_id}/wait")
+    async def wait(job_id: str, timeout_seconds: float = Query(default=25, ge=1, le=600)):
+        return await app.state.service.wait_for_job(job_id, timeout_seconds)
+
+    @router.get("/jobs/{job_id}/result")
+    async def result(job_id: str, request: Request, response_format: Literal["url", "b64_json"] = "url"):
+        return await app.state.service.result(job_id, response_format, str(request.base_url))
 
     @router.get("/jobs/{job_id}/images/{index}")
     async def image(job_id: str, index: int):

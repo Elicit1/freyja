@@ -19,9 +19,25 @@ def image_info(data):
                 raise ValueError("Source images may contain at most 40 MP.")
             kind = {"PNG": "png", "JPEG": "jpg", "WEBP": "webp"}[image.format]
             image.verify()
+        # EXIF access can load PNG pixels. Verify the untouched stream first.
+        with Image.open(io.BytesIO(data)) as image:
+            if image.getexif().get(274) in {5, 6, 7, 8}:
+                width, height = height, width
         return width, height, kind
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as error:
         raise ServiceError("invalid_image", str(error), 422) from error
+
+
+def encode_output(data, output_format="png", quality=95):
+    width, height, extension = image_info(data)
+    if output_format == "png" and extension == "png":
+        return data, width, height, extension
+    buffer = io.BytesIO()
+    with Image.open(io.BytesIO(data)) as image:
+        image = image.convert("RGB")
+        options = {} if output_format == "png" else {"quality": quality}
+        image.save(buffer, format=output_format.upper(), **options)
+    return buffer.getvalue(), width, height, "jpg" if output_format == "jpeg" else output_format
 
 
 def save_upload(data, settings, store):

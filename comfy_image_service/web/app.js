@@ -96,7 +96,10 @@ function renderQueue(queue) {
     if (["running", "preparing"].includes(job.status)) item.append(node("div", "active-line"));
     const foot = node("div", "job-foot");
     foot.append(node("span", job.status === "unknown" ? "unknown-label" : "", job.status === "unknown" ? "暂未确认后端任务是否结束，后续任务继续等待。" : job.queue_position ? "等待顺位 " + job.queue_position : "正在等待后端生成结果"));
-    foot.append(node("span", "", job.request.megapixels + " MP"));
+    const size = job.request.width && job.request.height
+      ? job.request.width + " × " + job.request.height
+      : job.request.megapixels + " MP";
+    foot.append(node("span", "", size));
     item.append(foot);
     if (job.status === "unknown") {
       const resolve = node("button", "text-button unknown-label", "已检查后端，处理此任务 →");

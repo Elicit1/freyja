@@ -4,7 +4,7 @@ from pathlib import Path
 
 import httpx
 
-from .media import image_info
+from .media import encode_output
 from .models import ServiceError
 from .worker_lock import WorkerLock
 
@@ -75,11 +75,13 @@ class Runner:
 
     async def submit(self, job):
         graph = job["graph"]
-        image = job["request"].get("image")
-        if image:
+        images = job["request"].get("images") or ([job["request"]["image"]] if job["request"].get("image") else [])
+        bindings = job["metadata"].get("image_bindings") or [job["metadata"].get("image_binding")]
+        if images and (len(images) != len(bindings) or any(binding is None for binding in bindings)):
+            raise ServiceError("invalid_snapshot", "Reference image bindings do not match the persisted images.", 500)
+        for image, binding in zip(images, bindings):
             upload = self.store.upload(image)
             uploaded_name = await self.client.upload(upload["path"])
-            binding = job["metadata"]["image_binding"]
             graph[binding["node"]]["inputs"][binding["input"]] = uploaded_name
         prompt_id = await self.client.submit(graph, job["id"])
         self.store.update(job["id"], "running", prompt_id=prompt_id)
@@ -106,19 +108,26 @@ class Runner:
         if status.get("status_str") != "success":
             raise ServiceError("render_failed", "ComfyUI execution failed: " + str(status.get("messages", [])), 502)
         outputs = entry.get("outputs", {})
-        descriptors = outputs.get(job["metadata"]["output_node"], {}).get("images", [])
-        if not descriptors:
-            raise ServiceError("missing_output", "The configured SaveImage node produced no images.", 502)
+        output_nodes = job["metadata"].get("output_nodes") or [job["metadata"]["output_node"]]
+        descriptors = []
+        for sample_index, node_id in enumerate(output_nodes):
+            sample_images = outputs.get(node_id, {}).get("images", [])
+            if not sample_images:
+                raise ServiceError("missing_output", f"The configured SaveImage node {node_id} produced no images.", 502)
+            descriptors.extend((sample_index, descriptor) for descriptor in sample_images)
         directory = self.settings.data_dir / "outputs" / job["id"]
         directory.mkdir(parents=True, exist_ok=True)
         images = []
-        for index, descriptor in enumerate(descriptors):
+        for index, (sample_index, descriptor) in enumerate(descriptors):
             data = await self.client.image(descriptor)
-            width, height, extension = image_info(data)
+            data, width, height, extension = await asyncio.to_thread(
+                encode_output, data, job["request"].get("output_format", "png"), job["request"].get("output_quality", 95))
             path = directory / f"{index}.{extension}"
             temporary = path.with_suffix(path.suffix + ".tmp")
             temporary.write_bytes(data)
             temporary.replace(path)
-            images.append({"path": str(path.resolve()), "width": width, "height": height, "format": extension})
+            seeds = job["request"].get("seeds") or [job["request"].get("seed")]
+            images.append({"path": str(path.resolve()), "width": width, "height": height, "format": extension,
+                           "seed": seeds[sample_index]})
         preview = outputs.get(job["metadata"]["prompt_preview_node"], {}).get("text", [])
         self.store.update(job["id"], "succeeded", result={"images": images, "effective_prompt": preview[0] if preview else None})

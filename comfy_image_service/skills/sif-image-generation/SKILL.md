@@ -20,16 +20,20 @@ Write every t2i and i2i `prompt` in **English**, whether calling MCP, REST, or t
 ## Select the operation and profile
 
 - **t2i** creates a new image from a description. Use `16:9` unless the user specifies another ratio or dimensions.
-- **i2i** edits an existing image. Supply the actual file with `--image`, refer to it as `<Picture 1>`, and describe both the requested changes and what must remain. The original aspect ratio is preserved.
+- **i2i** edits or composes with **1–16 ordered reference images**. Upload each file and pass `images=[id1,id2,...]`, or repeat CLI `--image` in that order. Refer to them as `<Picture 1>`, `<Picture 2>`, etc. Name each reference's role and what to preserve or change. The first reference supplies the default canvas ratio. The legacy single `image` parameter remains accepted.
 - **fast** uses Q4_K_M GGUF and is the recommended profile when the user does not specify one. Its name does not guarantee lower latency on every GPU or cache state.
 - **standard** uses W4A8; select it when the user requests this profile or W4A8.
 - **pro** uses INT8; select it when the user requests this profile or INT8. Precision does not guarantee a superior result for every prompt.
 
 When the user leaves settings unspecified, recommend **fast, 2K, 16:9**, with expansion OFF. Here 2K means a 2048-pixel long edge; the default t2i canvas is **2048×1152**, corresponding to **2.25 MP** under SIF's `1 MP = 1024×1024` definition. Explicitly send `tier="fast"`, `megapixels=2.25`, `aspect_ratio="16:9"`, and `expand_prompt=false`, or pass `--tier fast --mp 2.25 --aspect-ratio 16:9 --no-expand` in the CLI. The underlying service/CLI defaults differ, so do not omit these parameters and assume they match this recommendation.
 
-Apply defaults only to missing settings: preserve any profile, dimensions, resolution, or aspect ratio the user specifies. For a different explicit ratio with no size request, target a 2048-pixel long edge and calculate the area. For explicit dimensions, derive the ratio and `megapixels = width × height / (1024 × 1024)`. For i2i, keep the input ratio; if size is unspecified, derive MP from the uploaded dimensions to target a 2048-pixel long edge instead of forcing 16:9. Do not silently downgrade a failed request or generate an unspecified number of alternatives.
+Apply defaults only to missing settings and preserve the user's explicit choices. For a different ratio with no size request, target a 2048-pixel long edge and calculate the area. For exact dimensions, send `width` and `height` together, each a multiple of 32, and omit `megapixels` and `aspect_ratio`. Otherwise send MP and a numeric W:H ratio between 1:3 and 3:1, such as `5:4` or `2.39:1`. Both modes support custom canvases up to 20 MP. For i2i without a requested ratio, use `original` and derive MP from the first reference to target a 2048-pixel long edge. Reference dimensions are independent of output canvas dimensions.
+
+Default `n=1`. When the user requests several candidates, use `n=1..10`; one durable workflow contains separate single-image samplers with incrementing seeds. All tasks share the serial queue. Results list each image's actual seed. Choose `output_format="png"` by default, or `jpeg`/`webp` with `output_quality=0..100` when requested. Use `get_result(response_format="b64_json")` only when a consuming application needs inline image bytes. URL results and authenticated binary downloads avoid placing large base64 strings into model context.
 
 For now, recommend expansion OFF for both t2i and i2i, including short descriptions. MCP tools default to `expand_prompt=false`. Pass `--no-expand` in CLI calls, or `"expand_prompt": false` in REST requests. Enable expansion only when the user explicitly requests it. The underlying REST service and CLI defaults remain ON, so do not omit the CLI disabling flag accidentally. Sampling is fixed at six steps and CFG 1; do not invent steps, CFG, negative-prompt, or denoise parameters. Keep the tier values exactly `pro`, `standard`, and `fast`, without a service-name prefix.
+
+When expansion is requested, optional `prompt_expansion` controls the installed Qwen3.5 9B expander, including `instructions`, token budget, thinking, sampling settings, and seed. All references reach both the H3 conditioner and the enabled expander in order. The default `reference_mode="latent"` supplies both text-encoder and VAE references. `vision` supplies text-encoder references only and can be selected when the user wants that conditioning behavior. Read [references/api.md](references/api.md) for these controls and [references/h3-capabilities.md](references/h3-capabilities.md) for official sources, prompt construction, and local backend limits.
 
 ## Command-line use
 
@@ -40,6 +44,8 @@ python scripts/generate.py capabilities
 python scripts/generate.py t2i --tier fast --prompt "A red ceramic teapot beside a sunlit window" --mp 2.25 --aspect-ratio 16:9 --no-expand --output teapot.png
 # Example i2i input: 16:9. For other source ratios, derive MP for a 2048-pixel long edge.
 python scripts/generate.py i2i --tier fast --image source.png --prompt "Edit <Picture 1>. Change the teapot to cobalt blue; preserve its shape, framing, and lighting." --mp 2.25 --no-expand --output edited.png
+# Compose from two ordered references on an exact canvas.
+python scripts/generate.py i2i --tier fast --image person.png --image jacket.png --prompt "Edit <Picture 1>. Dress the person in the jacket from <Picture 2>. Preserve the person's face and pose." --width 2048 --height 1152 --no-expand --output outfit.png
 ```
 
 Adapt script paths to the installed Skill directory. In the source repository use `python comfy_image_service/generate.py ...`.

@@ -49,11 +49,14 @@ SIF 到 ComfyUI 的正常完成等待也使用 WebSocket `/ws?clientId=原任务
 python comfy_image_service/generate.py capabilities
 python comfy_image_service/generate.py readiness
 
-# 文生图：standard，按当前 Skill 建议关闭扩写，4MP，16:9
-python comfy_image_service/generate.py t2i --tier standard --prompt "一只红色陶瓷茶壶放在窗边木桌上，柔和自然光，写实产品摄影" --mp 4 --aspect-ratio 16:9 --no-expand --output outputs/teapot.png
+# 文生图：按当前 Skill 建议使用 fast、2K、16:9，关闭扩写
+python comfy_image_service/generate.py t2i --tier fast --prompt "A red ceramic teapot on a wooden table beside a window, soft natural light, realistic product photography" --mp 2.25 --aspect-ratio 16:9 --no-expand --output outputs/teapot.png
 
 # 图生图：pro，保留输入图比例
-python comfy_image_service/generate.py i2i --tier pro --image source.png --prompt "Edit <Picture 1>. 把红色茶壶改成钴蓝色，保留形状、构图和窗边光线。" --mp 4 --no-expand --output outputs/edited.png
+python comfy_image_service/generate.py i2i --tier pro --image source.png --prompt "Edit <Picture 1>. Change the red teapot to cobalt blue. Preserve its shape, framing, and window light." --mp 4 --no-expand --output outputs/edited.png
+
+# 多参考图组合，精确指定画布，请求两张候选图
+python comfy_image_service/generate.py i2i --tier fast --image person.png --image jacket.png --prompt "Edit <Picture 1>. Dress the person in the jacket from <Picture 2>. Preserve the person's face and pose." --width 2048 --height 1152 --n 2 --no-expand --output-format webp --output outputs/outfit.webp
 
 # fast 预览，关闭扩写，指定随机种子
 python comfy_image_service/generate.py t2i --tier fast --prompt "A red ceramic teapot on a wooden table" --mp 1 --no-expand --seed 42 --output outputs/draft.png
@@ -75,12 +78,20 @@ CLI 只依赖 Python 3.10+ 标准库，不依赖 FastAPI、Docker Python SDK 或
 档位表示模型预设，不保证某次生成的绝对速度或质量排序。
 
 - `t2i` 和 `i2i` 均支持三档、提示词扩写开关和 0.1–20MP。默认 4MP；MCP 默认关闭扩写，REST/CLI 保留原有扩写开启默认值。Skill 建议 CLI 显式加 `--no-expand`，仅在用户明确要求扩写时开启。
-- 文生图提供 1:1、2:3、3:2、3:4、4:3、9:16、16:9、21:9；图生图按目标 MP 缩放并保留原图比例。
+- 两种模式均支持 1:3–3:1 范围内的数值比例，如 `5:4`、`2.39:1`。图生图默认采用第一张参考图的 EXIF 校正后比例，可显式指定其他输出比例。
+- `width`、`height` 可精确指定画布，均为 32 的倍数，最大边长 16384，总面积最高 20MP。精确尺寸与 MP/比例两种配置互斥。响应返回实际宽高和 `actual_megapixels`。
+- 图生图支持 1–16 张有序参考图，使用 `images` 数组或重复 CLI `--image`，顺序对应 `<Picture 1>` 至 `<Picture 16>`。旧单图 `image` 参数继续可用。所有参考图分别接入 H3 和启用的扩写器。
+- `reference_mode=latent` 默认同时提供 VAE 与视觉参考，`vision` 仅提供文本编码器的视觉参考。参考图尺寸与输出画布分别计算。
+- `n=1..10` 在一个持久化工作流中创建独立单图采样节点，按基础 seed 递增并返回每张图的 seed。任务仍共用一条串行队列。
+- 输出支持 PNG、JPEG、WebP。SIF 负责 JPEG/WebP 编码，可设置 `output_quality=0..100`。`get_result(response_format="b64_json")` 和 REST `/jobs/{id}/result?response_format=b64_json` 可返回内联结果，合计原始图片大小最高 128MiB。
+- `prompt_expansion` 可设置扩写 token 预算、thinking、temperature、top_k/top_p/min_p、重复与存在惩罚、独立 seed 和追加指令，须开启扩写。当前安装的扩写器为 Qwen3.5 9B。
 - 沿用官方 `1MP=1024×1024` 的定义，宽高按 32 对齐，实际面积可能略有偏差。
 - 采样固定为 6 步、CFG 1、Euler、Simple、denoise 1，不暴露容易破坏蒸馏模型采样的覆盖参数。
 - 输入图片支持 PNG/JPEG/WebP，最大 25 MiB、40 源 MP。API 接受上传 ID 或图片 Data URI，不读取客户端提交的服务器文件路径或 HTTP 图片 URL。
 
 完整参数与 HTTP 调用见 [Skill API 参考](skills/sif-image-generation/references/api.md)。
+
+官方资料和本地能力映射见 [H3 能力说明](skills/sif-image-generation/references/h3-capabilities.md)。涵盖模型文档、多参考图示例、ComfyUI 节点和托管 API 的接口范围。
 
 ## 本地 WSL Docker
 
@@ -106,7 +117,7 @@ docker compose logs --tail 50
 
 Docker 镜像为 `sif:local`。Compose 项目标识保留 `comfy-image-service`，以便改名升级时复用现有数据卷 `comfy-image-service_image_data`，保留任务数据库、上传图片和生成结果。`apps/` 与 `skills/` 以只读挂载形式读取本地配置，更新工作流或 Skill 后无需重启。服务代码修改后重新构建本容器。运行使用单 worker，避免同一 GPU 被此服务重复提交任务。
 
-ComfyUI 需要可用的 Image VAE、Qwen3-VL 文本编码器、Qwen3.5 扩写模型、三个主模型与 ComfyUI-GGUF。`comfy_nodes/` 包含本模块工作流所需的 20MP 节点与 GGUF 作者兼容补丁；当前目标 ComfyUI 已安装它们。迁移到新的 ComfyUI 时，将这两个文件放到其 `custom_nodes/`，在队列空闲时重启 ComfyUI。
+ComfyUI 需要可用的 Image VAE、Qwen3-VL 文本编码器、Qwen3.5 扩写模型、三个主模型与 ComfyUI-GGUF。当前工作流由 SIF 计算输出尺寸，直接使用核心 H3 Conditioning 节点准备参考图。`comfy_nodes/` 中的旧 20MP 节点继续供历史工作流使用，GGUF 兼容补丁按目标节点版本安装。
 
 ## 给其他 AI 的标准 Skill
 
@@ -124,7 +135,7 @@ ComfyUI 需要可用的 Image VAE、Qwen3-VL 文本编码器、Qwen3.5 扩写模
 ComfyUI App 模式提供界面；要从 CLI 调用其工作流，需要一次性导出 **API 格式 JSON** 并写明参数绑定。可参考 `apps/minimax-h3-image/` 的结构：
 
 1. 新建独立目录，放入 `app.json` 和 `t2i.api.json` / `i2i.api.json`。
-2. 设置唯一 `id`、支持的模式、`pro/standard/fast` 模型预设，以及 prompt、MP、seed、扩写开关、画幅或图片输入的节点绑定。
+2. 设置唯一 `id`、支持的模式、`pro/standard/fast` 模型预设，以及 prompt、seed、扩写开关、width/height 与图片输入的节点绑定。H3 模板还声明 `conditioning_node`、`expansion_node`、`expansion_template_node`。旧 MP/比例绑定格式继续可读取。
 3. `output_node` 指向 SaveImage；`prompt_preview_node` 指向扩写开关之后的 PreviewAny。
 4. 目录放到 `apps/` 后，`capabilities` 立即可见。用 `--app 新ID` 调用。
 
@@ -138,7 +149,7 @@ ComfyUI App 模式提供界面；要从 CLI 调用其工作流，需要一次性
 
 `Idempotency-Key` 防止命令行在提交响应丢失后生成重复任务。服务不自动重试 ComfyUI 的提交 POST；重启后优先完成已有 backend prompt ID 的任务，再执行等待任务。中断或超时导致状态不明时标记 `unknown`，暂停后续生成并继续查询已有结果；无法自动确定时，管理员确认 ComfyUI 中任务已结束后，可在管理页释放队列。超时不会中断其他 ComfyUI 任务，也不调用全局 interrupt。
 
-接口文档：[http://127.0.0.1:8011/docs](http://127.0.0.1:8011/docs)。这是独立的异步 REST 接口；命令行已封装上传、提交、轮询与下载。
+接口文档见 [SIF OpenAPI](http://127.0.0.1:8011/docs)。命令行封装上传、提交、事件等待与下载，REST 长等待入口为 `GET /v1/jobs/{id}/wait?timeout_seconds=25`。
 
 ## 验证
 
@@ -149,3 +160,5 @@ comfy_image_service/.venv/Scripts/python.exe -m unittest discover -s comfy_image
 测试覆盖密码初始化与修改、Key 哈希存储/撤销、会话与 API 权限隔离、MCP 握手和生图、严格 FIFO 与单 worker、超时阻塞和重启恢复，以及六种模式/档位装配、输入限制、幂等与冲突、数据库持久化、注册热发现、模板越界和 ComfyUI 部分输出拒绝。真实验收记录与页面截图保存在本地 `data/verification/`，不会纳入 Git。20MP 是参数上限，低分辨率生图验证不等于已经实测 20MP 生图。
 
 2026-11-11：Windows 与实际 Docker 依赖环境均通过 12 项测试；Windows CLI 经本地 Docker 网关完成 t2i/i2i × pro/standard/fast 六次 0.25MP 生图与本地下载。已检查生成图片可解码，并确认图生图茶壶改为蓝色、保留原图构图。
+
+2026-11-12 的 H3 能力扩展使用合成图片和模拟后端验证参考顺序、画布边界、多图输出、格式转换、MCP/CLI、历史快照和幂等键兼容，实际后端仅执行只读节点检查。

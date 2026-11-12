@@ -1,5 +1,6 @@
 """Shared image operations used by the REST API, console, and MCP tools."""
 import asyncio
+import base64
 import hashlib
 import json
 import math
@@ -23,13 +24,26 @@ class ImageService:
 
     def capabilities(self):
         return {"service": "sif", "apps": self.apps(),
-                "endpoints": {"t2i": "/v1/t2i", "i2i": "/v1/i2i", "upload": "/v1/uploads", "job": "/v1/jobs/{job_id}", "mcp": "/mcp"},
+                "endpoints": {"t2i": "/v1/t2i", "i2i": "/v1/i2i", "upload": "/v1/uploads", "job": "/v1/jobs/{job_id}",
+                              "result": "/v1/jobs/{job_id}/result", "wait": "/v1/jobs/{job_id}/wait", "mcp": "/mcp"},
                 "defaults": {"app": "minimax-h3-image", "tier": "standard", "megapixels": 4, "expand_prompt": True},
                 "mcp_defaults": {"expand_prompt": False}, "parameters": GenerateRequest.model_json_schema(),
                 "waiting": {"tool": "wait_for_job", "default_timeout_seconds": 25, "max_timeout_seconds": 600,
                             "transport": "Streamable HTTP / SSE", "client_sleep_required": False},
                 "limits": {"max_megapixels": 20, "max_upload_bytes": self.settings.max_upload_bytes,
-                           "source_formats": ["png", "jpeg", "webp"], "t2i_aspect_ratios": list(ASPECT_RATIOS), "i2i_aspect_ratio": "original"},
+                           "source_formats": ["png", "jpeg", "webp"], "max_reference_images": 16, "max_images_per_job": 10,
+                           "aspect_ratio_range": ["1:3", "3:1"], "aspect_ratio_presets": list(ASPECT_RATIOS),
+                           "t2i_aspect_ratios": list(ASPECT_RATIOS), "i2i_aspect_ratio": "original",
+                           "i2i_default_aspect_ratio": "original", "canvas_alignment": 32,
+                           "megapixel_pixels": 1048576, "max_side": 16384,
+                           "max_inline_result_bytes": self.settings.max_output_bytes},
+                "features": {"ordered_references": "<Picture 1> through <Picture 16>; first image is the edit source",
+                             "reference_modes": ["latent", "vision"], "output_formats": ["png", "jpeg", "webp"],
+                             "result_formats": ["url", "b64_json"], "serial_variants": "n=1..10, batch size 1, seed increments per sample",
+                             "prompt_expansion": "Optional installed Qwen3.5 9B TextGenerateV2, including all reference images",
+                             "generation_area": "ComfyUI renders the requested 32-aligned canvas directly"},
+                "unsupported_parameters": ["negative_prompt", "mask", "transparent_background", "guidance_scale", "num_inference_steps"],
+                "documentation": "https://github.com/MiniMax-AI/MiniMax-H3-Image",
                 "fixed_sampling": {"steps": 6, "cfg": 1, "sampler": "euler", "scheduler": "simple", "denoise": 1},
                 "queue": self.store.queue_summary(),
                 "discovery": "App bundles in apps/*/app.json are re-read on discovery and submission."}
@@ -66,7 +80,7 @@ class ImageService:
         base = (self.settings.public_base_url or base_url or "http://127.0.0.1:8011").rstrip("/")
         result = job["result"]
         if result:
-            result = {"effective_prompt": result["effective_prompt"], "images": [
+            result = {**result, "images": [
                 {**{k: v for k, v in image.items() if k != "path"}, "url": f"{base}/v1/jobs/{job['id']}/images/{index}"}
                 for index, image in enumerate(result["images"])]}
         return {"id": job["id"], "status": job["status"], "created": job["created"], "updated": job["updated"],
@@ -80,15 +94,27 @@ class ImageService:
         if idempotency_key is not None and (not idempotency_key.strip() or len(idempotency_key) > 128):
             raise ServiceError("invalid_idempotency_key", "Idempotency-Key must be 1–128 characters.", 422)
         values = body.normalized(mode)
-        upload = resolve_image(values["image"], self.settings, self.store) if mode == "i2i" else None
-        if upload:
-            values["image"] = upload["id"]
-        identity = {**values, "image": upload["sha256"] if upload else None}
+        uploads = []
+        if mode == "i2i":
+            references = values["images"] or [values["image"]]
+            uploads = [resolve_image(reference, self.settings, self.store) for reference in references]
+            if values["images"]:
+                values["images"] = [upload["id"] for upload in uploads]
+            else:
+                values["image"] = uploads[0]["id"]
+        # Preserve fingerprints for pre-upgrade single-image/default requests.
+        identity = {**values, "image": uploads[0]["sha256"] if len(uploads) == 1 else None}
+        identity["images"] = [upload["sha256"] for upload in uploads] if len(uploads) > 1 else None
+        defaults = {"images": None, "width": None, "height": None, "reference_mode": "latent", "n": 1,
+                    "output_format": "png", "output_quality": 95, "prompt_expansion": None}
+        for name, default in defaults.items():
+            if identity[name] == default:
+                identity.pop(name)
         fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
         existing = self.store.idempotent_job(idempotency_key, fingerprint)
         if existing:
             return self.public_job(existing, base_url)
-        graph, resolved, metadata = self.registry.assemble(values)
+        graph, resolved, metadata = self.registry.assemble(values, [(upload["width"], upload["height"]) for upload in uploads])
         job, created = self.store.create_job(resolved, graph, metadata, fingerprint, idempotency_key, self.settings.max_pending_jobs)
         if created:
             await self.runner.enqueue(job["id"])
@@ -96,6 +122,20 @@ class ImageService:
 
     async def job(self, job_id, base_url=""):
         return self.public_job(await self.runner.reconcile(self.store.get_job(job_id)), base_url)
+
+    async def result(self, job_id, response_format="url", base_url=""):
+        if response_format not in {"url", "b64_json"}:
+            raise ServiceError("invalid_response_format", "Use url or b64_json.", 422)
+        job = await self.job(job_id, base_url)
+        if response_format == "b64_json" and job["status"] == "succeeded":
+            paths = [self.image_path(job_id, index) for index in range(len(job["result"]["images"]))]
+            if sum(path.stat().st_size for path in paths) > self.settings.max_output_bytes:
+                raise ServiceError("result_too_large", "Inline results exceed the output limit. Use authenticated image downloads.", 413)
+            for index, image in enumerate(job["result"]["images"]):
+                data = await asyncio.to_thread(paths[index].read_bytes)
+                image["b64_json"] = base64.b64encode(data).decode("ascii")
+                image.pop("url")
+        return job
 
     async def wait_for_job(self, job_id, timeout_seconds=25, progress=None):
         """Wait for committed job-state events; never submit, retry, or cancel a render."""

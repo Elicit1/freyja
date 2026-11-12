@@ -27,13 +27,13 @@ An installed Skill and a configured MCP connection are separate. The Skill provi
 | --- | --- |
 | `get_capabilities` | Registered apps, profiles, parameter limits, fixed sampling, queue status |
 | `get_readiness` | Installed backend nodes and model filenames |
-| `text_to_image` | Queue t2i: prompt, required idempotency_key, tier, megapixels, aspect_ratio, expand_prompt, seed, app |
-| `image_to_image` | Queue i2i: prompt, image, required idempotency_key, tier, megapixels, expand_prompt, seed, app; original ratio preserved |
+| `text_to_image` | Queue t2i with English prompt and required idempotency_key; tier, MP/ratio or width/height, expansion, seed, n, output format/quality, app |
+| `image_to_image` | Queue editing/composition with the same controls and images (1–16 ordered IDs/data URIs) or legacy single image; reference_mode selects latent/vision; first reference ratio is the default |
 | `upload_image` | Upload base64 PNG/JPEG/WebP bytes and return an upload ID; prefer binary REST upload for large files |
 | `wait_for_job` | Wait on the server for an existing job; job_id required, timeout_seconds defaults to 25, range 1–600; returns job state plus wait_timed_out and next_action |
 | `get_job` | One-time inspection of job state, queue position, backend ID, errors, and results; prefer wait_for_job to wait |
 | `get_queue` | Current render, waiting jobs, and unresolved submissions blocking the queue |
-| `get_result` | Job state and authenticated full-image download URLs |
+| `get_result` | Job state, each image's seed and authenticated download URL; response_format="b64_json" requests inline bytes, up to 128 MiB combined source bytes |
 
 When the user does not specify settings, this Skill recommends **fast, 2K, 16:9, expansion OFF**. For t2i, explicitly pass `tier="fast"`, `megapixels=2.25`, `aspect_ratio="16:9"`, and `expand_prompt=false` to target **2048×1152**. The MCP tool's raw defaults remain `standard` and 4 MP; do not rely on omission to obtain the Skill recommendation. Preserve each user-specified setting, and apply defaults only to missing fields. For another ratio or i2i's preserved input ratio, calculate MP for a 2048-pixel long edge when the user leaves size unspecified. Tiers remain `pro`, `standard`, `fast`; MP range is 0.1–20. Read [api.md](api.md) for aspect ratios, file limits, and fixed sampling.
 
@@ -49,6 +49,12 @@ SIF normally receives backend completion through ComfyUI WebSocket events rather
 
 Keep `timeout_seconds` below the client's tool-call deadline. Default 25 seconds fits clients with a 30-second tool timeout; use a larger value only when the host permits it. Progress does not universally reset client timeouts. A wait timeout or connection loss must resume the existing job rather than submit again. The server cannot control the host's scheduling after a tool call returns.
 
-For i2i, supply an upload ID or image data URI. A Windows path is not readable by the Docker server. Upload binary image bytes via `POST /v1/uploads` using the same API key, use the CLI's `--image` path, or send base64 bytes to `upload_image`. Do not put an entire large image into model context just to re-encode it.
+For i2i, upload each image and supply an ordered `images` array of 1–16 upload IDs or data URIs. The single `image` argument remains supported. A Windows path requires uploading file bytes via authenticated `POST /v1/uploads`, repeated CLI `--image` paths, or `upload_image`. Describe each reference's role with `<Picture N>` markers in English. Use `width`/`height` together for an exact 32-aligned canvas and omit MP/ratio; MP with `original` or a custom ratio is also supported. Read [api.md](api.md) for expansion controls and [h3-capabilities.md](h3-capabilities.md) for source documentation and model-specific limits.
+
+For example, call `image_to_image` with the following arguments after uploading both references.
+
+```json
+{"prompt":"Edit <Picture 1>. Dress the person in the jacket from <Picture 2>. Preserve the person's face and pose.","images":["PERSON_UPLOAD_ID","JACKET_UPLOAD_ID"],"idempotency_key":"UNIQUE_REQUEST_ID","tier":"fast","width":2048,"height":1152,"expand_prompt":false,"n":1}
+```
 
 Result URLs are authenticated. Use an HTTP client with the configured API key or the CLI's `status JOB_ID --output result.png` to download on the agent's machine. A container-local path or an unauthenticated Markdown image URL is not a completed local download.

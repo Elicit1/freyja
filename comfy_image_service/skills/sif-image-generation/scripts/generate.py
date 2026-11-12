@@ -50,7 +50,7 @@ def download(client, job, output, overwrite):
         raise RuntimeError(json.dumps({"job_id": job["id"], "status": job["status"], "error": job.get("error")}, ensure_ascii=False))
     job_id, saved = str(uuid.UUID(job["id"])), []
     for index, image in enumerate(job["result"]["images"]):
-        path = Path(output or f"outputs/{job_id}.png").expanduser().resolve()
+        path = Path(output or f"outputs/{job_id}.{image['format']}").expanduser().resolve()
         if index: path = path.with_name(path.stem + f"-{index}" + path.suffix)
         expected = "." + image["format"]
         if path.suffix.lower() != expected and not (expected == ".jpg" and path.suffix.lower() == ".jpeg"):
@@ -59,7 +59,7 @@ def download(client, job, output, overwrite):
         # Never forward the key to an arbitrary URL returned in a result.
         data = client.request(f"/v1/jobs/{job_id}/images/{index}", binary=True)
         with path.open("wb" if overwrite else "xb") as stream: stream.write(data)
-        saved.append({"path": str(path), "width": image["width"], "height": image["height"]})
+        saved.append({"path": str(path), "width": image["width"], "height": image["height"], "seed": image.get("seed")})
     return {"job_id": job_id, "status": "succeeded", "app": job["request"]["app"], "mode": job["request"]["mode"],
             "tier": job["request"]["tier"], "seed": job["request"]["seed"],
             "effective_prompt": job["result"]["effective_prompt"], "images": saved}
@@ -77,15 +77,23 @@ def parse_args():
         p.add_argument("--app", default="minimax-h3-image")
         p.add_argument("--tier", choices=["pro", "standard", "fast"], default="standard")
         p.add_argument("--prompt", required=True)
-        p.add_argument("--megapixels", "--mp", type=float, default=4)
+        p.add_argument("--megapixels", "--mp", type=float)
         p.add_argument("--aspect-ratio", default=None)
+        p.add_argument("--width", type=int)
+        p.add_argument("--height", type=int)
+        p.add_argument("--n", "--count", type=int, default=1)
+        p.add_argument("--output-format", choices=["png", "jpeg", "webp"], default="png")
+        p.add_argument("--output-quality", type=int, default=95)
+        p.add_argument("--prompt-expansion", type=Path, help="JSON file with expansion controls, including optional instructions")
         p.add_argument("--no-expand", action="store_true")
         p.add_argument("--seed", type=int)
         p.add_argument("--output", type=Path)
         p.add_argument("--overwrite", action="store_true")
         p.add_argument("--wait-timeout", type=float, default=1800)
         p.add_argument("--idempotency-key")
-        if mode == "i2i": p.add_argument("--image", type=Path, required=True)
+        if mode == "i2i":
+            p.add_argument("--image", type=Path, action="append", required=True, help="Repeat in <Picture N> order, up to 16 images")
+            p.add_argument("--reference-mode", choices=["latent", "vision"], default="latent")
     p = sub.add_parser("status", help="Resume an existing job without submitting again")
     p.add_argument("job_id")
     p.add_argument("--output", type=Path)
@@ -110,20 +118,42 @@ def main():
     if args.command == "status":
         job_id = str(uuid.UUID(args.job_id)); job = client.request("/v1/jobs/" + job_id)
     else:
-        if not 0.1 <= args.megapixels <= 20: raise ValueError("--megapixels must be between 0.1 and 20.")
-        if args.command == "t2i" and args.aspect_ratio not in {None,"1:1","2:3","3:2","3:4","4:3","9:16","16:9","21:9"}:
-            raise ValueError("Unsupported t2i aspect ratio.")
-        if args.command == "i2i" and args.aspect_ratio not in {None,"original"}:
-            raise ValueError("i2i preserves the original image ratio.")
+        if args.megapixels is not None and not 0.1 <= args.megapixels <= 20:
+            raise ValueError("--megapixels must be between 0.1 and 20.")
+        if (args.width is None) != (args.height is None):
+            raise ValueError("Supply both --width and --height.")
+        if args.width is not None:
+            if args.megapixels is not None or args.aspect_ratio is not None:
+                raise ValueError("Use --width/--height together, or --mp/--aspect-ratio.")
+            if any(side < 32 or side > 16384 or side % 32 for side in (args.width, args.height)):
+                raise ValueError("Canvas sides must be multiples of 32 between 32 and 16384.")
+            if args.width * args.height > 20 * 1024 * 1024 or not 1/3 <= args.width / args.height <= 3:
+                raise ValueError("Canvas must be at most 20 MP and between 1:3 and 3:1.")
+        if not 1 <= args.n <= 10 or not 0 <= args.output_quality <= 100:
+            raise ValueError("--n must be 1–10 and --output-quality must be 0–100.")
+        if args.no_expand and args.prompt_expansion:
+            raise ValueError("Remove --no-expand to supply expansion controls.")
         if args.seed is not None and not 0 <= args.seed <= 9007199254740991:
             raise ValueError("--seed must be between 0 and 9007199254740991.")
-        body = {"app":args.app,"tier":args.tier,"prompt":args.prompt,"megapixels":args.megapixels,
-                "expand_prompt":not args.no_expand,"seed":args.seed,"aspect_ratio":args.aspect_ratio}
+        body = {"app":args.app,"tier":args.tier,"prompt":args.prompt,
+                "expand_prompt":not args.no_expand,"seed":args.seed,"aspect_ratio":args.aspect_ratio,
+                "width":args.width,"height":args.height,"n":args.n,
+                "output_format":args.output_format,"output_quality":args.output_quality}
+        if args.megapixels is not None:
+            body["megapixels"] = args.megapixels
+        if args.prompt_expansion:
+            body["prompt_expansion"] = json.loads(args.prompt_expansion.read_text(encoding="utf-8-sig"))
         if args.command == "i2i":
-            if not args.image.is_file(): raise FileNotFoundError(args.image)
-            if args.image.stat().st_size > 25*1024*1024: raise ValueError("Input image exceeds 25 MiB.")
-            upload = client.request("/v1/uploads", args.image.read_bytes(), content_type="application/octet-stream")
-            body["image"] = upload["id"]
+            if len(args.image) > 16:
+                raise ValueError("Provide at most 16 --image arguments.")
+            for path in args.image:
+                if not path.is_file():
+                    raise FileNotFoundError(path)
+                if path.stat().st_size > 25*1024*1024:
+                    raise ValueError("Input image exceeds 25 MiB.")
+            body["images"] = [client.request("/v1/uploads", path.read_bytes(), content_type="application/octet-stream")["id"]
+                              for path in args.image]
+            body["reference_mode"] = args.reference_mode
         key = args.idempotency_key or str(uuid.uuid4())
         print("Idempotency-Key: " + key, file=sys.stderr)
         job = client.submit(args.command, body, key); job_id = job["id"]
@@ -133,9 +163,12 @@ def main():
             print(f"Job {job_id}: {job['status']}", file=sys.stderr); previous = job["status"]
         if time.monotonic()-started > args.wait_timeout:
             raise TimeoutError(f"Job {job_id} is still pending. Resume with: status {job_id}")
-        time.sleep(2)
-        try: job = client.request("/v1/jobs/" + job_id)
-        except (urllib.error.URLError, TimeoutError, ConnectionError):continue
+        remaining = args.wait_timeout - (time.monotonic() - started)
+        timeout = max(1, min(25, remaining))
+        try:
+            job = client.request(f"/v1/jobs/{job_id}/wait?timeout_seconds={timeout}")
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            time.sleep(2)
     print(json.dumps(download(client, job, args.output, args.overwrite), ensure_ascii=False, indent=2))
 
 

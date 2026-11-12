@@ -49,14 +49,8 @@
         "37",
         0
       ],
-      "width": [
-        "50",
-        0
-      ],
-      "height": [
-        "50",
-        1
-      ],
+      "width": 2048,
+      "height": 2048,
       "clip": [
         "30",
         0
@@ -66,7 +60,7 @@
         0
       ],
       "images.image_1": [
-        "48",
+        "45",
         0
       ]
     },
@@ -110,7 +104,7 @@
         0
       ],
       "images.image1": [
-        "48",
+        "45",
         0
       ],
       "system_prompt": [
@@ -136,7 +130,7 @@
   "36": {
     "class_type": "PrimitiveStringMultiline",
     "inputs": {
-      "value": "Reason in the thinking section first. The visible final content must be exactly one JSON object with exactly two keys: expanded_caption and aspect_ratio. Every ASCII double quotation mark used as caption content inside expanded_caption must be serialized as the JSON escape sequence \\\". Do not output text outside that object."
+      "value": "Reason in the thinking section first. The visible final content must be exactly one JSON object with exactly two keys: expanded_caption and target_aspect_ratio. Every ASCII double quotation mark used as caption content inside expanded_caption must be serialized as the JSON escape sequence \\\". Do not output text outside that object."
     },
     "_meta": {
       "title": "Text (system_prompt)"
@@ -277,48 +271,6 @@
       "title": "LoadImage"
     }
   },
-  "48": {
-    "class_type": "ResizeImageMaskNode",
-    "inputs": {
-      "resize_type": "scale to multiple",
-      "resize_type.multiple": 32,
-      "scale_method": "area",
-      "input": [
-        "56",
-        0
-      ]
-    },
-    "_meta": {
-      "title": "官方尺寸对齐：32 的倍数"
-    }
-  },
-  "50": {
-    "class_type": "GetImageSize",
-    "inputs": {
-      "image": [
-        "48",
-        0
-      ]
-    },
-    "_meta": {
-      "title": "读取最终输出宽高"
-    }
-  },
-  "56": {
-    "class_type": "FreyjaResizeImageMask20MP",
-    "inputs": {
-      "resize_type": "scale total pixels",
-      "resize_type.megapixels": 4.0,
-      "scale_method": "area",
-      "input": [
-        "45",
-        0
-      ]
-    },
-    "_meta": {
-      "title": "输入图按原比例缩放：目标 MP（最高 20）"
-    }
-  },
   "61": {
     "class_type": "PrimitiveBoolean",
     "inputs": {
@@ -326,23 +278,6 @@
     },
     "_meta": {
       "title": "开启提示词扩写（默认开启）"
-    }
-  },
-  "62": {
-    "class_type": "ImageCompare",
-    "inputs": {
-      "compare_view": null,
-      "image_a": [
-        "48",
-        0
-      ],
-      "image_b": [
-        "9",
-        0
-      ]
-    },
-    "_meta": {
-      "title": "原图 / 编辑结果对比"
     }
   }
 }

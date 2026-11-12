@@ -36,14 +36,8 @@
         "18",
         0
       ],
-      "width": [
-        "100",
-        0
-      ],
-      "height": [
-        "100",
-        1
-      ],
+      "width": 2048,
+      "height": 2048,
       "clip": [
         "2",
         0
@@ -245,17 +239,6 @@
     },
     "_meta": {
       "title": "JsonExtractString"
-    }
-  },
-  "100": {
-    "class_type": "FreyjaResolutionSelector20MP",
-    "inputs": {
-      "aspect_ratio": "1:1 (Square)",
-      "megapixels": 4,
-      "multiple": 32
-    },
-    "_meta": {
-      "title": "输出尺寸：画幅比例 + MP（最高 20MP）"
     }
   },
   "101": {
