@@ -8,6 +8,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 
 from .models import ServiceError
+from .minio_storage import UPLOAD_RETENTION_SECONDS
 
 
 class Store:
@@ -78,6 +79,10 @@ class Store:
             pending = self.db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','preparing','running','unknown')").fetchone()[0]
             if pending >= limit:
                 raise ServiceError("queue_full", "The independent image service queue is full.", 429)
+            references = values.get("images") or ([values["image"]] if values.get("image") else [])
+            for reference in references:
+                if self.db.execute("SELECT 1 FROM uploads WHERE id=?", (reference,)).fetchone() is None:
+                    raise ServiceError("image_expired", "A reference image expired before submission. Upload it again.", 410)
             job_id = str(uuid.uuid4())
             now = time.time()
             self.db.execute("INSERT INTO jobs(id,status,created,updated,fingerprint,idempotency_key,request,graph,metadata) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -148,6 +153,24 @@ class Store:
         if claimed:
             self._notify_jobs()
         return claimed
+
+    def cleanup_expired_uploads(self):
+        cutoff = time.time() - UPLOAD_RETENTION_SECONDS
+        with self.lock, self.db:
+            protected = set()
+            rows = self.db.execute("SELECT request FROM jobs WHERE status IN ('queued','preparing','running','unknown')").fetchall()
+            for row in rows:
+                request = json.loads(row["request"])
+                protected.update(request.get("images") or ([request["image"]] if request.get("image") else []))
+            root = (self.directory / "uploads").resolve()
+            for row in self.db.execute("SELECT id,path FROM uploads WHERE created<=?", (cutoff,)).fetchall():
+                if row["id"] in protected:
+                    continue
+                path = Path(row["path"]).resolve()
+                if not path.is_relative_to(root):
+                    raise RuntimeError("An expired upload path is outside the upload directory.")
+                path.unlink(missing_ok=True)
+                self.db.execute("DELETE FROM uploads WHERE id=?", (row["id"],))
 
     def update(self, job_id, status, *, prompt_id=None, result=None, error=None):
         with self.lock, self.db:

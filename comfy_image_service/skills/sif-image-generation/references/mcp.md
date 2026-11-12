@@ -28,8 +28,8 @@ An installed Skill and a configured MCP connection are separate. The Skill provi
 | `get_capabilities` | Registered apps, profiles, parameter limits, fixed sampling, queue status |
 | `get_readiness` | Installed backend nodes and model filenames |
 | `text_to_image` | Queue t2i with English prompt and required idempotency_key; tier, MP/ratio or width/height, expansion, seed, n, output format/quality, app |
-| `image_to_image` | Queue editing/composition with the same controls and images (1–16 ordered IDs/data URIs) or legacy single image; reference_mode selects latent/vision; first reference ratio is the default |
-| `upload_image` | Upload base64 PNG/JPEG/WebP bytes and return an upload ID; prefer binary REST upload for large files |
+| `image_to_image` | Queue editing/composition with images containing 1–16 ordered MinIO URLs or upload IDs, or single image; reference_mode selects latent/vision; first reference ratio is the default |
+| `upload_image` | Existing base64 upload tool. Prefer HTTP multipart/binary file upload, then pass its returned MinIO URL to generation |
 | `wait_for_job` | Wait on the server for an existing job; job_id required, timeout_seconds defaults to 25, range 1–600; returns job state plus wait_timed_out and next_action |
 | `get_job` | One-time inspection of job state, queue position, backend ID, errors, and results; prefer wait_for_job to wait |
 | `get_queue` | Current render, waiting jobs, and unresolved submissions blocking the queue |
@@ -49,7 +49,7 @@ SIF normally receives backend completion through ComfyUI WebSocket events rather
 
 Keep `timeout_seconds` below the client's tool-call deadline. Default 25 seconds fits clients with a 30-second tool timeout; use a larger value only when the host permits it. Progress does not universally reset client timeouts. A wait timeout or connection loss must resume the existing job rather than submit again. The server cannot control the host's scheduling after a tool call returns.
 
-For i2i, upload each image and supply an ordered `images` array of 1–16 upload IDs or data URIs. The single `image` argument remains supported. A Windows path requires uploading file bytes via authenticated `POST /v1/uploads`, repeated CLI `--image` paths, or `upload_image`. Describe each reference's role with `<Picture N>` markers in English. Use `width`/`height` together for an exact 32-aligned canvas and omit MP/ratio; MP with `original` or a custom ratio is also supported. Read [api.md](api.md) for expansion controls and [h3-capabilities.md](h3-capabilities.md) for source documentation and model-specific limits.
+For i2i, upload each file through authenticated HTTP `POST /v1/uploads` using multipart field `file` or raw bytes. It returns a MinIO image `url`, metadata, and a 24-hour expiry. Supply those URLs in an ordered `images` array. The CLI's `upload FILE` and local `--image` inputs perform this transfer. Existing FREYJA MinIO URLs from configured buckets are accepted. SIF snapshots image bytes before queueing. Upload IDs and the existing single `image` argument remain accepted. Describe each reference's role with `<Picture N>` markers in English. Read [api.md](api.md) for HTTP examples, expiry and expansion controls, and [h3-capabilities.md](h3-capabilities.md) for source documentation and model-specific limits.
 
 For example, call `image_to_image` with the following arguments after uploading both references.
 

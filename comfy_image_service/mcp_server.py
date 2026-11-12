@@ -1,4 +1,5 @@
 """Authenticated Streamable HTTP tools; generation always uses SIF's single queue."""
+import asyncio
 import base64
 from typing import Annotated, Any, Literal
 
@@ -51,13 +52,13 @@ def create_mcp(state, settings):
     async def image_to_image(
         prompt: Annotated[str, Field(min_length=1, max_length=32000)],
         idempotency_key: Annotated[str, Field(min_length=1, max_length=128)],
-        image: Annotated[str | None, Field(description="Legacy single reference upload ID or data URI. Supply image or images.")] = None,
+        image: Annotated[str | None, Field(description="Single MinIO reference URL, upload ID or data URI. Supply image or images.")] = None,
         tier: Literal["pro", "standard", "fast"] = "standard",
         megapixels: Annotated[float | None, Field(ge=0.1, le=20)] = None,
         expand_prompt: bool = False,
         seed: Annotated[int | None, Field(ge=0, le=9007199254740991)] = None,
         app: str = "minimax-h3-image",
-        images: Annotated[list[str] | None, Field(min_length=1, max_length=16, description="Ordered upload IDs or data URIs. First image is <Picture 1>, followed by <Picture 2> through <Picture 16>.")] = None,
+        images: Annotated[list[str] | None, Field(min_length=1, max_length=16, description="Ordered MinIO image URLs or upload IDs. Upload bytes via authenticated POST /v1/uploads and pass its returned URL. Temporary uploads expire after 24 hours. First image is <Picture 1>.")] = None,
         aspect_ratio: Annotated[str | None, Field(max_length=64, description="original (first reference) or numeric W:H between 1:3 and 3:1. Omit with width/height.")] = None,
         width: Annotated[int | None, Field(ge=32, le=16384, multiple_of=32)] = None,
         height: Annotated[int | None, Field(ge=32, le=16384, multiple_of=32)] = None,
@@ -76,9 +77,9 @@ def create_mcp(state, settings):
                                           prompt_expansion=prompt_expansion), idempotency_key)
 
     @mcp.tool(structured_output=True)
-    def upload_image(data_base64: Annotated[str, Field(min_length=1, description="Base64-encoded PNG/JPEG/WebP bytes. Prefer REST binary upload for large files.")]) -> dict[str, Any]:
+    async def upload_image(data_base64: Annotated[str, Field(min_length=1, description="Legacy base64 upload. Prefer authenticated HTTP multipart/binary POST /v1/uploads and pass its returned MinIO URL to generation.")]) -> dict[str, Any]:
         """Upload a reference image and return an image ID. Limit: 25 MiB, 40 source MP; no server-path access."""
-        return state.service.upload(base64.b64decode(data_base64, validate=True))
+        return await asyncio.to_thread(state.service.upload, base64.b64decode(data_base64, validate=True))
 
     @mcp.tool(structured_output=True)
     async def get_job(job_id: str) -> dict[str, Any]:

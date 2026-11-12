@@ -38,7 +38,7 @@ SIF 是给本地 AI / Agent 使用的独立命令行生图服务。代码、App 
 
 SIF 到 ComfyUI 的正常完成等待也使用 WebSocket `/ws?clientId=原任务ID`，不再由 `ComfyClient.wait` 每两秒轮询历史。建立订阅后读取一次历史以覆盖快速完成或重启恢复；随后监听所属 `prompt_id` 的完成/失败事件，收到事件后读取最终历史。断线按原客户端 ID 重连，连接失败使用 WebSocket 库的退避机制；不重提 `/prompt`。`execution_success` 可能早于历史写入，因此尚无历史时继续等待最终 `executing(node=null)`。超时只做一次有界恢复快照，仍无法确认则保留未决状态；原有 `unknown` 检查与人工恢复规则继续适用。
 
-参考图片需上传为字节或 Data URI，不能把 Windows 文件路径交给 Docker 读取。可使用 MCP `upload_image` 或 REST 二进制上传，大图片适合 CLI `--image`。完整图片通过返回的地址下载，下载也需携带 API Key；CLI `status JOB_ID --output 图片.png` 可以恢复并下载。详见 [MCP 参考](skills/sif-image-generation/references/mcp.md)。
+参考图片通过 HTTP 上传后取得 MinIO 地址，再交给 MCP。CLI `--image` 支持本地文件和已有 MinIO 地址。生成结果通过返回的 SIF 地址下载，携带 API Key；CLI `status JOB_ID --output 图片.png` 可以恢复并下载。详见 [MCP 参考](skills/sif-image-generation/references/mcp.md)。
 
 ## 直接调用
 
@@ -87,9 +87,24 @@ CLI 只依赖 Python 3.10+ 标准库，不依赖 FastAPI、Docker Python SDK 或
 - `prompt_expansion` 可设置扩写 token 预算、thinking、temperature、top_k/top_p/min_p、重复与存在惩罚、独立 seed 和追加指令，须开启扩写。当前安装的扩写器为 Qwen3.5 9B。
 - 沿用官方 `1MP=1024×1024` 的定义，宽高按 32 对齐，实际面积可能略有偏差。
 - 采样固定为 6 步、CFG 1、Euler、Simple、denoise 1，不暴露容易破坏蒸馏模型采样的覆盖参数。
-- 输入图片支持 PNG/JPEG/WebP，最大 25 MiB、40 源 MP。API 接受上传 ID 或图片 Data URI，不读取客户端提交的服务器文件路径或 HTTP 图片 URL。
+- 输入图片支持 PNG/JPEG/WebP，最大 25 MiB、40 源 MP。API 接受配置范围内的 MinIO 图片 URL、上传 ID 或图片 Data URI。本地文件通过 HTTP 或 CLI 上传。
 
 完整参数与 HTTP 调用见 [Skill API 参考](skills/sif-image-generation/references/api.md)。
+
+## MinIO 图片上传与 24 小时清理
+
+`POST /v1/uploads` 支持原始图片字节和 multipart `file` 字段。配置 MinIO 后，接口返回图片 `url`、上传 ID、尺寸、SHA-256 和 `expires_at`。CLI `upload 图片路径` 同样返回这份描述，`i2i --image` 可直接传 MinIO 图片地址，也可继续传本地文件。MCP `image_to_image` 的 `images` 接收这些地址。
+
+SIF 通过服务端 MinIO 凭据拉取图片，在入队前校验格式、大小与内容指纹并保存本地快照。已配置的 FREYJA `video-assets` 图片地址也可直接引用。地址对应的来源主机和桶由服务端配置，SIF 使用内部 MinIO 连接读取对象。
+
+上传使用独立私有桶 `sif-uploads` 的 `references/` 前缀，返回的预签名读取地址有效期为 24 小时。SIF 每分钟删除超过 24 小时的临时对象，并清理过期本地输入缓存。队列中、执行中或待确认任务使用的本地快照保留到任务结束。MinIO 同时配置一天生命周期作为停机兜底，停机期间的实际删除时间由 MinIO 生命周期扫描控制。
+
+在本模块私有 `.env` 配置 `SIF_MINIO_ENDPOINT`、`SIF_MINIO_PUBLIC_ENDPOINT`、`SIF_MINIO_ACCESS_KEY`、`SIF_MINIO_SECRET_KEY`、`SIF_MINIO_BUCKET`、`SIF_MINIO_READ_BUCKETS` 和 `SIF_MINIO_URL_ALIASES`。客户端可访问的公共端点用于生成图片 URL，容器内端点用于上传和读取。具体字段见 `.env.example`。所有 SIF 上传和 MCP 调用需要 SIF API Key，MinIO URL 使用自身的短期签名。
+
+```powershell
+python comfy_image_service/generate.py upload reference.png
+python comfy_image_service/generate.py i2i --tier fast --image "MINIO_IMAGE_URL" --prompt "Edit <Picture 1>. Change the background to a sunlit garden. Preserve the person's identity." --mp 2.25 --no-expand --output edited.png
+```
 
 官方资料和本地能力映射见 [H3 能力说明](skills/sif-image-generation/references/h3-capabilities.md)。涵盖模型文档、多参考图示例、ComfyUI 节点和托管 API 的接口范围。
 

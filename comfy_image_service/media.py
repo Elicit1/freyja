@@ -2,11 +2,13 @@ import base64
 import binascii
 import hashlib
 import io
+import time
 import uuid
 
 from PIL import Image, UnidentifiedImageError
 
 from .models import ServiceError
+from .minio_storage import UPLOAD_RETENTION_SECONDS
 
 
 def image_info(data):
@@ -68,6 +70,7 @@ def resolve_image(value, settings, store):
         except (ValueError, binascii.Error) as error:
             raise ServiceError("invalid_image", "Invalid base64 image data.", 422) from error
         return save_upload(data, settings, store)
-    # Input paths and URLs are intentionally not dereferenced by this service.
-    # Callers upload file bytes; this also works with private/local assets.
-    return store.upload(value)
+    upload = store.upload(value)
+    if upload["created"] + UPLOAD_RETENTION_SECONDS <= time.time():
+        raise ServiceError("image_expired", "This uploaded image expired after 24 hours. Upload it again.", 410)
+    return upload

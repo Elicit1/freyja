@@ -65,6 +65,15 @@ def download(client, job, output, overwrite):
             "effective_prompt": job["result"]["effective_prompt"], "images": saved}
 
 
+def upload_file(client, value):
+    path = Path(value)
+    if not path.is_file():
+        raise FileNotFoundError(path)
+    if path.stat().st_size > 25 * 1024 * 1024:
+        raise ValueError("Input image exceeds 25 MiB.")
+    return client.request("/v1/uploads", path.read_bytes(), content_type="application/octet-stream")
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url")
@@ -72,6 +81,8 @@ def parse_args():
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("capabilities")
     sub.add_parser("readiness")
+    p = sub.add_parser("upload", help="Upload a local image and print its MinIO URL and 24-hour expiry")
+    p.add_argument("image", type=Path)
     for mode in ("t2i", "i2i"):
         p = sub.add_parser(mode)
         p.add_argument("--app", default="minimax-h3-image")
@@ -92,7 +103,7 @@ def parse_args():
         p.add_argument("--wait-timeout", type=float, default=1800)
         p.add_argument("--idempotency-key")
         if mode == "i2i":
-            p.add_argument("--image", type=Path, action="append", required=True, help="Repeat in <Picture N> order, up to 16 images")
+            p.add_argument("--image", action="append", required=True, help="Local file or MinIO image URL; repeat in <Picture N> order, up to 16 images")
             p.add_argument("--reference-mode", choices=["latent", "vision"], default="latent")
     p = sub.add_parser("status", help="Resume an existing job without submitting again")
     p.add_argument("job_id")
@@ -113,6 +124,9 @@ def main():
     client = Client(base_url, key)
     if args.command in {"capabilities", "readiness"}:
         print(json.dumps(client.request("/v1/" + args.command), ensure_ascii=False, indent=2));return
+    if args.command == "upload":
+        print(json.dumps(upload_file(client, args.image), ensure_ascii=False, indent=2))
+        return
     if args.output and args.output.exists() and not args.overwrite:
         raise FileExistsError("Output exists; choose another path or pass --overwrite.")
     if args.command == "status":
@@ -146,13 +160,22 @@ def main():
         if args.command == "i2i":
             if len(args.image) > 16:
                 raise ValueError("Provide at most 16 --image arguments.")
-            for path in args.image:
+            for value in args.image:
+                if value.startswith(("http://", "https://")):
+                    continue
+                path = Path(value)
                 if not path.is_file():
                     raise FileNotFoundError(path)
                 if path.stat().st_size > 25*1024*1024:
                     raise ValueError("Input image exceeds 25 MiB.")
-            body["images"] = [client.request("/v1/uploads", path.read_bytes(), content_type="application/octet-stream")["id"]
-                              for path in args.image]
+            references = []
+            for value in args.image:
+                if value.startswith(("http://", "https://")):
+                    references.append(value)
+                else:
+                    uploaded = upload_file(client, value)
+                    references.append(uploaded.get("url") or uploaded["id"])
+            body["images"] = references
             body["reference_mode"] = args.reference_mode
         key = args.idempotency_key or str(uuid.uuid4())
         print("Idempotency-Key: " + key, file=sys.stderr)

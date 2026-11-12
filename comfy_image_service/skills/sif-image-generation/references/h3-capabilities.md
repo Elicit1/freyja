@@ -7,7 +7,8 @@ Checked against MiniMax's model repository, local inference examples, Diffusers 
 | Capability | SIF interface |
 | --- | --- |
 | Text-to-image | `text_to_image`, `POST /v1/t2i`, CLI `t2i` |
-| Multi-reference editing and composition | `image_to_image`, `POST /v1/i2i`, CLI `i2i`; 1–16 separately connected references |
+| Multi-reference editing and composition | `image_to_image`, `POST /v1/i2i`, CLI `i2i`; 1–16 separately connected references, including MinIO image URLs |
+| Reference transfer | HTTP binary/multipart upload returns a MinIO URL. Temporary uploads expire after 24 hours. SIF downloads snapshots before queueing |
 | Ordered reference identity | `images[0]` is `<Picture 1>`, then `<Picture 2>` through `<Picture 16>` |
 | Custom output canvas | `width` + `height`, or `megapixels` + numeric `aspect_ratio`; 32-aligned, ≤20 × 1024² pixels |
 | Preserve source ratio | i2i `aspect_ratio="original"`, using the first reference after EXIF orientation |

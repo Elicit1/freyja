@@ -1,3 +1,4 @@
+import asyncio
 import io
 import zipfile
 from contextlib import asynccontextmanager
@@ -9,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.staticfiles import StaticFiles
+from starlette.datastructures import UploadFile
 
 from .admin import mount_admin
 from .auth import Auth
@@ -18,6 +20,7 @@ from .http_auth import AuthenticationMiddleware, ResponseHeadersMiddleware
 from .mcp_server import create_mcp
 from .models import GenerateRequest, ServiceError
 from .registry import Registry
+from .retention import maintain_uploads
 from .runner import Runner
 from .service import ImageService
 from .store import Store
@@ -57,13 +60,19 @@ def create_app(settings=None, client=None):
             await app.state.runner.start()
             app.state.auth.initialize(settings.initial_password)
             async with app.state.mcp.session_manager.run():
-                yield
+                cleanup_stopped = asyncio.Event()
+                cleanup_task = asyncio.create_task(maintain_uploads(app.state.store, app.state.service.storage, cleanup_stopped))
+                try:
+                    yield
+                finally:
+                    cleanup_stopped.set()
+                    await cleanup_task
         finally:
             await app.state.runner.stop()
             await app.state.client.close()
             app.state.store.close()
 
-    app = FastAPI(title="SIF", version="1.2.0", lifespan=lifespan,
+    app = FastAPI(title="SIF", version="1.3.0", lifespan=lifespan,
                   description="Password-managed API keys, authenticated MCP tools, and a persisted serial t2i/i2i queue.")
     app.add_middleware(BodyLimitMiddleware, limit=(settings.max_upload_bytes + 2) // 3 * 4 + 65536)
     app.add_middleware(AuthenticationMiddleware, state=app.state)
@@ -102,13 +111,20 @@ def create_app(settings=None, client=None):
 
     @router.post("/uploads", status_code=201)
     async def upload(request: Request):
+        if request.headers.get("content-type", "").startswith("multipart/form-data"):
+            async with request.form(max_files=1, max_fields=10, max_part_size=settings.max_upload_bytes) as form:
+                file = form.get("file")
+                if not isinstance(file, UploadFile):
+                    raise ServiceError("image_required", "Upload a file in the multipart file field.", 422)
+                data = await file.read(settings.max_upload_bytes + 1)
+                return await asyncio.to_thread(app.state.service.upload, data)
         chunks, total = [], 0
         async for chunk in request.stream():
             total += len(chunk)
             if total > settings.max_upload_bytes:
                 raise ServiceError("image_too_large", "Image uploads are limited to 25 MiB.", 413)
             chunks.append(chunk)
-        return app.state.service.upload(b"".join(chunks))
+        return await asyncio.to_thread(app.state.service.upload, b"".join(chunks))
 
     @router.post("/t2i", status_code=202)
     async def t2i(body: GenerateRequest, request: Request, idempotency_key: str | None = Header(default=None)):

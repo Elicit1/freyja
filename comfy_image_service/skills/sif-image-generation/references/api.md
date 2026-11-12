@@ -28,6 +28,7 @@ Skill recommendation for unspecified settings: **fast, 2K, 16:9, expansion OFF**
 ```bash
 python scripts/generate.py capabilities
 python scripts/generate.py readiness
+python scripts/generate.py upload reference.png
 python scripts/generate.py t2i --tier fast --prompt "A moonlit botanical garden" --mp 2.25 --aspect-ratio 16:9 --no-expand --output garden.png
 python scripts/generate.py i2i --tier fast --image source.png --prompt "Edit <Picture 1>. Change daylight to golden-hour lighting; preserve the subject and composition." --mp 2.25 --no-expand --output edited.png
 python scripts/generate.py status JOB_UUID --output recovered.png
@@ -42,7 +43,7 @@ python scripts/generate.py status JOB_UUID --output recovered.png
 | `--mp`, `--megapixels` | 0.1–20; raw CLI default 4 | Target area; 1 MP means 1024×1024 pixels; explicitly use 2.25 for the default 2K 16:9 recommendation |
 | `--aspect-ratio` | Numeric W:H between 1:3 and 3:1; t2i default `1:1`, i2i default `original` | Both modes accept custom ratios such as `5:4` and `2.39:1`. `original` uses the first reference's EXIF-oriented ratio |
 | `--width`, `--height` | Both required together, 32–16384, multiples of 32, total ≤20 MP, ratio 1:3–3:1 | Exact canvas dimensions. Omit MP and aspect ratio when using these fields |
-| `--image` | Repeat 1–16 local paths for i2i | Order defines `<Picture N>`. PNG, JPEG, or WebP, each at most 25 MiB and 40 source MP |
+| `--image` | Repeat 1–16 local paths or configured MinIO image URLs for i2i | Local files upload over HTTP and use the returned URL. Order defines `<Picture N>`. PNG, JPEG, or WebP, each at most 25 MiB and 40 source MP |
 | `--reference-mode` | i2i `latent` (default) or `vision` | `latent` provides VAE and text-encoder references. `vision` uses only text-encoder references |
 | `--n`, `--count` | Integer 1–10, default 1 | Separate single-image samplers in one persisted workflow, seeds increment from the base seed |
 | `--output-format` | `png` (default), `jpeg`, `webp` | JPEG/WebP conversion happens locally in SIF after ComfyUI returns PNG |
@@ -88,9 +89,9 @@ Both `POST /v1/t2i` and `POST /v1/i2i` must receive an English `prompt`. Transla
 - `GET /v1/capabilities`: discover parameter schema, apps, tiers, and limits.
 - `GET /v1/readiness`: check installed nodes and model filenames; this does not certify VRAM capacity.
 - `GET /v1/queue`: single-worker queue counts, active/unknown jobs, and waiting positions.
-- `POST /v1/uploads`: raw image bytes, returns `{id,width,height,sha256}`.
+- `POST /v1/uploads`: raw image bytes or multipart `file`; with MinIO configured, returns `{id,width,height,sha256,url,bucket,object_path,expires_at,retention_seconds}`. URL validity and upload retention are 86400 seconds. CLI `upload FILE` prints this descriptor.
 - `POST /v1/t2i`: JSON `{app?,tier?,prompt,megapixels?,aspect_ratio?,width?,height?,expand_prompt?,prompt_expansion?,seed?,n?,output_format?,output_quality?}`.
-- `POST /v1/i2i`: same fields plus `images` (1–16 ordered upload IDs/data URIs) or the legacy single `image`, and optional `reference_mode`. Upload files individually before submitting their IDs. The HTTP request body limit is roughly 33 MiB, so multiple large data URIs should use individual uploads.
+- `POST /v1/i2i`: same fields plus `images` (1–16 ordered MinIO URLs, upload IDs, or data URIs) or single `image`, and optional `reference_mode`. Prefer individual HTTP file uploads and submit the returned URLs. MinIO origins/buckets are configured server-side. SIF uses its internal MinIO connection to fetch each URL's object. The HTTP request body limit is roughly 33 MiB.
 - `GET /v1/jobs/JOB_UUID`: current state, backend prompt ID, result, and error.
 - `GET /v1/jobs/JOB_UUID/wait?timeout_seconds=25`: event-backed JSON long poll, 1–600 seconds, same state/deadline semantics as MCP `wait_for_job`.
 - `GET /v1/jobs/JOB_UUID/result?response_format=url`: result descriptors with authenticated URLs, dimensions, format, and each image's seed. `b64_json` returns inline base64 instead of URL fields. Combined source bytes for inline results are limited to 128 MiB.
@@ -112,3 +113,17 @@ Multi-reference example with an exact canvas and two requested candidates follow
 ```
 
 Use `Idempotency-Key` for programmatic submissions. Reusing a key with changed parameters returns HTTP 409. Invalid profile, resolution, aspect ratio, unknown fields, or missing image returns 422; missing, invalid, or revoked API keys return 401. Resolve the cause before retrying. Do not retry render failures as an unlimited loop.
+
+## MinIO reference upload and expiry
+
+Send a local file using the SIF API key.
+
+```bash
+curl --fail -H "Authorization: Bearer $SIF_API_KEY" -F "file=@reference.png" http://127.0.0.1:8011/v1/uploads
+```
+
+Pass the returned `url` unchanged in `images`, in reference order. The CLI accepts it as a quoted `--image` argument. The URL includes its own MinIO signature and supports 24-hour access. SIF keeps MinIO storage credentials server-side. FREYJA image URLs in configured asset buckets can be supplied directly.
+
+On submission, SIF fetches and validates the actual image, computes its content fingerprint, and stores a local immutable snapshot before queueing. The durable job contains upload IDs, with signed URLs consumed during submission. Reusing the same content by ID or URL preserves content-based idempotency.
+
+SIF scans its dedicated `sif-uploads/references/` objects once per minute and deletes objects at least 24 hours old. MinIO additionally has a one-day lifecycle rule for this prefix, providing storage-side cleanup while SIF is offline. MinIO's background lifecycle scanner controls offline deletion timing. Expired local input files are cleaned as well, with pending-job snapshots retained until the jobs finish. Existing asset buckets and generated image results retain their existing policies. An expired reference returns 410, or 404 after physical deletion.

@@ -9,18 +9,22 @@ Prefer the configured **SIF MCP server** for tool discovery and generation. It e
 
 For shell automation or local image uploads/downloads, use the dependency-free Python CLI in `scripts/generate.py`. It uploads inputs, submits a task, waits, downloads the image, and prints JSON with the output path, tier, seed, and effective prompt.
 
+For reference images, **upload the actual file over HTTP first, then pass the returned MinIO image URL to MCP**. `POST /v1/uploads` accepts multipart field `file` or raw image bytes and returns `url`, dimensions, SHA-256, and expiry. CLI `upload FILE` performs this transfer. Existing FREYJA MinIO asset URLs from configured buckets are accepted too. Keep binary image data outside model/tool arguments when using this flow.
+
+SIF's uploaded MinIO objects expire after **24 hours**. The service checks expired objects every minute, with a MinIO lifecycle rule as an offline fallback. Re-upload expired references. SIF removes its temporary upload objects and expired local upload caches. Local snapshots referenced by queued/running/unknown jobs stay available until those jobs finish. Existing FREYJA assets and generated results have their own retention.
+
 Read [references/api.md](references/api.md) for all parameters, CLI/HTTP usage, and task recovery. Do not print API tokens or put them in prompts. If the MCP server is missing or returns 401, ask the user to configure the SIF endpoint and a console-created API key; installing this Skill does not install an MCP connection or provision credentials.
 
 ## Prompt language and authentication
 
 Write every t2i and i2i `prompt` in **English**, whether calling MCP, REST, or the CLI. Translate a Chinese or other non-English request into English before submitting it, preserving the requested subject, composition, edits, and preservation requirements. Keep reference markers such as `<Picture 1>` unchanged. If the user requests exact lettering inside the image, preserve that literal text in its requested language while writing the surrounding instructions in English. Translate the prompt yourself; do not enable prompt expansion just to translate it.
 
-**All SIF API and MCP calls require an API key.** Send `Authorization: Bearer sk-…` with every request, including MCP initialization, discovery and notifications, capabilities, readiness, uploads, queue/job polling, result/image downloads, health, API documentation, and Skill downloads. Configure authentication in the MCP client or CLI so it is attached automatically. Do not try unauthenticated probes, put the key in tool arguments or URLs, or treat a returned image URL as public. If no valid key is configured, ask the user to configure one before calling the service. Browser password login and administrator sessions are separate from these Agent interfaces.
+**All SIF API and MCP calls require an API key.** Send `Authorization: Bearer sk-…` with every SIF request, including MCP initialization, discovery and notifications, capabilities, readiness, uploads, queue/job polling, result/image downloads, health, API documentation, and Skill downloads. Configure authentication in the MCP client or CLI so it is attached automatically. Keep the key in the client's authentication configuration. MinIO upload URLs use their own temporary query signature. If no valid SIF key is configured, ask the user to configure one before calling the service. Browser password login and administrator sessions are separate from these Agent interfaces.
 
 ## Select the operation and profile
 
 - **t2i** creates a new image from a description. Use `16:9` unless the user specifies another ratio or dimensions.
-- **i2i** edits or composes with **1–16 ordered reference images**. Upload each file and pass `images=[id1,id2,...]`, or repeat CLI `--image` in that order. Refer to them as `<Picture 1>`, `<Picture 2>`, etc. Name each reference's role and what to preserve or change. The first reference supplies the default canvas ratio. The legacy single `image` parameter remains accepted.
+- **i2i** edits or composes with **1–16 ordered reference images**. Upload each file and pass `images=[url1,url2,...]`, or repeat CLI `--image` with local files or MinIO URLs in that order. Refer to them as `<Picture 1>`, `<Picture 2>`, etc. Name each reference's role and what to preserve or change. The first reference supplies the default canvas ratio. Single `image`, upload IDs, and the existing data-URI interface remain accepted.
 - **fast** uses Q4_K_M GGUF and is the recommended profile when the user does not specify one. Its name does not guarantee lower latency on every GPU or cache state.
 - **standard** uses W4A8; select it when the user requests this profile or W4A8.
 - **pro** uses INT8; select it when the user requests this profile or INT8. Precision does not guarantee a superior result for every prompt.
@@ -41,6 +45,7 @@ The user creates a named `sk-` API key after signing in to the SIF console. Conf
 
 ```bash
 python scripts/generate.py capabilities
+python scripts/generate.py upload reference.png
 python scripts/generate.py t2i --tier fast --prompt "A red ceramic teapot beside a sunlit window" --mp 2.25 --aspect-ratio 16:9 --no-expand --output teapot.png
 # Example i2i input: 16:9. For other source ratios, derive MP for a 2048-pixel long edge.
 python scripts/generate.py i2i --tier fast --image source.png --prompt "Edit <Picture 1>. Change the teapot to cobalt blue; preserve its shape, framing, and lighting." --mp 2.25 --no-expand --output edited.png
@@ -49,6 +54,8 @@ python scripts/generate.py i2i --tier fast --image person.png --image jacket.png
 ```
 
 Adapt script paths to the installed Skill directory. In the source repository use `python comfy_image_service/generate.py ...`.
+
+All SIF calls use the configured SIF Bearer key. MinIO image URLs use their own presigned query authentication. Download or reference those URLs as returned and keep the SIF Bearer key attached to SIF requests only. The service downloads and validates MinIO references before queueing, then stores their local snapshot IDs in the durable job.
 
 ## Completion and recovery
 

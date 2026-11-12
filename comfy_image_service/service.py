@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .media import resolve_image, save_upload
 from .models import ASPECT_RATIOS, GenerateRequest, ServiceError
+from .minio_storage import ImageStorage, UPLOAD_RETENTION_SECONDS
 
 
 class ImageService:
@@ -15,6 +16,7 @@ class ImageService:
 
     def __init__(self, settings, store, registry, runner, client):
         self.settings, self.store, self.registry, self.runner, self.client = settings, store, registry, runner, client
+        self.storage = ImageStorage(settings)
 
     def apps(self):
         registered, errors = self.registry.scan()
@@ -28,6 +30,10 @@ class ImageService:
                               "result": "/v1/jobs/{job_id}/result", "wait": "/v1/jobs/{job_id}/wait", "mcp": "/mcp"},
                 "defaults": {"app": "minimax-h3-image", "tier": "standard", "megapixels": 4, "expand_prompt": True},
                 "mcp_defaults": {"expand_prompt": False}, "parameters": GenerateRequest.model_json_schema(),
+                "image_transfer": {"upload_endpoint": "/v1/uploads", "upload_body": "raw bytes or multipart/form-data file",
+                                   "minio_enabled": self.storage.enabled, "upload_retention_seconds": UPLOAD_RETENTION_SECONDS,
+                                   "reference_inputs": ["MinIO image URL", "upload ID", "data URI"],
+                                   "flow": "Upload image bytes over HTTP, then pass the returned URL in images. SIF snapshots the object before queueing."},
                 "waiting": {"tool": "wait_for_job", "default_timeout_seconds": 25, "max_timeout_seconds": 600,
                             "transport": "Streamable HTTP / SSE", "client_sleep_required": False},
                 "limits": {"max_megapixels": 20, "max_upload_bytes": self.settings.max_upload_bytes,
@@ -74,7 +80,12 @@ class ImageService:
 
     def upload(self, data):
         saved = save_upload(data, self.settings, self.store)
-        return {k: saved[k] for k in ("id", "width", "height", "sha256")}
+        return {**{k: saved[k] for k in ("id", "width", "height", "sha256")}, **self.storage.publish(saved)}
+
+    def resolve_reference(self, reference):
+        if reference.startswith(("http://", "https://")):
+            return save_upload(self.storage.read(reference), self.settings, self.store)
+        return resolve_image(reference, self.settings, self.store)
 
     def public_job(self, job, base_url=""):
         base = (self.settings.public_base_url or base_url or "http://127.0.0.1:8011").rstrip("/")
@@ -97,7 +108,7 @@ class ImageService:
         uploads = []
         if mode == "i2i":
             references = values["images"] or [values["image"]]
-            uploads = [resolve_image(reference, self.settings, self.store) for reference in references]
+            uploads = [await asyncio.to_thread(self.resolve_reference, reference) for reference in references]
             if values["images"]:
                 values["images"] = [upload["id"] for upload in uploads]
             else:

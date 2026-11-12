@@ -73,8 +73,8 @@ class GenerateRequest(BaseModel):
     height: int | None = Field(default=None, strict=True, ge=32, le=16384, multiple_of=32)
     expand_prompt: StrictBool = True
     seed: int | None = Field(default=None, strict=True, ge=0, le=9007199254740991)
-    image: str | None = Field(default=None, description="i2i only: uploaded image ID or base64 image data URI")
-    images: list[str] | None = Field(default=None, min_length=1, max_length=16, description="Ordered i2i references, <Picture 1> through <Picture 16>. Use either image or images.")
+    image: str | None = Field(default=None, description="i2i only: MinIO image URL, uploaded image ID, or image data URI")
+    images: list[str] | None = Field(default=None, min_length=1, max_length=16, description="Ordered MinIO image URLs or upload IDs, <Picture 1> through <Picture 16>. Use either image or images.")
     reference_mode: Literal["latent", "vision"] = Field(default="latent", description="latent anchors references in the VAE and text encoder. vision uses the text encoder only.")
     n: int = Field(default=1, strict=True, ge=1, le=10, description="Serial single-image samples in one persisted backend workflow; seeds increment from seed.")
     output_format: Literal["png", "jpeg", "webp"] = "png"
