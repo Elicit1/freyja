@@ -1,6 +1,8 @@
-# Comfy Image Service
+# SIF
 
-给本地 AI / Agent 使用的独立命令行生图网关。代码、App 注册、认证、SQLite 任务记录和 Docker 数据卷均位于这个模块；运行在本机 Ubuntu WSL 的独立容器 `comfy-image-service`，访问地址为 `http://127.0.0.1:8011`。GPU 生图继续调用已配置的 ComfyUI。
+SIF 是给本地 AI / Agent 使用的独立命令行生图服务。代码、App 注册、认证、SQLite 任务记录和 Docker 数据卷均位于这个模块；运行在本机 Ubuntu WSL 的独立容器 `sif`，访问地址为 `http://127.0.0.1:8011`。GPU 生图继续调用已配置的 ComfyUI。
+
+服务名称为 SIF，Skill 名称为 `sif-image-generation`；三个档位保持 `pro`、`standard`、`fast`。源码目录和 Python 模块名保留 `comfy_image_service`，现有 CLI 路径与连接配置继续可用。
 
 ## 直接调用
 
@@ -42,7 +44,7 @@ CLI 只依赖 Python 3.10+ 标准库，不依赖 FastAPI、Docker Python SDK 或
 - 采样固定为 6 步、CFG 1、Euler、Simple、denoise 1，不暴露容易破坏蒸馏模型采样的覆盖参数。
 - 输入图片支持 PNG/JPEG/WebP，最大 25 MiB、40 源 MP。API 接受上传 ID 或图片 Data URI，不读取客户端提交的服务器文件路径或 HTTP 图片 URL。
 
-完整参数与 HTTP 调用见 [Skill API 参考](skills/comfy-image-generation/references/api.md)。
+完整参数与 HTTP 调用见 [Skill API 参考](skills/sif-image-generation/references/api.md)。
 
 ## 本地 WSL Docker
 
@@ -53,7 +55,7 @@ CLI 只依赖 Python 3.10+ 标准库，不依赖 FastAPI、Docker Python SDK 或
 .\comfy_image_service\start.ps1
 
 # 查看日志
-wsl -d Ubuntu --exec docker logs --tail 50 comfy-image-service
+wsl -d Ubuntu --exec docker logs --tail 50 sif
 ```
 
 也可以在 WSL 内运行：
@@ -66,18 +68,18 @@ docker compose logs --tail 50
 
 首次在另一台机器安装：复制 `.env.example` 为 `.env`，配置现有 ComfyUI 的 `COMFY_URL`，用 `python -c "import secrets; print(secrets.token_urlsafe(32))"` 生成独立 `IMAGE_API_KEY`。CLI 使用 `COMFY_IMAGE_BASE_URL` / `COMFY_IMAGE_API_KEY`，或私有 JSON `{"base_url":"http://127.0.0.1:8011","api_key":"..."}`；后者通过 `--config 文件`（放在子命令之前）指定。私有配置已被 Git 和 Docker 构建上下文排除。
 
-Docker 数据卷 `comfy-image-service_image_data` 持久保存任务数据库、上传图片和生成结果。`apps/` 与 `skills/` 以只读挂载形式读取本地配置，更新工作流或 Skill 后无需重启。服务代码修改后重新构建本容器。运行使用单 worker，避免同一 GPU 被此服务重复提交任务。
+Docker 镜像为 `sif:local`。Compose 项目标识保留 `comfy-image-service`，以便改名升级时复用现有数据卷 `comfy-image-service_image_data`，保留任务数据库、上传图片和生成结果。`apps/` 与 `skills/` 以只读挂载形式读取本地配置，更新工作流或 Skill 后无需重启。服务代码修改后重新构建本容器。运行使用单 worker，避免同一 GPU 被此服务重复提交任务。
 
 ComfyUI 需要可用的 Image VAE、Qwen3-VL 文本编码器、Qwen3.5 扩写模型、三个主模型与 ComfyUI-GGUF。`comfy_nodes/` 包含本模块工作流所需的 20MP 节点与 GGUF 作者兼容补丁；当前目标 ComfyUI 已安装它们。迁移到新的 ComfyUI 时，将这两个文件放到其 `custom_nodes/`，在队列空闲时重启 ComfyUI。
 
 ## 给其他 AI 的标准 Skill
 
-入口：`skills/comfy-image-generation/SKILL.md`，包含模式选择、档位选择、分辨率、扩写选择、命令调用和恢复规则。`scripts/generate.py` 可直接随 Skill 分发。Skill 本身不包含认证凭据。
+入口：`skills/sif-image-generation/SKILL.md`，包含模式选择、档位选择、分辨率、扩写选择、命令调用和恢复规则。`scripts/generate.py` 可直接随 Skill 分发。Skill 本身不包含认证凭据。
 
 已启动的服务也提供鉴权下载：
 
 - `GET /v1/skill`：Skill 文本。
-- `GET /v1/skill.zip`：包含 SKILL.md、UI 元数据、参考文档和调用脚本的标准目录包。
+- `GET /v1/skill.zip`：下载 `sif-image-generation.zip`，包含 SKILL.md、UI 元数据、参考文档和调用脚本。
 
 ## 新工作流 / App 注册
 

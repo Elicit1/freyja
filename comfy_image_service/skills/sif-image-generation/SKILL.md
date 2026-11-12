@@ -1,9 +1,9 @@
 ---
-name: comfy-image-generation
-description: Generate or edit images from a terminal through the configured self-hosted Comfy Image Service. Use for local AI or agent requests targeting this ComfyUI service, including pro, standard, or fast profiles, prompt expansion, reference-image editing, and output downloads.
+name: sif-image-generation
+description: Generate or edit images from a terminal through SIF, the configured self-hosted ComfyUI image service. Use for local AI or agent requests targeting SIF, including pro, standard, or fast profiles, prompt expansion, reference-image editing, and output downloads.
 ---
 
-# Comfy Image Generation
+# SIF Image Generation
 
 Call this service with the dependency-free Python CLI in `scripts/generate.py`. It uploads inputs, submits a task, waits, downloads the image, and prints JSON with the output path, tier, seed, and effective prompt.
 

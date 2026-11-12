@@ -56,7 +56,7 @@ def create_app(settings=None, client=None):
             await app.state.client.close()
             app.state.store.close()
 
-    app = FastAPI(title="Comfy Image Service", version="1.0.0", lifespan=lifespan,
+    app = FastAPI(title="SIF", version="1.0.0", lifespan=lifespan,
                   description="Independent t2i/i2i service. Profiles: pro (INT8), standard (W4A8), fast (Q4_K_M). Persisted asynchronous jobs and hot-discovered app bundles.")
     app.add_middleware(BodyLimitMiddleware, limit=(settings.max_upload_bytes + 2) // 3 * 4 + 65536)
     bearer = HTTPBearer(auto_error=False)
@@ -84,7 +84,7 @@ def create_app(settings=None, client=None):
 
     @app.get("/health")
     async def health():
-        return {"service": "comfy-image-service", "worker_alive": app.state.runner.task is not None and not app.state.runner.task.done(),
+        return {"service": "sif", "worker_alive": app.state.runner.task is not None and not app.state.runner.task.done(),
                 "configured": len(settings.api_key) >= 24 and not settings.api_key.startswith("replace-with")}
 
     @router.get("/apps")
@@ -198,7 +198,7 @@ def create_app(settings=None, client=None):
             raise ServiceError("image_not_found", "The stored output file is missing.", 404)
         return FileResponse(path)
 
-    skill_dir = Path(__file__).parent / "skills" / "comfy-image-generation"
+    skill_dir = Path(__file__).parent / "skills" / "sif-image-generation"
 
     @router.get("/skill.zip")
     async def skill_package():
@@ -206,8 +206,8 @@ def create_app(settings=None, client=None):
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
             for path in skill_dir.rglob("*"):
                 if path.is_file() and "__pycache__" not in path.parts:
-                    archive.write(path, "comfy-image-generation/" + path.relative_to(skill_dir).as_posix())
-        return Response(buffer.getvalue(), media_type="application/zip", headers={"Content-Disposition": 'attachment; filename="comfy-image-generation.zip"'})
+                    archive.write(path, "sif-image-generation/" + path.relative_to(skill_dir).as_posix())
+        return Response(buffer.getvalue(), media_type="application/zip", headers={"Content-Disposition": 'attachment; filename="sif-image-generation.zip"'})
 
     @router.get("/skill")
     async def skill_entrypoint():

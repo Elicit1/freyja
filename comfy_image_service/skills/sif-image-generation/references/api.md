@@ -1,4 +1,4 @@
-# CLI and API reference
+# SIF CLI and API reference
 
 ## Connection
 
@@ -17,7 +17,7 @@ Alternatively use a private JSON file:
 
 Pass `--config /absolute/path/client.json` **before** the subcommand, or set `COMFY_IMAGE_CONFIG` to its path. Do not commit the file. The repository client also discovers `comfy_image_service/.client.json`; a distributed Skill does not contain credentials.
 
-`base_url` is the service origin, without `/v1`. The service runs in the user's local WSL Docker and publishes only `127.0.0.1:8011`; the CLI runs on Windows or in WSL. The repository's `start.ps1` starts this independent local container. GPU execution uses the already configured ComfyUI backend.
+`base_url` is the SIF service origin, without `/v1`. The service runs in the user's local WSL Docker as container `sif` and publishes only `127.0.0.1:8011`; the CLI runs on Windows or in WSL. The repository's `start.ps1` starts this independent local container. GPU execution uses the already configured ComfyUI backend.
 
 ## Commands
 
@@ -68,7 +68,7 @@ All `/v1/**` routes require `Authorization: Bearer TOKEN`, including image downl
 - `POST /v1/i2i`: same fields plus `image`, an upload ID or a base64 PNG/JPEG/WebP data URI. HTTP image URLs and server file paths are not dereferenced.
 - `GET /v1/jobs/JOB_UUID`: current state, backend prompt ID, result, and error.
 - `GET /v1/jobs/JOB_UUID/images/0`: authenticated image bytes.
-- `GET /v1/skill.zip`: portable Skill package without credentials.
+- `GET /v1/skill.zip`: portable `sif-image-generation.zip` Skill package without credentials.
 
 Example body:
 

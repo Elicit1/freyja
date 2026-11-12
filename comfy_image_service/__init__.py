@@ -1,1 +1,1 @@
-"""Independent ComfyUI image capability service."""
+"""SIF: an independent ComfyUI image capability service."""

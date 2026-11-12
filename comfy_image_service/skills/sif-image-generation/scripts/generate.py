@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Upload, submit, poll, and download ComfyUI images using only Python's standard library."""
+"""Generate and edit images through SIF using only Python's standard library."""
 import argparse
 import json
 import os
