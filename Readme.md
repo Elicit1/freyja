@@ -396,6 +396,10 @@ docker compose start
 
 ---
 
+## SIF 独立项目
+
+SIF Server 与 Client 已迁移至同级独立项目 `../SIF`，部署、REST/MCP 接入、Windows 客户端安装与卸载说明见 `../SIF/README.md`。Client 提供 `sif` 命令与 `sif ui` 本地图像工作室，支持文生图、图生图和生成动画。图片存储支持文件系统与可选 MinIO。
+
 ## 📄 开源许可证
 
 本项目基于 [Apache 2.0 License](LICENSE) 协议开源。

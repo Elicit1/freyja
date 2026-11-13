@@ -1,9 +1,0 @@
-.env
-.client.json
-.venv
-data
-dist
-__pycache__
-**/__pycache__
-tests
-*.log
