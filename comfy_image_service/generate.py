@@ -1,4 +1,4 @@
-"""SIF dependency-free command-line entrypoint for local AI agents."""
+"""Compatibility entrypoint forwarding to the independent SIF Client."""
 import runpy
 from pathlib import Path
 

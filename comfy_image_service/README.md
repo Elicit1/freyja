@@ -1,8 +1,8 @@
-# SIF
+# SIF Server
 
-SIF 是给本地 AI / Agent 使用的独立命令行生图服务。代码、App 注册、认证、SQLite 任务记录和 Docker 数据卷均位于这个模块；运行在本机 Ubuntu WSL 的独立容器 `sif`，访问地址为 `http://127.0.0.1:8011`。GPU 生图继续调用已配置的 ComfyUI。
+SIF Server 为 AI / Agent 与 SIF Client 提供 REST 和 MCP 生图服务。工作流、App 注册、认证、SQLite 任务记录和 Docker 数据卷均位于这个模块。运行在本机 Ubuntu WSL 的独立容器 `sif`，访问地址为 `http://127.0.0.1:8011`。GPU 生图继续调用已配置的 ComfyUI。
 
-服务名称为 SIF，Skill 名称为 `sif-image-generation`；三个档位保持 `pro`、`standard`、`fast`。源码目录和 Python 模块名保留 `comfy_image_service`。服务提供独立 HTML 管理页、Streamable HTTP MCP 和 CLI。
+服务端名称为 SIF Server，Skill 名称为 `sif-image-generation`，提供 `pro`、`standard`、`fast` 三个档位。Server 提供 HTML 管理页、Streamable HTTP MCP 与 REST API。Client 通过 REST 访问 Server，安装与配置见 [SIF Client](../sif_client/README.md)。
 
 ## 登录与 API Keys
 
@@ -13,9 +13,9 @@ SIF 是给本地 AI / Agent 使用的独立命令行生图服务。代码、App 
 
 管理页使用 HttpOnly Cookie 会话；创建和撤销 Key 需要管理员登录。API Key 不能管理密码或其他 Key。所有生图 API、MCP 握手和工具发现、健康状态与接口文档都需要 `Authorization: Bearer sk-…`。仅 HTML/静态文件和登录入口供登录前访问。
 
-原 `IMAGE_API_KEY` 启动配置已停用；CLI 不再自动读取仓库里的 `.client.json`。用户登录后自行创建和配置客户端 Key。可选 `SIF_ADMIN_PASSWORD` 仅用于首次初始化，已设置的持久密码始终优先。
+CLI 使用 `sif configure` 保存用户创建的 Key，后续自动读取用户目录中的 `~/.sif/config.json`。原 `IMAGE_API_KEY` 启动配置已停用。可选 `SIF_ADMIN_PASSWORD` 仅用于首次初始化，已设置的持久密码始终优先。
 
-## MCP 接入
+## Agent 通过 MCP 生图
 
 端点：`http://127.0.0.1:8011/mcp`，使用官方 MCP Python SDK 的 Streamable HTTP。支持以下配置结构的客户端可参考：
 
@@ -40,29 +40,46 @@ SIF 到 ComfyUI 的正常完成等待也使用 WebSocket `/ws?clientId=原任务
 
 参考图片通过 HTTP 上传后取得 MinIO 地址，再交给 MCP。CLI `--image` 支持本地文件和已有 MinIO 地址。生成结果通过返回的 SIF 地址下载，携带 API Key；CLI `status JOB_ID --output 图片.png` 可以恢复并下载。详见 [MCP 参考](skills/sif-image-generation/references/mcp.md)。
 
-## 直接调用
+## SIF Client 通过 REST 生图
 
-先将你在控制台创建的 Key 配置为 `SIF_API_KEY`，地址可使用 `SIF_BASE_URL`（默认 `http://127.0.0.1:8011`）。也可显式传入 `--config 你的私有JSON文件`，置于子命令之前；客户端不再自动发现仓库凭据。在仓库根目录执行：
+Client 是独立的 Python 3.10+ 项目，可复制到另一台机器运行。在仓库根目录安装并配置一次。
+
+```powershell
+python -m pip install ./sif_client
+sif configure --base-url http://127.0.0.1:8011
+```
+
+在隐藏输入提示中粘贴控制台创建的 Key。后续命令自动从 `~/.sif/config.json` 读取地址与 Key。该文件为本地明文 JSON，POSIX 权限为 `0600`，Windows 由用户目录 ACL 控制。`sif config` 查看配置状态，`sif logout` 删除本地保存的 Key。详细安装、配置优先级和恢复用法见 [Client 使用说明](../sif_client/README.md)。
+
+Client 使用 REST `/v1/**` 完成上传、生成、等待和下载。MCP 宿主应用通过自己的连接配置保存 `/mcp` 地址与 Key。两种入口共用 Server 的持久化任务队列。
+
+```powershell
+sif config
+sif queue
+sif jobs
+```
+
+配置后直接使用以下命令。
 
 ```powershell
 # 查看能力、参数和模型就绪状态
-python comfy_image_service/generate.py capabilities
-python comfy_image_service/generate.py readiness
+sif capabilities
+sif readiness
 
 # 文生图：按当前 Skill 建议使用 fast、2K、16:9，关闭扩写
-python comfy_image_service/generate.py t2i --tier fast --prompt "A red ceramic teapot on a wooden table beside a window, soft natural light, realistic product photography" --mp 2.25 --aspect-ratio 16:9 --no-expand --output outputs/teapot.png
+sif t2i --tier fast --prompt "A red ceramic teapot on a wooden table beside a window, soft natural light, realistic product photography" --mp 2.25 --aspect-ratio 16:9 --no-expand --output outputs/teapot.png
 
 # 图生图：pro，保留输入图比例
-python comfy_image_service/generate.py i2i --tier pro --image source.png --prompt "Edit <Picture 1>. Change the red teapot to cobalt blue. Preserve its shape, framing, and window light." --mp 4 --no-expand --output outputs/edited.png
+sif i2i --tier pro --image source.png --prompt "Edit <Picture 1>. Change the red teapot to cobalt blue. Preserve its shape, framing, and window light." --mp 4 --no-expand --output outputs/edited.png
 
 # 多参考图组合，精确指定画布，请求两张候选图
-python comfy_image_service/generate.py i2i --tier fast --image person.png --image jacket.png --prompt "Edit <Picture 1>. Dress the person in the jacket from <Picture 2>. Preserve the person's face and pose." --width 2048 --height 1152 --n 2 --no-expand --output-format webp --output outputs/outfit.webp
+sif i2i --tier fast --image person.png --image jacket.png --prompt "Edit <Picture 1>. Dress the person in the jacket from <Picture 2>. Preserve the person's face and pose." --width 2048 --height 1152 --n 2 --no-expand --output-format webp --output outputs/outfit.webp
 
 # fast 预览，关闭扩写，指定随机种子
-python comfy_image_service/generate.py t2i --tier fast --prompt "A red ceramic teapot on a wooden table" --mp 1 --no-expand --seed 42 --output outputs/draft.png
+sif t2i --tier fast --prompt "A red ceramic teapot on a wooden table" --mp 1 --no-expand --seed 42 --output outputs/draft.png
 
 # 断线后继续查询并下载原任务，不重新生图
-python comfy_image_service/generate.py status JOB_UUID --output outputs/recovered.png
+sif status JOB_UUID --output outputs/recovered.png
 ```
 
 CLI 只依赖 Python 3.10+ 标准库，不依赖 FastAPI、Docker Python SDK 或已有网关。过程写入 stderr，成功后向 stdout 输出 JSON，包括任务 ID、实际 seed、实际提示词及下载后的图片绝对路径；失败时返回非零退出码。默认不覆盖已有文件。
@@ -102,8 +119,8 @@ SIF 通过服务端 MinIO 凭据拉取图片，在入队前校验格式、大小
 在本模块私有 `.env` 配置 `SIF_MINIO_ENDPOINT`、`SIF_MINIO_PUBLIC_ENDPOINT`、`SIF_MINIO_ACCESS_KEY`、`SIF_MINIO_SECRET_KEY`、`SIF_MINIO_BUCKET`、`SIF_MINIO_READ_BUCKETS` 和 `SIF_MINIO_URL_ALIASES`。客户端可访问的公共端点用于生成图片 URL，容器内端点用于上传和读取。具体字段见 `.env.example`。所有 SIF 上传和 MCP 调用需要 SIF API Key，MinIO URL 使用自身的短期签名。
 
 ```powershell
-python comfy_image_service/generate.py upload reference.png
-python comfy_image_service/generate.py i2i --tier fast --image "MINIO_IMAGE_URL" --prompt "Edit <Picture 1>. Change the background to a sunlit garden. Preserve the person's identity." --mp 2.25 --no-expand --output edited.png
+sif upload reference.png
+sif i2i --tier fast --image "MINIO_IMAGE_URL" --prompt "Edit <Picture 1>. Change the background to a sunlit garden. Preserve the person's identity." --mp 2.25 --no-expand --output edited.png
 ```
 
 官方资料和本地能力映射见 [H3 能力说明](skills/sif-image-generation/references/h3-capabilities.md)。涵盖模型文档、多参考图示例、ComfyUI 节点和托管 API 的接口范围。
@@ -128,7 +145,7 @@ docker compose up -d --build
 docker compose logs --tail 50
 ```
 
-首次在另一台机器安装：复制 `.env.example` 为 `.env`，配置现有 ComfyUI 的 `COMFY_URL`，启动后查看初始密码并登录控制台创建客户端 Key。CLI 私有 JSON 格式为 `{"base_url":"http://127.0.0.1:8011","api_key":"sk-..."}`，通过 `--config 文件` 或 `SIF_CONFIG` 显式指定。原 `COMFY_IMAGE_*` 客户端环境变量仍作为兼容别名接受；服务不再接受原启动 Key。
+首次在另一台机器安装：复制 `.env.example` 为 `.env`，配置现有 ComfyUI 的 `COMFY_URL`，启动后查看初始密码并登录控制台创建客户端 Key。Client 安装后执行 `sif configure --base-url 服务地址` 保存 Key，也可通过 `--config 文件` 或 `SIF_CONFIG` 指定独立配置。原 `COMFY_IMAGE_*` 客户端环境变量仍作为兼容别名接受；服务不再接受原启动 Key。
 
 Docker 镜像为 `sif:local`。Compose 项目标识保留 `comfy-image-service`，以便改名升级时复用现有数据卷 `comfy-image-service_image_data`，保留任务数据库、上传图片和生成结果。`apps/` 与 `skills/` 以只读挂载形式读取本地配置，更新工作流或 Skill 后无需重启。服务代码修改后重新构建本容器。运行使用单 worker，避免同一 GPU 被此服务重复提交任务。
 
@@ -136,12 +153,12 @@ ComfyUI 需要可用的 Image VAE、Qwen3-VL 文本编码器、Qwen3.5 扩写模
 
 ## 给其他 AI 的标准 Skill
 
-入口：`skills/sif-image-generation/SKILL.md`，优先使用已配置的 SIF MCP，包含模式选择、档位选择、分辨率、扩写选择、命令调用和恢复规则。`scripts/generate.py` 可直接随 Skill 分发。Skill 本身不包含认证凭据，也不会读取服务配置获取 Key。
+入口：`skills/sif-image-generation/SKILL.md`，优先使用已配置的 SIF MCP，包含模式选择、档位选择、分辨率、扩写选择、命令调用和恢复规则。MCP 使用方法在 `references/mcp.md`，REST Client 使用方法在 `references/client.md`。`scripts/generate.py` 为独立 Client 的兼容入口，下载 Skill 后需另行安装 Client。Skill 本身不包含认证凭据，也不会读取服务配置获取 Key。
 
 已启动的服务也提供鉴权下载：
 
 - `GET /v1/skill`：Skill 文本。
-- `GET /v1/skill.zip`：下载 `sif-image-generation.zip`，包含 SKILL.md、UI 元数据、MCP/API 参考文档和调用脚本。
+- `GET /v1/skill.zip`：下载 `sif-image-generation.zip`，包含 SKILL.md、UI 元数据、MCP/Client/API 参考文档和 Client 兼容入口。
 
 ## 新工作流 / App 注册
 

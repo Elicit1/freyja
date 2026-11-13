@@ -2,36 +2,28 @@
 
 ## Connection
 
-The terminal client requires only Python 3.10+ and its standard library. Configure:
+SIF Server exposes REST under `/v1/**` and MCP at `/mcp`. SIF Client uses REST and requires Python 3.10+. Install the independent Client and configure the URL and console-created Key once.
 
-```text
-SIF_BASE_URL=http://127.0.0.1:8011
-SIF_API_KEY=<sk- key created by the user in the SIF console>
+```bash
+python -m pip install /path/to/sif_client
+sif configure --base-url http://127.0.0.1:8011
 ```
 
-Alternatively use a private JSON file:
+Future calls automatically read `~/.sif/config.json`. Read [client.md](client.md) for local credential storage, configuration precedence, environment variables, and logout. Read [mcp.md](mcp.md) for MCP host configuration and generation tools.
 
-```json
-{"base_url":"http://127.0.0.1:8011","api_key":"<private service token>"}
-```
-
-Pass `--config /absolute/path/client.json` **before** the subcommand, or set `SIF_CONFIG` to its path. Do not commit the file. The client does not search for repository-local credentials. The previous `COMFY_IMAGE_*` client environment variables remain accepted as aliases; the old startup `IMAGE_API_KEY` is no longer accepted by the server.
-
-The user signs in to the standalone SIF web console, creates a key by name, and configures that generated `sk-` value in their client. Only the create response contains the full key. The server stores hashes, and revocation takes effect on subsequent REST/MCP requests. Administrator passwords are not API keys.
-
-`base_url` is the SIF service origin, without `/v1`. The service runs in the user's local WSL Docker as container `sif` and publishes only `127.0.0.1:8011`; the CLI runs on Windows or in WSL. The repository's `start.ps1` starts this independent local container. GPU execution uses the already configured ComfyUI backend.
+`base_url` is the Server base address. The Client appends `/v1/**`. The default local Docker deployment publishes `127.0.0.1:8011`. Each client machine must use an address reachable from that machine. GPU execution uses the Server's configured ComfyUI backend.
 
 ## Commands
 
 Skill recommendation for unspecified settings: **fast, 2K, 16:9, expansion OFF**. For t2i, use `--tier fast --mp 2.25 --aspect-ratio 16:9 --no-expand` to target **2048×1152**. These must be explicit because the underlying CLI/REST defaults differ. Preserve user-specified settings. For i2i, keep the source ratio and calculate MP for a 2048-pixel long edge when the user does not specify size; the example below assumes a 16:9 input.
 
 ```bash
-python scripts/generate.py capabilities
-python scripts/generate.py readiness
-python scripts/generate.py upload reference.png
-python scripts/generate.py t2i --tier fast --prompt "A moonlit botanical garden" --mp 2.25 --aspect-ratio 16:9 --no-expand --output garden.png
-python scripts/generate.py i2i --tier fast --image source.png --prompt "Edit <Picture 1>. Change daylight to golden-hour lighting; preserve the subject and composition." --mp 2.25 --no-expand --output edited.png
-python scripts/generate.py status JOB_UUID --output recovered.png
+sif capabilities
+sif readiness
+sif upload reference.png
+sif t2i --tier fast --prompt "A moonlit botanical garden" --mp 2.25 --aspect-ratio 16:9 --no-expand --output garden.png
+sif i2i --tier fast --image source.png --prompt "Edit <Picture 1>. Change daylight to golden-hour lighting; preserve the subject and composition." --mp 2.25 --no-expand --output edited.png
+sif status JOB_UUID --output recovered.png
 ```
 
 | Parameter | Values / default | Selection |

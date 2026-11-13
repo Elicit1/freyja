@@ -1,4 +1,4 @@
-# SIF MCP
+# SIF Server MCP
 
 SIF provides Streamable HTTP with SSE responses at `http://127.0.0.1:8011/mcp`. Use an MCP client that accepts both `application/json` and `text/event-stream`; existing REST endpoints continue to return JSON. Every request, including initialization, discovery, notifications, and all tool calls, requires `Authorization: Bearer sk-…`. The same key is required for REST uploads, waiting/recovery, health checks, image/result downloads and Skill downloads. There are no unauthenticated Agent-facing interfaces; configure a key before probing or calling the service. Browser administrator sessions do not authenticate MCP calls.
 
@@ -20,6 +20,12 @@ Example for clients supporting this JSON shape:
 Replace `YOUR_API_KEY` in the client's private configuration with the user-created key. Configuration field names and secret-storage options depend on the client. This is the SIF key, not a Comfy Cloud credential.
 
 An installed Skill and a configured MCP connection are separate. The Skill provides usage guidance; the host application owns the connection and its credential. On HTTP 401, have the user check the key or create a replacement in the console. Reinstalling the Skill, reading the server environment, or using the administrator password as a Bearer token will not resolve authentication.
+
+## Generate through MCP
+
+Configure the `/mcp` connection and Bearer Key once in the host application. Discover capabilities and readiness, then call `text_to_image` or `image_to_image` with a unique `idempotency_key`. Preserve the returned job ID and call `wait_for_job`. If waiting times out, continue with the same job ID. Use `get_result` after success for authenticated download URLs.
+
+For terminal workflows, the separate SIF Client saves REST credentials with `sif configure`. It automatically attaches its saved Key for uploads, generation, waiting and downloads. CLI configuration applies to its REST calls. The MCP host owns its connection and Key. Read [client.md](client.md) for Client setup.
 
 ## Tools
 

@@ -196,7 +196,7 @@ class RetentionTests(ServiceFixture):
 
 class CLIReferenceTests(unittest.TestCase):
     def test_existing_minio_urls_skip_binary_upload_and_local_file_access(self):
-        spec = importlib.util.spec_from_file_location('sif_cli_minio', SOURCE / 'skills/sif-image-generation/scripts/generate.py')
+        spec = importlib.util.spec_from_file_location('sif_cli_minio', SOURCE.parent / 'sif_client/sif_client/cli.py')
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         client = Mock()

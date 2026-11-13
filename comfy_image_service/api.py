@@ -72,7 +72,7 @@ def create_app(settings=None, client=None):
             await app.state.client.close()
             app.state.store.close()
 
-    app = FastAPI(title="SIF", version="1.3.0", lifespan=lifespan,
+    app = FastAPI(title="SIF Server", version="1.3.0", lifespan=lifespan,
                   description="Password-managed API keys, authenticated MCP tools, and a persisted serial t2i/i2i queue.")
     app.add_middleware(BodyLimitMiddleware, limit=(settings.max_upload_bytes + 2) // 3 * 4 + 65536)
     app.add_middleware(AuthenticationMiddleware, state=app.state)

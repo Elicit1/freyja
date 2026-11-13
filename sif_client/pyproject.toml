@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sif-client"
+version = "1.0.0"
+description = "Standalone REST command-line client for SIF Server"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+sif = "sif_client.cli:entrypoint"
+
+[tool.setuptools]
+packages = ["sif_client"]

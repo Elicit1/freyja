@@ -197,7 +197,7 @@ class SizingTests(unittest.TestCase):
 
 class CLITests(ServiceFixture):
     def test_portable_cli_uploads_ordered_files_and_waits_through_http(self):
-        spec = importlib.util.spec_from_file_location("sif_portable_cli", SOURCE / "skills/sif-image-generation/scripts/generate.py")
+        spec = importlib.util.spec_from_file_location("sif_portable_cli", SOURCE.parent / "sif_client/sif_client/cli.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         first, second = self.home / "first.png", self.home / "second.png"

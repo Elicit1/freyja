@@ -7,7 +7,7 @@ description: Generate or edit images through the configured SIF MCP server or CL
 
 Prefer the configured **SIF MCP server** for tool discovery and generation. It exposes `get_capabilities`, `get_readiness`, `text_to_image`, `image_to_image`, `upload_image`, `wait_for_job`, `get_job`, `get_queue`, and `get_result`. Read [references/mcp.md](references/mcp.md) for connection setup, input uploads, and server-side waiting.
 
-For shell automation or local image uploads/downloads, use the dependency-free Python CLI in `scripts/generate.py`. It uploads inputs, submits a task, waits, downloads the image, and prints JSON with the output path, tier, seed, and effective prompt.
+For shell automation or local image uploads/downloads, use the standalone **SIF Client CLI** over REST. Install the separate `sif_client` project and run `sif configure` once to save the server URL and API key. It uploads inputs, submits a task, waits, downloads the image, and prints JSON with the output path, tier, seed, and effective prompt. Read [references/client.md](references/client.md) for installation, persistent configuration, commands and recovery. MCP hosts save their own endpoint and credentials in the host connection settings.
 
 For reference images, **upload the actual file over HTTP first, then pass the returned MinIO image URL to MCP**. `POST /v1/uploads` accepts multipart field `file` or raw image bytes and returns `url`, dimensions, SHA-256, and expiry. CLI `upload FILE` performs this transfer. Existing FREYJA MinIO asset URLs from configured buckets are accepted too. Keep binary image data outside model/tool arguments when using this flow.
 
@@ -41,19 +41,19 @@ When expansion is requested, optional `prompt_expansion` controls the installed 
 
 ## Command-line use
 
-The user creates a named `sk-` API key after signing in to the SIF console. Configure it in the MCP client, or use `SIF_BASE_URL` and `SIF_API_KEY` / an explicit `--config /path/to/private-client.json` for CLI calls. Do not read the server environment, Docker logs, or server database to obtain credentials; do not create a key or change the administrator password on the user's behalf unless asked. The client no longer searches the repository for a private connection file. Run `capabilities` and `readiness` on first use or after a service change.
+The user creates a named `sk-` API key after signing in to the SIF console. For CLI use, run `sif configure --base-url http://127.0.0.1:8011` and enter the Key at the hidden prompt. Subsequent commands automatically read `~/.sif/config.json`. `sif config` shows the saved connection status, and `sif logout` removes the saved Key. Read [references/client.md](references/client.md) for environment overrides and custom configuration files. Run `capabilities` and `readiness` on first use or after a service change.
 
 ```bash
-python scripts/generate.py capabilities
-python scripts/generate.py upload reference.png
-python scripts/generate.py t2i --tier fast --prompt "A red ceramic teapot beside a sunlit window" --mp 2.25 --aspect-ratio 16:9 --no-expand --output teapot.png
+sif capabilities
+sif upload reference.png
+sif t2i --tier fast --prompt "A red ceramic teapot beside a sunlit window" --mp 2.25 --aspect-ratio 16:9 --no-expand --output teapot.png
 # Example i2i input: 16:9. For other source ratios, derive MP for a 2048-pixel long edge.
-python scripts/generate.py i2i --tier fast --image source.png --prompt "Edit <Picture 1>. Change the teapot to cobalt blue; preserve its shape, framing, and lighting." --mp 2.25 --no-expand --output edited.png
+sif i2i --tier fast --image source.png --prompt "Edit <Picture 1>. Change the teapot to cobalt blue; preserve its shape, framing, and lighting." --mp 2.25 --no-expand --output edited.png
 # Compose from two ordered references on an exact canvas.
-python scripts/generate.py i2i --tier fast --image person.png --image jacket.png --prompt "Edit <Picture 1>. Dress the person in the jacket from <Picture 2>. Preserve the person's face and pose." --width 2048 --height 1152 --no-expand --output outfit.png
+sif i2i --tier fast --image person.png --image jacket.png --prompt "Edit <Picture 1>. Dress the person in the jacket from <Picture 2>. Preserve the person's face and pose." --width 2048 --height 1152 --no-expand --output outfit.png
 ```
 
-Adapt script paths to the installed Skill directory. In the source repository use `python comfy_image_service/generate.py ...`.
+In a source checkout use `python sif_client/generate.py ...`. The Skill script `scripts/generate.py` is a compatibility launcher for the separately installed Client.
 
 All SIF calls use the configured SIF Bearer key. MinIO image URLs use their own presigned query authentication. Download or reference those URLs as returned and keep the SIF Bearer key attached to SIF requests only. The service downloads and validates MinIO references before queueing, then stores their local snapshot IDs in the durable job.
 
