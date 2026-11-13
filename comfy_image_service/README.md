@@ -42,7 +42,9 @@ SIF 到 ComfyUI 的正常完成等待也使用 WebSocket `/ws?clientId=原任务
 
 ## SIF Client 通过 REST 生图
 
-Client 是独立的 Python 3.10+ 项目，可复制到另一台机器运行。在仓库根目录安装并配置一次。
+Client 是独立项目。Windows x64 用户可以解压发布包并运行 `install.cmd`，重新打开终端后直接使用 `sif` 命令。发布包内含运行环境与卸载脚本，安装步骤见 [SIF Client](../sif_client/README.md)。
+
+源码安装需要 Python 3.10+，在仓库根目录执行以下命令。
 
 ```powershell
 python -m pip install ./sif_client

@@ -1,8 +1,35 @@
 # SIF Client
 
-SIF Client 是独立的 Python 3.10+ 命令行客户端，通过 REST 访问 SIF Server。上传、提交、任务等待和图片下载均使用 Server 的 `/v1/**` 接口，运行时依赖 Python 标准库。
+SIF Client 是独立的命令行客户端，通过 REST 访问 SIF Server。上传、提交、任务等待和图片下载均使用 Server 的 `/v1/**` 接口。Windows x64 发布包内含运行环境，解压后可以直接执行 `sif.exe`。
 
-## 安装与首次配置
+## Windows 发布包
+
+解压 `sif-client-1.0.0-windows-x64.zip`，运行包内的 `install.cmd`。安装程序会将 `sif.exe` 复制到 `%LOCALAPPDATA%\Programs\SIF` 并加入当前用户的 PATH。重新打开 CMD 或 PowerShell 后执行以下命令。
+
+```powershell
+sif --help
+sif configure --base-url http://127.0.0.1:8011
+sif capabilities
+```
+
+也可以保留解压后的程序作为便携版，在 PowerShell 中执行以下命令。
+
+```powershell
+.\sif.exe --help
+.\sif.exe configure --base-url http://127.0.0.1:8011
+```
+
+在 CMD 中可以直接执行当前目录的 `sif.exe`。发布包内附安装脚本与命令说明。
+
+安装目录内的 `uninstall.cmd` 可以删除程序并移除用户 PATH 中对应的目录。默认保留保存的 Key，传入 `-RemoveConfig` 时清理配置文件。自定义配置可以通过 `-ConfigPath` 指定。
+
+```powershell
+& "$env:LOCALAPPDATA\Programs\SIF\uninstall.cmd"
+# 同时删除默认配置中的 Key
+& "$env:LOCALAPPDATA\Programs\SIF\uninstall.cmd" -RemoveConfig
+```
+
+## Python 源码安装
 
 在本仓库根目录执行以下命令，也可以把整个 `sif_client` 目录复制到另一台机器安装。
 
@@ -20,7 +47,9 @@ python sif_client/generate.py configure --base-url http://127.0.0.1:8011
 python sif_client/generate.py capabilities
 ```
 
-安装后的客户端也支持 `python -m sif_client`。`sif configure --api-key-stdin` 从标准输入读取一行 Key，便于脚本配置。
+源码安装要求 Python 3.10+，运行时依赖标准库。安装后的客户端也支持 `python -m sif_client`。`sif configure --api-key-stdin` 从标准输入读取一行 Key，便于脚本配置。
+
+Windows 发布包同样使用上述配置文件、Key 输入与恢复机制。
 
 ## 生图与恢复
 
@@ -67,5 +96,22 @@ SIF Server 同时发布 `/mcp`，Agent 可以在宿主应用中配置该端点�
 ## 验证
 
 ```powershell
+python -m unittest discover -s sif_client/tests -v
+```
+
+## 构建 Windows 发布包
+
+在 Windows x64 构建机安装 Python 3.10+，然后从仓库根目录执行以下命令。脚本会创建隔离构建环境并安装固定版本的 PyInstaller。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\sif_client\build-windows.ps1
+```
+
+产物位于 `sif_client/dist`，包含发布 ZIP、ZIP 的 SHA-256 文件和解压后的程序目录。ZIP 包含 `sif.exe`、安装与卸载脚本、`README.txt`。程序内含 Python 运行环境，目标机器可以直接运行。
+
+使用构建产物执行回归测试。
+
+```powershell
+$env:SIF_EXE = (Resolve-Path .\sif_client\dist\sif-client-1.0.0-windows-x64\sif.exe).Path
 python -m unittest discover -s sif_client/tests -v
 ```

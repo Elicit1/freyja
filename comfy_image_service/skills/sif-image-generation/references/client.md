@@ -1,6 +1,10 @@
 # SIF Client over REST
 
-SIF Client is a standalone Python 3.10+ CLI. Install the separate `sif_client` project on the agent's machine.
+SIF Client is a standalone REST CLI. On Windows x64, extract the `sif-client-VERSION-windows-x64.zip` release, run `install.cmd`, and reopen CMD or PowerShell. The package includes its runtime and installs `sif.exe` into the user's PATH. Run `sif configure` once, then use `sif` commands directly. For portable use in PowerShell, run `.\sif.exe` from the extracted directory.
+
+The installed `uninstall.cmd` removes the application and its user PATH entry. Saved credentials are retained by default. Pass `-RemoveConfig` to remove them during uninstall, with `-ConfigPath` for a custom configuration file.
+
+For source installation, install the separate `sif_client` project with Python 3.10+ on the agent's machine.
 
 ```bash
 python -m pip install /path/to/sif_client
