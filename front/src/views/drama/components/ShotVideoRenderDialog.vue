@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" width="min(1120px, calc(100vw - 40px))" top="5vh" append-to-body destroy-on-close :close-on-click-modal="!submitting" :close-on-press-escape="!submitting" :show-close="!submitting" class="shot-render-dialog">
+  <el-dialog v-model="visible" width="min(1120px, calc(100vw - 40px))" top="5dvh" append-to-body destroy-on-close :close-on-click-modal="!submitting" :close-on-press-escape="!submitting" :show-close="!submitting" class="shot-render-dialog">
     <template #header>
       <div class="render-heading">
         <span class="render-icon"><el-icon><VideoCamera /></el-icon></span>
@@ -151,13 +151,13 @@ defineExpose({ open })
 </script>
 
 <style>
-.shot-render-dialog.el-dialog { --el-dialog-padding-primary: 0; display: flex; flex-direction: column; padding: 0; max-height: 90vh; overflow: hidden; border: 1px solid var(--border-default); border-radius: 16px; background: var(--surface-raised); box-shadow: var(--shadow-floating); }
+.shot-render-dialog.el-dialog { --el-dialog-padding-primary: 0; display: flex; flex-direction: column; margin-bottom: 0; padding: 0; max-height: 90dvh; overflow: hidden; border: 1px solid var(--border-default); border-radius: 16px; background: var(--surface-raised); box-shadow: var(--shadow-floating); }
 .shot-render-dialog > .el-dialog__header { flex-shrink: 0; margin: 0; padding: 23px 28px; border-bottom: 1px solid var(--border-default); }
 .shot-render-dialog > .el-dialog__header .el-dialog__headerbtn { top: 22px; right: 20px; width: 28px; height: 28px; border-radius: 7px; }
 .shot-render-dialog > .el-dialog__header .el-dialog__headerbtn:hover { background: var(--surface-hover); }
-.shot-render-dialog > .el-dialog__body { min-height: 0; padding: 0; overflow: hidden; }
+.shot-render-dialog > .el-dialog__body { flex: 0 1 auto; min-height: 0; padding: 0; overflow-y: auto; overscroll-behavior-y: contain; }
 .shot-render-dialog > .el-dialog__footer { flex-shrink: 0; padding: 18px 28px; border-top: 1px solid var(--border-default); background: var(--surface-raised); }
-@media(max-width: 760px) { .shot-render-dialog.el-dialog { max-height: 90dvh; }.shot-render-dialog > .el-dialog__header { padding: 19px 20px; }.shot-render-dialog > .el-dialog__footer { padding: 16px 20px; } }
+@media(max-width: 760px) { .shot-render-dialog > .el-dialog__header { padding: 19px 20px; }.shot-render-dialog > .el-dialog__footer { padding: 16px 20px; } }
 </style>
 
 <style scoped>
@@ -170,9 +170,9 @@ h2 { margin: 0; font-size: 18px; line-height: 1.35; font-weight: 650; letter-spa
 .render-title-block p { margin: 5px 0 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 11px; color: var(--text-muted); }
 .heading-divider { margin: 0 8px; color: var(--border-strong); }
 .render-header-note { margin-left: auto; margin-right: 16px; white-space: nowrap; font-size: 11px; letter-spacing: 1px; color: var(--text-muted); }
-.render-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); max-height: calc(90vh - 174px); overflow: hidden; }
-.render-preview-column { min-width: 0; padding: 24px 28px 26px; overflow-y: auto; border-right: 1px solid var(--border-default); background: var(--surface-muted); scrollbar-width: thin; }
-.render-settings-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; padding: 26px 28px; overflow-y: auto; scrollbar-width: thin; }
+.render-body { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+.render-preview-column { min-width: 0; padding: 24px 28px 26px; border-right: 1px solid var(--border-default); background: var(--surface-muted); }
+.render-settings-column { display: flex; flex-direction: column; gap: 24px; min-width: 0; padding: 26px 28px; }
 .settings-section { display: grid; gap: 22px; }
 .section-heading { display: flex; align-items: center; gap: 10px; }
 .section-number { display: grid; place-items: center; width: 27px; height: 27px; flex-shrink: 0; border: 1px solid var(--border-default); border-radius: 7px; background: var(--surface-muted); font-size: 10px; font-weight: 600; color: var(--text-secondary); }
@@ -213,8 +213,7 @@ h3 { margin: 0; font-size: 13px; font-weight: 650; color: var(--text-primary); }
 .render-output-summary > div { min-width: 0; }.output-specs { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-muted); }.output-specs strong { flex-shrink: 0; font-weight: 550; color: var(--text-primary); font-variant-numeric: tabular-nums; }.output-model { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 270px; color: var(--text-secondary); font-size: 10px; }
 .render-output-summary p { margin: 6px 0 0; font-size: 10px; color: var(--text-muted); }
 .render-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }.render-actions .el-button { height: 39px; margin: 0; padding: 0 17px; border-radius: 8px; font-size: 12px; }.render-actions .el-button--primary :deep(.el-icon) { margin-right: 6px; }.render-actions .el-button--primary { min-width: 128px; gap: 7px; box-shadow: 0 2px 4px color-mix(in srgb, var(--brand) 15%, transparent); }
-@media(min-width: 1500px) { .render-body { max-height: calc(86vh - 174px); } }
 @media(max-width: 980px) and (min-width: 761px) { .render-preview-column, .render-settings-column { padding: 24px 20px; }.ratio-choices :deep(.el-radio) { padding: 8px; }.ratio-choices :deep(.el-radio__label) { gap: 7px; }.output-model { max-width: 160px; } }
-@media(max-width: 760px) { .render-header-note { display: none; }.render-body { display: block; max-height: calc(90dvh - 207px); overflow-y: auto; scrollbar-width: thin; }.render-preview-column { overflow: visible; padding: 20px; border: 0; border-bottom: 1px solid var(--border-default); }.render-settings-column { overflow: visible; padding: 22px 20px; gap: 22px; }.render-footer { flex-direction: column; align-items: stretch; gap: 16px; }.output-icon { display: none; }.output-model { max-width: 180px; }.render-actions { justify-content: flex-end; }.render-actions .el-button { flex: 1; }.render-fields { gap: 16px; } }
+@media(max-width: 760px) { .render-header-note { display: none; }.render-body { display: block; }.render-preview-column { padding: 20px; border: 0; border-bottom: 1px solid var(--border-default); }.render-settings-column { padding: 22px 20px; gap: 22px; }.render-footer { flex-direction: column; align-items: stretch; gap: 16px; }.output-icon { display: none; }.output-model { max-width: 180px; }.render-actions { justify-content: flex-end; }.render-actions .el-button { flex: 1; }.render-fields { gap: 16px; } }
 @media(prefers-reduced-motion: reduce) { * { scroll-behavior: auto; transition: none; } }
 </style>
